@@ -4659,6 +4659,56 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.1%.
 
+### 2026-06-25: Add strict-step branch result object
+
+Steps taken:
+
+- Added ``StrictStepBranchResult`` and ``strict_step_branch_result`` to package
+  accepted-state, restart status, restart path, update RMS, and cache-clear
+  intent for the strict momentum step.
+- Rewired ``solve_fixed_boundary_residual_iter`` so the strict accepted/rejected
+  step path consumes this branch result object instead of scattering status
+  assignments through the solver body.
+- Added tests for accepted momentum status and rejected pending-restart status,
+  including VMEC2000 vs non-VMEC2000 cache-clear policy.
+
+Results obtained:
+
+- ``python -m ruff check`` passed for the changed residual update/iteration
+  modules and focused tests.
+- ``JAX_ENABLE_X64=1 PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_solve_residual_iter_update_helpers.py
+  tests/test_solve_residual_iter_helpers_wave8_coverage.py
+  tests/test_solve_more_coverage.py tests/test_solve_wave4_coverage.py -q``
+  passed with ``71`` tests.
+- ``source_health.py``, ``repo_size_audit.py``, and ``git diff --check``
+  passed.
+
+Best next steps:
+
+1. Commit and push the strict-step branch-result seam.
+2. Extend the strict-step object to absorb direct-fallback acceptance and
+   catastrophic-restart update outputs, which will remove more branch-local
+   status bookkeeping from ``solve_fixed_boundary_residual_iter``.
+3. Use the resulting explicit branch object as the input/output fingerprint for
+   the next accepted/rejected AD-vs-FD validation gate.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.6%.
+- Free-boundary production differentiability: 96.2%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 62.6%.
+- VMEC2000/VMEC++ parity and physics gates: 98.6%.
+- Docs/release hygiene: 100%.
+- Overall: 99.1%.
+
 ### 2026-06-25: Confirm final CI after readiness artifact refresh
 
 Steps taken:
