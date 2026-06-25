@@ -184,21 +184,29 @@ def _vacuum_grid_exceeded_count(path: Path | None) -> int:
 def _partial_vmec2000_payload(workdir: Path) -> dict[str, Any]:
     matches = sorted(Path(workdir).glob("threed1*"))
     threed1 = matches[0] if matches else None
+    stages = []
     rows = []
     if threed1 is not None and threed1.exists():
         try:
-            rows = [row for stage in _parse_vmec2000_threed1(threed1) for row in stage.rows]
+            stages = _parse_vmec2000_threed1(threed1)
+            rows = [row for stage in stages for row in stage.rows]
         except Exception:
+            stages = []
             rows = []
     totals = [float(row.fsqr) + float(row.fsqz) + float(row.fsql) for row in rows]
+    last = rows[-1] if rows else None
+    final_ftol = float(stages[-1].ftolv) if stages else None
     return {
         "workdir": workdir,
         "threed1": threed1,
         "threed1_tail": _tail_lines(threed1, lines=80),
         "iteration_row_count": len(rows),
+        "stage_summaries": [_vmec2000_stage_payload(stage) for stage in stages],
         "tail_rows": [_vmec2000_row_payload(row) for row in rows[-12:]],
-        "last_row": None if not rows else _vmec2000_row_payload(rows[-1]),
+        "last_row": None if last is None else _vmec2000_row_payload(last),
         "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
+        "final_max_component": None if last is None else _vmec2000_max_component(last),
+        "strict_components_met": None if last is None else _vmec2000_strict_components_met(last, final_ftol),
         "vacuum_grid_exceeded_count": _vacuum_grid_exceeded_count(threed1),
     }
 
@@ -753,28 +761,47 @@ def _boundary_projection_payload(config: ExampleConfig) -> dict[str, Any]:
 
 def _vmec2000_row_payload(row: Any) -> dict[str, Any]:
     total = float(row.fsqr) + float(row.fsqz) + float(row.fsql)
+    max_component = _vmec2000_max_component(row)
     return {
         "it": int(row.it),
         "fsqr": float(row.fsqr),
         "fsqz": float(row.fsqz),
         "fsql": float(row.fsql),
         "total": total,
+        "max_component": max_component,
         "delt0r": row.delt0r,
         "delbsq": row.delbsq,
         "fedge": row.fedge,
     }
 
 
+def _vmec2000_max_component(row: Any) -> float:
+    return float(max(float(row.fsqr), float(row.fsqz), float(row.fsql)))
+
+
+def _vmec2000_strict_components_met(row: Any, requested_ftol: float | None) -> bool | None:
+    if requested_ftol is None:
+        return None
+    requested = float(requested_ftol)
+    if not np.isfinite(requested) or requested <= 0.0:
+        return None
+    return bool(_vmec2000_max_component(row) <= requested)
+
+
 def _vmec2000_stage_payload(stage: Any) -> dict[str, Any]:
     rows = list(getattr(stage, "rows", []) or [])
     totals = [float(row.fsqr) + float(row.fsqz) + float(row.fsql) for row in rows]
+    last = rows[-1] if rows else None
+    ftolv = float(getattr(stage, "ftolv", float("nan")))
     return {
         "ns": int(getattr(stage, "ns", -1)),
         "niter": int(getattr(stage, "niter", -1)),
-        "ftolv": float(getattr(stage, "ftolv", float("nan"))),
+        "ftolv": ftolv,
         "iteration_row_count": len(rows),
         "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
-        "last_row": None if not rows else _vmec2000_row_payload(rows[-1]),
+        "last_row": None if last is None else _vmec2000_row_payload(last),
+        "final_max_component": None if last is None else _vmec2000_max_component(last),
+        "strict_components_met": None if last is None else _vmec2000_strict_components_met(last, ftolv),
     }
 
 
@@ -958,6 +985,7 @@ def main(argv: list[str] | None = None) -> int:
                 rows = [row for stage in run.stages for row in stage.rows]
                 last = rows[-1] if rows else None
                 totals = [float(row.fsqr) + float(row.fsqz) + float(row.fsql) for row in rows]
+                final_max_component = None if last is None else _vmec2000_max_component(last)
                 payload["backends"]["vmec2000_mgrid"] = {
                     "status": "completed" if run.returncode == 0 else "nonzero_exit",
                     "returncode": int(run.returncode),
@@ -975,6 +1003,10 @@ def main(argv: list[str] | None = None) -> int:
                     "tail_rows": [_vmec2000_row_payload(row) for row in rows[-12:]],
                     "last_row": None if last is None else _vmec2000_row_payload(last),
                     "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
+                    "final_max_component": final_max_component,
+                    "strict_components_met": (
+                        None if last is None else _vmec2000_strict_components_met(last, float(config.ftol))
+                    ),
                 }
             except Exception as exc:
                 workdir = outdir / "vmec2000_mgrid"

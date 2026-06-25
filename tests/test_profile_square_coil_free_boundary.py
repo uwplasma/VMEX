@@ -109,7 +109,11 @@ def test_square_coil_profile_partial_vmec2000_payload_reads_timeout_rows(tmp_pat
     assert payload["iteration_row_count"] == 2
     assert payload["last_row"]["it"] == 200
     assert payload["last_row"]["total"] == pytest.approx(7.0e-6)
+    assert payload["last_row"]["max_component"] == pytest.approx(4.0e-6)
     assert payload["min_total"] == pytest.approx(7.0e-6)
+    assert payload["final_max_component"] == pytest.approx(4.0e-6)
+    assert payload["strict_components_met"] is False
+    assert payload["stage_summaries"][0]["strict_components_met"] is False
     assert payload["vacuum_grid_exceeded_count"] == 1
 
 
