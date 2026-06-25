@@ -4724,6 +4724,65 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.3%.
 
+### 2026-06-25: Add artifact-level WOUT parity summary regression gate
+
+Steps taken:
+
+- Added a docs/release hygiene regression test for the promoted public WOUT
+  parity summary artifact
+  ``docs/_static/figures/pr20_wout_parity_summary.json``.
+- The new gate locks the four promoted VMEC2000 rows:
+  ``LandremanPaul2021_QA_lowres``, ``nfp4_QH_warm_start``, ``solovev``, and
+  ``ITERModel``.
+- The gate requires ``failed_cases == 0``, ``skip_vmec_jax is False``, fixed
+  boundary rows, finite executable provenance, converged ``fsq_rss`` below
+  ``1e-8`` for both VMEC-JAX and VMEC2000, aspect agreement below ``1e-10``,
+  and all required WOUT relative-RMS channels to remain below ``5e-5``.
+
+Results obtained:
+
+- ``python -m pytest -q
+  tests/test_docs_release_hygiene.py::test_optional_validation_lasym_freeb_example_matches_manifest_case
+  tests/test_docs_release_hygiene.py::test_public_wout_parity_summary_keeps_promoted_rows_and_tolerances
+  tests/test_docs_release_hygiene.py::test_checked_in_docs_figures_stay_compact
+  tests/test_docs_release_hygiene.py::test_generated_docs_and_bulky_sweep_artifacts_are_not_tracked
+  -q`` passed.
+- ``python -m ruff check tests/test_docs_release_hygiene.py`` passed.
+- ``python tools/diagnostics/source_health.py --top 20 --top-functions 50
+  --max-root-helper-prefix-files 2`` passed the configured source-health gate
+  while continuing to report the known large-file/function debt.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed with 28.26 MiB tracked.
+- ``git diff --check`` passed.
+- The checked-in WOUT parity artifact has 4 cases, ``failed_cases`` equal to
+  0, ``skip_vmec_jax`` equal to false, maximum relative RMS
+  ``4.3668348716555336e-05``, and maximum aspect difference
+  ``1.9539925233402755e-14``.
+
+Best next steps:
+
+1. Commit and push the WOUT parity artifact regression gate.
+2. Let the latest CI finish; inspect logs only if it fails.
+3. For the next tranche, prefer a real validation/parity extension or the
+   larger residual-controller API simplification, not additional cosmetic
+   extraction.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 95.1%.
+- Free-boundary production differentiability: 96.4%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 65.1%.
+- VMEC2000/VMEC++ parity and physics gates: 99.0%.
+- Docs/release hygiene: 100%.
+- Overall: 99.3%.
+
 ### 2026-06-25: Package VMEC2000 time-control restart branch side effects
 
 Steps taken:
