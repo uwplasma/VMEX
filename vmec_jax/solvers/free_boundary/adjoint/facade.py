@@ -9,6 +9,8 @@ in the backward pass rather than differentiating through an iterative solver.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 import time
 from collections.abc import Mapping
@@ -828,6 +830,15 @@ def _branch_local_directional_jvp_signature(
                         signature[key] = int(replay_plan[key])
                     except Exception:
                         signature[key] = str(replay_plan[key])
+    signature["cache_key_schema"] = "directional-jvp-signature-v1"
+    signature["cache_key_digest"] = hashlib.sha256(
+        json.dumps(
+            signature,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
     return signature
 
 
