@@ -912,10 +912,10 @@ execution costs in local profiling.
 Directional-JVP vector reports also include ``directional_jvp_signature``.
 That block is a static provenance key for future compiled-kernel reuse: scalar
 keys, replay options, NESTOR solve policy, current-only fast-path status, array
-shapes, and replay-plan availability.  The nested ``cache_key_digest`` is a
-stable digest of this signature.  It is not an executable cache by itself; it
-records the conditions that must remain unchanged before a branch-local JVP
-cache can be reused safely.
+shapes, replay-plan availability, and the accepted replay branch metadata when
+present.  The nested ``cache_key_digest`` is a stable digest of this signature.
+It is not an executable cache by itself; it records the conditions that must
+remain unchanged before a branch-local JVP cache can be reused safely.
 The report also writes ``same_branch_report_config`` in ``summary.json`` so the
 artifact remains self-describing.  Its derivative contract is fixed
 recorded-branch replay only; it does not differentiate changes in adaptive host

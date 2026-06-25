@@ -770,6 +770,19 @@ def _branch_local_trace_replay_diagnostics(
     return diagnostics
 
 
+def _stable_json_digest(value: Any) -> str:
+    """Return a deterministic digest for JSON-like provenance values."""
+
+    return hashlib.sha256(
+        json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
 def _branch_local_directional_jvp_signature(
     *,
     keys: tuple[str, ...],
@@ -778,6 +791,7 @@ def _branch_local_directional_jvp_signature(
     current_jvp: _CurrentOnlyDirectionalJVPConfig | None,
     replay_options: Mapping[str, Any],
     replay_plan: Mapping[str, Any] | None,
+    replay_branch_metadata: Mapping[str, Any] | None = None,
     ad_mode: str,
 ) -> dict[str, Any]:
     """Return a shape/static signature for branch-local directional JVP reports.
@@ -830,15 +844,19 @@ def _branch_local_directional_jvp_signature(
                         signature[key] = int(replay_plan[key])
                     except Exception:
                         signature[key] = str(replay_plan[key])
+    if replay_branch_metadata is not None:
+        safe_branch_metadata = _json_safe_fingerprint_value(dict(replay_branch_metadata))
+        signature.update(
+            {
+                "replay_branch_metadata_digest": _stable_json_digest(safe_branch_metadata),
+                "replay_branch_n_steps": safe_branch_metadata.get("n_steps"),
+                "replay_branch_free_boundary_steps": safe_branch_metadata.get(
+                    "n_free_boundary_replay_steps"
+                ),
+            }
+        )
     signature["cache_key_schema"] = "directional-jvp-signature-v1"
-    signature["cache_key_digest"] = hashlib.sha256(
-        json.dumps(
-            signature,
-            sort_keys=True,
-            separators=(",", ":"),
-            default=str,
-        ).encode("utf-8")
-    ).hexdigest()
+    signature["cache_key_digest"] = _stable_json_digest(signature)
     return signature
 
 
@@ -901,6 +919,7 @@ def _branch_local_scalar_derivatives(
     ad_mode: str,
     replay_scalars_fn: Any,
     current_only_coil_geometry: Any | None,
+    replay_branch_metadata: Mapping[str, Any] | None,
     timings: dict[str, float],
 ) -> _BranchLocalScalarDerivativeResult:
     """Evaluate branch-local replay scalars and their selected derivative mode."""
@@ -953,6 +972,7 @@ def _branch_local_scalar_derivatives(
             current_jvp=current_jvp,
             replay_options=replay_options,
             replay_plan=replay_plan,
+            replay_branch_metadata=replay_branch_metadata,
             ad_mode=ad_mode,
         )
 
@@ -1207,6 +1227,7 @@ def direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
         replay_traces=replay_traces_for_scalars,
         replay_plan=replay_plan_for_scalars,
         replay_options=replay_options,
+        replay_branch_metadata=replay_branch_metadata,
         scalar_fn_seq=scalar_fn_seq,
         keys=keys,
         ad_mode=ad_mode,

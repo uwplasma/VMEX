@@ -3180,6 +3180,58 @@ Updated lane percentages:
 - Docs/release hygiene: 99.4%.
 - Overall: 97.5%.
 
+### 2026-06-25: Bind directional-JVP cache digest to accepted branch metadata
+
+Steps taken:
+
+- Extended the branch-local directional-JVP cache signature so it can include a
+  stable digest of accepted replay branch metadata, not just array shapes,
+  scalar keys, replay options, and current-only fast-path status.
+- Added summary fields for the accepted replay branch step count and
+  free-boundary replay step count when branch metadata is available.
+- Added a unit gate proving identical branch metadata gives the same
+  ``cache_key_digest``, while a changed accepted/rejected branch fingerprint
+  changes both the branch-metadata digest and the top-level cache digest.
+- Updated the free-boundary coil optimization documentation to state that the
+  cache signature is branch-local/fingerprint-local and still not an executable
+  cache by itself.
+
+Results obtained:
+
+- ``python -m ruff check
+  vmec_jax/solvers/free_boundary/adjoint/facade.py
+  tests/test_free_boundary_adjoint_helpers_unit.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_adjoint_helpers_unit.py -q`` passed with
+  ``11 passed``.
+- This closes one more correctness precondition for reusable current-only JVP
+  kernels: a future cache key now changes when the accepted replay program
+  changes, so a compiled proposal kernel cannot be reused across incompatible
+  branch-local traces by accident.
+
+Best next steps:
+
+1. Use the stabilized digest as the guard for an opt-in per-process current-only
+   JVP executable cache, starting only with scalar sets and same-branch traces
+   that have already passed complete-solve FD validation.
+2. Keep arbitrary adaptive-branch differentiation out of scope until a true
+   fingerprint-gated adaptive AD-vs-FD gate exists.
+3. Continue low-risk performance work on accepted-point replay/tangent
+   construction without changing VMEC parity or the branch-local derivative
+   contract.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.0%.
+- Free-boundary production differentiability: 94.0%.
+- Single-stage coil optimization: 90.0%.
+- CPU/GPU runtime and memory footprint: 98.2%.
+- Refactor/API/examples: 58.0%.
+- VMEC2000/VMEC++ parity and physics gates: 97.9%.
+- Docs/release hygiene: 99.4%.
+- Overall: 97.6%.
+
 ### 2026-06-25: Final PR-readiness artifact refresh and JVP signature hardening
 
 Steps taken:
