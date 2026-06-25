@@ -6,7 +6,7 @@ from typing import Any, Callable, Mapping, NamedTuple
 
 import numpy as np
 
-from ...._compat import jnp
+from ...._compat import has_jax, jax, jnp
 from .payload_blocks import (
     residual_force_payload_after_m1_scalxc,
     residual_force_payload_m1_scalxc_stages,
@@ -20,6 +20,8 @@ __all__ = [
     "ResidualForceKernelAux",
     "ResidualForceMetricPayload",
     "ResidualForcePayloadResult",
+    "compute_forces_iter_runtime",
+    "compute_forces_without_iter_dump",
     "ResidualForceEvaluationResult",
     "build_strict_update_adjoint_trace_entry",
     "evaluate_residual_force_from_state",
@@ -33,6 +35,8 @@ __all__ = [
     "residual_force_z_nan_guard",
     "resolve_residual_force_mask_pack",
     "residual_force_kernel_aux",
+    "residual_iter_dump_index",
+    "tomnsps_to_numpy_host",
     "make_residual_force_evaluator",
 ]
 
@@ -88,6 +92,118 @@ class ResidualForceEvaluationResult(NamedTuple):
     rz_scale: Any
     l_scale: Any
     norms: Any
+
+
+def compute_forces_without_iter_dump(
+    state: Any,
+    *,
+    compute_forces_impl: Callable[..., Any],
+    include_edge: bool,
+    include_edge_residual: bool | None = None,
+    zero_m1: Any,
+    freeb_bsqvac_half: Any | None = None,
+    constraint_rcon0: Any | None = None,
+    constraint_zcon0: Any | None = None,
+    constraint_precond_diag: tuple[Any, Any] | None = None,
+    constraint_tcon: Any | None = None,
+    constraint_precond_active: Any | None = None,
+    constraint_tcon_active: Any | None = None,
+    iter_idx: int | None = None,
+) -> Any:
+    """Force-kernel wrapper for JIT paths where iteration debug dumps are off."""
+
+    del iter_idx
+    return compute_forces_impl(
+        state,
+        include_edge=include_edge,
+        include_edge_residual=include_edge_residual,
+        zero_m1=zero_m1,
+        freeb_bsqvac_half=freeb_bsqvac_half,
+        constraint_rcon0=constraint_rcon0,
+        constraint_zcon0=constraint_zcon0,
+        constraint_precond_diag=constraint_precond_diag,
+        constraint_tcon=constraint_tcon,
+        constraint_precond_active=constraint_precond_active,
+        constraint_tcon_active=constraint_tcon_active,
+        iter_idx=None,
+    )
+
+
+def residual_iter_dump_index(it: int | None, *, jit_forces: bool) -> int | None:
+    """Return the iteration index to expose to force-debug dumps."""
+
+    return None if bool(jit_forces) else it
+
+
+def compute_forces_iter_runtime(
+    state: Any,
+    *,
+    compute_forces_impl: Callable[..., Any],
+    compute_forces: Callable[..., Any],
+    compute_forces_np: Callable[..., Any] | None,
+    warmup_iters: int,
+    include_edge: bool,
+    include_edge_residual: bool | None = None,
+    zero_m1: Any,
+    freeb_bsqvac_half: Any | None = None,
+    constraint_rcon0: Any | None = None,
+    constraint_zcon0: Any | None = None,
+    constraint_precond_diag: tuple[Any, Any] | None = None,
+    constraint_tcon: Any | None = None,
+    constraint_precond_active: Any | None = None,
+    constraint_tcon_active: Any | None = None,
+    iter_idx: int | None = None,
+    iter2: int | None = None,
+) -> Any:
+    """Dispatch one residual force evaluation through host, JIT, or NumPy paths."""
+
+    force_kwargs = {
+        "include_edge": include_edge,
+        "include_edge_residual": include_edge_residual,
+        "zero_m1": zero_m1,
+        "freeb_bsqvac_half": freeb_bsqvac_half,
+        "constraint_rcon0": constraint_rcon0,
+        "constraint_zcon0": constraint_zcon0,
+        "constraint_precond_diag": constraint_precond_diag,
+        "constraint_tcon": constraint_tcon,
+        "constraint_precond_active": constraint_precond_active,
+        "constraint_tcon_active": constraint_tcon_active,
+        "iter_idx": iter_idx,
+    }
+    if int(warmup_iters) > 0 and (iter2 is not None) and (int(iter2) <= int(warmup_iters)):
+        if has_jax():
+            with jax.disable_jit():
+                return compute_forces_impl(state, **force_kwargs)
+        return compute_forces_impl(state, **force_kwargs)
+    if compute_forces_np is not None:
+        return compute_forces_np(state, **force_kwargs)
+    if freeb_bsqvac_half is None:
+        force_kwargs = {key: value for key, value in force_kwargs.items() if key != "freeb_bsqvac_half"}
+    return compute_forces(state, **force_kwargs)
+
+
+def tomnsps_to_numpy_host(frzl: TomnspsRZL) -> TomnspsRZL:
+    """Materialize a TOMNSP force block on the host for scalar reductions."""
+
+    def _host_array(value: Any) -> np.ndarray | None:
+        if value is None:
+            return None
+        return np.asarray(jax.device_get(value))
+
+    return TomnspsRZL(
+        frcc=_host_array(frzl.frcc),
+        frss=_host_array(frzl.frss),
+        fzsc=_host_array(frzl.fzsc),
+        fzcs=_host_array(frzl.fzcs),
+        flsc=_host_array(frzl.flsc),
+        flcs=_host_array(frzl.flcs),
+        frsc=_host_array(getattr(frzl, "frsc", None)),
+        frcs=_host_array(getattr(frzl, "frcs", None)),
+        fzcc=_host_array(getattr(frzl, "fzcc", None)),
+        fzss=_host_array(getattr(frzl, "fzss", None)),
+        flcc=_host_array(getattr(frzl, "flcc", None)),
+        flss=_host_array(getattr(frzl, "flss", None)),
+    )
 
 
 def residual_force_kernel_aux(kernels: Any) -> ResidualForceKernelAux:
