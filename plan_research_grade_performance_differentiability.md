@@ -6181,3 +6181,71 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.1%.
 - Docs/release hygiene: 100%.
 - Overall: 99.5%.
+
+### 2026-06-25: Package residual preconditioner application seam
+
+Steps taken:
+
+- Added ``residual/iteration_preconditioner.py`` to isolate one
+  residual-iteration preconditioner application from the central
+  ``solve_fixed_boundary_residual_iter`` loop.
+- Moved VMEC2000-style preconditioner branch dispatch, JAX radial smoothing
+  branch dispatch, mode-diagonal update scaling, lambda update scaling, and
+  preconditioner timing synchronization into short domain helpers.
+- Preserved the local trace payload names required by accepted-branch replay:
+  ``lam_prec``, ``mats``, ``jmax``, ``frzl_rz``, ``frzl_lam_pre``,
+  ``preconditioner_cache_update_trace``, and accepted-control ``ptau``
+  payloads.
+- Added focused tests for radial-path mode/lambda scaling and fused
+  VMEC2000-style update-block preservation so optimized accelerator payloads
+  are not double-scaled.
+
+Results obtained:
+
+- ``python -m ruff check
+  vmec_jax/solvers/fixed_boundary/residual/iteration_preconditioner.py
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  tests/test_residual_iteration_preconditioner.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_residual_iteration_preconditioner.py
+  tests/test_solve_residual_iter_update_helpers.py
+  tests/test_solve_additional_helpers.py tests/test_driver_api.py
+  tests/test_free_boundary_wp0.py`` passed with ``230 passed, 2 skipped``.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_vacuum_adjoint.py
+  tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py``
+  passed with ``97 passed, 1 skipped``.
+- ``git diff --check`` passed.
+- Repo-size gate passed with tracked size ``28.32 MiB`` and no tracked file
+  above ``2 MiB``.
+- Source-health improved the residual loop from ``2672`` to ``2619`` lines and
+  the module from ``3060`` to ``3010`` lines.  The new helper does not appear
+  in the top long-function warnings after splitting branch and scaling helpers.
+
+Best next steps:
+
+1. Extract the preconditioned-residual scalar-channel block next; it is the
+   remaining immediate continuation of this seam and already has a natural
+   boundary around ``fsq1``/``fsqr1``/``fsqz1``/``fsql1`` construction.
+2. Keep adaptive full-loop differentiation wording conservative until the
+   production adaptive branch-selection gate is truly fingerprint-gated through
+   the full host branch.
+3. After the next residual-loop tranche, factor the largest free-boundary
+   validation tests into reusable assertion helpers to improve source-health
+   while preserving physics gates.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 96.4%.
+- Free-boundary production differentiability: 96.8%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 70.5%.
+- VMEC2000/VMEC++ parity and physics gates: 99.1%.
+- Docs/release hygiene: 100%.
+- Overall: 99.5%.
