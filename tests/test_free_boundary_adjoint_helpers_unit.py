@@ -136,6 +136,80 @@ def test_directional_jvp_signature_digest_tracks_replay_program_options() -> Non
     assert first["unroll_accepted_only_segments_below"] == 8
 
 
+def test_current_only_jvp_executable_cache_is_opt_in_and_closure_bound() -> None:
+    facade_helpers._CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE.clear()
+    facade_helpers._CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_ORDER.clear()
+
+    current_jvp = SimpleNamespace(
+        active=True,
+        base_leaf=jnp.asarray([1.0, 2.0]),
+        direction_leaf=jnp.asarray([0.1, 0.2]),
+        fixed_gamma=jnp.ones((2, 3, 4)),
+        fixed_gamma_dash=jnp.ones((2, 3, 4)),
+        geometry_source="cached",
+    )
+    signature = facade_helpers._branch_local_directional_jvp_signature(
+        keys=("aspect",),
+        derivative_mode="directional_jvp",
+        directional_fast_path="current_only",
+        current_jvp=current_jvp,
+        replay_options={
+            "state_only_replay": True,
+            "use_stacked_step_controls": True,
+            "unroll_accepted_only_segments_below": 8,
+        },
+        replay_plan={"n_steps": 1, "n_free_boundary_replay_steps": 1},
+        replay_branch_metadata={"n_steps": 1, "n_free_boundary_replay_steps": 1},
+        ad_mode="direct",
+    )
+    params = object()
+    replay_trace = {"state_pre": object()}
+
+    disabled_key, disabled_info = facade_helpers._current_only_directional_jvp_executable_cache_key(
+        signature=signature,
+        params=params,
+        current_jvp=current_jvp,
+        replay_traces=(replay_trace,),
+        replay_plan={"n_steps": 1},
+        replay_options={"enable_current_only_jvp_cache": False, "traces": (replay_trace,)},
+        scalar_fn_seq=(lambda replay: replay,),
+    )
+    assert disabled_key is None
+    assert disabled_info["enabled"] is False
+
+    scalar_fn = lambda replay: replay
+    enabled_key, enabled_info = facade_helpers._current_only_directional_jvp_executable_cache_key(
+        signature=signature,
+        params=params,
+        current_jvp=current_jvp,
+        replay_traces=(replay_trace,),
+        replay_plan={"n_steps": 1},
+        replay_options={"enable_current_only_jvp_cache": True, "traces": (replay_trace,)},
+        scalar_fn_seq=(scalar_fn,),
+    )
+    assert enabled_key is not None
+    assert enabled_info["enabled"] is True
+    assert enabled_info["closure_bound"] is True
+
+    factory_calls = 0
+
+    def factory():
+        nonlocal factory_calls
+        factory_calls += 1
+        return object()
+
+    first, first_hit = facade_helpers._get_current_only_directional_jvp_executable(enabled_key, factory)
+    second, second_hit = facade_helpers._get_current_only_directional_jvp_executable(enabled_key, factory)
+
+    assert first is second
+    assert first_hit is False
+    assert second_hit is True
+    assert factory_calls == 1
+
+    facade_helpers._CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE.clear()
+    facade_helpers._CURRENT_ONLY_DIRECTIONAL_JVP_EXECUTABLE_CACHE_ORDER.clear()
+
+
 def test_free_boundary_adjoint_runtime_helpers_sync_and_scope_fallbacks() -> None:
     assert runtime_helpers.block_until_ready_for_timing(
         {"value": 1.0},

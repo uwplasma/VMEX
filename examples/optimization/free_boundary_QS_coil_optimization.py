@@ -1725,6 +1725,15 @@ def add_same_branch_replay_options(parser: argparse.ArgumentParser) -> None:
         help="Optional GMRES restart length for the matrix-free NESTOR/source solve.",
     )
     parser.add_argument(
+        "--same-branch-report-enable-current-jvp-cache",
+        action="store_true",
+        help=(
+            "Opt in to a small closure-bound cache for current-only branch-local "
+            "directional JVP executables. This is useful for repeated same-branch "
+            "profiling/proposal reports; complete solves remain the acceptance authority."
+        ),
+    )
+    parser.add_argument(
         "--same-branch-report-replay-max-mode-count",
         type=int,
         default=220,

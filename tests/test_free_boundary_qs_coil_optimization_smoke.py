@@ -746,6 +746,18 @@ def test_same_branch_report_anchor_uses_best_or_initial_coil_point():
     assert float(np.asarray(fallback_params.base_currents)[0]) == pytest.approx(float(np.asarray(base_params.base_currents)[0]))
 
 
+def test_same_branch_replay_options_include_current_jvp_cache_flag():
+    module = _load_example_module()
+
+    disabled = module.same_branch_replay_options_from_args(SimpleNamespace())
+    enabled = module.same_branch_replay_options_from_args(
+        SimpleNamespace(same_branch_report_enable_current_jvp_cache=True)
+    )
+
+    assert disabled["enable_current_only_jvp_cache"] is False
+    assert enabled["enable_current_only_jvp_cache"] is True
+
+
 def test_same_branch_derivative_proposal_uses_gated_directional_report():
     module = _load_example_module()
     report = {
@@ -1571,6 +1583,13 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
                     "jit_cache_candidate": True,
                     "current_only_coil_geometry_source": "cached",
                 },
+                "directional_jvp_cache_info": {
+                    "enabled": True,
+                    "hit": True,
+                    "reason": "cache key available",
+                    "cache_key_digest": "abc123",
+                    "closure_bound": True,
+                },
             },
             "directional_jvp_signature": {
                 "available": True,
@@ -1594,6 +1613,13 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
                 "nestor_operator_solver": "bicgstab",
                 "jit_cache_candidate": True,
                 "current_only_coil_geometry_source": "cached",
+            },
+            "directional_jvp_cache_info": {
+                "enabled": True,
+                "hit": True,
+                "reason": "cache key available",
+                "cache_key_digest": "abc123",
+                "closure_bound": True,
             },
             "replay_graph_metadata": {
                 "omitted": True,
@@ -1702,6 +1728,9 @@ def test_same_branch_report_writer_records_branch_local_vector_jacobian(tmp_path
     assert vector["directional_jvp_signature"]["jit_cache_candidate"] is True
     assert vector["directional_jvp_signature"]["unroll_accepted_only_segments_below"] == 8
     assert vector["directional_jvp_signature"]["scalar_keys"] == vector["scalar_keys"]
+    assert vector["directional_jvp_cache_info"]["enabled"] is True
+    assert vector["directional_jvp_cache_info"]["hit"] is True
+    assert vector["directional_jvp_cache_info"]["closure_bound"] is True
     assert vector["includes_payload"] is False
     assert vector["includes_replay_graph_metadata"] is False
     assert vector["replay_graph_metadata"]["omitted"] is True

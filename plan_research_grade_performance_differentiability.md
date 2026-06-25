@@ -3578,3 +3578,62 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 97.8%.
 - Docs/release hygiene: 99.1%.
 - Overall: 96.9%.
+
+### 2026-06-25: Add opt-in closure-bound current-only JVP executable cache
+
+Steps taken:
+
+- Added a small capped per-process cache for current-only branch-local
+  directional-JVP executables, guarded by the stable ``cache_key_digest`` and
+  additional closure-bound identities for accepted replay objects and scalar
+  callables.
+- Kept the cache default-off and exposed it through
+  ``--same-branch-report-enable-current-jvp-cache`` for repeated same-branch
+  profiling/proposal reports.
+- Preserved the low-level replay-controller API by filtering the report-only
+  cache flag before replay calls.
+- Added report provenance fields under ``directional_jvp_cache_info`` and kept
+  the static ``directional_jvp_signature`` digest separate from runtime
+  cache-hit state.
+- Added unit tests for opt-in behavior, closure-bound key construction, and
+  cache hit/miss behavior, plus a smoke-test assertion that the example CLI
+  option reaches the shared replay options.
+
+Results obtained:
+
+- ``python -m ruff check`` passed on the modified facade, optimization helper,
+  example script, and focused tests.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_adjoint_helpers_unit.py
+  tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed with
+  ``46 passed, 1 xfailed``.
+- The public smoke path with
+  ``--same-branch-report-enable-current-jvp-cache`` completed successfully and
+  wrote ``directional_jvp_cache_info`` with ``enabled=True``,
+  ``hit=False``, ``closure_bound=True`` for the first executable construction.
+- This is a safe first cache tranche: it does not change default solves,
+  complete-solve acceptance authority, VMEC parity, or adaptive-branch
+  derivative claims.
+
+Best next steps:
+
+1. Benchmark a repeated same-branch report that reuses identical replay objects
+   and scalar callables to quantify hit-path savings from this cache.
+2. If the hit path is useful, move standard scalar-key replay callables out of
+   per-call lambdas so common objective-term reports can reuse compiled
+   executables across repeated proposal evaluations without weakening safety.
+3. Keep broader performance work focused on cold accepted-point replay/JVP graph
+   construction and only promote default-on caching after repeat timings are
+   positive.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.0%.
+- Free-boundary production differentiability: 94.2%.
+- Single-stage coil optimization: 90.2%.
+- CPU/GPU runtime and memory footprint: 98.4%.
+- Refactor/API/examples: 58.2%.
+- VMEC2000/VMEC++ parity and physics gates: 97.9%.
+- Docs/release hygiene: 99.5%.
+- Overall: 97.7%.

@@ -916,6 +916,12 @@ shapes, replay-plan availability, and the accepted replay branch metadata when
 present.  The nested ``cache_key_digest`` is a stable digest of this signature.
 It is not an executable cache by itself; it records the conditions that must
 remain unchanged before a branch-local JVP cache can be reused safely.
+The example also exposes
+``--same-branch-report-enable-current-jvp-cache`` for repeated current-only
+profiling/proposal reports.  That cache is deliberately closure-bound: its
+private key includes the static digest plus identities of the accepted replay
+objects and scalar callables, so it cannot be reused across stale traces or
+different user objective callbacks.
 The report also writes ``same_branch_report_config`` in ``summary.json`` so the
 artifact remains self-describing.  Its derivative contract is fixed
 recorded-branch replay only; it does not differentiate changes in adaptive host
