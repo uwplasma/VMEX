@@ -46,11 +46,15 @@ SUBROUTINE`` before a useful convergence comparison. With negative ``PHIEDGE``,
 VMEC2000 completes the generated-``mgrid`` square-coil cases, but the current
 geometry still does not reach ``1e-12``: a low-mode ``NS=5, MPOL=3, NTOR=4``
 case drops to total physical residual about ``5.95e-4`` after 5000 VMEC2000
-iterations, and the higher-mode ``NS=9, MPOL=6, NTOR=23`` case remains around
-``4.94e-3`` after 1000 VMEC2000 iterations. ``vmec_jax`` generated-``mgrid``
-also activates the dense VMEC-like NESTOR branch on the sign-corrected deck but
-is still underconverged. The current square-coil setup is therefore a
-diagnostic/stability target, not yet a converged production equilibrium.
+iterations; a well-sampled mid-mode ``NS=9, MPOL=5, NTOR=12, NZETA=32`` case
+drops from about ``6.58e-6`` at 1000 VMEC2000 iterations to ``7.04e-8`` at 5000
+iterations and ``3.39e-8`` at 10000 iterations; and the higher-mode
+``NS=9, MPOL=6, NTOR=23`` case remains around ``4.94e-3`` after 1000 VMEC2000
+iterations. ``vmec_jax`` generated-``mgrid`` also activates the dense VMEC-like
+NESTOR branch on the sign-corrected deck, but at the well-sampled mid-mode
+point it remains around ``3.31e-4`` after 1000 iterations on the same deck. The
+current square-coil setup is therefore a diagnostic/stability target, not yet a
+converged production equilibrium.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
