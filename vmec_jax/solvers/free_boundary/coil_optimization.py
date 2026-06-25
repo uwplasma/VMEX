@@ -1330,6 +1330,19 @@ def same_branch_derivative_gate_evidence(report: dict[str, Any]) -> dict[str, An
     if not isinstance(directional_signature, dict):
         directional_signature = {}
     current_only_cache = report.get("current_only_coil_geometry_cache", {})
+    current_jvp_cache_probe = report.get("branch_local_vector_current_jvp_cache_probe", {})
+    vector_cache_info = vector.get("directional_jvp_cache_info", {}) if isinstance(vector, dict) else {}
+    if not isinstance(vector_cache_info, dict) and isinstance(replay_flags, dict):
+        vector_cache_info = replay_flags.get("directional_jvp_cache_info", {})
+    if not isinstance(vector_cache_info, dict):
+        vector_cache_info = {}
+    probe_cache_info = (
+        current_jvp_cache_probe.get("directional_jvp_cache_info", {})
+        if isinstance(current_jvp_cache_probe, dict)
+        else {}
+    )
+    if not isinstance(probe_cache_info, dict):
+        probe_cache_info = {}
     vector_gate = report.get("branch_local_vector_gate", {})
     physical_gate = vector_gate.get("physical_scalar_gate", {}) if isinstance(vector_gate, dict) else {}
     rejected_slot_gate = report.get("accepted_rejected_controller_slot_gate", {})
@@ -1361,6 +1374,20 @@ def same_branch_derivative_gate_evidence(report: dict[str, Any]) -> dict[str, An
         ),
         "directional_jvp_signature": dict(directional_signature),
         "directional_jvp_cache_candidate": bool(directional_signature.get("jit_cache_candidate", False)),
+        "directional_jvp_cache_enabled": bool(vector_cache_info.get("enabled", False)),
+        "directional_jvp_cache_hit": bool(vector_cache_info.get("hit", False)),
+        "directional_jvp_cache_closure_bound": bool(vector_cache_info.get("closure_bound", False)),
+        "directional_jvp_cache_info": dict(vector_cache_info),
+        "current_jvp_cache_probe_available": bool(
+            isinstance(current_jvp_cache_probe, dict) and current_jvp_cache_probe.get("available", False)
+        ),
+        "current_jvp_cache_probe_hit": bool(
+            isinstance(current_jvp_cache_probe, dict) and current_jvp_cache_probe.get("cache_hit", False)
+        ),
+        "current_jvp_cache_probe_wall_s": float(
+            current_jvp_cache_probe.get("wall_s", 0.0) if isinstance(current_jvp_cache_probe, dict) else 0.0
+        ),
+        "current_jvp_cache_probe_info": dict(probe_cache_info),
         "branch_local_vector_gate_available": bool(
             isinstance(vector_gate, dict) and vector_gate.get("available", False)
         ),

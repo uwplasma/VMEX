@@ -929,6 +929,13 @@ triples instead of rebuilding per-call lambdas.
 Use ``--same-branch-report-current-jvp-cache-probe`` with the cache flag to
 rerun the vector replay once and record miss-vs-hit timing in
 ``branch_local_vector_current_jvp_cache_probe``.
+When a derivative-assisted proposal is requested, the proposal's
+``gate_evidence`` copies the current-only JVP cache status, closure-bound cache
+metadata, and optional probe hit/timing fields.  This keeps the proposal JSON
+self-contained: a reviewer can tell whether the suggested step came from a
+fresh branch-local vector replay, a cache-eligible report, or a repeated
+same-payload cache hit, while the complete solve still remains the only
+acceptance authority.
 The report also writes ``same_branch_report_config`` in ``summary.json`` so the
 artifact remains self-describing.  Its derivative contract is fixed
 recorded-branch replay only; it does not differentiate changes in adaptive host
@@ -1497,8 +1504,10 @@ omitted from the branch-local JVP proposal because the residual term is still
 validated by the complete free-boundary solve that evaluates the proposed
 point.  The proposal's ``gate_evidence`` also carries the
 ``directional_jvp_signature`` and a ``directional_jvp_cache_candidate`` flag so
-the accepted/rejected proposal artifact is self-contained.  After the trial
-solve, the same block records
+the accepted/rejected proposal artifact is self-contained.  When the
+current-only cache probe was requested, the same evidence includes
+``current_jvp_cache_probe_available``, ``current_jvp_cache_probe_hit``, and the
+probe wall time.  After the trial solve, the same block records
 ``acceptance_decision_source = 'complete_solve_objective'`` together with
 ``accepted_by_complete_solve`` and ``rejected_by_complete_solve`` so the JSON
 artifact makes clear that branch-local derivatives only propose a step.

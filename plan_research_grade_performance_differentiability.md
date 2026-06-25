@@ -3745,3 +3745,73 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 97.9%.
 - Docs/release hygiene: 99.6%.
 - Overall: 98.0%.
+
+### 2026-06-25: Attach current-JVP cache evidence to derivative proposals
+
+Steps taken:
+
+- Threaded the current-only directional-JVP executable-cache metadata from the
+  branch-local vector report into ``same_branch_derivative_proposal``
+  ``gate_evidence``.
+- Copied the optional
+  ``branch_local_vector_current_jvp_cache_probe`` status into proposal evidence
+  so accepted/rejected proposal JSON files show whether the proposal was formed
+  from a fresh replay, a cache-eligible report, or a repeated same-payload cache
+  hit.
+- Kept the change metadata-only: proposal generation, complete-solve trial
+  evaluation, and complete-solve acceptance authority are unchanged.
+- Updated focused smoke coverage for direct proposal construction and the
+  example-generated ``summary.json`` path.
+- Documented the new proposal evidence fields in the free-boundary coil
+  optimization guide.
+- Refreshed README/docs artifacts from their promoted provenance:
+  ``readme_runtime_compare.png/json``,
+  ``readme_ad_fd_evidence.png/csv/json``, and
+  ``pr20_wout_parity_summary.json``.
+
+Results obtained:
+
+- ``python -m ruff check`` passed on the changed free-boundary optimization
+  helper and smoke test.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed with
+  ``34 passed, 1 xfailed``.
+- Full local default test suite passed with
+  ``3087 passed, 140 skipped, 2 xfailed`` in ``960.77 s``.
+- ``python tools/diagnostics/converged_wout_parity_benchmark.py --nightly
+  --vmec-exec ~/bin/xvmec2000 --case nfp4_QH_warm_start --case solovev
+  --case ITERModel --case LandremanPaul2021_QA_lowres --output-dir
+  outputs/pr20_wout_parity`` passed all four VMEC2000 WOUT-parity cases.
+- The AD-vs-FD evidence artifact has ``10`` rows, all passing at ``1e-9``;
+  the maximum absolute slope error is ``4.40e-10``.
+- The runtime artifact has the full ``16``-row historical fixed-boundary
+  single-grid matrix; VMEC++ is available on ``9`` rows and omitted otherwise.
+- ``LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs
+  docs/_build/html_final_tranche`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed: tracked size is ``27.09 MiB`` and no tracked file
+  exceeds ``2 MiB``.
+- ``git diff --check`` passed.
+
+Best next steps:
+
+1. Run one real non-smoke coil-only QS optimization with
+   ``--same-branch-derivative-proposal`` plus the current-JVP cache probe and
+   compare accepted/rejected trial counts against the no-proposal baseline.
+2. Continue cold first-call replay/JVP graph-construction reduction; the
+   current cache solves repeated same-payload JVP cost, not first-call compile
+   cost.
+3. Keep adaptive-branch differentiation claims conservative until a true
+   adaptive branch-selection AD-vs-FD gate is promoted.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.2%.
+- Free-boundary production differentiability: 94.9%.
+- Single-stage coil optimization: 90.9%.
+- CPU/GPU runtime and memory footprint: 98.8%.
+- Refactor/API/examples: 59.0%.
+- VMEC2000/VMEC++ parity and physics gates: 98.0%.
+- Docs/release hygiene: 99.7%.
+- Overall: 98.2%.
