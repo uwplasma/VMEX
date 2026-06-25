@@ -84,7 +84,7 @@ from vmec_jax.solvers.free_boundary.coil_optimization import (
     nestor_profile_policy_from_results,  # noqa: F401 - compatibility export for tests/users.
     parse_float_list,
     parse_profile_matrix_free_solvers,  # noqa: F401 - compatibility export for tests/users.
-    parse_same_branch_vector_keys,
+    parse_same_branch_vector_keys,  # noqa: F401 - compatibility export for tests/users.
     same_branch_current_only_coil_geometry_cache,
     same_branch_complete_fd_report_metadata,
     same_branch_derivative_gate_evidence as same_branch_derivative_gate_evidence,
@@ -98,6 +98,7 @@ from vmec_jax.solvers.free_boundary.coil_optimization import (
     same_branch_report_direction_policy,
     same_branch_report_mode_count,
     same_branch_report_runtime_configs,
+    same_branch_report_vector_keys_from_args,
     same_branch_scalar_result_summary,
     same_branch_scalar_function_registry,
     same_branch_vector_result_summary,
@@ -876,7 +877,7 @@ def write_same_branch_validation_report(
         raise ValueError("--same-branch-report-mode must be one of none, scalar, vector")
     if ad_mode not in {"direct", "custom_vjp"}:
         raise ValueError("--same-branch-report-ad-mode must be one of direct, custom_vjp")
-    vector_keys = parse_same_branch_vector_keys(getattr(args, "same_branch_report_vector_keys", None))
+    vector_keys = same_branch_report_vector_keys_from_args(args)
     scalar_key = str(getattr(args, "same_branch_report_scalar_key", "qs_total"))
     requested_report_keys = {scalar_key} if mode == "scalar" else set(vector_keys) if mode == "vector" else set()
 
@@ -1621,7 +1622,7 @@ def add_same_branch_report_core_options(parser: argparse.ArgumentParser) -> None
     )
     parser.add_argument(
         "--same-branch-report-vector-keys",
-        default=",".join(DEFAULT_SAME_BRANCH_VECTOR_KEYS),
+        default=None,
         help=(
             "Comma/space-separated physical scalars for --same-branch-report-mode vector. "
             f"Supported: {', '.join(SUPPORTED_SAME_BRANCH_VECTOR_KEYS)}. "
@@ -1631,7 +1632,10 @@ def add_same_branch_report_core_options(parser: argparse.ArgumentParser) -> None
             f"{','.join(DEFAULT_SAME_BRANCH_VECTOR_KEYS)}. Final-state-only "
             f"keys ({', '.join(STATE_ONLY_SAME_BRANCH_KEYS)}) use a compact replay "
             "that omits accepted-history RMS arrays; accepted_bnormal_rms keeps "
-            "the full-history path."
+            "the full-history path. When --same-branch-derivative-proposal is "
+            "requested and no explicit key list is provided, the default is "
+            "narrowed to aspect,qs_total,mean_iota because those are the "
+            "objective terms consumed by the proposal."
         ),
     )
 

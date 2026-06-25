@@ -75,8 +75,13 @@ available.  The default ``--same-branch-report-direction auto`` does this when
 ``--same-branch-derivative-proposal`` is enabled and at least one current
 variable is selected; use ``--same-branch-report-direction current-only`` to
 make the choice explicit.  This lets the branch-local vector/JVP replay reuse
-the fixed coil geometry while the final accept/reject decision still comes
-from a complete free-boundary solve:
+the fixed coil geometry.  If no explicit
+``--same-branch-report-vector-keys`` list is provided, the proposal path also
+narrows the vector report to ``aspect,qs_total,mean_iota`` because those are
+the objective terms consumed by the proposal.  Ordinary validation reports
+still default to the broader promoted scalar set, and any explicit vector-key
+list is honored unchanged.  The final accept/reject decision still comes from
+a complete free-boundary solve:
 
 .. code-block:: bash
 
@@ -1450,7 +1455,11 @@ Requesting ``--same-branch-derivative-proposal`` automatically enables
 proposal switch; explicit report options such as
 ``--same-branch-report-vector-keys`` and
 ``--same-branch-report-rejected-slot-gate`` still control the generated
-evidence.
+evidence.  Without an explicit vector-key list, derivative-proposal reports
+use the narrower default ``aspect,qs_total,mean_iota`` to avoid compiling and
+replaying unused scalar outputs.  Use
+``--same-branch-report-vector-keys aspect,qs_total,mean_iota,lcfs_boundary_moment``
+when the broader promoted diagnostic is wanted alongside the proposal.
 The proposal path is deliberately strict: it requires an unchanged complete
 solve branch fingerprint, production-forward scalar values, ``direct``
 ``directional_jvp`` replay, a fixed accepted-branch derivative claim, and

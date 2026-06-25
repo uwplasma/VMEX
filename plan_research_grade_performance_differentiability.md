@@ -3077,3 +3077,60 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 97.8%.
 - Docs/release hygiene: 99.0%.
 - Overall: 96.8%.
+
+### 2026-06-25: Narrow derivative-proposal vector reports by default
+
+Steps taken:
+
+- Added ``same_branch_report_vector_keys_from_args`` so ordinary same-branch
+  validation reports keep the promoted multi-scalar default, while
+  ``--same-branch-derivative-proposal`` runs with no explicit vector-key list
+  default to only ``aspect,qs_total,mean_iota``.
+- Kept explicit ``--same-branch-report-vector-keys`` values authoritative, so
+  users and validation jobs can still request the broader
+  ``aspect,qs_total,mean_iota,lcfs_boundary_moment`` report or any supported
+  diagnostic scalar set.
+- Updated the free-boundary coil-optimization docs and the performance page to
+  describe the narrower proposal default and its scope.
+- Added focused tests for ordinary defaults, proposal defaults, and explicit
+  user overrides.
+
+Results obtained:
+
+- Focused free-boundary optimization/report tests passed:
+  ``tests/test_free_boundary_qs_coil_optimization_smoke.py`` and
+  ``tests/test_free_boundary_adjoint_helpers_unit.py`` reported
+  ``42 passed, 1 xfailed``.
+- Ruff passed on the modified source, example, and test files.
+- A dry-run provenance check with
+  ``examples/optimization/free_boundary_QS_coil_optimization.py --smoke
+  --provider circle --dry-run --same-branch-derivative-proposal`` recorded
+  ``same_branch_report_config.vector_keys =
+  ['aspect', 'qs_total', 'mean_iota']`` and retained the ``current-only`` JVP
+  direction policy.
+- This trims one unused branch-local vector/JVP scalar from derivative-proposal
+  runs by default.  It does not change the promoted AD-vs-FD evidence artifact,
+  complete-solve acceptance authority, or the conservative branch-local
+  derivative claim.
+
+Best next steps:
+
+1. For another performance tranche, target the main branch-local vector/JVP
+   graph construction itself rather than rejected-slot or unused-scalar
+   payloads.
+2. Keep arbitrary adaptive branch differentiation unclaimed until a true
+   fingerprint-gated adaptive full-loop AD-vs-central-FD gate exists.
+3. Continue broader source simplification and bounded VMEC2000/VMEC++ parity
+   expansion as follow-up work, not as blockers for this narrow improvement.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 93.0%.
+- Free-boundary production differentiability: 93.3%.
+- Single-stage coil optimization: 89.7%.
+- CPU/GPU runtime and memory footprint: 97.7%.
+- Refactor/API/examples: 56.2%.
+- VMEC2000/VMEC++ parity and physics gates: 97.8%.
+- Docs/release hygiene: 99.1%.
+- Overall: 96.9%.

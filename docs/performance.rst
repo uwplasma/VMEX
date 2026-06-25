@@ -4221,6 +4221,18 @@ Cached mode scaling
 ``1/(mscale*nscale)`` so initial-guess construction avoids repeated gathers
 from the trig tables.
 
+Narrow same-branch proposal reports
+-----------------------------------
+
+Derivative-assisted free-boundary coil proposals consume only the scalar
+objective terms used to choose the one-dimensional trial direction.  When
+``--same-branch-derivative-proposal`` is requested and the user does not
+explicitly set ``--same-branch-report-vector-keys``, the same-branch vector
+report now defaults to ``aspect,qs_total,mean_iota`` instead of the broader
+validation set.  This avoids cold branch-local JVP graph construction for the
+unused LCFS moment scalar while preserving the complete-solve acceptance
+authority and the option to request the broader report explicitly.
+
 Historical free-boundary cache note
 -----------------------------------
 
