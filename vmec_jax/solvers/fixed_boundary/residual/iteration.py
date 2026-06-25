@@ -118,6 +118,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     controller_state_after_vmec2000_time_control_restart_update as _controller_state_after_vmec2000_time_control_restart_update,
     controller_state_from_runtime_scalars as _controller_state_from_runtime_scalars,
     controller_state_from_resume_state as _controller_state_from_resume_state,
+    controller_state_legacy_values as _controller_state_legacy_values,
     delta_tuple_from_blocks as _delta_tuple_from_blocks_helper,
     direct_force_fallback_acceptance_decision as _direct_force_fallback_acceptance_decision,
     direct_force_fallback_trial as _direct_force_fallback_trial,
@@ -1106,7 +1107,7 @@ def solve_fixed_boundary_residual_iter(
     (
         time_step, inv_tau, fsq_prev, fsq0_prev, flip_sign, iter1, ijacob, bad_resets, res0, res1,
         prev_rz_fsq, bad_growth_streak, huge_force_restart_count, state_checkpoint,
-    ) = tuple(controller_state)
+    ) = _controller_state_legacy_values(controller_state)
 
     def _set_controller_state(next_state: _ResidualControllerState) -> None:
         nonlocal controller_state, time_step, inv_tau, fsq_prev, fsq0_prev, flip_sign, iter1, ijacob
@@ -1116,7 +1117,7 @@ def solve_fixed_boundary_residual_iter(
         (
             time_step, inv_tau, fsq_prev, fsq0_prev, flip_sign, iter1, ijacob, bad_resets, res0, res1,
             prev_rz_fsq, bad_growth_streak, huge_force_restart_count, state_checkpoint,
-        ) = tuple(controller_state)
+        ) = _controller_state_legacy_values(controller_state)
 
     def _current_controller_state() -> _ResidualControllerState:
         return _controller_state_from_runtime_scalars(

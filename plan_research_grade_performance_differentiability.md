@@ -4504,6 +4504,56 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.0%.
 
+### 2026-06-25: Use explicit controller-state value ordering in the residual loop
+
+Steps taken:
+
+- Added ``controller_state_legacy_values`` so legacy residual-controller scalar
+  slots are unpacked from the explicit ``CONTROLLER_RESUME_KEYS`` schema rather
+  than relying on raw ``NamedTuple`` positional order.
+- Rewired ``solve_fixed_boundary_residual_iter`` to use the explicit helper in
+  the initial controller-state unpack and in ``_set_controller_state``.
+- Added focused coverage proving the explicit value order matches the legacy
+  resume payload order and remains round-trip safe.
+
+Results obtained:
+
+- ``python -m ruff check`` passed on the changed update/iteration modules and
+  focused tests.
+- Focused controller-state tests passed.
+- The residual update helper bucket passed:
+  ``tests/test_solve_residual_iter_update_helpers.py``,
+  ``tests/test_solve_residual_iter_helpers_wave8_coverage.py``,
+  ``tests/test_solve_more_coverage.py``, and
+  ``tests/test_solve_wave4_coverage.py``.
+- ``source_health.py`` passed with the known large-file warnings.
+- ``repo_size_audit.py`` passed; tracked repository size was ``28.24 MiB``.
+- ``git diff --check`` passed.
+
+Best next steps:
+
+1. Commit and push the controller-state ordering seam.
+2. Check CI for the latest pushed commits; fix only concrete failures.
+3. If continuing implementation, the next meaningful refactor is to move one
+   complete restart/controller branch behind a typed controller-state result,
+   rather than extracting more small scalar helpers.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 94.5%.
+- Free-boundary production differentiability: 96.2%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 64.1%.
+- VMEC2000/VMEC++ parity and physics gates: 98.8%.
+- Docs/release hygiene: 100%.
+- Overall: 99.2%.
+
 ### 2026-06-25: Wire strict-step fingerprints into residual trace fingerprints
 
 Steps taken:
