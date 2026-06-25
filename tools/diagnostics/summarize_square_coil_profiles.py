@@ -68,6 +68,16 @@ def _vmec2000_total(backend: dict[str, Any]) -> tuple[float | None, float | None
     return last_total, _finite_float(backend.get("min_total")), last_iter
 
 
+def _vmec2000_final_max_component(backend: dict[str, Any]) -> float | None:
+    last = backend.get("last_row")
+    if not isinstance(last, dict):
+        return None
+    parts = [_finite_float(last.get(key)) for key in ("fsqr", "fsqz", "fsql")]
+    if not all(value is not None for value in parts):
+        return None
+    return float(max(parts))  # type: ignore[arg-type]
+
+
 def _jax_total(backend: dict[str, Any]) -> tuple[float | None, float | None, int | None]:
     last_total = _finite_float(backend.get("final_fsq_component_sum"))
     best_total = _finite_float(backend.get("best_scored_fsq"))
@@ -76,6 +86,19 @@ def _jax_total(backend: dict[str, Any]) -> tuple[float | None, float | None, int
     except Exception:
         last_iter = None
     return last_total, best_total, last_iter
+
+
+def _jax_final_max_component(backend: dict[str, Any]) -> float | None:
+    parts = [_finite_float(backend.get(key)) for key in ("final_fsqr", "final_fsqz", "final_fsql")]
+    if not all(value is not None for value in parts):
+        return None
+    return float(max(parts))  # type: ignore[arg-type]
+
+
+def _strict_components_met(final_max_component: float | None, requested_ftol: float | None) -> bool | None:
+    if final_max_component is None or requested_ftol is None:
+        return None
+    return bool(float(final_max_component) <= float(requested_ftol))
 
 
 def _stat(backend: dict[str, Any], history_key: str, stat_key: str) -> float | None:
@@ -112,10 +135,13 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
     for backend_name, backend in sorted((data.get("backends", {}) or {}).items()):
         if not isinstance(backend, dict):
             continue
+        requested_ftol = _finite_float(cfg.get("ftol"))
         if backend_name == "vmec2000_mgrid":
             final_total, best_total, final_iter = _vmec2000_total(backend)
+            final_max_component = _vmec2000_final_max_component(backend)
         else:
             final_total, best_total, final_iter = _jax_total(backend)
+            final_max_component = _jax_final_max_component(backend)
         rows.append(
             {
                 "case": path.parent.name.replace("square_coil_freeb_backend_profile_", ""),
@@ -128,10 +154,13 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                 "nvacskip": cfg.get("nvacskip"),
                 "solver_mode": cfg.get("solver_mode"),
                 "max_iter": cfg.get("max_iter"),
+                "requested_ftol": requested_ftol,
                 "boundary_proj_max": _finite_float(projection.get("max_abs_component_error")),
                 "boundary_proj_rel": _finite_float(projection.get("max_abs_component_error_rel")),
                 "final_iter": final_iter,
                 "final_total": final_total,
+                "final_max_component": final_max_component,
+                "strict_components_met": _strict_components_met(final_max_component, requested_ftol),
                 "best_total": best_total,
                 "dt_eff_last": _stat(backend, "dt_eff_stats", "last"),
                 "dt_eff_min": _stat(backend, "dt_eff_stats", "min"),
@@ -193,10 +222,13 @@ def main(argv: list[str] | None = None) -> int:
         "nvacskip",
         "solver_mode",
         "max_iter",
+        "requested_ftol",
         "boundary_proj_max",
         "boundary_proj_rel",
         "final_iter",
         "final_total",
+        "final_max_component",
+        "strict_components_met",
         "best_total",
         "dt_eff_last",
         "dt_eff_min",

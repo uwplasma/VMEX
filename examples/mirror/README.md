@@ -265,6 +265,11 @@ Summarize one or more reports with::
   python tools/diagnostics/summarize_square_coil_profiles.py \
     results/square_coil_freeb_backend_profile_* --markdown
 
+The summary table reports both ``final_total`` and ``final_max_component``.
+Use ``final_max_component <= requested_ftol`` / ``strict_components_met`` for
+the production convergence gate; ``final_total`` is useful for trend
+comparison but is not sufficient for a per-component ``FTOL=1e-12`` claim.
+
 The root-level ``examples/mirror_free_boundary_circular_coils.py`` script is a
 free-boundary planning fixture. It builds ESSOS-compatible circular-loop direct
 coil parameters, samples the external field on the mirror axis and side

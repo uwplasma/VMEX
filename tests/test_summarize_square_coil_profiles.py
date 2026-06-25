@@ -23,6 +23,7 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                     "nvacskip": 1,
                     "solver_mode": "parity",
                     "max_iter": 1000,
+                    "ftol": 1.0e-6,
                 },
                 "boundary_projection": {
                     "max_abs_component_error": 1.2e-4,
@@ -32,8 +33,11 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                     "vmec_jax_mgrid": {
                         "status": "completed",
                         "n_iter": 999,
-                        "final_fsq_component_sum": 1.2e-5,
-                        "best_scored_fsq": 1.0e-5,
+                        "final_fsqr": 2.0e-7,
+                        "final_fsqz": 3.0e-7,
+                        "final_fsql": 4.0e-7,
+                        "final_fsq_component_sum": 9.0e-7,
+                        "best_scored_fsq": 8.0e-7,
                         "history": {
                             "dt_eff_stats": {"last": 0.02, "min": 0.01},
                             "time_step_stats": {"last": 0.019},
@@ -68,9 +72,14 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
 
     assert [row["backend"] for row in rows] == ["vmec2000_mgrid", "vmec_jax_mgrid"]
     assert rows[0]["final_total"] == pytest.approx(5.4e-6)
+    assert rows[0]["requested_ftol"] == pytest.approx(1.0e-6)
+    assert rows[0]["final_max_component"] == pytest.approx(3.0e-6)
+    assert rows[0]["strict_components_met"] is False
     assert rows[0]["best_total"] == pytest.approx(5.0e-6)
-    assert rows[1]["final_total"] == pytest.approx(1.2e-5)
-    assert rows[1]["best_total"] == pytest.approx(1.0e-5)
+    assert rows[1]["final_total"] == pytest.approx(9.0e-7)
+    assert rows[1]["final_max_component"] == pytest.approx(4.0e-7)
+    assert rows[1]["strict_components_met"] is True
+    assert rows[1]["best_total"] == pytest.approx(8.0e-7)
     assert rows[1]["solver_mode"] == "parity"
     assert rows[1]["boundary_proj_max"] == pytest.approx(1.2e-4)
     assert rows[1]["boundary_proj_rel"] == pytest.approx(4.5e-4)
