@@ -116,13 +116,14 @@ reaches total residual about ``4.1e-4`` and boundary ``B.n`` RMS about
 residual to about ``4.7e-6`` and boundary ``B.n`` RMS to about ``4.4e-3`` with
 fresh full updates every iteration. At 5000 iterations, direct-coil
 ``vmec_jax`` reaches about ``1.35e-6``, essentially the same floor as
-generated-mgrid ``vmec_jax`` at the same iteration budget. The generated-mgrid
-``vmec_jax`` path then tracks VMEC2000 through 10000 iterations, so the strict
-residual gap is no longer evidence for a JAX-specific solve-control mismatch at
-this resolution. The direct path still needs its own 10000-iteration parity row,
-but the current evidence points to the square-coil Fourier representation,
-resolution closure, and long-budget free-boundary nonlinear convergence rather
-than a simple direct-provider convention error.
+generated-mgrid ``vmec_jax`` at the same iteration budget. At 10000 iterations,
+direct-coil ``vmec_jax`` reaches about ``1.88e-7``; generated-mgrid ``vmec_jax``
+reaches about ``1.30e-7``; and VMEC2000 reaches about ``1.11e-7``. The direct
+path is therefore slower but tracks the same residual floor. The strict residual
+gap is no longer evidence for a JAX-specific solve-control mismatch or a simple
+direct-provider convention error at this resolution. The current evidence points
+to the square-coil Fourier representation, resolution closure, and long-budget
+free-boundary nonlinear convergence.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -243,10 +244,10 @@ The remaining work is deliberately narrow:
    comparing ``NS``, ``MPOL``, ``NTOR``, ``NZETA``, generated-mgrid resolution,
    LCFS shape, near-axis field, mirror ratio, mean iota, and residual histories.
    The next numerical knob is not a smaller global step size; ``DELT=0.01`` is
-   too slow for the current schedule. Since the JAX mgrid path reproduces the
-   VMEC2000 widened-mgrid ``DELT=0.02`` floor through 10000 iterations, the next
-   solve-side work is a direct-coil 10000-iteration parity row, a staged
-   iteration/runtime schedule, and mode/mgrid refinement. A larger ``NS`` ladder
+   too slow for the current schedule. Since the direct-coil and JAX mgrid paths
+   reproduce the VMEC2000 widened-mgrid ``DELT=0.02`` floor through 10000
+   iterations, the next solve-side work is a staged iteration/runtime schedule,
+   mode/mgrid refinement, and radial-resolution closure. A larger ``NS`` ladder
    should not be interpreted unless ``vacuum_grid_exceeded_count`` remains zero.
 4. Keep the optional virtual-casing postsolve diagnostic
    ``vmec_jax.free_boundary_validation.virtual_casing_finite_beta_boundary_diagnostics``
