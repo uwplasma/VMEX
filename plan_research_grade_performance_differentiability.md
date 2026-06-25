@@ -5798,3 +5798,62 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.0%.
 - Docs/release hygiene: 100%.
 - Overall: 99.4%.
+
+### 2026-06-25: Route setup-time axis reset samples through controller state
+
+Steps taken:
+
+- Added ``controller_state_after_initial_axis_setup_result`` so the
+  setup-time magnetic-axis reset path updates ``ijacob``, residual samples,
+  ``prev_rz_fsq``, and the checkpoint through one pure controller-state helper.
+- Rewired ``solve_fixed_boundary_residual_iter`` to keep physical
+  state/velocity updates local to the loop while moving the controller scalar
+  slots through the shared ``ResidualControllerState`` bridge.
+- Added a focused unit test proving type coercion, checkpoint replacement, and
+  preservation of unrelated controller slots.
+
+Results obtained:
+
+- ``python -m ruff check vmec_jax/solvers/fixed_boundary/residual/update.py
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  tests/test_solve_residual_iter_update_helpers.py`` passed.
+- ``JAX_ENABLE_X64=1 PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_solve_residual_iter_update_helpers.py
+  tests/test_solve_residual_iter_helpers_wave8_coverage.py
+  tests/test_solve_more_coverage.py tests/test_solve_wave4_coverage.py -q``
+  passed.
+- ``JAX_ENABLE_X64=1 PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_solve_residual_iter_force_payload_helpers.py
+  tests/test_discrete_adjoint_qh.py -q`` passed with expected skips.
+- ``python -m pytest -q tests/test_docs_release_hygiene.py
+  tests/test_readme_ad_fd_evidence.py
+  tests/test_cli_helpers.py::test_cli_test_mode_copies_packaged_input_solves_and_plots
+  -q`` passed.
+- ``repo_size_audit.py``, ``source_health.py``, and ``git diff --check`` passed.
+  The residual iteration module dropped to 3112 lines and the main residual
+  loop to 2733 lines.
+
+Best next steps:
+
+1. Let CI finish for the latest pushed refactor seam and inspect only if it
+   fails; avoid blocking on green runs while the next tranche is scoped.
+2. Promote the next group of controller slots into structured helper seams only
+   where this removes repeated scalar mutation and has focused tests.
+3. Keep larger public artifact refreshes deferred until a benchmark/parity or
+   AD evidence record actually changes.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 95.8%.
+- Free-boundary production differentiability: 96.4%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 67.1%.
+- VMEC2000/VMEC++ parity and physics gates: 99.0%.
+- Docs/release hygiene: 100%.
+- Overall: 99.4%.

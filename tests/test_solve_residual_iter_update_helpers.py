@@ -13,6 +13,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     controller_state_after_catastrophic_restart_update,
     controller_state_after_free_boundary_turnon_restart_update,
     controller_state_after_host_restart_decision_sample,
+    controller_state_after_initial_axis_setup_result,
     controller_state_after_initial_axis_reset_update,
     controller_state_after_pre_restart_update,
     controller_state_after_vmec2000_time_control_sample,
@@ -802,6 +803,36 @@ def test_initial_residual_controller_state_matches_vmec_defaults() -> None:
     assert state.bad_growth_streak == 0
     assert state.huge_force_restart_count == 0
     assert state.state_checkpoint is checkpoint
+
+
+def test_controller_state_applies_initial_axis_setup_result() -> None:
+    state = initial_residual_controller_state(
+        step_size=0.25,
+        k_ndamp=4,
+        initial_flip_sign=-1.0,
+        state_checkpoint="old-checkpoint",
+    )._replace(iter1=7, bad_resets=2, bad_growth_streak=3)
+
+    checkpoint = object()
+    result = controller_state_after_initial_axis_setup_result(
+        state,
+        SimpleNamespace(
+            ijacob=np.asarray(2),
+            res0="0.75",
+            res1=np.asarray(0.5),
+            prev_rz_fsq="0.25",
+            state_checkpoint=checkpoint,
+        ),
+    )
+
+    assert result.ijacob == 2
+    assert result.res0 == pytest.approx(0.75)
+    assert result.res1 == pytest.approx(0.5)
+    assert result.prev_rz_fsq == pytest.approx(0.25)
+    assert result.state_checkpoint is checkpoint
+    assert result.iter1 == state.iter1
+    assert result.bad_resets == state.bad_resets
+    assert result.bad_growth_streak == state.bad_growth_streak
 
 
 def test_residual_evolve_coefficients_match_vmec_damping_recurrence() -> None:

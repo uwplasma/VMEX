@@ -437,6 +437,21 @@ def controller_state_after_initial_axis_reset_update(
     )
 
 
+def controller_state_after_initial_axis_setup_result(
+    state: ResidualControllerState,
+    axis_setup: Any,
+) -> ResidualControllerState:
+    """Apply setup-time axis-reset controller scalars to controller state."""
+
+    return state._replace(
+        ijacob=int(axis_setup.ijacob),
+        res0=float(axis_setup.res0),
+        res1=float(axis_setup.res1),
+        prev_rz_fsq=float(axis_setup.prev_rz_fsq),
+        state_checkpoint=axis_setup.state_checkpoint,
+    )
+
+
 def host_vmec2000_time_control_restart_update(
     *,
     irst: int,
