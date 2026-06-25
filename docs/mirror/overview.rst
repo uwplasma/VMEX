@@ -196,7 +196,11 @@ iterations, essentially matching the generated-mgrid/VMEC2000 floor at the same
 budget. A 25000-iteration direct-coil extension did not reach ``1e-12``: its
 best fresh residual was about ``1.07e-7`` near iteration 11140, while the final
 fresh recompute was about ``4.18e-7``. This points to low-resolution nonlinear
-cycling rather than a plain iteration-budget miss. The same profiling shows that
+cycling rather than a plain iteration-budget miss. The matching VMEC2000
+generated-``mgrid`` 25000-iteration run was faster locally, about 843 seconds,
+but also stayed near the same floor with final summed residual about
+``1.37e-7`` and best sampled residual about ``9.88e-8``. The same profiling
+shows that
 underresolved ``NZETA`` can fail before useful force iterations; the
 square-coil path now records ``recommended_nzeta`` and guards production-style
 example runs against known-underresolved toroidal grids. Finite-beta promotion

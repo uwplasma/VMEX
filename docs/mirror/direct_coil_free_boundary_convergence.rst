@@ -131,8 +131,12 @@ evidence for a JAX-specific solve-control mismatch, a simple direct-provider
 convention error, or a plain iteration-budget issue at this resolution. The
 current evidence points to the square-coil Fourier representation, resolution
 closure, and free-boundary nonlinear cycling around a low-resolution floor. A
-matching 25000-iteration VMEC2000 generated-``mgrid`` comparison is the next
-robustness check.
+matching 25000-iteration VMEC2000 generated-``mgrid`` comparison reached the
+same conclusion faster: it finished successfully with no vacuum-grid overflow,
+final summed residual about ``1.37e-7``, and best sampled summed residual about
+``9.88e-8`` after about 843 seconds. VMEC2000 is therefore faster on this local
+CPU benchmark, but not more robust in the sense of reaching the requested
+``FTOL=1e-12`` on this low/mid-mode square-coil deck.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -279,20 +283,25 @@ The remaining work is deliberately narrow:
    boundary fields still match after resolution or coil changes. Use the
    tail-projection columns in the summary table to choose between extending the
    iteration budget and changing the resolution/schedule; do not interpret the
-   projection as proof of convergence.
+   projection as proof of convergence. Since both direct-coil ``vmec_jax`` and
+   VMEC2000 generated-``mgrid`` 25000-iteration runs stayed near ``1e-7``, do
+   not spend more local CPU on longer runs at this same ``NS=9, MPOL=5,
+   NTOR=12`` deck before changing resolution, schedule, or geometry
+   representation.
 2. Re-run the square-coil beta ladder with per-beta checkpointing and the
    best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at ``1e-12``. Keep
-   ``DELT=0.05``, ``NVACSKIP=1``, ``solver_mode="parity"``, and the VMEC-like
+   ``DELT=0.02``, ``NVACSKIP=1``, ``solver_mode="parity"``, and the VMEC-like
    ``FREE_BOUNDARY_ACTIVATE_FSQ=1e-3`` unless a benchmark shows a better value.
 3. Run resolution closure around the first transition beta and at ``10%`` beta,
    comparing ``NS``, ``MPOL``, ``NTOR``, ``NZETA``, generated-mgrid resolution,
    LCFS shape, near-axis field, mirror ratio, mean iota, and residual histories.
    The next numerical knob is not a smaller global step size; ``DELT=0.01`` is
-   too slow for the current schedule. Since the direct-coil and JAX mgrid paths
-   reproduce the VMEC2000 widened-mgrid ``DELT=0.02`` floor through 10000
-   iterations, the next solve-side work is a staged iteration/runtime schedule,
-   mode/mgrid refinement, and radial-resolution closure. A larger ``NS`` ladder
-   should not be interpreted unless ``vacuum_grid_exceeded_count`` remains zero.
+   too slow for the current schedule. Since the direct-coil, JAX mgrid, and
+   VMEC2000 widened-mgrid ``DELT=0.02`` paths all sit near the same ``1e-7``
+   low-resolution floor, the next solve-side work is a staged
+   iteration/runtime schedule, mode/mgrid refinement, and radial-resolution
+   closure. A larger ``NS`` ladder should not be interpreted unless
+   ``vacuum_grid_exceeded_count`` remains zero.
 4. Keep the optional virtual-casing postsolve diagnostic
    ``vmec_jax.free_boundary_validation.virtual_casing_finite_beta_boundary_diagnostics``
    attached to the square-coil example outputs. The helper accepts a solved
