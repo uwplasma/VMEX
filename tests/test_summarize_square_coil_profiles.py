@@ -402,6 +402,26 @@ def test_square_coil_profile_summary_parses_live_direct_launcher_log(tmp_path: P
     assert row["iters_to_1e-12_est"] is not None
 
 
+def test_square_coil_profile_summary_labels_live_mgrid_launcher_log(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_jax_mgrid_verbose_ns9_mpol5_ntor28_nzeta64"
+    case_dir.mkdir()
+    launcher_log = case_dir / "launcher.log"
+    launcher_log.write_text(
+        "\n".join(
+            [
+                "[square-coil-profile] running vmec_jax generated-mgrid backend",
+                "  NS =    9 NO. FOURIER MODES =  257 FTOLV =  1.000E-08 NITER =   1200",
+                "  ITER    FSQR      FSQZ      FSQL    RAX(v=0)    DELT       WMHD",
+                "    1  5.57E-03  1.14E-03  3.77E-03  1.500E+00  2.00E-02  2.5837E+00",
+            ]
+        )
+    )
+
+    row = summary.rows_from_source(launcher_log)[0]
+
+    assert row["backend"] == "vmec_jax_mgrid_live"
+
+
 def test_square_coil_profile_summary_marks_live_direct_log_before_force_rows(tmp_path: Path):
     case_dir = tmp_path / "square_coil_freeb_backend_profile_direct_mpol6_ntor23"
     case_dir.mkdir()

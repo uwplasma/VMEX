@@ -288,7 +288,12 @@ def _vmec_style_log_payload(path: Path) -> dict[str, Any]:
     vacuum_turn_on_iter: int | None = None
     saw_axis_repair = False
     current_stage_index: int | None = None
+    backend_name = "vmec_jax_live"
     for line in path.read_text(errors="replace").splitlines():
+        if "running vmec_jax direct-coil backend" in line:
+            backend_name = "vmec_jax_direct_live"
+        elif "running vmec_jax generated-mgrid backend" in line:
+            backend_name = "vmec_jax_mgrid_live"
         stage_match = _VMEC_STYLE_STAGE_RE.match(line)
         if stage_match is not None:
             current_stage_index = len(stages)
@@ -334,6 +339,7 @@ def _vmec_style_log_payload(path: Path) -> dict[str, Any]:
         "launcher_log": path,
         **_file_status_payload(path, prefix="launcher_log"),
         "status": "running_partial",
+        "backend_name": backend_name,
         "progress_phase": progress_phase,
         "force_rows_started": bool(rows),
         "stage_summaries": stages,
@@ -605,7 +611,7 @@ def rows_from_launcher_log(path: Path) -> list[dict[str, Any]]:
     return [
         _summary_row(
             path=path,
-            backend_name="vmec_jax_direct_live",
+            backend_name=str(backend.get("backend_name", "vmec_jax_live")),
             backend=backend,
             cfg={},
             projection={},
