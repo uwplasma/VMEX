@@ -410,6 +410,72 @@ def _freeb_edge_control_delta_tuple_projection_metrics(deltas: Any, projection: 
     return _freeb_edge_control_vector_projection_metrics(target, projection, status="measured")
 
 
+def _project_freeb_edge_control_delta_tuple(
+    deltas: Any,
+    projection: dict[str, Any],
+    *,
+    host_update: bool,
+) -> Any:
+    """Project an LCFS geometry update direction onto reduced controls.
+
+    The reduced-control basis is defined in physical edge-coefficient space, so
+    only the last radial row of the geometry deltas is changed. Lambda and
+    interior geometry updates are left untouched.
+    """
+
+    if not bool(projection.get("enabled", False)):
+        return deltas
+    k = int(projection["mode_count"])
+    dR, dR_sin, dZ_cos, dZ, dL_cos, dL = deltas
+    if bool(host_update):
+        scale = np.asarray(projection["mode_scale_np"], dtype=float)
+        jacobian = np.asarray(projection["jacobian_np"], dtype=float)
+        pinv = np.asarray(projection["pinv_np"], dtype=float)
+        dR_out = np.array(dR, dtype=float, copy=True)
+        dR_sin_out = np.array(dR_sin, dtype=float, copy=True)
+        dZ_cos_out = np.array(dZ_cos, dtype=float, copy=True)
+        dZ_out = np.array(dZ, dtype=float, copy=True)
+        target = np.concatenate(
+            [
+                dR_out[-1] * scale,
+                dR_sin_out[-1] * scale,
+                dZ_cos_out[-1] * scale,
+                dZ_out[-1] * scale,
+            ],
+            axis=0,
+        )
+        projected = jacobian @ (pinv @ target)
+        dR_out[-1] = projected[0:k] / scale
+        dR_sin_out[-1] = projected[k : 2 * k] / scale
+        dZ_cos_out[-1] = projected[2 * k : 3 * k] / scale
+        dZ_out[-1] = projected[3 * k : 4 * k] / scale
+        return (dR_out, dR_sin_out, dZ_cos_out, dZ_out, dL_cos, dL)
+
+    dtype = jnp.asarray(dR).dtype
+    scale = jnp.asarray(projection["mode_scale_np"], dtype=dtype)
+    jacobian = jnp.asarray(projection["jacobian_np"], dtype=dtype)
+    pinv = jnp.asarray(projection["pinv_np"], dtype=dtype)
+    dR_out = jnp.asarray(dR)
+    dR_sin_out = jnp.asarray(dR_sin)
+    dZ_cos_out = jnp.asarray(dZ_cos)
+    dZ_out = jnp.asarray(dZ)
+    target = jnp.concatenate(
+        [
+            dR_out[-1] * scale,
+            dR_sin_out[-1] * scale,
+            dZ_cos_out[-1] * scale,
+            dZ_out[-1] * scale,
+        ],
+        axis=0,
+    )
+    projected = jacobian @ (pinv @ target)
+    dR_out = dR_out.at[-1, :].set(projected[0:k] / scale)
+    dR_sin_out = dR_sin_out.at[-1, :].set(projected[k : 2 * k] / scale)
+    dZ_cos_out = dZ_cos_out.at[-1, :].set(projected[2 * k : 3 * k] / scale)
+    dZ_out = dZ_out.at[-1, :].set(projected[3 * k : 4 * k] / scale)
+    return (dR_out, dR_sin_out, dZ_cos_out, dZ_out, dL_cos, dL)
+
+
 def _freeb_edge_control_state_residual_metrics(state: VMECState, projection: dict[str, Any]) -> dict[str, Any]:
     """Measure how far the LCFS edge row sits outside reduced controls."""
 

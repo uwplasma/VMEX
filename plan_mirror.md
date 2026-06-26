@@ -5738,6 +5738,166 @@ Visual validation:
 
 No user input is needed.
 
+## M310. Projected LCFS delta proposals for reduced square-axis solves
+
+### Steps taken
+
+- Rechecked the local branch, PR #21 CI state, and live `office` strict rows:
+  - PR quick/build/docs/smoke shards were passing or pending; no new failure was
+    seen before this code tranche;
+  - direct JAX hot restart was still active with `final_max_component` near
+    `1.55e-11`, i.e. flat above the requested `1e-12`;
+  - VMEC2000/mgrid remained monotone but was still in the looser `1e-10`
+    stage, so it is a reference backend rather than proof that the
+    Fourier-representation bottleneck is solved.
+- Rechecked current implementation/literature guidance:
+  - VMEC/STELLOPT free-boundary documentation continues to emphasize staged
+    `NS_ARRAY/FTOL_ARRAY/NITER_ARRAY`, `mgrid`, and `NZETA` consistency;
+  - DESC free-boundary documentation continues to distinguish vacuum boundary
+    error from finite-beta virtual-casing boundary error;
+  - SIMSOPT/VMEC guidance still treats VMEC surfaces as Fourier surfaces, so a
+    square/linear-axis target can remain a hard representation problem even
+    when the backend is mature.
+- Added a reduced-control LCFS delta projector:
+  - projects the physical LCFS geometry update tuple onto the same dense
+    square/spline control-space Jacobian used by the state projector;
+  - leaves interior geometry rows and lambda updates untouched;
+  - supports both host NumPy and JAX-array paths.
+- Wired the projector into strict and non-strict momentum proposal construction
+  before candidate states are formed.
+- Kept full VMEC force convergence unchanged: `fsqr/fsqz/fsql <= ftol` remains
+  the strict acceptance target. The reduced-control projection is not a
+  substitute convergence gate.
+- Added `delta_projection_count` diagnostics to residual finalization, the
+  square-coil example CSV metrics, and the square-coil summary table.
+
+### Results obtained
+
+- Local projected-control smoke with one iteration confirmed the new path is
+  active:
+  - `projection_enabled=True`;
+  - `apply_count=2`;
+  - `delta_projection_count=1`;
+  - `zero_velocity_count=1`;
+  - projected update-direction residual was zero in the smoke diagnostics.
+- The smoke residuals were intentionally not converged because this was a
+  one-iteration wiring check.
+- The active long strict rows are still not promoted. The next real result will
+  come from queued projected-control/edge-polish rows after they run with this
+  updated code.
+
+### How it was tested
+
+```bash
+venv/bin/python -m py_compile \
+  vmec_jax/solvers/free_boundary/control.py \
+  vmec_jax/solvers/fixed_boundary/residual/update.py \
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py \
+  vmec_jax/solvers/fixed_boundary/residual/finalize.py
+```
+
+Result: passed.
+
+```bash
+ruff check \
+  vmec_jax/solvers/free_boundary/control.py \
+  vmec_jax/solvers/fixed_boundary/residual/update.py \
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py \
+  vmec_jax/solvers/fixed_boundary/residual/finalize.py \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+```
+
+Result: passed.
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_toroidal_hybrid.py
+```
+
+Result: `108 passed, 2 warnings`.
+
+```bash
+rm -rf /tmp/vmec_edge_delta_projection_smoke && \
+venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py \
+  --outdir /tmp/vmec_edge_delta_projection_smoke \
+  --beta-percent 0 --mpol 3 --ntor 4 --ns 5 --nzeta 16 \
+  --ns-array 5 --niter-array 1 --ftol-array 1e-8 \
+  --max-iter 1 --ftol 1e-8 --phiedge -0.02 --delt 0.02 \
+  --activate-fsq 1e-3 --nvacskip 1 --nstep 1 \
+  --axis-kind control_spline --side-power 1.0 --corner-power 1.0 \
+  --n-coils-per-side 2 --coil-segments 16 --coil-chunk-size 128 \
+  --skip-mgrid --skip-provider-parity --solver-mode parity \
+  --freeb-edge-control-projection square \
+  --max-boundary-projection-error none
+```
+
+Result: passed and reported `delta_projection_count=1`.
+
+```bash
+venv/bin/python tools/diagnostics/source_health.py --top 20 \
+  --max-root-helper-prefix-files 2 \
+  --max-function-lines-at \
+    vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2440 \
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=420
+```
+
+Result: passed the current source-health ratchets.
+
+```bash
+git diff --check
+```
+
+Result: passed.
+
+### File structure and best-practice adherence
+
+- The new projection math is isolated in
+  `vmec_jax/solvers/free_boundary/control.py`, next to the existing reduced
+  edge-control projector and residual metrics.
+- The residual update helpers remain generic: they accept an optional delta
+  projector callback and do not import square-axis-specific code.
+- The large residual loop only wires the optional callback and counter; it does
+  not gain a new convergence rule or representation-specific branch.
+- Example and summary outputs expose one new scalar diagnostic instead of
+  adding generated data or figures to the repository.
+- No WOUTs, mgrid files, figures, or scratch profile outputs were committed.
+
+### Best next steps
+
+1. Fast-forward the queued projected-control/edge-polish `office` checkouts to
+   this commit before they leave the queue.
+2. Let the projected-control strict row run with
+   `--freeb-edge-control-projection square` and compare:
+   `delta_projection_count`, update-direction residual, full `fsqr/fsqz/fsql`,
+   and strict gap.
+3. Let the VMEC2000/mgrid row continue as the mature backend reference, but do
+   not treat it as a cure for the square/linear-axis Fourier representation
+   unless it reaches full `1e-12` force convergence.
+4. If full Fourier, projected-control, and VMEC2000 all stall above `1e-12`,
+   start the solver-native spline-control state/Jacobian tranche instead of
+   adding more Fourier-only polish.
+
+### Completion percentages after M310
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row remains flat above `1e-12`.
+- VMEC2000 robustness/reference lane: `99%`, still running and not yet strict.
+- True spline/control-basis hybrid lane: `87%`, delta proposals now project into
+  the reduced LCFS control basis; solver-native spline state remains open.
+- DELT/stage-budget polish lane: `75%`, still queued.
+- Finite-beta virtual-casing validation lane: `87%`, unchanged in this tranche.
+- CI/API health lane: `99%`, local affected checks pass.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M309. Strict-convergence assessment for square-axis spline/VMEC2000 runs
 
 ### Steps taken

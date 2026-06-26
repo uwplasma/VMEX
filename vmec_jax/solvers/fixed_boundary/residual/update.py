@@ -1124,6 +1124,7 @@ def strict_momentum_update_proposal(
     delta_transforms: tuple,
     delta_tuple_from_blocks: Any,
     candidate_state_from_delta_tuple: Any,
+    delta_tuple_projector: Any | None = None,
 ) -> StrictMomentumProposal:
     """Build the non-JIT strict momentum candidate state for one iteration."""
 
@@ -1172,6 +1173,8 @@ def strict_momentum_update_proposal(
         *updated_velocities,
         use_numpy_lasym_zeros=bool(host_update_assembly),
     )
+    if delta_tuple_projector is not None:
+        update_deltas = delta_tuple_projector(update_deltas, host_update=bool(host_update_assembly))
     state = candidate_state_from_delta_tuple(
         update_deltas,
         use_numpy_arrays=bool(host_update_assembly),
@@ -1641,6 +1644,7 @@ def backtracking_momentum_search(
     candidate_state_from_delta_tuple: Any,
     freeb_bsqvac_half_for_trial_state: Any,
     trial_residual_total: Any,
+    delta_tuple_projector: Any | None = None,
     max_backtracks: int = 6,
     accept_ratio: float = 1.05,
 ) -> BacktrackingMomentumSearchResult:
@@ -1662,8 +1666,11 @@ def backtracking_momentum_search(
                 for velocity, force in zip(velocities, forces)
             )
         )
+        trial_deltas = delta_tuple_from_blocks(dt_try, delta_transforms, *trial_velocities)
+        if delta_tuple_projector is not None:
+            trial_deltas = delta_tuple_projector(trial_deltas, host_update=False)
         state_try = candidate_state_from_delta_tuple(
-            delta_tuple_from_blocks(dt_try, delta_transforms, *trial_velocities),
+            trial_deltas,
             use_numpy_arrays=False,
             use_numpy_enforce=False,
         )

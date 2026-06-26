@@ -1019,6 +1019,9 @@ def _run_one_beta(
         "free_boundary_edge_control_projection_requested": str(config.free_boundary_edge_control_projection),
         "free_boundary_edge_control_projection_enabled": edge_projection_diag.get("enabled"),
         "free_boundary_edge_control_projection_apply_count": edge_projection_diag.get("apply_count"),
+        "free_boundary_edge_control_projection_delta_projection_count": edge_projection_diag.get(
+            "delta_projection_count"
+        ),
         "free_boundary_edge_control_projection_control_count": edge_projection_diag.get("control_count"),
         "free_boundary_edge_control_projection_mode_count": edge_projection_diag.get("mode_count"),
         "free_boundary_edge_control_projection_reason": edge_projection_diag.get("reason"),
@@ -1157,6 +1160,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "free_boundary_edge_control_projection_requested",
         "free_boundary_edge_control_projection_enabled",
         "free_boundary_edge_control_projection_apply_count",
+        "free_boundary_edge_control_projection_delta_projection_count",
         "free_boundary_edge_control_projection_control_count",
         "free_boundary_edge_control_projection_mode_count",
         "free_boundary_edge_control_projection_reason",

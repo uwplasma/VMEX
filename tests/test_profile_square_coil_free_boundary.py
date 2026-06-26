@@ -363,6 +363,7 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
         _freeb_edge_control_delta_tuple_projection_metrics,
         _freeb_edge_control_state_residual_metrics,
         _prepare_freeb_edge_control_projection,
+        _project_freeb_edge_control_delta_tuple,
         _project_freeb_edge_control_state,
     )
 
@@ -445,6 +446,24 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
         (direction_rcos, zeros.copy(), zeros.copy(), direction_zsin, zeros.copy(), zeros.copy()),
         projection,
     )
+    direction_lcos = zeros.copy()
+    direction_lcos[-1, 0] = 2.0
+    projected_direction = _project_freeb_edge_control_delta_tuple(
+        (
+            direction_rcos,
+            zeros.copy(),
+            zeros.copy(),
+            direction_zsin,
+            direction_lcos,
+            zeros.copy(),
+        ),
+        projection,
+        host_update=True,
+    )
+    projected_direction_metrics = _freeb_edge_control_delta_tuple_projection_metrics(
+        projected_direction,
+        projection,
+    )
 
     assert np.asarray(projected.Rcos)[-1, 0] == pytest.approx(3.2)
     assert np.asarray(projected.Rcos)[-1, 1] == pytest.approx(0.0)
@@ -457,6 +476,11 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
     assert direction_metrics["status"] == "measured"
     assert direction_metrics["residual_linf"] > 0.1
     assert direction_metrics["control_delta_by_label"]["R00"] == pytest.approx(0.2)
+    assert np.asarray(projected_direction[0])[-1, 0] == pytest.approx(0.2)
+    assert np.asarray(projected_direction[0])[-1, 1] == pytest.approx(0.0)
+    assert np.asarray(projected_direction[3])[-1, 1] == pytest.approx(0.0)
+    assert np.asarray(projected_direction[4])[-1, 0] == pytest.approx(2.0)
+    assert projected_direction_metrics["residual_linf"] == pytest.approx(0.0, abs=1.0e-12)
 
 
 def test_square_coil_profile_hot_restart_solver_state_filters_freeb_resume_keys():
@@ -1399,6 +1423,7 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
                         "basis_symmetry": "square",
                         "control_count": 2,
                         "apply_count": 3,
+                        "delta_projection_count": 5,
                         "zero_velocity_count": 4,
                     },
                 },
@@ -1435,6 +1460,7 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
     assert summary["basis_symmetry"] == "square"
     assert summary["control_count"] == 2
     assert out["free_boundary_edge_control_projection"]["apply_count"] == 3
+    assert out["free_boundary_edge_control_projection"]["delta_projection_count"] == 5
     assert out["free_boundary_edge_control_projection"]["zero_velocity_count"] == 4
 
 

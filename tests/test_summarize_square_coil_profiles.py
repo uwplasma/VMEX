@@ -565,6 +565,7 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
                         "final_residual_recomputed_on_accepted_state": True,
                         "free_boundary_edge_control_projection": {
                             "apply_count": 7,
+                            "delta_projection_count": 8,
                             "zero_velocity_count": 6,
                             "state_residual": {
                                 "status": "measured",
@@ -605,6 +606,7 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
     assert row["freeb_edge_control_projection_control_count"] == 2
     assert row["freeb_edge_control_projection_rcond"] == pytest.approx(1.0e-12)
     assert row["freeb_edge_control_projection_apply_count"] == 7
+    assert row["freeb_edge_control_projection_delta_projection_count"] == 8
     assert row["freeb_edge_control_projection_zero_velocity_count"] == 6
     assert row["freeb_edge_control_projection_state_residual_status"] == "measured"
     assert row["freeb_edge_control_projection_state_residual_linf"] == pytest.approx(2.5e-14)

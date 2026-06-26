@@ -152,6 +152,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
 )
 from vmec_jax.solvers.free_boundary.control import (
     _prepare_freeb_edge_control_projection,
+    _project_freeb_edge_control_delta_tuple,
     _project_freeb_edge_control_state,
     _zero_freeb_edge_control_velocity_blocks,
 )
@@ -613,6 +614,7 @@ class _FreeBoundaryEdgeControlProjector:
         self.info = dict(self.projection.get("info", {"enabled": False, "reason": "not_requested"}))
         self.enabled = bool(self.projection.get("enabled", False))
         self.apply_count = 0
+        self.delta_projection_count = 0
         self.zero_velocity_count = 0
         self.use_scan = bool(use_scan)
         self.jit_strict_update_enabled = bool(jit_strict_update_enabled)
@@ -648,6 +650,19 @@ class _FreeBoundaryEdgeControlProjector:
             )
 
         return _candidate_from_delta_tuple_projected
+
+    def project_delta_tuple(self, deltas, *, host_update: bool):
+        if not self.enabled:
+            return deltas
+        self.delta_projection_count += 1
+        return _project_freeb_edge_control_delta_tuple(
+            deltas,
+            self.projection,
+            host_update=bool(host_update),
+        )
+
+    def delta_tuple_projector(self):
+        return self.project_delta_tuple if self.enabled else None
 
     def scrub_velocity(self, velocities, *, host_update: bool):
         if not self.enabled:
@@ -1615,7 +1630,6 @@ def solve_fixed_boundary_residual_iter(
     def _zero_primary_velocity_blocks() -> None:
         nonlocal velocity_blocks
         velocity_blocks = _zero_primary_velocity_blocks_like(velocity_blocks)
-
     axis_reset_runtime_callbacks = _InitialAxisResetRuntimeCallbacks(
         _reset_axis_from_boundary, _host_axis_reset_update, _apply_controller_update, _controller_after_axis_reset,
         _zero_primary_velocity_blocks, lambda: axis_reset_coeffs, _print_scan_axis_guess,
@@ -2911,6 +2925,7 @@ def solve_fixed_boundary_residual_iter(
                     delta_transforms=_physical_delta_transforms,
                     delta_tuple_from_blocks=_delta_tuple_from_blocks,
                     candidate_state_from_delta_tuple=_candidate_state_from_delta_tuple,
+                    delta_tuple_projector=freeb_edge_control_projector.delta_tuple_projector(),
                 )
             velocity_blocks = update_proposal.velocities
             update_rms_j = update_proposal.update_rms_j
@@ -3075,6 +3090,7 @@ def solve_fixed_boundary_residual_iter(
                     zero_m1_value=zero_m1,
                     timing_label="backtracking",
                 ),
+                delta_tuple_projector=freeb_edge_control_projector.delta_tuple_projector(),
             )
             state = non_strict_update.state
             velocity_blocks = non_strict_update.velocities
