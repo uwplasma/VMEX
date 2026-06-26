@@ -124,6 +124,13 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
         "final_fsqr": 1.0e-5,
         "final_fsqz": 2.0e-5,
         "final_fsql": 3.0e-6,
+        "final_cached_vacuum_fsqr": 8.0e-6,
+        "final_cached_vacuum_fsqz": 1.5e-5,
+        "final_cached_vacuum_fsql": 2.0e-6,
+        "final_cached_vacuum_residual_recomputed": True,
+        "final_fresh_minus_cached_vacuum_fsqr": 2.0e-6,
+        "final_fresh_minus_cached_vacuum_fsqz": 5.0e-6,
+        "final_fresh_minus_cached_vacuum_fsql": 1.0e-6,
         "update_delta_rms": 2.0e-4,
         "update_delta_to_velocity_rms_ratio": 0.25,
         "best_scored_component_max": 7.0e-6,
@@ -201,6 +208,13 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
     assert payload["free_boundary_anderson_pressure_last_applied"] == pytest.approx(1.0)
     assert payload["free_boundary_anderson_pressure_last_theta"] == pytest.approx(0.4)
     assert payload["final_fsq_component_sum"] == pytest.approx(3.3e-5)
+    assert payload["final_cached_vacuum_fsqr"] == pytest.approx(8.0e-6)
+    assert payload["final_cached_vacuum_fsqz"] == pytest.approx(1.5e-5)
+    assert payload["final_cached_vacuum_fsql"] == pytest.approx(2.0e-6)
+    assert payload["final_cached_vacuum_residual_recomputed"] is True
+    assert payload["final_fresh_minus_cached_vacuum_fsqr"] == pytest.approx(2.0e-6)
+    assert payload["final_fresh_minus_cached_vacuum_fsqz"] == pytest.approx(5.0e-6)
+    assert payload["final_fresh_minus_cached_vacuum_fsql"] == pytest.approx(1.0e-6)
     assert payload["update_delta_rms"] == pytest.approx(2.0e-4)
     assert payload["update_delta_to_velocity_rms_ratio"] == pytest.approx(0.25)
     assert payload["best_scored_component_max"] == pytest.approx(7.0e-6)

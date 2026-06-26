@@ -359,6 +359,13 @@ def final_free_boundary_residual_reports_from_namespace(
         "final_fsqr_report": float(ns["fsqr_f"]),
         "final_fsqz_report": float(ns["fsqz_f"]),
         "final_fsql_report": float(ns["fsql_f"]),
+        "final_cached_vacuum_fsqr_report": None,
+        "final_cached_vacuum_fsqz_report": None,
+        "final_cached_vacuum_fsql_report": None,
+        "final_cached_vacuum_residual_recomputed": False,
+        "final_fresh_minus_cached_vacuum_fsqr": None,
+        "final_fresh_minus_cached_vacuum_fsqz": None,
+        "final_fresh_minus_cached_vacuum_fsql": None,
         "final_residual_recomputed": False,
         "final_nestor_model": str(ns["freeb_last_model"]),
         "final_nestor_diagnostics": dict(ns["freeb_last_diagnostics"]),
@@ -370,6 +377,46 @@ def final_free_boundary_residual_reports_from_namespace(
     report["final_vacuum_stub"] = not bool(
         str(report["final_nestor_model"]).strip() and str(report["final_nestor_model"]) != "none"
     )
+
+    def _recompute_residual_with_vacuum(bsqvac_half: Any) -> tuple[float, float, float]:
+        _, _, gcr2_final, gcz2_final, gcl2_final, _, _, norms_final = ns["_compute_forces_iter"](
+            ns["state"],
+            include_edge=bool(ns["include_edge"]),
+            include_edge_residual=True,
+            zero_m1=ns["zero_m1"],
+            freeb_bsqvac_half=bsqvac_half,
+            constraint_precond_diag=ns["constraint_precond_diag"],
+            constraint_tcon=ns["constraint_tcon_override"],
+            constraint_precond_active=ns["constraint_precond_active"],
+            constraint_tcon_active=ns["constraint_tcon_active"],
+            iter2=ns["last_iter2"],
+        )
+        fsqr_final, fsqz_final, fsql_final = residual_fsq_from_norms_func(
+            norms_final,
+            gcr2=gcr2_final,
+            gcz2=gcz2_final,
+            gcl2=gcl2_final,
+        )
+        return device_get_floats_func(fsqr_final, fsqz_final, fsql_final)
+
+    cached_residual: tuple[float, float, float] | None = None
+    diagnose_cached_vacuum = bool(ns.get("return_best_scored_state", False))
+    if bool(ns["free_boundary_enabled"]) and diagnose_cached_vacuum and final_bsqvac_half_current is not None:
+        start = clock() if timing_enabled else None
+        try:
+            cached_residual = _recompute_residual_with_vacuum(final_bsqvac_half_current)
+            (
+                report["final_cached_vacuum_fsqr_report"],
+                report["final_cached_vacuum_fsqz_report"],
+                report["final_cached_vacuum_fsql_report"],
+            ) = cached_residual
+            report["final_cached_vacuum_residual_recomputed"] = True
+        except Exception:
+            cached_residual = None
+        finally:
+            if timing_enabled and start is not None:
+                timing_stats["finalize_residual_recompute"] += clock() - float(start)
+
     if bool(ns["free_boundary_enabled"] and ns["freeb_couple_edge"]) and not report["final_vacuum_stub"]:
         report["final_nestor_recompute_attempted"] = True
         start = clock() if timing_enabled else None
@@ -404,21 +451,18 @@ def final_free_boundary_residual_reports_from_namespace(
     if bool(ns["free_boundary_enabled"]) and final_bsqvac_half_current is not None:
         start = clock() if timing_enabled else None
         try:
-            _, _, gcr2_final, gcz2_final, gcl2_final, _, _, norms_final = ns["_compute_forces_iter"](
-                ns["state"], include_edge=bool(ns["include_edge"]), include_edge_residual=True,
-                zero_m1=ns["zero_m1"], freeb_bsqvac_half=final_bsqvac_half_current,
-                constraint_precond_diag=ns["constraint_precond_diag"], constraint_tcon=ns["constraint_tcon_override"],
-                constraint_precond_active=ns["constraint_precond_active"],
-                constraint_tcon_active=ns["constraint_tcon_active"],
-                iter2=ns["last_iter2"],
-            )
-            fsqr_final, fsqz_final, fsql_final = residual_fsq_from_norms_func(
-                norms_final, gcr2=gcr2_final, gcz2=gcz2_final, gcl2=gcl2_final,
-            )
-            get_start = clock() if timing_enabled else None
-            report["final_fsqr_report"], report["final_fsqz_report"], report["final_fsql_report"] = device_get_floats_func(fsqr_final, fsqz_final, fsql_final)
-            if timing_enabled and get_start is not None:
-                timing_stats["finalize_residual_device_get"] += clock() - float(get_start)
+            fresh_residual = _recompute_residual_with_vacuum(final_bsqvac_half_current)
+            (
+                report["final_fsqr_report"],
+                report["final_fsqz_report"],
+                report["final_fsql_report"],
+            ) = fresh_residual
+            if cached_residual is not None:
+                (
+                    report["final_fresh_minus_cached_vacuum_fsqr"],
+                    report["final_fresh_minus_cached_vacuum_fsqz"],
+                    report["final_fresh_minus_cached_vacuum_fsql"],
+                ) = tuple(float(fresh) - float(cached) for fresh, cached in zip(fresh_residual, cached_residual))
             report["final_residual_recomputed"] = True
         except Exception:
             report["final_fsqr_report"] = float(ns["fsqr_f"])
@@ -602,6 +646,21 @@ def finalize_residual_iter_from_namespace(
         "final_fsqr": float(final_freeb["final_fsqr_report"]),
         "final_fsqz": float(final_freeb["final_fsqz_report"]),
         "final_fsql": float(final_freeb["final_fsql_report"]),
+        "final_cached_vacuum_fsqr": _optional_float(final_freeb["final_cached_vacuum_fsqr_report"]),
+        "final_cached_vacuum_fsqz": _optional_float(final_freeb["final_cached_vacuum_fsqz_report"]),
+        "final_cached_vacuum_fsql": _optional_float(final_freeb["final_cached_vacuum_fsql_report"]),
+        "final_cached_vacuum_residual_recomputed": bool(
+            final_freeb["final_cached_vacuum_residual_recomputed"]
+        ),
+        "final_fresh_minus_cached_vacuum_fsqr": _optional_float(
+            final_freeb["final_fresh_minus_cached_vacuum_fsqr"]
+        ),
+        "final_fresh_minus_cached_vacuum_fsqz": _optional_float(
+            final_freeb["final_fresh_minus_cached_vacuum_fsqz"]
+        ),
+        "final_fresh_minus_cached_vacuum_fsql": _optional_float(
+            final_freeb["final_fresh_minus_cached_vacuum_fsql"]
+        ),
         "pre_update_final_fsqr": float(ns["fsqr_f"]),
         "pre_update_final_fsqz": float(ns["fsqz_f"]),
         "pre_update_final_fsql": float(ns["fsql_f"]),

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -8,6 +10,7 @@ from vmec_jax.solvers.fixed_boundary.residual.finalize import (
     attach_residual_iter_timing_diagnostics,
     build_residual_iter_resume_state_from_namespace,
     build_residual_iter_resume_state_payload,
+    final_free_boundary_residual_reports_from_namespace,
     finalize_residual_iter_from_namespace,
     finalize_residual_iter_result,
     vmec2000_state_only_scan_result,
@@ -269,6 +272,69 @@ def test_best_scored_namespace_restores_matching_free_boundary_bundle() -> None:
     assert restored["freeb_nvacskip"] == 3
     assert restored["freeb_nvskip0"] == 3
     assert restored["freeb_plascur"] == pytest.approx(0.25)
+
+
+def test_final_free_boundary_report_compares_cached_and_fresh_vacuum_residuals() -> None:
+    calls: list[float] = []
+
+    def compute_forces(_state, **kwargs):
+        marker = float(np.asarray(kwargs["freeb_bsqvac_half"]).sum())
+        calls.append(marker)
+        return None, None, marker, 2.0 * marker, 3.0 * marker, None, None, None
+
+    def residuals(_norms, *, gcr2, gcz2, gcl2):
+        return gcr2, gcz2, gcl2
+
+    class _FreshNestor:
+        model = "fresh-direct"
+        sample_time_s = 0.25
+        solve_time_s = 0.5
+        diagnostics = {"bnormal_rms": 4.0e-6}
+        vac_total = SimpleNamespace(bsqvac=np.asarray([[5.0, 6.0]]))
+
+    namespace = {
+        "timing_stats": _timing_stats(),
+        "timing_enabled": False,
+        "freeb_bsqvac_half_current": np.asarray([[1.0, 2.0]]),
+        "fsqr_f": 1.0e-9,
+        "fsqz_f": 2.0e-9,
+        "fsql_f": 3.0e-9,
+        "freeb_last_model": "cached-direct",
+        "freeb_last_diagnostics": {"bnormal_rms": 1.0e-6},
+        "free_boundary_enabled": True,
+        "freeb_couple_edge": True,
+        "state": "state",
+        "static": SimpleNamespace(cfg=SimpleNamespace(nzeta=2), free_boundary_extcur=()),
+        "freeb_nestor_runtime": "runtime",
+        "freeb_plascur": 0.25,
+        "external_field_provider_kind": "direct",
+        "external_field_provider_static": {},
+        "external_field_provider_params": {},
+        "include_edge": False,
+        "zero_m1": 1.0,
+        "constraint_precond_diag": None,
+        "constraint_tcon_override": None,
+        "constraint_precond_active": False,
+        "constraint_tcon_active": False,
+        "last_iter2": 9,
+        "return_best_scored_state": True,
+        "_compute_forces_iter": compute_forces,
+    }
+
+    report = final_free_boundary_residual_reports_from_namespace(
+        namespace,
+        nestor_external_only_step_func=lambda **_: (_FreshNestor(), "runtime"),
+        residual_fsq_from_norms_func=residuals,
+        device_get_floats_func=lambda *values: tuple(float(value) for value in values),
+    )
+
+    assert calls == [3.0, 11.0]
+    assert report["final_cached_vacuum_residual_recomputed"] is True
+    assert report["final_cached_vacuum_fsqr_report"] == pytest.approx(3.0)
+    assert report["final_fsqr_report"] == pytest.approx(11.0)
+    assert report["final_fresh_minus_cached_vacuum_fsqr"] == pytest.approx(8.0)
+    assert report["final_nestor_model"] == "fresh-direct"
+    assert report["final_nestor_diagnostics"] == {"bnormal_rms": 4.0e-6}
 
 
 def test_finalize_residual_iter_from_namespace_builds_diagnostics_and_result() -> None:
