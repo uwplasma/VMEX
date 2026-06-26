@@ -37,14 +37,14 @@ REFERENCE_ASSET_PATHS = (
     "examples/data/mgrid_cth_like.nc",
     "examples/data/mgrid_d3d_ef.nc",
     "examples/data/wout_*_reference.nc",
-    "examples_single_grid/data/mgrid_cth_like.nc",
-    "examples_single_grid/data/mgrid_d3d_ef.nc",
-    "examples_single_grid/data/wout_*_reference.nc",
+    "examples/data/single_grid/mgrid_cth_like.nc",
+    "examples/data/single_grid/mgrid_d3d_ef.nc",
+    "examples/data/single_grid/wout_*_reference.nc",
 )
 
 WOUT_FIXTURE_PATHS = (
     "examples/data/wout_*.nc",
-    "examples_single_grid/data/wout_*.nc",
+    "examples/data/single_grid/wout_*.nc",
     "docs/_static/readme_best_cases/*/wout_*.nc",
     "docs/_static/qi_readme_cases/*/wout_*.nc",
 )
