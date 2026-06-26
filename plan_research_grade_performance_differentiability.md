@@ -104,7 +104,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   startup, and peak memory remains materially higher than VMEC2000, especially
   for LASYM finite-beta rows. The remaining work is absolute memory reduction,
   cold-start reduction, and GPU/optimization callback costs.
-- Refactor/API/examples: 78.6%.
+- Refactor/API/examples: 79.1%.
   Public examples are better, but core source files and tests are still too
   large and too entangled. The fixed-boundary residual timing/setup seam is now
   slightly cleaner, but the main residual loop still needs a larger split.
@@ -6763,6 +6763,67 @@ Updated lane percentages:
 - Single-stage coil optimization: 94.0%.
 - CPU/GPU runtime and memory footprint: 99.2%.
 - Refactor/API/examples: 78.6%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
+### 2026-06-26: Split CLI fixed-boundary finish policy
+
+Steps taken:
+
+- Refactored ``vmec_jax/drivers/finish.py`` so
+  ``maybe_finish_cli_fixed_boundary_run`` now delegates finish request setup,
+  explicit staged followup, accelerated multigrid fallback, accelerated retry,
+  and parity retry logic to focused helpers.
+- Added ``FinishRequest`` to carry resolved finish tolerances, staged-input
+  metadata, and retry budgets explicitly.
+- Kept all final diagnostics and complete-solve acceptance behavior unchanged:
+  this is a policy/orchestration split only, not a numerical kernel change.
+
+Results obtained:
+
+- ``maybe_finish_cli_fixed_boundary_run`` is now ``111`` lines, down from
+  ``257`` lines and below the source-health warning threshold.
+- Helper sizes are bounded: ``_finish_request_from_run`` ``50`` lines,
+  ``_maybe_apply_input_staged_followup`` ``31`` lines,
+  ``_maybe_apply_accelerated_multigrid_fallbacks`` ``58`` lines,
+  ``_run_accelerated_finish_attempts`` ``54`` lines, and
+  ``_run_parity_finish_attempts`` ``48`` lines.
+- ``python -m ruff check vmec_jax/drivers/finish.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_driver_api_finish_more_coverage.py -q`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_driver_api.py tests/test_driver_fast_reconstruction.py
+  tests/test_driver_api_finish_more_coverage.py -q`` passed with existing
+  numerical warnings only.
+- ``python tools/diagnostics/source_health.py --top 25 --top-functions 80
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2508
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=512`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size is ``28.43 MiB``.
+- ``git diff --check`` passed.
+
+Best next steps:
+
+1. Push this finish-policy split and let CI validate it.
+2. Continue the refactor/API lane with either ``run_fixed_boundary``
+   orchestration or one residual-loop phase extraction; both remain larger
+   source-health outliers.
+3. Preserve current benchmark/AD-FD artifacts unless numerical behavior changes.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.2%.
+- Free-boundary production differentiability: 97.6%.
+- Single-stage coil optimization: 94.0%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 79.1%.
 - VMEC2000/VMEC++ parity and physics gates: 99.3%.
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
