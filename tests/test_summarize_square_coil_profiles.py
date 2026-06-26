@@ -141,6 +141,9 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     rows = summary.rows_from_profile(report)
 
     assert [row["backend"] for row in rows] == ["vmec2000_mgrid", "vmec_jax_mgrid"]
+    assert rows[0]["backend_role"] == "vmec2000_mgrid_reference"
+    assert rows[0]["strict_evidence_status"] == "non_strict_ftol"
+    assert "requested_ftol_above_1e-12" in rows[0]["strict_evidence_blockers"]
     assert rows[0]["final_total"] == pytest.approx(5.4e-6)
     assert rows[0]["requested_ftol"] == pytest.approx(1.0e-6)
     assert rows[0]["final_max_component"] == pytest.approx(3.0e-6)
@@ -151,6 +154,9 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["final_total"] == pytest.approx(9.0e-7)
     assert rows[1]["final_max_component"] == pytest.approx(4.0e-7)
     assert rows[1]["strict_components_met"] is True
+    assert rows[1]["backend_role"] == "vmec_jax_mgrid_parity"
+    assert rows[1]["strict_evidence_status"] == "non_strict_ftol"
+    assert "requested_ftol_above_1e-12" in rows[1]["strict_evidence_blockers"]
     assert rows[1]["boundary_condition_mode"] == "vacuum_coil_normal"
     assert rows[1]["coil_bnormal_role"] == "vacuum_boundary_condition"
     assert rows[1]["production_candidate"] is True
@@ -224,6 +230,101 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[0]["vacuum_grid_exceeded_count"] == 2
 
 
+def test_square_coil_profile_summary_marks_strict_direct_row_as_evidence(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_strict_direct"
+    case_dir.mkdir()
+    report = case_dir / "square_coil_free_boundary_backend_profile.json"
+    report.write_text(
+        json.dumps(
+            {
+                "configuration": {
+                    "beta_percent": 0.0,
+                    "mpol": 5,
+                    "ntor": 28,
+                    "ns": 17,
+                    "nzeta": 64,
+                    "ftol": 1.0e-12,
+                    "nzeta_underrecommended": False,
+                },
+                "resolution_deck": {
+                    "status": "production_ready",
+                    "reasons": [],
+                    "mgrid_nphi_multiple_of_nzeta": True,
+                },
+                "backends": {
+                    "vmec_jax_direct": {
+                        "status": "completed",
+                        "n_iter": 200,
+                        "final_fsqr": 4.0e-13,
+                        "final_fsqz": 5.0e-13,
+                        "final_fsql": 6.0e-13,
+                        "final_residual_recomputed_on_accepted_state": True,
+                    }
+                },
+            }
+        )
+    )
+
+    row = summary.rows_from_profile(report)[0]
+
+    assert row["backend_role"] == "vmec_jax_direct_research"
+    assert row["strict_components_met"] is True
+    assert row["production_candidate"] is True
+    assert row["strict_evidence_status"] == "strict_production_evidence"
+    assert row["strict_evidence_blockers"] == ""
+    assert row["resolution_deck_status"] == "production_ready"
+
+
+def test_square_coil_profile_summary_blocks_underresolved_resolution_deck(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_underresolved"
+    case_dir.mkdir()
+    report = case_dir / "square_coil_free_boundary_backend_profile.json"
+    report.write_text(
+        json.dumps(
+            {
+                "configuration": {
+                    "beta_percent": 0.0,
+                    "mpol": 5,
+                    "ntor": 28,
+                    "ns": 17,
+                    "nzeta": 32,
+                    "ftol": 1.0e-12,
+                    "nzeta_underrecommended": True,
+                },
+                "resolution_deck": {
+                    "status": "diagnostic_underresolved",
+                    "reasons": [
+                        "nzeta_below_square_axis_recommendation",
+                        "mgrid_nphi_not_multiple_of_nzeta",
+                    ],
+                    "mgrid_nphi_multiple_of_nzeta": False,
+                },
+                "backends": {
+                    "vmec_jax_direct": {
+                        "status": "completed",
+                        "n_iter": 200,
+                        "final_fsqr": 4.0e-13,
+                        "final_fsqz": 5.0e-13,
+                        "final_fsql": 6.0e-13,
+                        "final_residual_recomputed_on_accepted_state": True,
+                    }
+                },
+            }
+        )
+    )
+
+    row = summary.rows_from_profile(report)[0]
+
+    assert row["strict_components_met"] is True
+    assert row["strict_evidence_status"] == "diagnostic_underresolved"
+    assert row["resolution_deck_status"] == "diagnostic_underresolved"
+    assert row["resolution_deck_reasons"] == (
+        "nzeta_below_square_axis_recommendation,mgrid_nphi_not_multiple_of_nzeta"
+    )
+    assert "resolution_deck_diagnostic_underresolved" in row["strict_evidence_blockers"]
+    assert "mgrid_nphi_not_multiple_of_nzeta" in row["strict_evidence_blockers"]
+
+
 def test_square_coil_profile_summary_markdown_includes_virtual_casing_columns(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -269,6 +370,7 @@ def test_square_coil_profile_summary_markdown_includes_virtual_casing_columns(
     assert "virtual_casing_pressure_balance_rms" in out
     assert "finite_beta_total_field" in out
     assert "diagnostic_only" in out
+    assert "strict_production_evidence" in out
     assert "computed" in out
     assert "5e-06" in out
 

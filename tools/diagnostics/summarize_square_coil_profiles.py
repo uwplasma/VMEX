@@ -295,6 +295,109 @@ def _promotion_payload(
     )
 
 
+def _backend_role(backend_name: str) -> str:
+    """Return the intended use of one profile backend."""
+
+    key = str(backend_name).strip().lower()
+    if key == "vmec2000_mgrid":
+        return "vmec2000_mgrid_reference"
+    if key in {"vmec_jax_mgrid", "vmec_jax_mgrid_live"}:
+        return "vmec_jax_mgrid_parity"
+    if key in {"vmec_jax_direct", "vmec_jax_direct_live"}:
+        return "vmec_jax_direct_research"
+    return "diagnostic_backend"
+
+
+def _as_text_list(values: Any) -> list[str]:
+    if values is None:
+        return []
+    if isinstance(values, str):
+        return [values] if values else []
+    if isinstance(values, (list, tuple)):
+        return [str(value) for value in values if str(value)]
+    return [str(values)]
+
+
+def _strict_evidence_payload(
+    *,
+    status: Any,
+    backend_name: str,
+    requested_ftol: float | None,
+    strict_components_met: bool | None,
+    strict_gap: float | None,
+    next_action: str,
+    production_candidate: Any,
+    promotion_blockers: Any,
+    resolution_deck: dict[str, Any],
+    cfg: dict[str, Any],
+    tail_plateau_status: Any,
+) -> dict[str, Any]:
+    """Classify whether one row is evidence for a strict production solve.
+
+    VMEC's convergence contract is component-wise: fsqr, fsqz, and fsql must
+    each be below FTOL.  This helper combines that force gate with the cheap
+    geometry/grid gates so diagnostic rows are not confused with strict
+    ``1e-12`` convergence evidence.
+    """
+
+    blockers: list[str] = []
+    if requested_ftol is None:
+        blockers.append("requested_ftol_unknown")
+    elif float(requested_ftol) > 1.0e-12 * (1.0 + 1.0e-10):
+        blockers.append("requested_ftol_above_1e-12")
+
+    resolution_status = resolution_deck.get("status")
+    if resolution_status in {"diagnostic_underresolved", "diagnostic_gate_disabled"}:
+        blockers.append(f"resolution_deck_{resolution_status}")
+    blockers.extend(f"resolution_{reason}" for reason in _as_text_list(resolution_deck.get("reasons")))
+    if cfg.get("nzeta_underrecommended") is True:
+        blockers.append("nzeta_below_square_axis_recommendation")
+    if resolution_deck.get("mgrid_nphi_multiple_of_nzeta") is False:
+        blockers.append("mgrid_nphi_not_multiple_of_nzeta")
+
+    if strict_components_met is not True:
+        blockers.append("strict_components_unknown" if strict_components_met is None else "strict_components_not_met")
+
+    if production_candidate is not True:
+        blockers.append("promotion_not_ready")
+    blockers.extend(f"promotion_{reason}" for reason in _as_text_list(promotion_blockers))
+
+    if str(status or "").startswith("running"):
+        blockers.append("run_still_running")
+
+    unique_blockers = list(dict.fromkeys(blockers))
+    tail_status = "" if tail_plateau_status is None else str(tail_plateau_status)
+    if not unique_blockers:
+        evidence_status = "strict_production_evidence"
+    elif "resolution_deck_diagnostic_underresolved" in unique_blockers or any(
+        reason.startswith("resolution_") and reason != "resolution_deck_diagnostic_gate_disabled"
+        for reason in unique_blockers
+    ):
+        evidence_status = "diagnostic_underresolved"
+    elif "requested_ftol_above_1e-12" in unique_blockers:
+        evidence_status = "non_strict_ftol"
+    elif tail_status == "flat_above_stage_ftol":
+        evidence_status = "stalled_above_strict_ftol"
+    elif str(status or "").startswith("running") and next_action in {
+        "continue_current_schedule",
+        "continue_or_extend_if_budget_exhausts",
+        "increase_final_stage_budget_or_change_schedule",
+    }:
+        evidence_status = "running_toward_strict"
+    elif strict_gap is not None and np.isfinite(float(strict_gap)) and float(strict_gap) <= 100.0:
+        evidence_status = "near_strict_not_met"
+    elif strict_gap is not None and np.isfinite(float(strict_gap)) and float(strict_gap) > 100.0:
+        evidence_status = "underconverged"
+    else:
+        evidence_status = "not_strict_evidence"
+
+    return {
+        "backend_role": _backend_role(str(backend_name)),
+        "strict_evidence_status": evidence_status,
+        "strict_evidence_blockers": ",".join(unique_blockers),
+    }
+
+
 def _control_projection_delta_text(payload: dict[str, Any]) -> str | None:
     values = payload.get("radius_delta_by_label")
     if isinstance(values, dict):
@@ -593,6 +696,7 @@ def _summary_row(
     backend: dict[str, Any],
     cfg: dict[str, Any],
     projection: dict[str, Any],
+    resolution_deck: dict[str, Any] | None = None,
     status: str | None = None,
 ) -> dict[str, Any]:
     case = _case_name(path)
@@ -667,9 +771,24 @@ def _summary_row(
         remaining_iterations=remaining_iterations,
         vacuum_grid_exceeded_count=vacuum_grid_exceeded_count,
     )
+    resolution = resolution_deck if isinstance(resolution_deck, dict) else {}
+    strict_evidence = _strict_evidence_payload(
+        status=status if status is not None else backend.get("status"),
+        backend_name=backend_name,
+        requested_ftol=requested_ftol,
+        strict_components_met=strict_met,
+        strict_gap=strict_gap,
+        next_action=next_action,
+        production_candidate=promotion.get("production_candidate"),
+        promotion_blockers=promotion_blockers_text,
+        resolution_deck=resolution,
+        cfg=cfg,
+        tail_plateau_status=tail_plateau.get("status"),
+    )
     return {
         "case": case,
         "backend": backend_name,
+        **strict_evidence,
         "status": status if status is not None else backend.get("status"),
         "progress_phase": backend.get("progress_phase"),
         "force_rows_started": backend.get("force_rows_started"),
@@ -694,6 +813,8 @@ def _summary_row(
         "strict_gap": strict_gap,
         "remaining_iterations": remaining_iterations,
         "next_action": next_action,
+        "resolution_deck_status": resolution.get("status"),
+        "resolution_deck_reasons": ",".join(_as_text_list(resolution.get("reasons"))),
         "boundary_mode_count": projection.get("mode_count"),
         "boundary_recommended_nzeta": projection.get("recommended_nzeta"),
         "max_boundary_projection_error": cfg.get("max_boundary_projection_error"),
@@ -812,6 +933,8 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
     cfg = cfg if isinstance(cfg, dict) else {}
     projection = data.get("boundary_projection", {})
     projection = projection if isinstance(projection, dict) else {}
+    resolution_deck = data.get("resolution_deck", {})
+    resolution_deck = resolution_deck if isinstance(resolution_deck, dict) else {}
     rows: list[dict[str, Any]] = []
     for backend_name, backend in sorted((data.get("backends", {}) or {}).items()):
         if isinstance(backend, dict):
@@ -822,6 +945,7 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                     backend=backend,
                     cfg=cfg,
                     projection=projection,
+                    resolution_deck=resolution_deck,
                 )
             )
     return rows
@@ -983,6 +1107,9 @@ def main(argv: list[str] | None = None) -> int:
     fields = [
         "case",
         "backend",
+        "backend_role",
+        "strict_evidence_status",
+        "strict_evidence_blockers",
         "status",
         "progress_phase",
         "force_rows_started",
@@ -1007,6 +1134,8 @@ def main(argv: list[str] | None = None) -> int:
         "strict_gap",
         "remaining_iterations",
         "next_action",
+        "resolution_deck_status",
+        "resolution_deck_reasons",
         "boundary_mode_count",
         "boundary_recommended_nzeta",
         "max_boundary_projection_error",

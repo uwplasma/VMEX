@@ -5738,8 +5738,6 @@ Visual validation:
 
 No user input is needed.
 
----
-
 ## 266. Promoted Reduced-Control Projection To Source API
 
 ### Steps taken
@@ -30740,6 +30738,117 @@ Results:
 - Square-axis spline-smoothed Fourier closure lane: `100%`.
 - Strict production deck gating lane: `100%`.
 - True spline/control-basis hybrid lane: `61%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 263. Added Strict Evidence Classification For Square-Coil Profiles
+
+### Steps taken
+
+- Rechecked the live branch, draft PR, and active `office` profiling jobs.
+- Re-audited DESC, VMEC2000/STELLOPT, and `virtual_casing_jax` source anchors
+  for free-boundary residual interpretation.
+- Added strict-readiness columns to
+  `tools/diagnostics/summarize_square_coil_profiles.py`:
+  - `backend_role`;
+  - `strict_evidence_status`;
+  - `strict_evidence_blockers`;
+  - `resolution_deck_status`;
+  - `resolution_deck_reasons`.
+- Wired profile `resolution_deck` payloads into the summary classifier.
+- Updated the convergence document with the current VMEC2000/direct-coil
+  interpretation, DESC/virtual-casing findings, and the new summary columns.
+
+### Results obtained
+
+- Rows run at loose `FTOL` are now explicitly labelled `non_strict_ftol`.
+- Rows with low `NZETA`, failed projection gates, or incompatible `mgrid_nphi`
+  are now labelled `diagnostic_underresolved`, even if force components are
+  small.
+- A row is labelled `strict_production_evidence` only when:
+  - requested `FTOL` is `1e-12` or tighter;
+  - all three VMEC force components pass component-wise;
+  - fresh residual / finite-beta promotion gates pass;
+  - the square-axis projection, `NZETA`, and mgrid-plane deck gate is
+    production-ready.
+- Current live profiling status remains:
+  - VMEC2000/generated-mgrid is the fastest and most robust reference path, but
+    the active `MPOL=5, NTOR=28, NZETA=64` row is still not at `1e-12`.
+  - Direct-coil GPU rows on the matched `control_spline` deck remain
+    differentiable research rows, currently around the `1e-6` force scale in
+    their active `1e-10` stage.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_parser_accepts_control_spline_axis_kind
+```
+
+Result: `16 passed`.
+
+Additional tranche validation:
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_square_coil_resolution_matrix.py
+ruff check \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/square_coil_resolution_matrix.py \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_square_coil_resolution_matrix.py
+venv/bin/python -m py_compile \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/square_coil_resolution_matrix.py
+git diff --check
+```
+
+Results: `40 passed, 1 warning`; ruff, py-compile, and whitespace checks
+passed.
+
+### File structure and best-practice notes
+
+- Interpretation logic stays in the profile summarizer, not in the solver.
+- Solver code can still run diagnostic decks, but summary output now prevents
+  underresolved or loose-tolerance rows from being mistaken for strict
+  evidence.
+- No generated WOUTs, mgrid files, figures, or raw profile outputs were added
+  to git.
+- The documentation remains the single convergence-plan source for this lane.
+
+### Best next steps
+
+1. Let the active VMEC2000 row and the two active direct-GPU rows finish; do
+   not launch another identical heavy row while they are consuming resources.
+2. Summarize their final strict-evidence status with the new classifier.
+3. If VMEC2000 remains plateaued above `1e-12`, run the next `DELT` /
+   stage-budget scan on a production-ready `control_spline` deck, not on a
+   Fourier-only underresolved deck.
+4. Start the solver-native reduced spline-control prototype only after the
+   accepted-boundary projection diagnostics show the solved LCFS motion is well
+   captured by the low-dimensional controls.
+
+### Completion percentages after M263
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `97%`.
+- VMEC2000 robustness/reference lane: `97%`, active row still running.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `80%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `77%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- Strict production deck gating lane: `100%`.
+- Strict profile-evidence classification lane: `100%`.
+- True spline/control-basis hybrid lane: `62%`.
 - Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
 
 ### User input needed

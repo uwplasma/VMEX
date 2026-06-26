@@ -210,11 +210,17 @@ The active strict reference has now moved to the projection-gated
 ``axis_kind="spline"``; the follow-up commands use ``axis_kind="control_spline"``,
 which gives the same low-bandwidth rounded-square projection for the default
 uniform controls. The current VMEC2000 row is still
-running, not converged: a copied live sidecar snapshot at final-stage iteration
-``5927`` reports summed residual about ``3.67e-11``, max component about
-``1.78e-11``, strict gap about ``17.8``, and no vacuum-grid overflow. The
-tail is still decreasing slowly, so the row should finish before launching the
-prepared ``DELT``/stage-budget follow-up scan.
+running, not converged: a live sidecar snapshot at final-stage iteration
+``10307`` reports summed residual about ``2.31e-11``, max component about
+``1.11e-11``, strict gap about ``11.1``, and no vacuum-grid overflow. The tail
+is still decreasing slowly but is close enough to a floor that simply launching
+another identical VMEC2000 row is not useful. VMEC2000 is therefore the
+robustness and speed reference for generated-``mgrid`` studies, but it has not
+solved the strict ``1e-12`` problem for this square-axis deck. The direct JAX
+GPU rows on the matched ``control_spline`` deck are still much farther from
+strict tolerance, around the ``1e-6`` force scale in their current ``1e-10``
+stage, so they remain differentiable research rows rather than production
+evidence.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -406,6 +412,19 @@ high-order singular quadrature. The direct-coil convergence lane should use it
 as an optional diagnostic dependency rather than copying DESC's singular
 integral implementation into ``vmec_jax``.
 
+DESC's source and PR history reinforce the same split. ``VacuumBoundaryError``
+is the cheap vacuum normal-field objective, while finite-beta
+``BoundaryError`` uses the total exterior field, including the plasma
+contribution from virtual casing. DESC PRs in this area added the original
+free-boundary objectives, multiple magnetic-field support, singular-integral
+chunking, and zero-pressure special handling. Two open DESC efforts are also
+important for our next steps: a discretization-error patch for
+pressure-balance optimization and a non-singular BIE / improved
+FFT-interpolation branch. The lesson for ``vmec_jax`` is to avoid treating
+coil-only ``B.n`` as a finite-beta residual and to add accepted-boundary
+pressure-balance/provider-parity diagnostics before claiming that a direct-coil
+stall is purely an optimizer problem.
+
 VMEC2000 remains the robustness baseline for ``mgrid`` free-boundary solves.
 The branch now includes a native
 ``vmec_jax.external_fields.write_mgrid_from_coils`` helper and a square-coil
@@ -441,6 +460,17 @@ For active VMEC2000 rows, the profiler and summary table now also report
 recent relative span is small while the last residual remains above the current
 stage tolerance; those rows should be treated as stalled until a
 ``DELT``/stage-budget scan moves the floor.
+The summary table also carries an explicit strict-evidence classifier:
+``backend_role``, ``strict_evidence_status``, ``strict_evidence_blockers``,
+``resolution_deck_status``, and ``resolution_deck_reasons``. A row is strict
+production evidence only if the requested ``FTOL`` is ``1e-12`` or tighter,
+all three final VMEC force components pass that tolerance, the appropriate
+fresh residual/finite-beta promotion gates pass, and the cheap
+projection/``NZETA``/``mgrid_nphi`` deck gate is production-ready. Rows run at
+``FTOL=1e-8`` or ``1e-10`` are labelled ``non_strict_ftol`` even when they
+converge to that looser target. Rows with bad Fourier projection, low
+``NZETA``, or mgrid-plane mismatch are labelled ``diagnostic_underresolved``
+even if their force components happen to be small.
 
 Finite-beta mirror validation should check the sign of the magnetic response,
 not only numerical convergence. Ideal MHD force balance gives the familiar
