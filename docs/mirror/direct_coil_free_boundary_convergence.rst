@@ -411,7 +411,7 @@ cheaper ``VacuumBoundaryError`` is valid only when pressure and plasma current
 vanish. This matches the interpretation here: coil-only ``B.n`` is a vacuum
 diagnostic, not a finite-beta promotion criterion.
 The repository now exposes the same postsolve diagnostic through
-``vmec_jax.free_boundary_validation.virtual_casing_diagnostics_from_run``.
+``vmec_jax.solvers.free_boundary.validation.virtual_casing_diagnostics_from_run``.
 It samples the solved LCFS, the total VMEC surface field, and the direct-coil
 external field, then reports the virtual-casing external normal-field residual
 and finite-beta pressure-balance residual. The square-coil backend profiler can

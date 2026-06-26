@@ -35,7 +35,7 @@ from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_ru
 from vmec_jax.external_fields import build_coil_field_geometry, write_mgrid_from_coils
 from vmec_jax.fourier import eval_fourier
 from vmec_jax.free_boundary import _sample_external_boundary_arrays
-from vmec_jax.free_boundary_validation import (
+from vmec_jax.solvers.free_boundary.validation import (
     free_boundary_promotion_status,
     virtual_casing_diagnostics_from_run,
 )

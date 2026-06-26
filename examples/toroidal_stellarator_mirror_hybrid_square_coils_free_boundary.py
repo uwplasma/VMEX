@@ -34,7 +34,7 @@ from vmec_jax.external_fields import (
     ellipse_coil_field_params,
 )
 from vmec_jax.fieldlines import FieldLine, trace_fieldline_on_surface
-from vmec_jax.free_boundary_validation import (
+from vmec_jax.solvers.free_boundary.validation import (
     free_boundary_promotion_status,
     sample_solved_boundary_field,
     virtual_casing_diagnostics_from_run,

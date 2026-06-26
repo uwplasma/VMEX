@@ -588,6 +588,65 @@ class _ResidualFreeBoundarySetup(NamedTuple):
     attach_diag: Any
 
 
+class _FreeBoundaryEdgeControlProjector:
+    """Apply optional reduced-control projection to free-boundary edge states."""
+
+    def __init__(
+        self,
+        payload: Any,
+        *,
+        indata: Any,
+        static: Any,
+        state0: VMECState,
+        free_boundary_enabled: bool,
+        use_scan: bool,
+        jit_strict_update_enabled: bool,
+    ) -> None:
+        self.projection = _prepare_freeb_edge_control_projection(
+            payload,
+            indata=indata,
+            static=static,
+            state0=state0,
+            free_boundary_enabled=bool(free_boundary_enabled),
+        )
+        self.info = dict(self.projection.get("info", {"enabled": False, "reason": "not_requested"}))
+        self.enabled = bool(self.projection.get("enabled", False))
+        self.apply_count = 0
+        self.use_scan = bool(use_scan)
+        self.jit_strict_update_enabled = bool(jit_strict_update_enabled)
+        if self.enabled:
+            self.jit_strict_update_enabled = False
+            if self.use_scan:
+                self.use_scan = False
+                self.info["scan_disabled"] = True
+
+    def apply(self, state_in: VMECState, *, host_update: bool) -> VMECState:
+        if not self.enabled:
+            return state_in
+        self.apply_count += 1
+        return _project_freeb_edge_control_state(
+            state_in,
+            self.projection,
+            host_update=bool(host_update),
+        )
+
+    def wrap_candidate(self, candidate_from_delta_tuple):
+        if not self.enabled:
+            return candidate_from_delta_tuple
+
+        def _candidate_from_delta_tuple_projected(deltas, **candidate_kwargs):
+            candidate = candidate_from_delta_tuple(deltas, **candidate_kwargs)
+            return self.apply(
+                candidate,
+                host_update=bool(
+                    candidate_kwargs.get("use_numpy_arrays", False)
+                    or candidate_kwargs.get("use_numpy_enforce", False)
+                ),
+            )
+
+        return _candidate_from_delta_tuple_projected
+
+
 def _prepare_residual_free_boundary_setup(
     *,
     cfg: Any,
@@ -845,8 +904,7 @@ def solve_fixed_boundary_residual_iter(
         vmec_angle_grid_func=vmec_angle_grid,
     )
     _record_setup_timing("setup_static_grid_rebuild", _t_setup_static_grid)
-    # Free-boundary control + coupling path:
-    # VMEC-style ivac/ivacskip cadence with edge bsqvac coupling.
+    # VMEC-style free-boundary ivac/ivacskip cadence with edge bsqvac coupling.
     _t_setup_freeb_policy = _setup_timer_start()
     freeb_setup = _prepare_residual_free_boundary_setup(
         cfg=cfg,
@@ -866,23 +924,20 @@ def solve_fixed_boundary_residual_iter(
     _attach_freeb_diag = freeb_setup.attach_diag
     _record_setup_timing("setup_freeb_policy", _t_setup_freeb_policy)
 
-    freeb_edge_control_projection = _prepare_freeb_edge_control_projection(
+    freeb_edge_control_projector = _FreeBoundaryEdgeControlProjector(
         free_boundary_edge_control_projection,
         indata=indata,
         static=static,
         state0=state0,
         free_boundary_enabled=bool(free_boundary_enabled),
+        use_scan=bool(use_scan),
+        jit_strict_update_enabled=bool(jit_strict_update_enabled),
     )
-    freeb_edge_control_projection_info = dict(
-        freeb_edge_control_projection.get("info", {"enabled": False, "reason": "not_requested"})
-    )
-    freeb_edge_control_projection_enabled = bool(freeb_edge_control_projection.get("enabled", False))
-    freeb_edge_control_projection_apply_count = 0
-    if bool(freeb_edge_control_projection_enabled):
-        jit_strict_update_enabled = False
-        if bool(use_scan):
-            use_scan = False
-            freeb_edge_control_projection_info["scan_disabled"] = True
+    freeb_edge_control_projection = freeb_edge_control_projector.projection
+    freeb_edge_control_projection_info = freeb_edge_control_projector.info
+    freeb_edge_control_projection_enabled = freeb_edge_control_projector.enabled
+    use_scan = freeb_edge_control_projector.use_scan
+    jit_strict_update_enabled = freeb_edge_control_projector.jit_strict_update_enabled
 
     _t_setup_boundary_profiles = _setup_timer_start()
     boundary_setup = _prepare_residual_boundary_setup(
@@ -998,11 +1053,8 @@ def solve_fixed_boundary_residual_iter(
         else np.asarray(lambda_update_scale, dtype=_state_dtype)
     )
 
-    # VMEC stores Fourier coefficients in an internal (mscale/nscale) basis and
-    # uses `scalxc` to represent odd-m modes in 1/sqrt(s) form. The force pipeline
-    # applies `scalxc` after `tomnsps` (see `funct3d.f: gc = gc*scalxc`) so the
-    # residual/preconditioner updates operate in the same internal coefficient
-    # space as `VMECState`.
+    # Keep updates in VMEC's internal coefficient basis; `funct3d` applies
+    # `scalxc` after `tomnsps` before residual/preconditioner updates.
 
     _t_setup_cache_key_hash = _setup_timer_start()
     (
@@ -1271,18 +1323,7 @@ def solve_fixed_boundary_residual_iter(
     _zeros_dR_np = index_state_setup.zeros_dR_np
     delta_s = index_state_setup.delta_s
 
-    def _project_freeb_edge_control(state_in: VMECState, *, host_update: bool) -> VMECState:
-        nonlocal freeb_edge_control_projection_apply_count
-        if not bool(freeb_edge_control_projection_enabled):
-            return state_in
-        freeb_edge_control_projection_apply_count += 1
-        return _project_freeb_edge_control_state(
-            state_in,
-            freeb_edge_control_projection,
-            host_update=bool(host_update),
-        )
-
-    state = _project_freeb_edge_control(
+    state = freeb_edge_control_projector.apply(
         state,
         host_update=bool(host_update_assembly or setup_host_enforce),
     )
@@ -1432,10 +1473,7 @@ def solve_fixed_boundary_residual_iter(
     velocity_blocks = _initial_velocity.velocities
     max_coeff_delta_rms = _initial_velocity.max_coeff_delta_rms
     max_update_rms = _initial_velocity.max_update_rms
-    # VMEC runvmec/funct3d cadence starts free-boundary control at ivac=0.
-    # Starting at -1 delays vacuum turn-on by one accepted iteration.
-    # VMEC initializes ivac=-1 (reset_params.f), then promotes to 0/1/...
-    # once free-boundary activation criteria are met.
+    # VMEC initializes ivac=-1, then promotes to 0/1/... after activation.
     freeb_loop_state = _runtime_initial_free_boundary_loop_state(
         nvacskip=int(freeb_nvacskip),
         nvskip0=int(freeb_nvskip0),
@@ -1461,9 +1499,6 @@ def solve_fixed_boundary_residual_iter(
     )
 
     k_preconditioner_update_interval = controller_constants.preconditioner_update_interval
-    # Restart trigger factors:
-    # - bad_jacobian: time_step *= 0.9
-    # - bad_progress: time_step /= 1.03
     restart_badjac_factor = controller_constants.restart_badjac_factor
     restart_badprog_factor = controller_constants.restart_badprog_factor
     vmec2000_fact = controller_constants.vmec2000_fact
@@ -1485,11 +1520,7 @@ def solve_fixed_boundary_residual_iter(
     _print_vmec2000_iter_row = print_context.print_iter_row
     _should_print_vmec2000 = print_context.should_print
 
-    # VMEC2000 caches 1D preconditioner/norm/tcon updates every `ns4` iterations
-    # (vmec_params.f: ns4=25), reusing the cached values between refreshes.
-    # This materially affects the nonlinear iteration trace because the
-    # Garabedian time-step control depends on ratios of the *preconditioned*
-    # residual scalars.
+    # VMEC2000 reuses ns4=25 preconditioner/norm/tcon blocks between refreshes.
     precond_cache = _PreconditionerCacheState()
     cache_constraint_rcon0 = None
     cache_constraint_zcon0 = None
@@ -1677,8 +1708,7 @@ def solve_fixed_boundary_residual_iter(
         cache_constraint_rcon0 = None
         cache_constraint_zcon0 = None
 
-    # Cache os.getenv calls that would otherwise be repeated every iteration
-    # in the hot loop below (saves ~9 os.getenv calls × ~2144 iters = ~19k calls).
+    # Cache hot-loop environment switches once per solve.
     _env_freeb_include_edge = _runtime_env_enabled(os.getenv("VMEC_JAX_FREEB_INCLUDE_EDGE", "0"))
     _env_force_edge_residual = os.getenv("VMEC_JAX_FORCE_EDGE_RESIDUAL", "").strip().lower()
     _env_freeb_raise = _runtime_env_enabled(os.getenv("VMEC_JAX_FREEB_RAISE", ""))
@@ -1708,10 +1738,7 @@ def solve_fixed_boundary_residual_iter(
             pre_restart_reason = "none"
             if time_step_report_hold is None:
                 time_step_report_hold = float(time_step)
-            # VMEC vacuum.f promotes ivac=0 -> 1 inside the vacuum solve.
-            # Keep both values: pre-vacuum (`freeb_ivac`) for cadence/calls,
-            # and post-vacuum effective (`freeb_ivac_effective`) for force/
-            # residue gating in this same iteration.
+            # Keep pre-vacuum ivac for cadence and effective ivac for force gating.
             freeb_control = _runtime_resolve_free_boundary_iteration_controls(
                 free_boundary_enabled=bool(free_boundary_enabled),
                 controls_cached=freeb_controls_cached,
@@ -1750,8 +1777,7 @@ def solve_fixed_boundary_residual_iter(
             iter_since_restart = control_sample.iter_since_restart
             zero_m1_val = control_sample.zero_m1_value
             if host_update_assembly and _jnp_zero_m1_0 is not None:
-                # Use pre-cached JAX scalars to avoid jnp.asarray dispatch + dtype
-                # lookup every iteration (saves 2 apply_primitive calls per iter).
+                # Reuse cached JAX scalars to avoid per-iteration dispatch.
                 zero_m1 = _jnp_zero_m1_1 if zero_m1_val > 0.5 else _jnp_zero_m1_0
             else:
                 zero_m1 = jnp.asarray(zero_m1_val, dtype=jnp.asarray(state.Rcos).dtype)
@@ -1789,8 +1815,7 @@ def solve_fixed_boundary_residual_iter(
             constraint_precond_active = constraint_channels.precond_active
             constraint_tcon_active = constraint_channels.tcon_active
 
-            # Free-boundary WP2 scaffold: run/update the NESTOR-like external
-            # vacuum solve and couple bsqvac on the edge slice into bcovar.
+            # Run/update NESTOR-like external vacuum coupling on the edge slice.
             freeb_plascur_for_bsqvac = float(freeb_plascur)
             freeb_coupling = _runtime_resolve_free_boundary_coupling_runtime(
                 free_boundary_enabled=bool(free_boundary_enabled),
@@ -1876,18 +1901,9 @@ def solve_fixed_boundary_residual_iter(
                 use_numpy_enforce=False,
                 candidate_from_deltas=_candidate_state_from_deltas,
             )
-            if bool(freeb_edge_control_projection_enabled):
-                _candidate_state_from_delta_tuple_base = _candidate_state_from_delta_tuple
-
-                def _candidate_state_from_delta_tuple(deltas, **candidate_kwargs):
-                    candidate = _candidate_state_from_delta_tuple_base(deltas, **candidate_kwargs)
-                    return _project_freeb_edge_control(
-                        candidate,
-                        host_update=bool(
-                            candidate_kwargs.get("use_numpy_arrays", False)
-                            or candidate_kwargs.get("use_numpy_enforce", False)
-                        ),
-                    )
+            _candidate_state_from_delta_tuple = freeb_edge_control_projector.wrap_candidate(
+                _candidate_state_from_delta_tuple
+            )
 
             constraint_rcon0_current = None
             constraint_zcon0_current = None
@@ -1897,9 +1913,7 @@ def solve_fixed_boundary_residual_iter(
                 and (cache_constraint_rcon0 is not None)
                 and (cache_constraint_zcon0 is not None)
             ):
-                # VMEC keeps rcon0/zcon0 as persistent baselines; once free-
-                # boundary control is active, damp them by 0.9 on reuse steps.
-                # The first turn-on iteration keeps the pre-turn-on baseline.
+                # VMEC damps persistent rcon0/zcon0 baselines on reuse steps.
                 if _free_boundary_should_damp_constraint_baseline(
                     freeb_ivac=int(freeb_ivac),
                     freeb_turnon_iter=bool(freeb_turnon_iter),
@@ -2064,9 +2078,7 @@ def solve_fixed_boundary_residual_iter(
                 fsqr_f, fsqz_f, fsql_f = _device_get_floats(fsqr, fsqz, fsql)
             force_state_pre_current = state
             if bool(free_boundary_enabled) and bool(freeb_turnon_iter) and (not bool(freeb_turnon_applied)):
-                # VMEC restarts funct3d immediately after the first
-                # free-boundary turn-on solve, keeping the cached ns4 blocks
-                # intact across the same-iteration retry.
+                # Restart immediately after first free-boundary turn-on.
                 turnon_update = _host_free_boundary_turnon_restart_update(
                     state_checkpoint=state_checkpoint,
                     time_step=float(time_step),
@@ -2093,9 +2105,7 @@ def solve_fixed_boundary_residual_iter(
                 preserve_turnon_restart=bool(free_boundary_enabled) and bool(cfg.lthreed),
             )
 
-            # VMEC printout uses r00 = r1(1,0): axis R at theta=0, zeta=0,
-            # evaluated in real space after scalxc (see funct3d.f).
-            # For parity diagnostics, sample these scalars on VMEC's screen cadence.
+            # Match VMEC's screen-cadence real-space axis scalars.
             sample_vmec = bool(vmec2000_control) and _vmec2000_cadence_selected(
                 iter_idx=int(iter2),
                 max_iter=int(max_iter),
@@ -2142,9 +2152,7 @@ def solve_fixed_boundary_residual_iter(
                 fsql=fsql_f,
                 include_edge=bool(include_edge),
             )
-            # Defer convergence exit until after preconditioned diagnostics are
-            # computed for this iteration, so fsqr1/fsqz1/fsql1 histories and
-            # VMEC-style tables remain length-aligned.
+            # Defer convergence until diagnostics and VMEC-style rows align.
             converged_physical = _residual_convergence_flags(
                 fsqr=fsqr_f,
                 fsqz=fsqz_f,
@@ -2262,9 +2270,7 @@ def solve_fixed_boundary_residual_iter(
             t_iteration_control_fsq1_start = time.perf_counter() if timing_enabled else None
 
             if startup_policy.auto_flip_force and it == 0:
-                # Choose force direction by a tiny trial step on the VMEC residual
-                # (fsqr+fsqz+fsql), not magnetic energy. Energy monotonicity is not a
-                # reliable proxy for VMEC's preconditioned convergence metrics.
+                # Choose force direction by residual, not magnetic energy monotonicity.
                 w_curr = float(fsqr_f + fsqz_f + fsql_f)
                 # Use a probe step that is large enough to be numerically decisive,
                 # but still small relative to typical pseudo-time updates.
@@ -2475,9 +2481,7 @@ def solve_fixed_boundary_residual_iter(
             )
 
             if converged_physical:
-                # Keep per-iteration history channels length-aligned with
-                # fsqr/fsqz/fsql when convergence happens before the update
-                # block. VMEC's table still reports DELT on this row.
+                # Keep histories aligned when convergence happens before update.
                 _append_current_zero_update_history(
                     restart_path="converged",
                     step_status="converged",
@@ -2598,8 +2602,7 @@ def solve_fixed_boundary_residual_iter(
             else:
                 history_lists.append_bad_jacobian(track_history, float("nan"), float("nan"), False)
 
-            # VMEC eqsolve: after the first evolve step, if the Jacobian is bad
-            # and ijacob==0, retry with an improved axis guess.
+                # VMEC eqsolve retries with an improved axis guess on first bad Jacobian.
             if bool(vmec2000_control) and (not axis_reset_done) and bool(lmove_axis) and (iter2 == 1):
                 axis_runtime_result = _run_initial_axis_reset_runtime(
                     state=state,
@@ -2628,9 +2631,7 @@ def solve_fixed_boundary_residual_iter(
                     freeb_controls_cached = None
                     precond_cache.clear()
                     _pop_iteration_histories()
-                    # VMEC restarts the iteration after axis reset without
-                    # advancing the iteration counter. Emulate that by
-                    # repeating iter2==1 on the next loop pass.
+                        # Repeat iter2==1 after VMEC-style axis reset.
                     if axis_runtime_result.repeat_iteration:
                         iter_offset -= 1
                     _record_timing("iteration_control_badjac", t_iteration_control_badjac_start)
@@ -3160,6 +3161,7 @@ def solve_fixed_boundary_residual_iter(
         skip_time_control = False
         _record_timing("iteration_post_update", t_iteration_post_update_start)
 
+    freeb_edge_control_projection_apply_count = freeb_edge_control_projector.apply_count
     return _finalize_residual_iter_from_namespace(
         locals(),
         result_type=SolveVmecResidualResult,

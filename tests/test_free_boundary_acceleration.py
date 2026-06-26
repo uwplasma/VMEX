@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from vmec_jax.free_boundary_acceleration import (
+from vmec_jax.solvers.free_boundary.acceleration import (
     AndersonPressureHistory,
     anderson1_vacuum_pressure_update,
 )

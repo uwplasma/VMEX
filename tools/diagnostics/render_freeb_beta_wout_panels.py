@@ -28,7 +28,7 @@ from vmec_jax.plotting import (  # noqa: E402
     prepare_matplotlib_3d,
     surface_rz_from_wout_physical,
 )
-from vmec_jax.free_boundary_validation import (  # noqa: E402
+from vmec_jax.solvers.free_boundary.validation import (  # noqa: E402
     free_boundary_response_metrics,
     wout_beta_percent,
     wout_fsq_total,

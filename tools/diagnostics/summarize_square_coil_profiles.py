@@ -19,7 +19,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1
-from vmec_jax.free_boundary_validation import free_boundary_promotion_status
+from vmec_jax.solvers.free_boundary.validation import free_boundary_promotion_status
 
 
 DEFAULT_GLOB = "results/square_coil_freeb_backend_profile_*/square_coil_free_boundary_backend_profile.json"

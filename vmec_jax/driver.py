@@ -1016,15 +1016,11 @@ def run_fixed_boundary(
 ):
     """Run a VMEC solve from an ``input.*`` file.
 
-    This is the main public fixed-boundary driver and the backward-compatible
-    entry point for free-boundary decks with ``LFREEB = T``. Prefer
-    :func:`run_free_boundary` when the free-boundary mode should be explicit.
-
-    Common controls are ``solver`` (``"vmec2000_iter"``, ``"gd"``, ``"lbfgs"``,
-    ``"vmec_lbfgs"``, or ``"vmec_gn"``), ``solver_mode`` (``"default"``,
-    ``"parity"``, or ``"accelerated"``), ``solver_device`` (``None``,
-    ``"default"``, ``"cpu"``, or ``"gpu"``), restart inputs, and VMEC iteration
-    budgets. Full option details are documented in the user guide.
+    This is the public fixed-boundary driver and the compatibility entry point
+    for ``LFREEB = T`` decks. Prefer :func:`run_free_boundary` when the
+    free-boundary mode should be explicit. Common controls include ``solver``,
+    ``solver_mode``, ``solver_device``, restart inputs, and VMEC iteration
+    budgets; full option details are documented in the user guide.
     """
     t_start = time.perf_counter()
     max_iter_overridden = max_iter is not _MAX_ITER_SENTINEL
