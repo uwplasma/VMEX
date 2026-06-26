@@ -174,6 +174,61 @@ def _tail_projection(backend: dict[str, Any], key: str, *, target: float | None 
     return _finite_float(estimates.get(f"{float(target):.0e}"))
 
 
+def _vmec2000_tail_projection(rows: list[Any], *, length: int = 12) -> dict[str, Any]:
+    """Estimate residual decay per VMEC2000 iteration from the current stage tail."""
+
+    pairs: list[tuple[int, float]] = []
+    last_it: int | None = None
+    for row in reversed(list(rows)):
+        try:
+            it = int(row.it)
+            total = float(row.fsqr) + float(row.fsqz) + float(row.fsql)
+        except Exception:
+            continue
+        if not np.isfinite(total) or total <= 0.0:
+            continue
+        if last_it is not None and it >= last_it:
+            break
+        pairs.append((it, total))
+        last_it = it
+        if len(pairs) >= int(length):
+            break
+    pairs.reverse()
+    out: dict[str, Any] = {
+        "window": len(pairs),
+        "monotone_decrease_fraction": None,
+        "per_iter_log_slope": None,
+        "per_iter_factor": None,
+        "estimated_additional_iterations_to_target": {},
+    }
+    if len(pairs) < 2:
+        return out
+    iters = np.asarray([pair[0] for pair in pairs], dtype=float)
+    totals = np.asarray([pair[1] for pair in pairs], dtype=float)
+    diffs = np.diff(totals)
+    out["monotone_decrease_fraction"] = float(np.mean(diffs < 0.0)) if diffs.size else None
+    try:
+        slope, _intercept = np.polyfit(iters, np.log(totals), 1)
+    except Exception:
+        return out
+    if not np.isfinite(slope):
+        return out
+    out["per_iter_log_slope"] = float(slope)
+    out["per_iter_factor"] = float(np.exp(slope))
+    last = float(totals[-1])
+    estimates: dict[str, int | None] = {}
+    for target in (1.0e-12,):
+        key = f"{target:.0e}"
+        if last <= target:
+            estimates[key] = 0
+        elif slope < 0.0:
+            estimates[key] = int(np.ceil(np.log(target / last) / slope))
+        else:
+            estimates[key] = None
+    out["estimated_additional_iterations_to_target"] = estimates
+    return out
+
+
 def _summary_row(
     *,
     path: Path,
@@ -336,6 +391,9 @@ def _vmec2000_partial_payload_from_threed1(path: Path) -> dict[str, Any]:
         "iteration_row_count": len(rows),
         "last_row": None if last is None else _vmec2000_row_payload(last),
         "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
+        "history": {
+            "fsq_component_sum_tail_projection": _vmec2000_tail_projection(rows),
+        },
         "final_max_component": None
         if last is None
         else float(max(float(last.fsqr), float(last.fsqz), float(last.fsql))),

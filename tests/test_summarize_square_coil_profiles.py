@@ -202,6 +202,8 @@ def test_square_coil_profile_summary_reads_active_vmec2000_threed1(tmp_path: Pat
     assert row["final_total"] == pytest.approx(6.3e-11)
     assert row["final_max_component"] == pytest.approx(3.0e-11)
     assert row["strict_components_met"] is False
+    assert row["tail_decay_factor"] == pytest.approx(0.9994733361578259)
+    assert row["iters_to_1e-12_est"] == pytest.approx(7865)
 
 
 def test_square_coil_profile_summary_prefers_active_partial_sidecar(tmp_path: Path):

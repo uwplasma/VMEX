@@ -26705,3 +26705,63 @@ Focused results:
 
 No user input is needed. The next steps are remote launcher hygiene and waiting
 for the active numerical profiles to produce final rows.
+
+---
+## 222. Active VMEC2000 Tail Projection
+
+### Steps taken
+
+- Added a VMEC2000-specific residual tail projection to
+  ``tools/diagnostics/summarize_square_coil_profiles.py``.
+- The projection fits ``log(final_total)`` against the actual printed
+  VMEC2000 iteration labels on the current stage suffix, so it does not mix
+  rows across ``NS`` stage resets.
+- Extended the active-``threed1`` summary test to check the per-iteration
+  decay factor and estimated additional iterations to ``1e-12``.
+
+### Results obtained
+
+- Active VMEC2000 profile rows now populate ``tail_decay_factor`` and
+  ``iters_to_1e-12_est`` even before the final profile JSON exists.
+- This makes the ``7,28`` and queued ``8,32`` VMEC2000 robustness runs easier
+  to interpret quantitatively: a flat or positive fitted slope means a
+  resolution/algorithm change is needed; a negative fitted slope gives a rough
+  iteration-budget estimate.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_summarize_square_coil_profiles.py
+venv/bin/python -m py_compile tools/diagnostics/summarize_square_coil_profiles.py
+```
+
+Results:
+
+- Summary tests: ``4 passed``.
+- Py-compile check passed.
+
+### File structure and best-practice notes
+
+- The change stays in the summary/reporting tool and its focused test.
+- It does not alter solver behavior, generated inputs, or profile JSON written
+  by existing running jobs.
+
+### Best next steps
+
+1. Push this reporting change and fast-forward ``office``.
+2. Re-summarize the active VMEC2000 ``7,28`` directory to record the projected
+   tail estimate.
+3. Continue waiting for final rows from VMEC2000 ``7,28`` and direct Anderson
+   ``6,23`` before making the next solver-control change.
+
+### Completion percentages after M222
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``75%``.
+- VMEC2000 robustness/reference lane: ``85%``.
+- Direct-coil GPU/JIT parity lane: ``70%``.
+- Direct-provider profiling/instrumentation lane: ``92%``.
+- Documentation and diagnostics for active profiling: ``98%``.
+
+### User input needed
+
+No user input is needed.
