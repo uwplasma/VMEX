@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -190,3 +193,42 @@ def test_square_coil_profile_summary_prefers_active_partial_sidecar(tmp_path: Pa
     assert row["requested_ftol"] == pytest.approx(1.0e-12)
     assert row["final_max_component"] == pytest.approx(9.0e-13)
     assert row["strict_components_met"] is True
+
+
+def test_square_coil_profile_summary_script_uses_repo_local_vmec_parser(tmp_path: Path):
+    """Running the script path should not import a stale installed vmec_jax."""
+
+    stale_pkg = tmp_path / "stale_pkg" / "vmec_jax"
+    stale_pkg.mkdir(parents=True)
+    (stale_pkg / "__init__.py").write_text("")
+    (stale_pkg / "vmec2000_exec.py").write_text(
+        "raise RuntimeError('stale vmec_jax.vmec2000_exec imported')\n"
+    )
+
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_vmec2000_ns17_mpol7_ntor28_nzeta64_niter24k"
+    workdir = case_dir / "vmec2000_mgrid"
+    workdir.mkdir(parents=True)
+    (workdir / "threed1.square_beta_00p000_mgrid").write_text(
+        "\n".join(
+            [
+                " NS =   17 NO. FOURIER MODES =  371 FTOLV =  1.000E-12 NITER =  24000",
+                " ITER    FSQR      FSQZ      FSQL      fsqr      fsqz      fsql      DELT",
+                "  200   4.00E-11  2.00E-11  1.00E-11  1.00E-12  2.00E-12  3.00E-12  2.00E-02",
+            ]
+        )
+        + "\n"
+    )
+
+    script = Path(__file__).resolve().parents[1] / "tools" / "diagnostics" / "summarize_square_coil_profiles.py"
+    env = {**os.environ, "PYTHONPATH": str(stale_pkg.parent)}
+    proc = subprocess.run(
+        [sys.executable, str(script), str(case_dir), "--markdown"],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+
+    assert "vmec2000_ns17_mpol7_ntor28_nzeta64_niter24k" in proc.stdout
+    assert "4e-11" in proc.stdout
