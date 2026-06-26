@@ -741,6 +741,10 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     data = json.loads(report.read_text())
     assert data["configuration"]["max_boundary_projection_error"] == pytest.approx(1.0)
     assert data["configuration"]["nstep"] == 3
+    assert data["configuration"]["ntheta"] == profile.recommended_square_axis_ntheta(3)
+    assert data["configuration"]["recommended_ntheta"] == profile.recommended_square_axis_ntheta(3)
+    assert data["configuration"]["ntheta_auto"] is True
+    assert data["configuration"]["ntheta_underrecommended"] is False
     projection = data["boundary_projection"]
     assert projection["mpol"] == 3
     assert projection["ntor"] == 4
@@ -786,6 +790,8 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert "spline_control_updates_not_enabled" in assessment["blockers"]
     deck = data["resolution_deck"]
     assert deck["status"] == "production_ready"
+    assert deck["ntheta"] == profile.recommended_square_axis_ntheta(3)
+    assert deck["ntheta_underrecommended"] is False
     assert deck["projection_meets_gate"] is True
     assert deck["mgrid_nphi_multiple_of_nzeta"] is True
 
@@ -900,6 +906,8 @@ def test_square_coil_profile_production_gate_auto_bumps_underrecommended_nzeta(
                 "28",
                 "--ns",
                 "5",
+                "--ntheta",
+                "16",
                 "--nzeta",
                 "32",
                 "--max-iter",
@@ -915,6 +923,10 @@ def test_square_coil_profile_production_gate_auto_bumps_underrecommended_nzeta(
     )
 
     data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    assert data["configuration"]["ntheta"] == profile.recommended_square_axis_ntheta(5)
+    assert data["configuration"]["ntheta_auto"] is False
+    assert data["configuration"]["ntheta_auto_bumped_to_recommended"] is True
+    assert data["configuration"]["ntheta_underrecommended"] is False
     assert data["configuration"]["nzeta"] == profile.recommended_square_axis_nzeta(28)
     assert data["configuration"]["nzeta_auto"] is False
     assert data["configuration"]["nzeta_auto_bumped_to_recommended"] is True
@@ -948,6 +960,8 @@ def test_square_coil_profile_production_gate_rejects_underrecommended_nzeta_with
                 "28",
                 "--ns",
                 "5",
+                "--ntheta",
+                "16",
                 "--nzeta",
                 "32",
                 "--mgrid-nphi",
@@ -991,6 +1005,8 @@ def test_square_coil_profile_projection_gate_disabled_allows_diagnostic_underrec
                 "28",
                 "--ns",
                 "5",
+                "--ntheta",
+                "16",
                 "--nzeta",
                 "32",
                 "--mgrid-nphi",
@@ -1011,7 +1027,10 @@ def test_square_coil_profile_projection_gate_disabled_allows_diagnostic_underrec
     deck = data["resolution_deck"]
     assert deck["status"] == "diagnostic_underresolved"
     assert "projection_gate_disabled" in deck["reasons"]
+    assert "ntheta_below_square_axis_recommendation" in deck["reasons"]
     assert "nzeta_below_square_axis_recommendation" in deck["reasons"]
+    assert data["configuration"]["ntheta"] == 16
+    assert data["configuration"]["ntheta_underrecommended"] is True
     assert data["control_basis"]["bases"]["square"]["reduced_count"] == 2
 
 
@@ -1040,6 +1059,8 @@ def test_square_coil_profile_defaults_nzeta_to_square_axis_recommendation(monkey
     )
 
     data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    assert data["configuration"]["ntheta"] == profile.recommended_square_axis_ntheta(5)
+    assert data["configuration"]["ntheta_auto"] is True
     assert data["configuration"]["nzeta"] == profile.recommended_square_axis_nzeta(12)
     assert data["configuration"]["nzeta_auto"] is True
     assert data["configuration"]["nzeta_underrecommended"] is False

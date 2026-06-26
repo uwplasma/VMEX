@@ -45,6 +45,7 @@ from vmec_jax.profiles import pressure_profile_to_vmec_am, standard_finite_beta_
 from vmec_jax.toroidal_hybrid import (
     SquareAxisSplineControls,
     recommend_square_axis_stellarator_mirror_hybrid_resolution,
+    recommended_square_axis_ntheta,
     recommended_square_axis_nzeta,
     square_axis_free_boundary_edge_control_projection_payload,
     square_axis_resolution_deck_status,
@@ -95,6 +96,7 @@ MPOL = 5
 NTOR = 28
 NS_ARRAY = (9, 13, 17)
 NS = NS_ARRAY[-1]
+NTHETA: int | None = None
 NZETA: int | None = None
 NITER_ARRAY = (4000, 8000, 24000)
 FTOL_ARRAY = (1.0e-8, 1.0e-10, 1.0e-12)
@@ -163,6 +165,7 @@ class ExampleConfig:
     ntor: int = NTOR
     ns: int = NS
     ns_array: tuple[int, ...] = NS_ARRAY
+    ntheta: int | None = NTHETA
     nzeta: int | None = NZETA
     max_iter: int = MAX_ITER
     ftol: float = FTOL
@@ -462,6 +465,20 @@ def _resolved_nzeta(config: ExampleConfig) -> int:
     return requested
 
 
+def _resolved_ntheta(config: ExampleConfig) -> int:
+    """Return the VMEC poloidal grid count for the current mode deck."""
+
+    recommended = int(recommended_square_axis_ntheta(int(config.mpol)))
+    if config.ntheta is None:
+        return recommended
+    requested = int(config.ntheta)
+    if requested <= 0:
+        return recommended
+    if config.max_boundary_projection_error is not None:
+        return int(max(requested, recommended))
+    return requested
+
+
 def _nzeta_resolution_payload(config: ExampleConfig) -> dict[str, Any]:
     """Summarize requested and effective toroidal-grid resolution."""
 
@@ -481,6 +498,23 @@ def _nzeta_resolution_payload(config: ExampleConfig) -> dict[str, Any]:
     }
 
 
+def _ntheta_resolution_payload(config: ExampleConfig) -> dict[str, Any]:
+    """Summarize requested and effective poloidal-grid resolution."""
+
+    requested = None if config.ntheta is None else int(config.ntheta)
+    recommended = int(recommended_square_axis_ntheta(int(config.mpol)))
+    effective = _resolved_ntheta(config)
+    return {
+        "requested_ntheta": requested,
+        "effective_ntheta": int(effective),
+        "recommended_ntheta": int(recommended),
+        "auto_defaulted": bool(requested is None or (requested is not None and requested <= 0)),
+        "auto_bumped_to_recommended": bool(
+            requested is not None and requested > 0 and int(effective) > int(requested)
+        ),
+    }
+
+
 def _run_budget(config: ExampleConfig, *, restart_state: Any | None) -> int:
     if bool(config.use_multigrid_schedule) and restart_state is None:
         return int(sum(int(value) for value in config.niter_array))
@@ -492,7 +526,10 @@ def _validate_example_config(config: ExampleConfig) -> None:
         raise ValueError("mpol must be at least 3 so the square-hybrid corner shaping fits")
     if int(config.ntor) < 4:
         raise ValueError("ntor must be at least 4 so the square-like axis fits")
+    ntheta = _resolved_ntheta(config)
     nzeta = _resolved_nzeta(config)
+    if ntheta < 8:
+        raise ValueError("ntheta must be at least 8")
     if nzeta < 8:
         raise ValueError("nzeta must be at least 8")
     if int(config.nstep) < 1:
@@ -582,7 +619,7 @@ def make_free_boundary_indata(config: ExampleConfig, *, beta_percent: float) -> 
             "NITER": int(config.max_iter),
             "FTOL": float(config.ftol),
             "NZETA": _resolved_nzeta(config),
-            "NTHETA": 0,
+            "NTHETA": _resolved_ntheta(config),
             "NSTEP": int(config.nstep),
             "NVACSKIP": max(1, int(config.nvacskip)),
             "PMASS_TYPE": "power_series",
@@ -626,6 +663,7 @@ def _resolution_deck_payload(config: ExampleConfig) -> dict[str, Any]:
         mpol=int(config.mpol),
         ntor=int(config.ntor),
         ns=int(config.ns),
+        ntheta=_resolved_ntheta(config),
         nzeta=_resolved_nzeta(config),
         target_max_component_error=config.max_boundary_projection_error,
     )
@@ -797,6 +835,7 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
         mpol=int(config.mpol),
         ntor=int(config.ntor),
         ns=int(config.ns),
+        ntheta=_resolved_ntheta(config),
         nzeta=_resolved_nzeta(config),
         target_max_component_error=config.max_boundary_projection_error,
     )
@@ -822,6 +861,9 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
         "configuration": {
             "mpol": int(config.mpol),
             "ntor": int(config.ntor),
+            "ntheta": _resolved_ntheta(config),
+            "requested_ntheta": None if config.ntheta is None else int(config.ntheta),
+            "recommended_ntheta": int(recommended_square_axis_ntheta(int(config.mpol))),
             "nzeta": _resolved_nzeta(config),
             "recommended_nzeta": int(recommended_square_axis_nzeta(int(config.ntor))),
             "axis_kind": str(config.plasma_axis_kind),
@@ -833,6 +875,7 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
         },
         "strict_schedule": schedule,
         "strict_convergence_assessment": convergence_assessment,
+        "ntheta_resolution": _ntheta_resolution_payload(config),
         "nzeta_resolution": _nzeta_resolution_payload(config),
         "boundary_projection": projection,
         "resolution_deck": resolution_deck,
@@ -1606,6 +1649,13 @@ def _metrics_payload(
         "ns_array": [int(value) for value in config.ns_array],
         "mpol": int(config.mpol),
         "ntor": int(config.ntor),
+        "recommended_ntheta": int(recommended_square_axis_ntheta(int(config.mpol))),
+        "ntheta": _resolved_ntheta(config),
+        "requested_ntheta": None if config.ntheta is None else int(config.ntheta),
+        "ntheta_resolution": _ntheta_resolution_payload(config),
+        "ntheta_underrecommended": bool(
+            _resolved_ntheta(config) < recommended_square_axis_ntheta(int(config.mpol))
+        ),
         "recommended_nzeta": int(recommended_square_axis_nzeta(int(config.ntor))),
         "nzeta": _resolved_nzeta(config),
         "requested_nzeta": None if config.nzeta is None else int(config.nzeta),

@@ -44,6 +44,7 @@ from vmec_jax.toroidal_hybrid import (
     SquareAxisSplineControls,
     evaluate_toroidal_hybrid_indata_boundary,
     recommend_square_axis_stellarator_mirror_hybrid_resolution,
+    recommended_square_axis_ntheta,
     recommended_square_axis_nzeta,
     square_axis_free_boundary_edge_control_projection_payload,
     square_axis_resolution_deck_status,
@@ -91,6 +92,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--mpol", type=int, default=ExampleConfig().mpol)
     p.add_argument("--ntor", type=int, default=ExampleConfig().ntor)
     p.add_argument("--ns", type=int, default=9)
+    p.add_argument(
+        "--ntheta",
+        type=_parse_optional_positive_int,
+        default=None,
+        help="VMEC theta grid size. Omit, 0, or 'auto' to use the square-axis recommendation for MPOL.",
+    )
     p.add_argument(
         "--nzeta",
         type=_parse_optional_positive_int,
@@ -410,6 +417,18 @@ def _resolve_profile_nzeta(args: argparse.Namespace, recommended_nzeta: int) -> 
     )
     if should_bump:
         return int(recommended_nzeta), False, True
+    return requested, False, False
+
+
+def _resolve_profile_ntheta(args: argparse.Namespace, recommended_ntheta: int) -> tuple[int, bool, bool]:
+    """Return the effective poloidal grid size and auto-resolution flags."""
+
+    if args.ntheta is None:
+        return int(recommended_ntheta), True, False
+    requested = int(args.ntheta)
+    production_gate = args.max_boundary_projection_error is not None
+    if production_gate and requested < int(recommended_ntheta):
+        return int(recommended_ntheta), False, True
     return requested, False, False
 
 
@@ -2237,6 +2256,7 @@ def _resolution_deck_payload(
         mpol=int(config.mpol),
         ntor=int(config.ntor),
         ns=int(config.ns),
+        ntheta=int(config.ntheta),
         nzeta=int(config.nzeta),
         mgrid_nphi=int(mgrid_nphi),
         target_max_component_error=target_error,
@@ -2442,7 +2462,9 @@ def main(argv: list[str] | None = None) -> int:
     virtual_casing_pythonpath = _configure_virtual_casing_pythonpath(args.virtual_casing_pythonpath)
     outdir = args.outdir
     outdir.mkdir(parents=True, exist_ok=True)
+    recommended_ntheta = recommended_square_axis_ntheta(int(args.mpol))
     recommended_nzeta = recommended_square_axis_nzeta(int(args.ntor))
+    resolved_ntheta, ntheta_auto, ntheta_auto_bumped = _resolve_profile_ntheta(args, recommended_ntheta)
     resolved_nzeta, nzeta_auto, nzeta_auto_bumped = _resolve_profile_nzeta(args, recommended_nzeta)
     mgrid_nphi = int(resolved_nzeta if args.mgrid_nphi is None else args.mgrid_nphi)
     if mgrid_nphi % max(1, resolved_nzeta) != 0 and not bool(args.resolution_diagnostics_only):
@@ -2469,6 +2491,7 @@ def main(argv: list[str] | None = None) -> int:
         ntor=int(args.ntor),
         ns=int(ns_array[-1]),
         ns_array=ns_array,
+        ntheta=resolved_ntheta,
         nzeta=resolved_nzeta,
         max_iter=int(niter_array[-1]),
         ftol=float(ftol_array[-1]),
@@ -2495,7 +2518,7 @@ def main(argv: list[str] | None = None) -> int:
     _log_step(
         "building square-coil configuration "
         f"beta={float(args.beta_percent):g}%, mpol={int(args.mpol)}, ntor={int(args.ntor)}, "
-        f"ns={ns_values}, nzeta={resolved_nzeta}, "
+        f"ns={ns_values}, ntheta={resolved_ntheta}, nzeta={resolved_nzeta}, "
         f"side_power={float(args.side_power):g}, corner_power={float(args.corner_power):g}"
     )
     boundary_projection = _boundary_projection_payload(config)
@@ -2536,6 +2559,12 @@ def main(argv: list[str] | None = None) -> int:
                 "mpol": int(args.mpol),
                 "ntor": int(args.ntor),
                 "ns": int(ns_array[-1]),
+                "ntheta": resolved_ntheta,
+                "requested_ntheta": None if args.ntheta is None else int(args.ntheta),
+                "ntheta_auto": bool(ntheta_auto),
+                "ntheta_auto_bumped_to_recommended": bool(ntheta_auto_bumped),
+                "recommended_ntheta": int(recommended_ntheta),
+                "ntheta_underrecommended": bool(resolved_ntheta < int(recommended_ntheta)),
                 "nzeta": resolved_nzeta,
                 "nzeta_auto": bool(nzeta_auto),
                 "nzeta_auto_bumped_to_recommended": bool(nzeta_auto_bumped),
@@ -2658,14 +2687,20 @@ def main(argv: list[str] | None = None) -> int:
         _log_step("skipping generated mgrid path")
 
     payload: dict[str, Any] = {
-        "schema": "square_coil_free_boundary_backend_profile",
-        "configuration": {
-            "beta_percent": float(args.beta_percent),
-            "mpol": int(args.mpol),
-            "ntor": int(args.ntor),
-            "ns": int(ns_array[-1]),
-            "nzeta": resolved_nzeta,
-            "nzeta_auto": bool(nzeta_auto),
+            "schema": "square_coil_free_boundary_backend_profile",
+            "configuration": {
+                "beta_percent": float(args.beta_percent),
+                "mpol": int(args.mpol),
+                "ntor": int(args.ntor),
+                "ns": int(ns_array[-1]),
+                "ntheta": resolved_ntheta,
+                "requested_ntheta": None if args.ntheta is None else int(args.ntheta),
+                "ntheta_auto": bool(ntheta_auto),
+                "ntheta_auto_bumped_to_recommended": bool(ntheta_auto_bumped),
+                "recommended_ntheta": int(recommended_ntheta),
+                "ntheta_underrecommended": bool(resolved_ntheta < int(recommended_ntheta)),
+                "nzeta": resolved_nzeta,
+                "nzeta_auto": bool(nzeta_auto),
             "nzeta_auto_bumped_to_recommended": bool(nzeta_auto_bumped),
             "auto_bump_nzeta_to_recommended": bool(args.auto_bump_nzeta_to_recommended),
             "recommended_nzeta": int(recommended_nzeta),

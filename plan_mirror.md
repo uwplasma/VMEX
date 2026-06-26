@@ -5738,6 +5738,98 @@ Visual validation:
 
 No user input is needed.
 
+## M300 - Explicit Square-Axis `NTHETA` Policy For Strict Profiles
+
+### Steps taken
+
+- Added `recommended_square_axis_ntheta(mpol)` to the public square-axis
+  hybrid helper layer.
+- Wired the root square-coil free-boundary example to resolve `NTHETA`
+  explicitly instead of writing `NTHETA=0`.
+- Added a profiler `--ntheta` option with production-gated auto-bumping to the
+  square-axis recommendation.
+- Extended the resolution deck/preflight JSON to report requested/effective
+  `NTHETA`, the recommendation, margin, and underresolution status.
+- Rechecked the active `office` strict JAX row tail; it is still oscillatory
+  around `fsqr/fsqz ~ 2.5e-11` to `2.9e-11`, so more iterations alone are not
+  the highest-leverage next step.
+
+### Results obtained
+
+- Production square-axis runs now use at least `ceil(max(64, 4*MPOL) / 8) * 8`
+  poloidal grid points.
+- Diagnostic runs can still intentionally use lower `NTHETA`, but the profile
+  JSON marks `ntheta_below_square_axis_recommendation`.
+- This removes a hidden robustness confounder when users edit `MPOL`, `NTOR`,
+  or `NZETA`: the strict deck now reports both toroidal and poloidal
+  collocation margins before expensive free-boundary profiling.
+
+### How it was tested
+
+```bash
+./venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py::test_square_axis_recommended_nzeta_and_example_guard \
+  tests/test_toroidal_hybrid.py::test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_records_boundary_projection_payload \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_production_gate_auto_bumps_underrecommended_nzeta \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_projection_gate_disabled_allows_diagnostic_underrecommended_nzeta \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_defaults_nzeta_to_square_axis_recommendation
+```
+
+Result: `6 passed, 1 warning`.
+
+```bash
+ruff check vmec_jax/toroidal_hybrid.py vmec_jax/api.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tests/test_toroidal_hybrid.py tests/test_profile_square_coil_free_boundary.py
+./venv/bin/python -m py_compile vmec_jax/toroidal_hybrid.py vmec_jax/api.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py
+git diff --check
+```
+
+Result: all passed.
+
+### File structure and best-practice adherence
+
+- Kept the grid policy in `vmec_jax/toroidal_hybrid.py`, next to the existing
+  square-axis `NZETA` recommendation.
+- Kept the root example self-contained: users still edit top-level constants,
+  and `NTHETA=None` now means use the production recommendation.
+- Kept the profiler as the CLI-only fast path, with the same JSON schema style
+  used for existing `NZETA` and projection diagnostics.
+- No generated WOUTs, figures, or profile outputs were committed.
+
+### Best next steps
+
+1. Queue a fresh strict direct-coil office row with explicit `NTHETA=64`,
+   `NZETA=64`, `MPOL=5`, `NTOR=28`, `NS_ARRAY=9,13,17`, and final
+   `FTOL=1e-12`.
+2. Compare that row against the active older direct row and the active
+   VMEC2000 generated-`mgrid` reference before concluding whether VMEC2000 is
+   more robust for this square-axis Fourier deck.
+3. If explicit `NTHETA` does not lower the strict floor, start the native
+   spline-control state tranche instead of adding more Fourier-projected
+   polish variants.
+
+### Completion percentages after M300
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row is closer but oscillatory.
+- VMEC2000 robustness/reference lane: `99%`, still active as backend reference.
+- True spline/control-basis hybrid lane: `85%`, grid policy is explicit;
+  solver-native spline state remains open.
+- DELT/stage-budget polish lane: `75%`, queued behind existing lanes.
+- Finite-beta virtual-casing validation lane: `87%`, source-path hook ready but
+  no strict finite-beta promotion row yet.
+- CI/API health lane: `99%`, focused local checks pass.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M319. Strict spline-bridge metadata and live VMEC2000/JAX profile triage
 
 ### Steps taken

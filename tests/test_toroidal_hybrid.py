@@ -21,6 +21,7 @@ from vmec_jax.toroidal_hybrid import (
     ToroidalHybridBoundarySamples,
     evaluate_toroidal_hybrid_indata_boundary,
     recommend_square_axis_stellarator_mirror_hybrid_resolution,
+    recommended_square_axis_ntheta,
     recommended_square_axis_nzeta,
     sample_square_axis_stellarator_mirror_hybrid_boundary,
     sample_toroidal_stellarator_mirror_hybrid_boundary,
@@ -124,6 +125,8 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
         vj.square_axis_stellarator_mirror_hybrid_projection_error
         is square_axis_stellarator_mirror_hybrid_projection_error
     )
+    assert vj.recommended_square_axis_ntheta is recommended_square_axis_ntheta
+    assert vj.recommended_square_axis_nzeta is recommended_square_axis_nzeta
     assert public_api.square_axis_stellarator_mirror_hybrid_indata is square_axis_stellarator_mirror_hybrid_indata
     assert public_api.SquareAxisControlBasis is SquareAxisControlBasis
     assert public_api.SquareAxisControlFourierMatrix is SquareAxisControlFourierMatrix
@@ -148,6 +151,7 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
         public_api.recommend_square_axis_stellarator_mirror_hybrid_resolution
         is recommend_square_axis_stellarator_mirror_hybrid_resolution
     )
+    assert public_api.recommended_square_axis_ntheta is recommended_square_axis_ntheta
     assert public_api.recommended_square_axis_nzeta is recommended_square_axis_nzeta
     assert public_api.square_axis_resolution_deck_status is square_axis_resolution_deck_status
 
@@ -504,6 +508,10 @@ def test_square_axis_control_spline_rejects_invalid_controls(controls, match):
 
 
 def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
+    assert recommended_square_axis_ntheta(5) == 64
+    assert recommended_square_axis_ntheta(20) == 80
+    with pytest.raises(ValueError, match="mpol must be nonnegative"):
+        recommended_square_axis_ntheta(-1)
     assert recommended_square_axis_nzeta(12) == 32
     assert recommended_square_axis_nzeta(23) == 56
     with pytest.raises(ValueError, match="ntor must be nonnegative"):
@@ -550,6 +558,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().corner_power == pytest.approx(1.0)
     assert module.ExampleConfig().nstep == 1
     assert module.ExampleConfig().plasma_axis_kind == "control_spline"
+    assert module.ExampleConfig().ntheta is None
     assert module.ExampleConfig().nzeta is None
     assert module.ExampleConfig().plasma_axis_spline_controls is None
     assert module.ExampleConfig().plasma_axis_control_symmetry == "square"
@@ -561,7 +570,16 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     indata = module.make_free_boundary_indata(module.ExampleConfig(nstep=3), beta_percent=0.0)
     assert indata.get_int("NVACSKIP") == 1
     assert indata.get_int("NSTEP") == 3
+    assert indata.get_int("NTHETA") == recommended_square_axis_ntheta(module.ExampleConfig().mpol)
     assert indata.get_int("NZETA") == max(64, recommended_square_axis_nzeta(module.ExampleConfig().ntor))
+    explicit_low_ntheta = module.ExampleConfig(ntheta=16, max_boundary_projection_error=None)
+    explicit_low_ntheta_indata = module.make_free_boundary_indata(explicit_low_ntheta, beta_percent=0.0)
+    assert explicit_low_ntheta_indata.get_int("NTHETA") == 16
+    production_low_ntheta = module.ExampleConfig(ntheta=16)
+    production_low_ntheta_indata = module.make_free_boundary_indata(production_low_ntheta, beta_percent=0.0)
+    assert production_low_ntheta_indata.get_int("NTHETA") == recommended_square_axis_ntheta(
+        module.ExampleConfig().mpol
+    )
     higher_ntor = module.ExampleConfig(ntor=40, max_boundary_projection_error=None)
     higher_ntor_indata = module.make_free_boundary_indata(higher_ntor, beta_percent=0.0)
     assert higher_ntor_indata.get_int("NZETA") == max(64, recommended_square_axis_nzeta(40))
@@ -584,6 +602,10 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["strict_convergence_assessment"]["reduced_control_profile_status"] == "enabled_bridge"
     assert preflight["strict_convergence_assessment"]["solver_native_spline_status"] == "not_implemented"
     assert preflight["strict_convergence_assessment"]["vmec2000_expected_to_fix_fourier_bottleneck"] is False
+    assert preflight["ntheta_resolution"]["effective_ntheta"] == recommended_square_axis_ntheta(
+        module.ExampleConfig().mpol
+    )
+    assert preflight["resolution_deck"]["ntheta"] == recommended_square_axis_ntheta(module.ExampleConfig().mpol)
     assert preflight["nzeta_resolution"]["auto_defaulted"] is True
     assert preflight["nzeta_resolution"]["auto_bump_nzeta_to_recommended"] is True
     assert preflight["resolution_deck"]["status"] == "production_ready"
@@ -789,6 +811,7 @@ def test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates
         mpol=5,
         ntor=28,
         ns=17,
+        ntheta=64,
         nzeta=64,
         mgrid_nphi=64,
         target_max_component_error=5.0e-12,
@@ -796,6 +819,9 @@ def test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates
     assert ready["status"] == "production_ready"
     assert ready["reasons"] == []
     assert ready["projection_meets_gate"] is True
+    assert ready["recommended_ntheta"] == recommended_square_axis_ntheta(5)
+    assert ready["recommended_ntheta_rule"] == "ceil(max(64, 4*mpol) / 8) * 8"
+    assert ready["ntheta_margin"] == 0
     assert ready["recommended_nzeta"] == recommended_square_axis_nzeta(28)
     assert ready["recommended_nzeta_rule"] == "ceil(max(16, 2*ntor + 8) / 8) * 8"
     assert ready["nzeta_margin"] == 0
@@ -808,13 +834,16 @@ def test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates
         mpol=5,
         ntor=28,
         ns=17,
+        ntheta=32,
         nzeta=48,
         mgrid_nphi=80,
         target_max_component_error=5.0e-12,
     )
     assert underresolved["status"] == "diagnostic_underresolved"
+    assert underresolved["ntheta_margin"] == -32
     assert underresolved["nzeta_margin"] == -16
     assert underresolved["mgrid_nphi_margin"] == 32
+    assert "ntheta_below_square_axis_recommendation" in underresolved["reasons"]
     assert "nzeta_below_square_axis_recommendation" in underresolved["reasons"]
     assert "mgrid_nphi_not_multiple_of_nzeta" in underresolved["reasons"]
 
@@ -822,6 +851,7 @@ def test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates
         projection=projection,
         mpol=5,
         ntor=28,
+        ntheta=64,
         nzeta=64,
         target_max_component_error=None,
     )
@@ -840,6 +870,7 @@ def test_square_axis_strict_convergence_assessment_separates_fourier_and_spline_
         mpol=5,
         ntor=28,
         ns=17,
+        ntheta=64,
         nzeta=64,
         mgrid_nphi=64,
         target_max_component_error=5.0e-12,

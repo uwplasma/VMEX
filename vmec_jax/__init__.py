@@ -267,6 +267,7 @@ _LAZY_ATTRS = {
     "ToroidalHybridBoundarySamples": ".toroidal_hybrid",
     "evaluate_toroidal_hybrid_indata_boundary": ".toroidal_hybrid",
     "recommend_square_axis_stellarator_mirror_hybrid_resolution": ".toroidal_hybrid",
+    "recommended_square_axis_ntheta": ".toroidal_hybrid",
     "recommended_square_axis_nzeta": ".toroidal_hybrid",
     "sample_square_axis_stellarator_mirror_hybrid_boundary": ".toroidal_hybrid",
     "sample_toroidal_stellarator_mirror_hybrid_boundary": ".toroidal_hybrid",
