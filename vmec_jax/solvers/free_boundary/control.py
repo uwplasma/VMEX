@@ -10,6 +10,7 @@ import numpy as np
 from vmec_jax._compat import jnp
 from vmec_jax.boundary import boundary_from_indata
 from vmec_jax.state import VMECState
+from vmec_jax.solvers.free_boundary.reduced_controls import reduced_control_least_squares_step
 
 from ..fixed_boundary.residual.update import (
     scale_velocity_blocks,
@@ -356,28 +357,34 @@ def _freeb_edge_control_vector_projection_metrics(
 
     target = np.asarray(target, dtype=float).reshape(-1)
     jacobian = np.asarray(projection["jacobian_np"], dtype=float)
-    pinv = np.asarray(projection["pinv_np"], dtype=float)
     if target.size != jacobian.shape[0]:
         raise ValueError("edge-control target and Jacobian have incompatible sizes")
-    control_delta = pinv @ target
-    projected = jacobian @ control_delta
-    residual = target - projected
+    labels = tuple(str(label) for label in dict(projection.get("info", {})).get("labels", []))
+    step = reduced_control_least_squares_step(
+        jacobian,
+        target,
+        labels=labels if labels else None,
+        rcond=dict(projection.get("info", {})).get("rcond"),
+    )
+    projected = step.predicted_delta
+    residual = step.residual_after
     finite = residual[np.isfinite(residual)]
-    target_l2 = float(np.linalg.norm(target))
-    projected_l2 = float(np.linalg.norm(projected))
-    residual_l2 = float(np.linalg.norm(finite)) if finite.size else 0.0
+    target_l2 = step.target_l2
+    projected_l2 = step.predicted_l2
+    residual_l2 = step.residual_l2 if finite.size else 0.0
     residual_linf = float(np.max(np.abs(finite))) if finite.size else 0.0
     residual_rms = float(np.sqrt(np.mean(finite * finite))) if finite.size else 0.0
-    residual_rel = None if target_l2 <= np.finfo(float).tiny else float(residual_l2 / target_l2)
+    residual_rel = step.residual_rel
     captured_fraction = None if target_l2 <= np.finfo(float).tiny else float(projected_l2 / target_l2)
     residual_energy_fraction = None if target_l2 <= np.finfo(float).tiny else float((residual_l2 / target_l2) ** 2)
-    labels = list(dict(projection.get("info", {})).get("labels", []))
     return {
         "enabled": True,
         "status": str(status),
         "mode": "edge_delta_least_squares",
         "mode_count": int(projection["mode_count"]),
         "control_count": int(jacobian.shape[1]),
+        "rank": int(step.rank),
+        "condition_number": step.condition_number,
         "target_l2": target_l2,
         "projected_l2": projected_l2,
         "residual_l2": residual_l2,
@@ -386,11 +393,9 @@ def _freeb_edge_control_vector_projection_metrics(
         "residual_rel": residual_rel,
         "captured_fraction": captured_fraction,
         "residual_energy_fraction": residual_energy_fraction,
-        "control_delta_l2": float(np.linalg.norm(control_delta)),
-        "control_delta_linf": float(np.max(np.abs(control_delta))) if control_delta.size else 0.0,
-        "control_delta_by_label": {
-            str(label): float(value) for label, value in zip(labels, control_delta, strict=False)
-        },
+        "control_delta_l2": step.control_l2,
+        "control_delta_linf": step.control_linf,
+        "control_delta_by_label": step.control_delta_by_label,
     }
 
 
