@@ -280,6 +280,9 @@ def test_free_boundary_nestor_iteration_coupling_promotes_turnon_and_records_dia
     np.testing.assert_allclose(out.bsqvac_half_current, edge)
     assert histories["source"] == [1]
     assert histories["provider"] == [0]
+    assert len(histories["bnormal"]) == 1
+    assert len(histories["gsource"]) == 1
+    assert len(histories["bsqvac"]) == 1
     np.testing.assert_allclose(histories["bnormal"], [1.0e-3])
     np.testing.assert_allclose(histories["gsource"], [2.0e-3])
     np.testing.assert_allclose(histories["bsqvac"], [3.0e-3])

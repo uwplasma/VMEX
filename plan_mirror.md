@@ -5738,6 +5738,82 @@ Visual validation:
 
 No user input is needed.
 
+## M301. Hardened NESTOR diagnostic-history regression guard
+
+### Steps taken
+
+- Rechecked PR #21 CI after the strict-schedule gate commit: quick build, docs,
+  console, parity, py3.10, py3.12, physics smoke, and several py3.11 shards
+  were passing; only long py3.11 shards remained pending.
+- Rechecked active `office` solver lanes without interrupting them:
+  - direct-GPU hot restart remains active on the strict
+    `FTOL_ARRAY=1e-8,1e-10,1e-12` schedule;
+  - the VMEC2000 generated-`mgrid` benchmark remains active;
+  - projected-control, edge-polish, and small-`DELT` follow-up lanes are still
+    queued behind the active solves.
+- Inspected `free_boundary_nestor_iteration_coupling` and confirmed the current
+  source records each NESTOR diagnostic metric once per update.
+- Strengthened the free-boundary regression test so duplicate diagnostic
+  history appends are caught explicitly by length checks.
+
+### Results obtained
+
+- The test now guarantees `bnormal`, `gsource`, and `bsqvac` history arrays stay
+  one-row-per-NESTOR-update. This keeps strict convergence summaries and
+  plateau diagnostics from being skewed by duplicated vacuum-coupling metrics.
+- No solver behavior changed.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_free_boundary_wp0.py::test_free_boundary_nestor_iteration_coupling_promotes_turnon_and_records_diagnostics
+```
+
+Result: `1 passed`.
+
+```bash
+ruff check tests/test_free_boundary_wp0.py
+venv/bin/python -m py_compile tests/test_free_boundary_wp0.py
+git diff --check
+```
+
+Result: all passed. The local venv does not include `ruff`, so the standalone
+project `ruff` executable was used.
+
+### File structure and best-practice adherence
+
+- The change is confined to the existing free-boundary regression test.
+- No generated WOUTs, plots, CSVs, or solver outputs were committed.
+- The guard protects diagnostics used by the strict `1e-12` free-boundary lanes
+  without adding another source module or helper path.
+
+### Best next steps
+
+1. Let the active direct-GPU and VMEC2000 strict/profile rows continue.
+2. Re-summarize the active rows after the next meaningful solver stage
+   transition or after at least one queued lane starts.
+3. If all Fourier-projected rows remain flat above `1e-12`, begin the
+   solver-native spline-control state tranche instead of adding more
+   Fourier-only polish variants.
+
+### Completion percentages after M301
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row still running near strict but
+  above target.
+- VMEC2000 robustness/reference lane: `99%`, active reference row still running.
+- True spline/control-basis hybrid lane: `84%`, queued bridge lanes are waiting;
+  solver-native spline state remains open.
+- DELT/stage-budget polish lane: `75%`, queued.
+- Finite-beta virtual-casing validation lane: `87%`, source path ready.
+- CI/API health lane: `99%`, quick checks pass and long shards are pending.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M300 - Strict FTOL Production Gate For Square-Coil Profiles
 
 ### Steps taken
