@@ -6512,3 +6512,75 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.1%.
 - Docs/release hygiene: 100%.
 - Overall: 99.5%.
+
+### 2026-06-25: Final PR-readiness artifact and parity refresh
+
+Steps taken:
+
+- Regenerated ``docs/_static/figures/readme_runtime_compare.png`` from the
+  full 16-case bundled fixed-boundary single-grid matrix in runtime-only mode,
+  using ``outputs/pr20_full_matrix_current_cpu_sg_fulljit/summary.json``.
+- Reintroduced the runtime snapshot near the top of ``README.md`` and kept
+  peak-memory discussion in the performance docs/CSV/JSON provenance rather
+  than in the README figure.
+- Refreshed ``docs/_static/figures/readme_ad_fd_evidence.{png,csv,json}``
+  with the validated branch-local report
+  ``outputs/final_tranche_adfd_evidence/same_branch_complete_solve_report.json``.
+- Re-ran the bounded VMEC2000 converged-WOUT parity evidence for
+  ``LandremanPaul2021_QA_lowres``, ``nfp4_QH_warm_start``, ``solovev``, and
+  ``ITERModel`` using the local ``xvmec2000`` executable, then promoted only
+  the compact ``summary.json`` to
+  ``docs/_static/figures/pr20_wout_parity_summary.json``.
+- Updated ``docs/performance.rst`` so the documented README renderer command
+  uses ``--plot-mode runtime``.
+
+Results obtained:
+
+- Runtime figure refresh completed from the full fixed-boundary matrix; the
+  tracked PNG shrank from ``209669`` to ``166118`` bytes because peak-memory
+  subpanels were removed from the README artifact.
+- AD-vs-FD evidence refresh produced ``10`` passing rows: fixed-boundary
+  aspect, iota profile, QS residual, smooth QI residual, ``DMerc``, ``D_R``,
+  and four same-branch/fingerprint-gated direct-coil free-boundary scalars.
+  All rows pass the ``1e-9`` relative-error threshold.
+- Focused derivative tests passed:
+  ``python -m pytest -q tests/test_finite_beta.py
+  tests/test_implicit_sensitivity_fast_coverage.py -q``.
+- Bounded WOUT parity passed all four selected rows with no failed cases.  The
+  largest core relative-RMS value among ``rmnc``, ``zmns``, ``lmns``,
+  ``iotas``, ``iotaf``, and ``bmnc`` was about ``2.8e-10`` on the
+  Landreman-Paul QA row.
+- Docs passed with warnings-as-errors:
+  ``LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs
+  docs/_build/html_final_tranche``.
+- ``python -m ruff check vmec_jax tests tools examples`` passed.
+- ``git diff --check`` and ``repo_size_audit.py`` passed; tracked size is now
+  ``28.33 MiB``.
+
+Best next steps:
+
+1. Commit and push this artifact/parity refresh, then let CI validate the two
+   latest commits together.
+2. If CI is green, PR review readiness is primarily a human-review decision;
+   the remaining open technical work is longer-term runtime/memory reduction
+   and full arbitrary adaptive-branch differentiability, both already tracked
+   as future research-grade lanes.
+3. For the next implementation tranche, extract the pre-restart/free-boundary
+   retry branch from the residual loop; this is the next best refactor seam if
+   more source simplification is requested before review.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.0%.
+- Free-boundary production differentiability: 97.3%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 72.8%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.

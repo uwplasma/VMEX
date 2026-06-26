@@ -2188,7 +2188,8 @@ Current performance (representative benchmarks)
 -----------------------------------------------
 
 The docs-facing fixed-boundary CPU matrix is generated from
-``docs/_static/figures/readme_runtime_compare.csv`` and visualized in:
+``docs/_static/figures/readme_runtime_compare.csv`` and visualized as a
+runtime-only README figure in:
 
 .. image:: _static/figures/readme_runtime_compare.png
    :width: 100%
@@ -2567,7 +2568,7 @@ Regenerate the current fixed-boundary plot and current-vs-main comparison with:
 
    python tools/diagnostics/readme_runtime_compare.py \
      --cpu-summary outputs/pr20_full_matrix_current_cpu_sg_fulljit/summary.json \
-     --figure-kind fixed --plot-mode runtime_memory \
+     --figure-kind fixed --plot-mode runtime \
      --figure-out docs/_static/figures/readme_runtime_compare.png \
      --csv-out docs/_static/figures/readme_runtime_compare.csv \
      --json-out docs/_static/figures/readme_runtime_compare.json

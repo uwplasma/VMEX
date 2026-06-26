@@ -14,6 +14,15 @@ workflows, with free-boundary support, VMEC2000-compatible `mgrid` workflows,
 and direct-coil research paths. Full adaptive free-boundary solve adjoints
 remain in development.
 
+## Runtime Snapshot
+
+![VMEC2000 versus vmec_jax runtime](docs/_static/figures/readme_runtime_compare.png)
+
+This full bundled single-grid fixed-boundary matrix compares VMEC2000,
+`vmec_jax` cold/warm CPU runs, and VMEC++ where VMEC++ converges cleanly.
+The detailed CSV/JSON provenance, current-vs-main regression report, and memory
+columns are kept in the performance docs rather than in this README figure.
+
 ## Differentiation Evidence
 
 ![AD vs central finite differences](docs/_static/figures/readme_ad_fd_evidence.png)
