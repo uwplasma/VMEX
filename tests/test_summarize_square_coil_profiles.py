@@ -333,7 +333,7 @@ def test_square_coil_profile_summary_reports_vmec2000_tail_plateau_from_sidecar(
     partial.write_text(
         json.dumps(
             {
-                "stage_summaries": [{"ns": 17, "ftolv": 1.0e-10}],
+                "stage_summaries": [{"ns": 17, "niter": 17, "ftolv": 1.0e-10}],
                 "last_row": {"it": 13, "fsqr": 2.53e-10, "fsqz": 2.42e-10, "fsql": 6.8e-11},
                 "min_total": 5.60e-10,
                 "tail_rows": [
@@ -353,6 +353,8 @@ def test_square_coil_profile_summary_reports_vmec2000_tail_plateau_from_sidecar(
     assert row["tail_last_over_min"] == pytest.approx(5.63e-10 / 5.60e-10)
     assert row["tail_total_rel_span"] == pytest.approx((5.63e-10 - 5.60e-10) / 5.60e-10)
     assert row["strict_gap"] == pytest.approx(2.53)
+    assert row["max_iter"] == 17
+    assert row["remaining_iterations"] == 4
     assert row["next_action"] == "let_current_run_finish_then_scan_delt_or_stage_budget"
 
 

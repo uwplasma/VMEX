@@ -254,6 +254,16 @@ def _tail_projection(backend: dict[str, Any], key: str, *, target: float | None 
     return _finite_float(estimates.get(f"{float(target):.0e}"))
 
 
+def _last_stage_value(backend: dict[str, Any], key: str) -> Any:
+    stages = backend.get("stage_summaries")
+    if not isinstance(stages, list) or not stages:
+        return None
+    last = stages[-1]
+    if not isinstance(last, dict):
+        return None
+    return last.get(key)
+
+
 def _virtual_casing_payload(backend: dict[str, Any]) -> dict[str, Any]:
     payload = backend.get("virtual_casing")
     return payload if isinstance(payload, dict) else {}
@@ -573,6 +583,8 @@ def _summary_row(
     strict_gap = _strict_gap(final_max_component, requested_ftol)
     iters_to_target = _tail_projection(backend_for_projection, "", target=1.0e-12)
     max_iter = cfg.get("max_iter")
+    if max_iter is None:
+        max_iter = _last_stage_value(backend, "niter")
     remaining_iterations = _remaining_iterations(max_iter, final_iter)
     vacuum_grid_exceeded_count = backend.get("vacuum_grid_exceeded_count")
     next_action = _recommended_next_action(

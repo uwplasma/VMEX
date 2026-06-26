@@ -5756,11 +5756,15 @@ No user input is needed.
 - Added compact decision fields to the square-coil summary table:
   ``strict_gap``, ``remaining_iterations``, and ``next_action``.
 - Added tests for plateau-above-tolerance and vacuum-grid-overflow decisions.
+- Added a fallback that infers ``max_iter`` from the final VMEC2000 stage
+  ``niter`` when an active sidecar is copied out of its original
+  ``niter24k``-named result directory.
 
 ### Results obtained
 
 - The live VMEC2000 sidecar now summarizes to:
-  - ``strict_gap`` about ``48`` at the latest poll;
+  - ``strict_gap`` about ``39`` at the latest poll;
+  - ``remaining_iterations`` about ``20143`` in the final stage;
   - ``tail_plateau_status = flat_above_stage_ftol``;
   - ``vacuum_grid_exceeded_count = 0``;
   - ``next_action = let_current_run_finish_then_scan_delt_or_stage_budget``.
