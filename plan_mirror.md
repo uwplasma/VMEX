@@ -31858,3 +31858,33 @@ also passed.
 ### User input needed
 
 No user input is needed.
+
+---
+## M278 - Post-Push Active Strict Row Poll
+
+### Steps taken
+
+- Re-polled active office rows after pushing `862e793b`.
+
+### Results obtained
+
+- VMEC2000 remains active with `iteration_row_count=23957`,
+  `final_max_component=1.12e-11`, `strict_components_met=false`, and no
+  vacuum-grid overflow.
+- Direct-GPU baseline has improved to iteration `1734` with components
+  `fsqr=1.32e-08`, `fsqz=1.07e-08`, `fsql=1.50e-09`.
+- Direct-GPU Anderson has improved to iteration `1720` with components
+  `fsqr=1.26e-08`, `fsqz=1.05e-08`, `fsql=1.58e-09`.
+- These direct rows are still roughly four orders of magnitude above the
+  requested per-component `FTOL=1e-12`, but the trend is no longer at the
+  earlier low-`4e-8` level.
+
+### Best next steps
+
+1. Continue letting the active direct rows run; do not launch the heavy
+   `direct-gpu-jax-nestor` A/B row until these finish or plateau.
+2. Summarize the final rows with the patched summary helper.
+
+### User input needed
+
+No user input is needed.
