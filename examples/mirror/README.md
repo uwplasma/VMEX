@@ -379,6 +379,15 @@ The ``strict_gap`` column is ``final_max_component / requested_ftol`` and the
 for example, a flat tail above tolerance with no vacuum-grid overflow points to
 a ``DELT``/stage-budget scan, while a vacuum-grid overflow points first to a
 wider generated ``mgrid``.
+To print the current strict VMEC2000 follow-up scan after such a plateau, use::
+
+  python tools/diagnostics/square_coil_followup_commands.py
+
+By default this emits serial commands for the projection-gated
+``MPOL=5, NTOR=28, NZETA>=64`` control-spline square-axis deck, with
+``DELT=0.015, 0.02, 0.025`` and a staged
+``NITER_ARRAY=8000,16000,32000`` / ``FTOL_ARRAY=1e-8,1e-10,1e-12`` schedule.
+The helper only prints commands; it does not launch VMEC2000.
 The table also includes ``nzeta_auto``, ``recommended_nzeta``,
 ``side_power``, ``corner_power``, ``boundary_mode_count``, and
 ``boundary_recommended_nzeta`` so ``MPOL``/``NTOR``/``NZETA`` and

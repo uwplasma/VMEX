@@ -29217,3 +29217,73 @@ No source tests were needed; this is a live-run observation.
 ### User input needed
 
 No user input is needed.
+---
+## 252. Added Reproducible Strict VMEC2000 Follow-Up Commands
+
+### Steps taken
+
+- Added `tools/diagnostics/square_coil_followup_commands.py` as a lightweight
+  command generator for the strict square-coil VMEC2000 follow-up scan.
+- Pinned the generated defaults to the current production deck:
+  - `MPOL=5`, `NTOR=28`, automatic `NZETA>=64`;
+  - `axis-kind=control_spline`;
+  - projection gate `5e-12`;
+  - `DELT=0.015,0.02,0.025`;
+  - staged `NS_ARRAY=9,13,17`, `NITER_ARRAY=8000,16000,32000`,
+    `FTOL_ARRAY=1e-8,1e-10,1e-12`;
+  - VMEC2000 generated-`mgrid` execution only, with direct and provider-parity
+    rows skipped.
+- Updated the examples README with the new helper command.
+
+### Results obtained
+
+- The next strict scan can now be regenerated from source control instead of
+  copy-editing long shell commands after a plateau.
+- Output directory labels now preserve exact final iteration budgets, so
+  follow-up scans remain distinguishable even for non-round `NITER` values.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_square_coil_followup_commands.py \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_profile_square_coil_free_boundary.py
+venv/bin/python -m py_compile \
+  tools/diagnostics/square_coil_followup_commands.py \
+  tests/test_square_coil_followup_commands.py
+```
+
+Targeted test result: `34 passed, 1 warning`.
+
+### File structure and best-practice notes
+
+- The helper lives under `tools/diagnostics/` with the other profiling and
+  summary utilities.
+- It imports the root example defaults instead of duplicating physics knobs.
+- It only emits commands, keeping heavyweight VMEC2000 execution explicit and
+  outside normal CI.
+
+### Best next steps
+
+1. Poll the active office VMEC2000 row to decide whether it reached strict
+   per-component `FTOL=1e-12` or plateaued.
+2. If it plateaued, run the generated `DELT`/stage-budget scan serially on
+   `office`.
+3. Use the best VMEC2000 row as the reference for matching `vmec_jax`
+   generated-`mgrid` and direct-coil profiles.
+
+### Completion percentages after M252
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `95%`.
+- VMEC2000 robustness/reference lane: `96%`, pending final active-row status.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `77%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `75%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- True spline/control-basis hybrid lane: `36%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
