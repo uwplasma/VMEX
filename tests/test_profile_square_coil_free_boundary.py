@@ -234,7 +234,37 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     projection = data["boundary_projection"]
     assert projection["mpol"] == 3
     assert projection["ntor"] == 4
+    assert projection["recommended_nzeta"] == 16
+    assert projection["mode_count"] > 0
     assert np.isfinite(float(projection["max_abs_error"]))
+
+
+def test_square_coil_profile_defaults_nzeta_to_square_axis_recommendation(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(profile, "write_mgrid_from_coils", lambda *args, **kwargs: None)
+
+    outdir = tmp_path / "profile_auto_nzeta"
+    profile.main(
+        [
+            "--outdir",
+            str(outdir),
+            "--mpol",
+            "5",
+            "--ntor",
+            "12",
+            "--ns",
+            "5",
+            "--max-iter",
+            "2",
+            "--skip-direct",
+            "--skip-mgrid",
+            "--skip-provider-parity",
+        ]
+    )
+
+    data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    assert data["configuration"]["nzeta"] == profile.recommended_square_axis_nzeta(12)
+    assert data["configuration"]["nzeta_auto"] is True
+    assert data["configuration"]["nzeta_underrecommended"] is False
 
 
 def test_square_coil_profile_records_direct_coil_chunk_size(monkeypatch, tmp_path: Path):

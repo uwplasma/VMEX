@@ -53,6 +53,84 @@ def recommended_square_axis_nzeta(ntor: int, *, margin: int = 8, block: int = 8)
     return int(block * np.ceil(raw / block))
 
 
+def _square_axis_mode_count(mpol: int, ntor: int) -> int:
+    return int(np.asarray(vmec_mode_table(mpol=int(mpol), ntor=int(ntor)).m).size)
+
+
+def recommend_square_axis_stellarator_mirror_hybrid_resolution(
+    *,
+    target_max_component_error: float = 5.0e-5,
+    mpol: int = 5,
+    ntor: int = 12,
+    max_mpol: int | None = None,
+    max_ntor: int | None = None,
+    **sample_kwargs: Any,
+) -> dict[str, Any]:
+    """Recommend a finite Fourier deck for a spline-smoothed square axis.
+
+    The square-hybrid geometry is sampled as a smooth real-space target and
+    then projected to ordinary VMEC boundary Fourier coefficients. This helper
+    scans a small ``MPOL``/``NTOR`` ladder and returns the lowest estimated-cost
+    candidate whose projection error is below ``target_max_component_error``.
+    It does not claim nonlinear convergence; it only checks that the requested
+    boundary is represented well enough before the VMEC/free-boundary solve.
+    """
+
+    target = float(target_max_component_error)
+    if not np.isfinite(target) or target <= 0.0:
+        raise ValueError("target_max_component_error must be positive and finite")
+    mpol0 = max(3, int(mpol))
+    ntor0 = max(4, int(ntor))
+    max_mpol_i = max(mpol0, int(max_mpol) if max_mpol is not None else max(8, mpol0 + 2))
+    max_ntor_i = max(ntor0, int(max_ntor) if max_ntor is not None else max(32, ntor0 + 8))
+
+    candidates: list[dict[str, Any]] = []
+    for mpol_i in range(mpol0, max_mpol_i + 1):
+        for ntor_i in range(ntor0, max_ntor_i + 1):
+            projection = square_axis_stellarator_mirror_hybrid_projection_error(
+                mpol=mpol_i,
+                ntor=ntor_i,
+                ntheta_fit=max(64, 4 * mpol_i),
+                nzeta_fit=max(128, 8 * ntor_i),
+                **sample_kwargs,
+            )
+            max_error = float(projection["max_abs_component_error"])
+            candidate = {
+                "mpol": mpol_i,
+                "ntor": ntor_i,
+                "recommended_nzeta": recommended_square_axis_nzeta(ntor_i),
+                "mode_count": _square_axis_mode_count(mpol_i, ntor_i),
+                "max_abs_component_error": max_error,
+                "max_abs_component_error_rel": float(projection["max_abs_component_error_rel"]),
+                "meets_target": bool(max_error <= target),
+            }
+            candidates.append(candidate)
+
+    if not candidates:
+        raise RuntimeError("resolution scan produced no candidates")
+    best_error = min(candidates, key=lambda item: float(item["max_abs_component_error"]))
+    feasible = [item for item in candidates if bool(item["meets_target"])]
+    recommended = (
+        min(
+            feasible,
+            key=lambda item: (
+                int(item["mode_count"]),
+                int(item["recommended_nzeta"]),
+                float(item["max_abs_component_error"]),
+            ),
+        )
+        if feasible
+        else best_error
+    )
+    return {
+        "target_max_component_error": target,
+        "status": "met" if feasible else "not_met",
+        "candidate_count": len(candidates),
+        "recommended": recommended,
+        "best_error": best_error,
+    }
+
+
 def sample_toroidal_stellarator_mirror_hybrid_boundary(
     *,
     ntheta: int = 64,
@@ -474,6 +552,8 @@ def square_axis_stellarator_mirror_hybrid_projection_error(
         "nfp": int(nfp),
         "mpol": int(mpol),
         "ntor": int(ntor),
+        "mode_count": _square_axis_mode_count(mpol, ntor),
+        "recommended_nzeta": recommended_square_axis_nzeta(ntor),
         "ntheta_fit": int(ntheta_fit),
         "nzeta_fit": int(nzeta_fit),
         "ntheta_eval": int(ntheta_eval),

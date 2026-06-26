@@ -207,9 +207,11 @@ NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
 while the same generated-``mgrid`` deck with ``NZETA=32`` completes and reaches
 total residual about ``6.58e-6`` after 1000 iterations. The branch now exposes
 ``vmec_jax.recommended_square_axis_nzeta`` and the square-coil example defaults
-to ``NZETA=64`` for ``NTOR=23``. Production-style example runs fail early if
-``NZETA`` is below the recommendation; diagnostic profiling can still run
-underresolved grids and records ``nzeta_underrecommended`` in the JSON report.
+to ``NZETA=64`` for ``NTOR=23``. The backend profiler now also resolves omitted
+``--nzeta`` or ``--nzeta auto`` to this recommendation for the selected
+``NTOR``. Production-style example runs fail early if ``NZETA`` is below the
+recommendation; diagnostic profiling can still run underresolved grids and
+records ``nzeta_auto`` and ``nzeta_underrecommended`` in the JSON report.
 The profiler also rejects generated-mgrid plane counts that are not multiples
 of ``NZETA`` because the VMEC-plane mgrid sampler intentionally uses the
 discrete VMEC zeta planes without toroidal interpolation.
@@ -223,6 +225,12 @@ reduces the max component projection error from about ``3.2e-4`` to
 ``1.3e-4`` at ``MPOL=5, NTOR=12`` and from about ``7.1e-5`` to ``1.4e-5`` at
 ``MPOL=6, NTOR=23``. This supports using the spline envelope for the hybrid
 square axis, while still requiring ``MPOL``/``NTOR``/``NZETA`` convergence.
+The public helper
+``vmec_jax.recommend_square_axis_stellarator_mirror_hybrid_resolution`` scans a
+small finite ``MPOL``/``NTOR`` ladder for the current spline-smoothed target and
+returns the lowest estimated-cost candidate whose projection error satisfies
+the requested threshold. This is a boundary-representation gate, not a
+nonlinear-convergence claim.
 A higher-mode projection spot check on the same spline shape gives max
 component boundary errors of about ``1.27e-4`` for ``MPOL=5, NTOR=12``,
 ``4.77e-5`` for ``5,16``, ``1.44e-5`` for ``6,23``, ``8.96e-6`` for
@@ -332,8 +340,9 @@ near-term way to reduce ``NTOR`` sensitivity; a true spline basis inside the
 VMEC solve would be a larger solver reparameterization. The public helper
 ``square_axis_stellarator_mirror_hybrid_projection_error`` and the square-coil
 profiler's ``boundary_projection`` JSON block now report the Fourier truncation
-error for the selected ``MPOL``/``NTOR``/fit-grid combination; the profile
-summarizer exposes this as ``boundary_proj_max`` and ``boundary_proj_rel``.
+error, mode count, and recommended ``NZETA`` for the selected
+``MPOL``/``NTOR``/fit-grid combination; the profile summarizer exposes this as
+``boundary_proj_max`` and ``boundary_proj_rel``.
 These metrics should be reviewed whenever changing ``MPOL``, ``NTOR``, or
 ``NZETA``: they diagnose input-boundary underfitting before the free-boundary
 nonlinear solve is interpreted.

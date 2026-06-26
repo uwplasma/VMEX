@@ -15,6 +15,7 @@ import vmec_jax.toroidal_hybrid as toroidal_hybrid
 from vmec_jax.toroidal_hybrid import (
     ToroidalHybridBoundarySamples,
     evaluate_toroidal_hybrid_indata_boundary,
+    recommend_square_axis_stellarator_mirror_hybrid_resolution,
     recommended_square_axis_nzeta,
     sample_square_axis_stellarator_mirror_hybrid_boundary,
     sample_toroidal_stellarator_mirror_hybrid_boundary,
@@ -100,6 +101,10 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
         public_api.square_axis_stellarator_mirror_hybrid_projection_error
         is square_axis_stellarator_mirror_hybrid_projection_error
     )
+    assert (
+        public_api.recommend_square_axis_stellarator_mirror_hybrid_resolution
+        is recommend_square_axis_stellarator_mirror_hybrid_resolution
+    )
     assert public_api.recommended_square_axis_nzeta is recommended_square_axis_nzeta
 
 
@@ -135,6 +140,17 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
         module.run_example(
             module.ExampleConfig(
                 outdir=tmp_path / "low_modes",
+                betas_percent=(),
+                mpol=5,
+                ntor=12,
+                nzeta=32,
+                write_plots=False,
+            )
+        )
+    with pytest.raises(ValueError, match="Suggested finite Fourier closure"):
+        module.run_example(
+            module.ExampleConfig(
+                outdir=tmp_path / "low_modes_with_suggestion",
                 betas_percent=(),
                 mpol=5,
                 ntor=12,
@@ -193,6 +209,33 @@ def test_square_axis_spline_option_reduces_low_mode_projection_error():
 
     assert errors["spline"] < errors["superellipse"]
     assert errors["spline"] < 2.0e-4
+
+
+def test_square_axis_resolution_recommendation_reports_finite_fourier_closure():
+    recommendation = recommend_square_axis_stellarator_mirror_hybrid_resolution(
+        target_max_component_error=2.0e-4,
+        mpol=5,
+        ntor=12,
+        max_mpol=5,
+        max_ntor=12,
+        axis_kind="spline",
+        axis_spline_corner_radius_factor=1.14,
+        minor_radius=0.03,
+        side_elongation=0.08,
+        side_minor_modulation=0.08,
+        corner_ellipticity=0.04,
+        corner_amplitude=0.004,
+        corner_rotation=0.30,
+    )
+
+    assert recommendation["status"] == "met"
+    assert recommendation["candidate_count"] == 1
+    suggested = recommendation["recommended"]
+    assert suggested["mpol"] == 5
+    assert suggested["ntor"] == 12
+    assert suggested["recommended_nzeta"] == recommended_square_axis_nzeta(12)
+    assert suggested["mode_count"] > 0
+    assert suggested["max_abs_component_error"] < 2.0e-4
 
 
 def test_square_axis_projection_error_rejects_sampler_grid_aliases():
@@ -441,6 +484,7 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
             ftol_array=(1.0e-6,),
             use_multigrid_schedule=False,
             enforce_recommended_nzeta=False,
+            max_boundary_projection_error=None,
             field_line_count=1,
             field_line_steps=20,
             field_line_turns=0.2,
@@ -503,6 +547,7 @@ def test_square_coil_hybrid_free_boundary_example_writes_nonblank_plots(tmp_path
             ftol_array=(1.0e-6,),
             use_multigrid_schedule=False,
             enforce_recommended_nzeta=False,
+            max_boundary_projection_error=None,
             field_line_count=1,
             field_line_steps=24,
             field_line_turns=0.25,

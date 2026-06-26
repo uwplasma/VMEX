@@ -42,6 +42,7 @@ from vmec_jax.namelist import InData, write_indata
 from vmec_jax.plotting import fix_matplotlib_3d, prepare_matplotlib_3d
 from vmec_jax.profiles import pressure_profile_to_vmec_am, standard_finite_beta_profiles
 from vmec_jax.toroidal_hybrid import (
+    recommend_square_axis_stellarator_mirror_hybrid_resolution,
     recommended_square_axis_nzeta,
     square_axis_stellarator_mirror_hybrid_indata,
     square_axis_stellarator_mirror_hybrid_projection_error,
@@ -352,6 +353,29 @@ def _stage_values(config: ExampleConfig) -> tuple[list[int] | int, list[int] | i
     return ns_values, niter_values, ftol_values
 
 
+def _square_axis_sample_kwargs(config: ExampleConfig) -> dict[str, Any]:
+    return {
+        "axis_half_width": float(config.plasma_axis_half_width),
+        "axis_kind": str(config.plasma_axis_kind),
+        "axis_square_power": float(config.plasma_axis_square_power),
+        "axis_spline_corner_radius_factor": float(config.plasma_axis_spline_corner_radius_factor),
+        "minor_radius": float(config.plasma_minor_radius),
+        "side_elongation": float(config.side_elongation),
+        "side_minor_modulation": float(config.side_minor_modulation),
+        "corner_ellipticity": float(config.corner_ellipticity),
+        "corner_amplitude": float(config.corner_amplitude),
+        "corner_rotation": float(config.corner_rotation),
+        "corner_helicity": int(config.corner_helicity),
+    }
+
+
+def _boundary_fit_grid(config: ExampleConfig) -> dict[str, int]:
+    return {
+        "ntheta_fit": max(64, 4 * int(config.mpol)),
+        "nzeta_fit": max(128, 8 * int(config.ntor)),
+    }
+
+
 def _run_budget(config: ExampleConfig, *, restart_state: Any | None) -> int:
     if bool(config.use_multigrid_schedule) and restart_state is None:
         return int(sum(int(value) for value in config.niter_array))
@@ -385,10 +409,28 @@ def _validate_example_config(config: ExampleConfig) -> None:
         projection = _boundary_projection_payload(config)
         observed = float(projection["max_abs_component_error"])
         if observed > limit:
+            recommendation = recommend_square_axis_stellarator_mirror_hybrid_resolution(
+                target_max_component_error=limit,
+                mpol=int(config.mpol),
+                ntor=int(config.ntor),
+                max_mpol=max(8, int(config.mpol) + 2),
+                max_ntor=max(32, int(config.ntor) + 8),
+                nfp=int(config.nfp),
+                ns_array=[int(value) for value in config.ns_array],
+                niter_array=[int(value) for value in config.niter_array],
+                ftol_array=[float(value) for value in config.ftol_array],
+                phiedge=float(config.phiedge),
+                **_square_axis_sample_kwargs(config),
+            )
+            suggested = recommendation["recommended"]
             raise ValueError(
                 "square-hybrid boundary projection error is too large for a production solve: "
                 f"max_abs_component_error={observed:.3e} exceeds {limit:.3e} "
                 f"for MPOL={int(config.mpol)}, NTOR={int(config.ntor)}, NZETA={int(config.nzeta)}. "
+                "Suggested finite Fourier closure for the current spline-smoothed target: "
+                f"MPOL={int(suggested['mpol'])}, NTOR={int(suggested['ntor'])}, "
+                f"NZETA>={int(suggested['recommended_nzeta'])} "
+                f"(projection error {float(suggested['max_abs_component_error']):.3e}). "
                 "Increase MPOL/NTOR/NZETA, keep plasma_axis_kind='spline', or set "
                 "max_boundary_projection_error=None for a diagnostic-only run."
             )
@@ -402,23 +444,12 @@ def make_free_boundary_indata(config: ExampleConfig, *, beta_percent: float) -> 
         nfp=int(config.nfp),
         mpol=int(config.mpol),
         ntor=int(config.ntor),
-        ntheta_fit=max(64, 4 * int(config.mpol)),
-        nzeta_fit=max(128, 8 * int(config.ntor)),
+        **_boundary_fit_grid(config),
         ns_array=ns_values,
         niter_array=niter_values,
         ftol_array=ftol_values,
         phiedge=float(config.phiedge),
-        axis_half_width=float(config.plasma_axis_half_width),
-        axis_kind=str(config.plasma_axis_kind),
-        axis_square_power=float(config.plasma_axis_square_power),
-        axis_spline_corner_radius_factor=float(config.plasma_axis_spline_corner_radius_factor),
-        minor_radius=float(config.plasma_minor_radius),
-        side_elongation=float(config.side_elongation),
-        side_minor_modulation=float(config.side_minor_modulation),
-        corner_ellipticity=float(config.corner_ellipticity),
-        corner_amplitude=float(config.corner_amplitude),
-        corner_rotation=float(config.corner_rotation),
-        corner_helicity=int(config.corner_helicity),
+        **_square_axis_sample_kwargs(config),
     )
     am, pres_scale = _pressure_terms(float(beta_percent))
     indata.scalars.update(
@@ -458,23 +489,12 @@ def _boundary_projection_payload(config: ExampleConfig) -> dict[str, Any]:
         nfp=int(config.nfp),
         mpol=int(config.mpol),
         ntor=int(config.ntor),
-        ntheta_fit=max(64, 4 * int(config.mpol)),
-        nzeta_fit=max(128, 8 * int(config.ntor)),
+        **_boundary_fit_grid(config),
         ns_array=ns_values,
         niter_array=niter_values,
         ftol_array=ftol_values,
         phiedge=float(config.phiedge),
-        axis_half_width=float(config.plasma_axis_half_width),
-        axis_kind=str(config.plasma_axis_kind),
-        axis_square_power=float(config.plasma_axis_square_power),
-        axis_spline_corner_radius_factor=float(config.plasma_axis_spline_corner_radius_factor),
-        minor_radius=float(config.plasma_minor_radius),
-        side_elongation=float(config.side_elongation),
-        side_minor_modulation=float(config.side_minor_modulation),
-        corner_ellipticity=float(config.corner_ellipticity),
-        corner_amplitude=float(config.corner_amplitude),
-        corner_rotation=float(config.corner_rotation),
-        corner_helicity=int(config.corner_helicity),
+        **_square_axis_sample_kwargs(config),
     )
 
 

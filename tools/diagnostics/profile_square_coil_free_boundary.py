@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary import (
     ExampleConfig,
+    _boundary_projection_payload as _example_boundary_projection_payload,
     _case_label,
     _run_budget,
     _stage_values,
@@ -34,7 +35,6 @@ from vmec_jax.namelist import write_indata
 from vmec_jax.toroidal_hybrid import (
     evaluate_toroidal_hybrid_indata_boundary,
     recommended_square_axis_nzeta,
-    square_axis_stellarator_mirror_hybrid_projection_error,
 )
 from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1, find_vmec2000_exec, run_xvmec2000
 
@@ -72,7 +72,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--mpol", type=int, default=6)
     p.add_argument("--ntor", type=int, default=12)
     p.add_argument("--ns", type=int, default=9)
-    p.add_argument("--nzeta", type=int, default=24)
+    p.add_argument(
+        "--nzeta",
+        type=_parse_optional_positive_int,
+        default=None,
+        help="VMEC zeta grid size. Omit, 0, or 'auto' to use the square-axis recommendation for NTOR.",
+    )
     p.add_argument("--max-iter", type=int, default=200)
     p.add_argument("--ftol", type=float, default=1.0e-8)
     p.add_argument(
@@ -148,7 +153,7 @@ def _parse_float_list(raw: str | None, *, name: str) -> tuple[float, ...] | None
 
 def _parse_optional_positive_int(raw: str) -> int | None:
     value = str(raw).strip().lower()
-    if value in {"", "0", "none", "null", "false", "no"}:
+    if value in {"", "0", "auto", "none", "null", "false", "no"}:
         return None
     parsed = int(value)
     if parsed <= 0:
@@ -772,28 +777,7 @@ def _provider_parity_payload(
 def _boundary_projection_payload(config: ExampleConfig) -> dict[str, Any]:
     """Return the Fourier truncation error for the profile boundary deck."""
 
-    return square_axis_stellarator_mirror_hybrid_projection_error(
-        nfp=int(config.nfp),
-        mpol=int(config.mpol),
-        ntor=int(config.ntor),
-        ntheta_fit=max(64, 4 * int(config.mpol)),
-        nzeta_fit=max(128, 8 * int(config.ntor)),
-        ns_array=[int(value) for value in config.ns_array],
-        niter_array=[int(value) for value in config.niter_array],
-        ftol_array=[float(value) for value in config.ftol_array],
-        phiedge=float(config.phiedge),
-        axis_half_width=float(config.plasma_axis_half_width),
-        axis_kind=str(config.plasma_axis_kind),
-        axis_square_power=float(config.plasma_axis_square_power),
-        axis_spline_corner_radius_factor=float(config.plasma_axis_spline_corner_radius_factor),
-        minor_radius=float(config.plasma_minor_radius),
-        side_elongation=float(config.side_elongation),
-        side_minor_modulation=float(config.side_minor_modulation),
-        corner_ellipticity=float(config.corner_ellipticity),
-        corner_amplitude=float(config.corner_amplitude),
-        corner_rotation=float(config.corner_rotation),
-        corner_helicity=int(config.corner_helicity),
-    )
+    return _example_boundary_projection_payload(config)
 
 
 def _vmec2000_row_payload(row: Any) -> dict[str, Any]:
@@ -846,17 +830,18 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     outdir = args.outdir
     outdir.mkdir(parents=True, exist_ok=True)
-    mgrid_nphi = int(args.nzeta if args.mgrid_nphi is None else args.mgrid_nphi)
-    if mgrid_nphi % max(1, int(args.nzeta)) != 0:
+    recommended_nzeta = recommended_square_axis_nzeta(int(args.ntor))
+    resolved_nzeta = int(recommended_nzeta if args.nzeta is None else args.nzeta)
+    mgrid_nphi = int(resolved_nzeta if args.mgrid_nphi is None else args.mgrid_nphi)
+    if mgrid_nphi % max(1, resolved_nzeta) != 0:
         raise ValueError(
-            f"--mgrid-nphi={mgrid_nphi} is incompatible with --nzeta={int(args.nzeta)} for VMEC-plane "
+            f"--mgrid-nphi={mgrid_nphi} is incompatible with --nzeta={resolved_nzeta} for VMEC-plane "
             "mgrid sampling; omit --mgrid-nphi or use a multiple of --nzeta."
         )
     ns_array, niter_array, ftol_array = _resolve_schedule(args)
-    recommended_nzeta = recommended_square_axis_nzeta(int(args.ntor))
-    if bool(args.enforce_recommended_nzeta) and int(args.nzeta) < recommended_nzeta:
+    if bool(args.enforce_recommended_nzeta) and resolved_nzeta < recommended_nzeta:
         raise ValueError(
-            f"NZETA={int(args.nzeta)} is underresolved for NTOR={int(args.ntor)}; use at least {recommended_nzeta}"
+            f"NZETA={resolved_nzeta} is underresolved for NTOR={int(args.ntor)}; use at least {recommended_nzeta}"
         )
     config = ExampleConfig(
         outdir=outdir,
@@ -870,7 +855,7 @@ def main(argv: list[str] | None = None) -> int:
         ntor=int(args.ntor),
         ns=int(ns_array[-1]),
         ns_array=ns_array,
-        nzeta=int(args.nzeta),
+        nzeta=resolved_nzeta,
         max_iter=int(niter_array[-1]),
         ftol=float(ftol_array[-1]),
         phiedge=float(args.phiedge) if args.phiedge is not None else ExampleConfig().phiedge,
@@ -889,7 +874,7 @@ def main(argv: list[str] | None = None) -> int:
     _log_step(
         "building square-coil configuration "
         f"beta={float(args.beta_percent):g}%, mpol={int(args.mpol)}, ntor={int(args.ntor)}, "
-        f"ns={ns_values}, nzeta={int(args.nzeta)}"
+        f"ns={ns_values}, nzeta={resolved_nzeta}"
     )
     coils = build_square_coils(config)
     label = _case_label(float(args.beta_percent))
@@ -940,9 +925,10 @@ def main(argv: list[str] | None = None) -> int:
             "mpol": int(args.mpol),
             "ntor": int(args.ntor),
             "ns": int(ns_array[-1]),
-            "nzeta": int(args.nzeta),
+            "nzeta": resolved_nzeta,
+            "nzeta_auto": bool(args.nzeta is None),
             "recommended_nzeta": int(recommended_nzeta),
-            "nzeta_underrecommended": bool(int(args.nzeta) < int(recommended_nzeta)),
+            "nzeta_underrecommended": bool(resolved_nzeta < int(recommended_nzeta)),
             "max_iter": int(niter_array[-1]),
             "ftol": float(ftol_array[-1]),
             "solver_mode": None if solver_mode is None else str(solver_mode),

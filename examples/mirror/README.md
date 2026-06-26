@@ -161,7 +161,9 @@ iteration ladder is ``NS_ARRAY = 9, 13, 17``,
 square axis uses the low-bandwidth rounded ``axis_kind="spline"`` profile before
 VMEC Fourier projection, which is less sensitive to ``NTOR`` than the sharper
 polar superellipse. The default ``NZETA`` follows
-``recommended_square_axis_nzeta``; underresolved production-style example runs
+``recommended_square_axis_nzeta``; the backend profiler also treats omitted
+``--nzeta`` or ``--nzeta auto`` as that recommendation. Underresolved
+production-style example runs
 raise before solving because ``NTOR=12, NZETA=16`` was observed to fail while
 ``NZETA=32`` completed the same VMEC2000 generated-``mgrid`` case. The top-level
 ``MAX_BOUNDARY_PROJECTION_ERROR`` gate also rejects low-mode decks whose
@@ -169,7 +171,11 @@ Fourier-projected square-axis boundary is too far from the sampled spline
 target. The default ``MPOL=6, NTOR=23, NZETA=64`` deck passes this gate; an
 ``MPOL=5, NTOR=12`` diagnostic deck does not. Set
 ``MAX_BOUNDARY_PROJECTION_ERROR = None`` only when deliberately profiling an
-underfit diagnostic input. The plots use the solved VMEC states: 3-D coils plus
+underfit diagnostic input. Use
+``vmec_jax.recommend_square_axis_stellarator_mirror_hybrid_resolution`` to get
+a finite ``MPOL``/``NTOR``/``NZETA`` suggestion for the current spline-smoothed
+target before starting a long free-boundary run. The plots use the solved VMEC
+states: 3-D coils plus
 solved LCFS
 and field-line traces, top-view solved boundaries, side/corner cross sections,
 solved-boundary ``|B|``, and residual/iota diagnostics. The metrics JSON records
