@@ -10,7 +10,11 @@ import numpy as np
 from vmec_jax._compat import jnp
 from vmec_jax.boundary import boundary_from_indata
 from vmec_jax.state import VMECState
-from vmec_jax.solvers.free_boundary.reduced_controls import ReducedControlMap, reduced_control_least_squares_step
+from vmec_jax.solvers.free_boundary.reduced_controls import (
+    ReducedControlMap,
+    reduced_control_decode,
+    reduced_control_least_squares_step,
+)
 
 from ..fixed_boundary.residual.update import (
     scale_velocity_blocks,
@@ -412,8 +416,6 @@ def _freeb_edge_control_state_from_coordinates(
         return _freeb_edge_control_state_from_edge_values(state, projection, edge_values, host_update=True)
 
     dtype = jnp.asarray(state.Rcos).dtype
-    controls = jnp.asarray(control_delta, dtype=dtype).reshape((-1,))
-    jacobian = jnp.asarray(projection["jacobian_np"], dtype=dtype)
     initial = jnp.concatenate(
         [
             jnp.asarray(projection["initial_np"]["R_cos"], dtype=dtype),
@@ -423,7 +425,7 @@ def _freeb_edge_control_state_from_coordinates(
         ],
         axis=0,
     )
-    edge_values = initial + jacobian @ controls
+    edge_values = reduced_control_decode(initial, projection["jacobian_np"], control_delta)
     return _freeb_edge_control_state_from_edge_values(state, projection, edge_values, host_update=False)
 
 
