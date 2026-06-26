@@ -5819,11 +5819,17 @@ No user input is needed.
   after expanding to the five-parameter stellarator-symmetric basis.
 - This keeps the next solver-native spline/control-basis decision evidence-led
   instead of guessing a control dimension.
+- A one-iteration `/tmp/vmec_square_projection_smoke` direct-coil profile
+  completed and wrote both `candidate_bases` entries. Its summary table printed
+  the new five-control columns. The capture values were zero, as expected for a
+  deliberately underfit one-iteration schema/rendering smoke run.
 
 ### How it was tested
 
 - Focused tests cover the new nested candidate-basis payload.
 - The broader profile/toroidal-hybrid subset is run before commit.
+- Smoke command:
+  `venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py --outdir /tmp/vmec_square_projection_smoke --beta-percent 0 --mpol 3 --ntor 4 --ns 5 --nzeta 16 --ns-array 5 --niter-array 1 --ftol-array 1e-8 --max-iter 1 --ftol 1e-8 --phiedge -0.04 --delt 0.02 --activate-fsq 1e-3 --nvacskip 1 --nstep 1 --axis-kind control_spline --side-power 1.0 --corner-power 1.0 --n-coils-per-side 2 --coil-segments 16 --coil-chunk-size 128 --max-boundary-projection-error none --skip-mgrid --skip-provider-parity --solver-mode parity --return-best-scored-state`.
 
 ### File structure and best-practice notes
 
