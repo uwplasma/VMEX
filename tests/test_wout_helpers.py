@@ -61,13 +61,13 @@ from vmec_jax.wout import (
     _wout_current_profile_metadata_from_indata,
 )
 from vmec_jax.mercier import glasser_resistive_interchange_from_mercier_terms
-from vmec_jax.io.wout import flux as wout_flux_helpers
-from vmec_jax.io.wout.diagnostics import (
+from vmec_jax.io.wout_files import flux as wout_flux_helpers
+from vmec_jax.io.wout_files.diagnostics import (
     glasser_from_wout_mercier_terms,
     glasser_profiles_from_wout_data,
     glasser_profiles_from_wout_variables,
 )
-from vmec_jax.io.wout.flux import wout_current_profile_metadata_from_indata
+from vmec_jax.io.wout_files.flux import wout_current_profile_metadata_from_indata
 from vmec_jax.kernels.tomnsp import vmec_trig_tables
 
 

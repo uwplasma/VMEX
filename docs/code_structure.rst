@@ -34,7 +34,7 @@ Numerical domains:
   branch-local adjoint/replay evidence.
 - ``vmec_jax/external_fields/`` contains differentiable coil and ``mgrid``
   field providers.
-- ``vmec_jax/io/wout/`` contains persisted-WOUT schema, netCDF I/O, flux
+- ``vmec_jax/io/wout_files/`` contains persisted-WOUT schema, netCDF I/O, flux
   conventions, JXBFORCE/Mercier reducers, ``DMerc``/Glasser ``D_R``
   diagnostics, and compatibility helpers.
 - ``vmec_jax/optimizers/fixed_boundary/`` contains objective terms, exact
@@ -94,7 +94,7 @@ Use this map before adding files or changing public behavior:
   are part of the documented example workflow.  Keep example scripts
   SIMSOPT-like: editable top-level parameters, visible objective tuples, then
   a solve call and explicit result inspection/plotting.
-- WOUT, Mercier, JXB, and profile diagnostics: use ``vmec_jax/io/wout/`` and
+- WOUT, Mercier, JXB, and profile diagnostics: use ``vmec_jax/io/wout_files/`` and
   ``vmec_jax/finite_beta.py``.  Preserve VMEC2000 storage conventions unless a
   documented diagnostic intentionally exposes a smoother differentiable proxy.
 - Parity and physics gates: put cheap required tests under ``tests/`` with no
