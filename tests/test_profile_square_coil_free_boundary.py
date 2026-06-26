@@ -437,6 +437,10 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
             "2",
             "--coil-chunk-size",
             "0",
+            "--side-power",
+            "1.25",
+            "--corner-power",
+            "1.5",
             "--no-direct-static-cache",
             "--jit-direct-sampler",
             "--skip-mgrid",
@@ -445,8 +449,12 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
     )
 
     data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    assert data["configuration"]["side_power"] == pytest.approx(1.25)
+    assert data["configuration"]["corner_power"] == pytest.approx(1.5)
     assert data["configuration"]["direct_static_cache"] is False
     assert data["configuration"]["jit_direct_sampler"] is True
+    assert captured[0]["config"].side_power == pytest.approx(1.25)
+    assert captured[0]["config"].corner_power == pytest.approx(1.5)
     assert captured[0]["direct_static_cache"] is False
     assert captured[0]["jit_direct_sampler"] is True
 

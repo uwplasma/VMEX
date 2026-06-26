@@ -5739,6 +5739,86 @@ Visual validation:
 No user input is needed.
 
 ---
+## 223. Square-Profile Shape-Metadata Guard
+
+### Steps taken
+
+- Added explicit ``--side-power`` and ``--corner-power`` arguments to
+  ``tools/diagnostics/profile_square_coil_free_boundary.py``.
+- Passed those values into the square-coil ``ExampleConfig`` used to build the
+  free-boundary input deck, so profile runs can intentionally select the
+  current first-order production shape or an older sharpened stress shape.
+- Persisted both values in the profile JSON configuration and printed them in
+  ``tools/diagnostics/summarize_square_coil_profiles.py`` beside ``MPOL``,
+  ``NTOR``, and ``NZETA``.
+- Updated the square-coil README and direct-coil convergence notes so local
+  strict-``FTOL=1e-12`` sweeps audit shape smoothing and Fourier resolution
+  together.
+
+### Results obtained
+
+- Future profile rows are no longer ambiguous about whether they used the
+  low-bandwidth first-order square-axis weights or the sharper ``1.4`` stress
+  geometry.
+- This closes a reproducibility gap that became important after the first-order
+  shape reduced the projected boundary-error ladder from the older
+  ``~1e-5``-level high-mode tail to the ``~1e-10`` to ``~1e-12`` range on the
+  ``MPOL=6, NTOR=23`` through ``MPOL=8, NTOR=32`` checks.
+- Existing long-running office jobs remain valid, but their profile JSON may
+  not contain these fields if they were launched before this guard landed.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py tests/test_summarize_square_coil_profiles.py
+venv/bin/python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py tools/diagnostics/summarize_square_coil_profiles.py
+git diff --check
+```
+
+Results:
+
+- Profile and summary tests: ``17 passed``.
+- Py-compile checks passed.
+- Whitespace checks passed.
+
+### File structure and best-practice notes
+
+- The implementation stays in diagnostics and reporting code; no solver path
+  is changed by this metadata guard.
+- The profile script remains the single backend-comparison entry point for
+  direct coils, generated ``mgrid``, and VMEC2000.
+- The summary table remains the single audit surface for completed JSON,
+  active VMEC2000 sidecars, and active ``threed1`` files.
+
+### Best next steps
+
+1. Commit and push the metadata guard.
+2. Fast-forward ``office`` before any newly launched strict profile so its JSON
+   records ``side_power`` and ``corner_power``.
+3. Let the active sharpened-shape VMEC2000 ``8,32`` and direct ``6,23`` runs
+   finish, then prioritize first-order-shape reruns if they still plateau above
+   the strict per-component ``1e-12`` gate.
+4. If first-order Fourier ladders also plateau, move from the spline-smoothed
+   Fourier target to the true spline/control-basis lane instead of extending
+   the same iteration budget.
+
+### Completion percentages after M223
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``76%``.
+- VMEC2000 robustness/reference lane: ``85%``.
+- Direct-coil GPU/JIT parity lane: ``70%``.
+- Direct-provider profiling/instrumentation lane: ``94%``.
+- Square-axis spline-smoothed Fourier closure lane: ``87%``.
+- True spline/control-basis hybrid lane: ``15%`` planned, not yet implemented.
+- Documentation and diagnostics for active profiling: ``99%``.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``91%``
+  pending strict high-mode evidence.
+
+### User input needed
+
+No user input is needed.
+
+---
 ## 224. First-Order Square-Axis Weights
 
 ### Steps taken

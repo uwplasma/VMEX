@@ -27,6 +27,8 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                     "recommended_nzeta": 32,
                     "nvacskip": 1,
                     "solver_mode": "parity",
+                    "side_power": 1.25,
+                    "corner_power": 1.5,
                     "max_iter": 1000,
                     "ftol": 1.0e-6,
                 },
@@ -143,6 +145,8 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["fresh_convergence_failures"] == 1
     assert rows[1]["freeb_convergence_blocked_count"] == 4
     assert rows[1]["solver_mode"] == "parity"
+    assert rows[1]["side_power"] == pytest.approx(1.25)
+    assert rows[1]["corner_power"] == pytest.approx(1.5)
     assert rows[1]["nzeta_auto"] is True
     assert rows[1]["recommended_nzeta"] == 32
     assert rows[1]["boundary_mode_count"] == 65

@@ -230,6 +230,10 @@ closure. The square-axis side/corner localization powers are also important:
 the older ``side_power=corner_power=1.4`` stress shape has a high-mode tail,
 while the current first-order default ``1.0`` keeps the same broad side/corner
 geometry much closer to finite Fourier bandwidth.
+The backend profiler records these choices as ``side_power`` and
+``corner_power`` in its JSON configuration, and the summary table prints them
+next to ``MPOL``, ``NTOR``, and ``NZETA`` so strict-resolution sweeps are not
+mixed with shape-smoothing sweeps.
 The public helper
 ``vmec_jax.recommend_square_axis_stellarator_mirror_hybrid_resolution`` scans a
 small finite ``MPOL``/``NTOR`` ladder for the current spline-smoothed target and

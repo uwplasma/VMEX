@@ -96,6 +96,18 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--nvacskip", type=int, default=1, help="Initial/floor NVACSKIP for VMEC free-boundary updates.")
     p.add_argument("--axis-kind", default="spline", choices=("spline", "superellipse"))
     p.add_argument("--axis-corner-factor", type=float, default=1.14)
+    p.add_argument(
+        "--side-power",
+        type=float,
+        default=ExampleConfig().side_power,
+        help="Square-axis side localization power; 1.0 is the low-Fourier production default.",
+    )
+    p.add_argument(
+        "--corner-power",
+        type=float,
+        default=ExampleConfig().corner_power,
+        help="Square-axis corner localization power; values above 1.0 are sharper stress cases.",
+    )
     p.add_argument("--enforce-recommended-nzeta", action="store_true")
     p.add_argument("--n-coils-per-side", type=int, default=4)
     p.add_argument("--coil-segments", type=int, default=96)
@@ -946,6 +958,8 @@ def main(argv: list[str] | None = None) -> int:
         coil_chunk_size=args.coil_chunk_size,
         plasma_axis_kind=str(args.axis_kind),
         plasma_axis_spline_corner_radius_factor=float(args.axis_corner_factor),
+        side_power=float(args.side_power),
+        corner_power=float(args.corner_power),
         mpol=int(args.mpol),
         ntor=int(args.ntor),
         ns=int(ns_array[-1]),
@@ -969,7 +983,8 @@ def main(argv: list[str] | None = None) -> int:
     _log_step(
         "building square-coil configuration "
         f"beta={float(args.beta_percent):g}%, mpol={int(args.mpol)}, ntor={int(args.ntor)}, "
-        f"ns={ns_values}, nzeta={resolved_nzeta}"
+        f"ns={ns_values}, nzeta={resolved_nzeta}, "
+        f"side_power={float(args.side_power):g}, corner_power={float(args.corner_power):g}"
     )
     coils = build_square_coils(config)
     label = _case_label(float(args.beta_percent))
@@ -1037,6 +1052,8 @@ def main(argv: list[str] | None = None) -> int:
             "nvacskip": int(config.nvacskip),
             "axis_kind": str(args.axis_kind),
             "axis_corner_factor": float(args.axis_corner_factor),
+            "side_power": float(args.side_power),
+            "corner_power": float(args.corner_power),
             "coil_chunk_size": None if args.coil_chunk_size is None else int(args.coil_chunk_size),
             "use_multigrid_schedule": bool(len(ns_array) > 1),
             "ns_array": ns_values,

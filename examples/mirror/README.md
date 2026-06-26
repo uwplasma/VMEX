@@ -239,6 +239,12 @@ For direct-provider versus mgrid/VMEC2000 profiling, use::
     --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5 \
     --run-vmec2000
 
+The production square-axis shape uses the first-order localization defaults
+``--side-power 1.0 --corner-power 1.0``. Sharper values, such as the older
+``1.4`` stress case, are useful for boundary-representation tests but require
+many more Fourier modes before strict ``FTOL=1e-12`` solver behavior is
+meaningful.
+
 The report stays under ignored ``results/`` paths and records ``vmec_jax``
 direct-coil, ``vmec_jax`` generated-mgrid, and optional raw VMEC2000
 generated-mgrid residuals for the same square-coil field. To profile a staged
@@ -298,8 +304,9 @@ Use ``final_max_component <= requested_ftol`` / ``strict_components_met`` for
 the production convergence gate; ``final_total`` is useful for trend
 comparison but is not sufficient for a per-component ``FTOL=1e-12`` claim.
 The table also includes ``nzeta_auto``, ``recommended_nzeta``,
-``boundary_mode_count``, and ``boundary_recommended_nzeta`` so
-``MPOL``/``NTOR``/``NZETA`` edits can be audited with the residuals.
+``side_power``, ``corner_power``, ``boundary_mode_count``, and
+``boundary_recommended_nzeta`` so ``MPOL``/``NTOR``/``NZETA`` and
+shape-smoothing edits can be audited with the residuals.
 The free-boundary audit columns ``returned_best_scored_state``,
 ``final_residual_recomputed_on_accepted_state``,
 ``fresh_convergence_rechecks``, ``fresh_convergence_rejects``,
