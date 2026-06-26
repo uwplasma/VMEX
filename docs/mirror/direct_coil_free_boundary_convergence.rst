@@ -466,6 +466,15 @@ folder name. Completed stalled direct rows that have not already used
 ``freeb_jax_nestor_operator`` now recommend ``direct-gpu-jax-nestor`` as the
 next profile kind; rows that already used it fall back to the ordinary
 direct-GPU ``DELT``/stage-budget lane.
+For staged solves, the same table now exposes ``stage_count``,
+``stage_ns_array``, ``stage_niter_array``, ``stage_ftol_array``,
+``stage_budget_total``, ``stage_budget_final``, ``current_stage_index``,
+``current_stage_last_iter``, ``remaining_stage_budget``, and
+``remaining_total_stage_budget``. Use ``stage_budget_final`` and
+``remaining_stage_budget`` when judging an active final-grid row: live VMEC
+iteration numbers are stage-local, so the current-stage budget is the useful
+quantity for deciding whether a tail estimate can still fit in the active
+``FTOL=1e-12`` stage.
 Completed VMEC2000 rows with a flat tail above ``FTOL`` recommend another
 ``vmec2000`` follow-up row for the ``DELT``/stage-budget scan rather than
 detouring through accepted-LCFS provider parity first. That keeps the reference

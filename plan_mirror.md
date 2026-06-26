@@ -5738,6 +5738,94 @@ Visual validation:
 
 No user input is needed.
 
+---
+## M283 - Stage-Budget Summary for Strict Direct Rows
+
+### Steps taken
+
+- Rechecked the active direct-GPU strict rows on `office`.
+- Copied their live `launcher.log` files locally and summarized them with
+  `tools/diagnostics/summarize_square_coil_profiles.py`.
+- Found that the live parser exposed the residual tail, but did not make the
+  staged `NS_ARRAY` / `NITER_ARRAY` / `FTOL_ARRAY` budget explicit enough.
+- Added staged-schedule fields to the summary output:
+  - `stage_count`;
+  - `stage_ns_array`;
+  - `stage_niter_array`;
+  - `stage_ftol_array`;
+  - `stage_budget_total`;
+  - `stage_budget_final`;
+  - `current_stage_index`;
+  - `current_stage_niter`;
+  - `current_stage_ftol`;
+  - `current_stage_last_iter`;
+  - `current_stage_iteration_row_count`;
+  - `remaining_stage_budget`;
+  - `remaining_total_stage_budget`.
+- Documented how to interpret these fields in
+  `docs/mirror/direct_coil_free_boundary_convergence.rst`.
+
+### Results obtained
+
+- The active direct rows remain running and are not strict evidence:
+  - baseline: max component about `6.41e-9`, strict gap about `6410`;
+  - Anderson: max component about `6.00e-9`, strict gap about `6000`;
+  - both rows are in the final `FTOL=1e-12` stage with about `4.7k`
+    final-stage iterations remaining;
+  - both are classified as `stalled_above_strict_ftol`;
+  - both recommend waiting for the active run rather than launching duplicate
+    direct rows.
+- The live tail projection estimates about `6.6k` additional iterations to
+  `1e-12`, which is larger than the remaining final-stage budget and should be
+  treated as a stall warning because the recent tail is flat above tolerance.
+- The queued JAX-NESTOR waiter remains the right next direct-coil A/B path once
+  both current direct rows exit.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_summarize_square_coil_profiles.py
+venv/bin/python -m py_compile tools/diagnostics/summarize_square_coil_profiles.py
+ruff check tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_summarize_square_coil_profiles.py
+git diff --check
+```
+
+Results: `22 passed`; py-compile, ruff, and whitespace checks passed.
+
+### File structure and best-practice notes
+
+- The change stays in the existing summary diagnostic:
+  `tools/diagnostics/summarize_square_coil_profiles.py`.
+- The regression is in the matching summary test file:
+  `tests/test_summarize_square_coil_profiles.py`.
+- The convergence interpretation is documented in:
+  `docs/mirror/direct_coil_free_boundary_convergence.rst`.
+- No generated WOUT, mgrid, launcher-log, or result artifacts were tracked.
+
+### Best next steps
+
+1. Let the active direct-GPU rows finish and let the queued JAX-NESTOR waiter
+   launch its A/B row.
+2. Queue the next VMEC2000 `DELT` / stage-budget scan after the active CPU-heavy
+   direct rows finish or the office load drops.
+3. Use `stage_budget_final`, `current_stage_last_iter`, and
+   `remaining_stage_budget` when judging future live strict rows.
+
+### Completion percentages after M283
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `98%`.
+- VMEC2000 robustness/reference lane: `98%`.
+- Direct-coil GPU/JIT parity lane: `91%`, active rows still running.
+- Experimental JAX NESTOR operator profiling lane: `79%`, queued behind active
+  direct rows.
+- Follow-up command and summary reproducibility lane: `100%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M274 - JAX-NESTOR Operator Application Evidence
 
 ### Steps taken

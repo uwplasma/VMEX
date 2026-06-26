@@ -895,6 +895,46 @@ def test_square_coil_profile_summary_parses_live_direct_launcher_log(tmp_path: P
     assert row["iters_to_1e-12_est"] is not None
 
 
+def test_square_coil_profile_summary_reports_multistage_budget(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_direct_gpu_ns9_13_17_mpol5_ntor28_nzeta64_niter8k"
+    case_dir.mkdir()
+    launcher_log = case_dir / "launcher.log"
+    launcher_log.write_text(
+        "\n".join(
+            [
+                "[square-coil-profile] running vmec_jax direct-coil backend",
+                "  NS =    9 NO. FOURIER MODES =  257 FTOLV =  1.000E-08 NITER =   1000",
+                "  ITER    FSQR      FSQZ      FSQL    RAX(v=0)    DELT       WMHD",
+                "    1  1.00E-03  1.00E-03  1.00E-04  1.500E+00  2.00E-02  2.5837E+00",
+                "  NS =   13 NO. FOURIER MODES =  257 FTOLV =  1.000E-10 NITER =   2000",
+                "  ITER    FSQR      FSQZ      FSQL    RAX(v=0)    DELT       WMHD",
+                "    1  1.00E-06  1.00E-06  1.00E-07  1.500E+00  2.00E-02  2.5837E+00",
+                "  NS =   17 NO. FOURIER MODES =  257 FTOLV =  1.000E-12 NITER =   8000",
+                "  ITER    FSQR      FSQZ      FSQL    RAX(v=0)    DELT       WMHD",
+                "    1  1.00E-08  8.00E-09  1.00E-09  1.500E+00  2.00E-02  2.5837E+00",
+                "    2  9.00E-09  7.00E-09  9.00E-10  1.500E+00  2.00E-02  2.5837E+00",
+            ]
+        )
+        + "\n"
+    )
+
+    row = summary.rows_from_source(launcher_log)[0]
+
+    assert row["stage_count"] == 3
+    assert row["stage_ns_array"] == "9,13,17"
+    assert row["stage_niter_array"] == "1000,2000,8000"
+    assert row["stage_ftol_array"] == "1e-08,1e-10,1e-12"
+    assert row["stage_budget_total"] == 11000
+    assert row["stage_budget_final"] == 8000
+    assert row["current_stage_index"] == 2
+    assert row["current_stage_niter"] == 8000
+    assert row["current_stage_ftol"] == pytest.approx(1.0e-12)
+    assert row["current_stage_last_iter"] == 2
+    assert row["current_stage_iteration_row_count"] == 2
+    assert row["remaining_stage_budget"] == 7998
+    assert row["remaining_total_stage_budget"] == 7998
+
+
 def test_square_coil_profile_summary_labels_live_mgrid_launcher_log(tmp_path: Path):
     case_dir = tmp_path / "square_coil_freeb_backend_profile_jax_mgrid_verbose_ns9_mpol5_ntor28_nzeta64"
     case_dir.mkdir()

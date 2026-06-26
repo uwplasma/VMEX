@@ -275,6 +275,132 @@ def _last_stage_value(backend: dict[str, Any], key: str) -> Any:
     return last.get(key)
 
 
+def _stage_schedule_payload(backend: dict[str, Any], *, final_iter: int | None) -> dict[str, Any]:
+    """Return compact multigrid schedule fields for live and final summaries."""
+
+    stages = backend.get("stage_summaries")
+    if not isinstance(stages, list) or not stages:
+        return {
+            "stage_count": None,
+            "stage_ns_array": None,
+            "stage_niter_array": None,
+            "stage_ftol_array": None,
+            "stage_budget_total": None,
+            "stage_budget_final": None,
+            "current_stage_index": None,
+            "current_stage_niter": None,
+            "current_stage_ftol": None,
+            "current_stage_last_iter": None,
+            "current_stage_iteration_row_count": None,
+            "remaining_stage_budget": None,
+            "remaining_total_stage_budget": None,
+        }
+
+    ns_values: list[int] = []
+    niter_values: list[int] = []
+    ftol_values: list[float] = []
+    row_counts: list[int] = []
+    current_stage_index: int | None = None
+    for idx, stage in enumerate(stages):
+        if not isinstance(stage, dict):
+            continue
+        try:
+            ns_values.append(int(stage.get("ns")))
+        except Exception:
+            pass
+        try:
+            niter_values.append(int(stage.get("niter")))
+        except Exception:
+            pass
+        ftol = _finite_float(stage.get("ftolv"))
+        if ftol is not None:
+            ftol_values.append(float(ftol))
+        try:
+            row_count = int(stage.get("iteration_row_count") or 0)
+        except Exception:
+            row_count = 0
+        row_counts.append(row_count)
+        if row_count > 0:
+            current_stage_index = idx
+
+    last_row = backend.get("last_row")
+    if isinstance(last_row, dict):
+        try:
+            current_stage_index = int(last_row.get("stage_index"))
+        except Exception:
+            pass
+    if current_stage_index is None and stages:
+        current_stage_index = len(stages) - 1
+
+    def _stage_item(key: str, index: int | None) -> Any:
+        if index is None or not (0 <= int(index) < len(stages)):
+            return None
+        stage = stages[int(index)]
+        return stage.get(key) if isinstance(stage, dict) else None
+
+    current_niter = None
+    try:
+        current_niter = int(_stage_item("niter", current_stage_index))
+    except Exception:
+        current_niter = None
+    current_ftol = _finite_float(_stage_item("ftolv", current_stage_index))
+    current_rows = None
+    try:
+        current_rows = int(_stage_item("iteration_row_count", current_stage_index) or 0)
+    except Exception:
+        current_rows = None
+    current_last_iter = None
+    current_stage = None
+    if current_stage_index is not None and 0 <= int(current_stage_index) < len(stages):
+        current_stage = stages[int(current_stage_index)]
+    if isinstance(current_stage, dict):
+        current_last_row = current_stage.get("last_row")
+        if isinstance(current_last_row, dict):
+            try:
+                current_last_iter = int(current_last_row.get("it"))
+            except Exception:
+                current_last_iter = None
+    if current_last_iter is None and isinstance(last_row, dict):
+        try:
+            current_last_iter = int(last_row.get("it"))
+        except Exception:
+            current_last_iter = None
+
+    stage_budget_total = int(sum(niter_values)) if niter_values else None
+    stage_budget_final = int(niter_values[-1]) if niter_values else None
+    current_elapsed = current_last_iter if current_last_iter is not None else current_rows
+    remaining_stage_budget = (
+        None if current_niter is None or current_elapsed is None else max(0, current_niter - current_elapsed)
+    )
+    future_budget = None
+    if current_stage_index is not None and niter_values:
+        try:
+            future_budget = int(sum(niter_values[int(current_stage_index) + 1 :]))
+        except Exception:
+            future_budget = None
+    remaining_total_stage_budget = (
+        None
+        if remaining_stage_budget is None or future_budget is None
+        else int(remaining_stage_budget) + int(future_budget)
+    )
+
+    return {
+        "stage_count": int(len(stages)),
+        "stage_ns_array": ",".join(str(value) for value in ns_values) if ns_values else None,
+        "stage_niter_array": ",".join(str(value) for value in niter_values) if niter_values else None,
+        "stage_ftol_array": ",".join(f"{value:.0e}" for value in ftol_values) if ftol_values else None,
+        "stage_budget_total": stage_budget_total,
+        "stage_budget_final": stage_budget_final,
+        "current_stage_index": current_stage_index,
+        "current_stage_niter": current_niter,
+        "current_stage_ftol": current_ftol,
+        "current_stage_last_iter": current_last_iter,
+        "current_stage_iteration_row_count": current_rows,
+        "remaining_stage_budget": remaining_stage_budget,
+        "remaining_total_stage_budget": remaining_total_stage_budget,
+    }
+
+
 def _virtual_casing_payload(backend: dict[str, Any]) -> dict[str, Any]:
     payload = backend.get("virtual_casing")
     return payload if isinstance(payload, dict) else {}
@@ -866,6 +992,7 @@ def _summary_row(
     if max_iter is None:
         max_iter = _last_stage_value(backend, "niter")
     remaining_iterations = _remaining_iterations(max_iter, final_iter)
+    stage_schedule = _stage_schedule_payload(backend, final_iter=final_iter)
     vacuum_grid_exceeded_count = backend.get("vacuum_grid_exceeded_count")
     accepted_parity = _accepted_provider_parity_payload(backend)
     accepted_parity_field = accepted_parity.get("field_vector")
@@ -950,6 +1077,7 @@ def _summary_row(
         "side_power": cfg.get("side_power"),
         "corner_power": cfg.get("corner_power"),
         "max_iter": max_iter,
+        **stage_schedule,
         "requested_ftol": requested_ftol,
         "strict_gap": strict_gap,
         "remaining_iterations": remaining_iterations,
@@ -1288,6 +1416,19 @@ def main(argv: list[str] | None = None) -> int:
         "side_power",
         "corner_power",
         "max_iter",
+        "stage_count",
+        "stage_ns_array",
+        "stage_niter_array",
+        "stage_ftol_array",
+        "stage_budget_total",
+        "stage_budget_final",
+        "current_stage_index",
+        "current_stage_niter",
+        "current_stage_ftol",
+        "current_stage_last_iter",
+        "current_stage_iteration_row_count",
+        "remaining_stage_budget",
+        "remaining_total_stage_budget",
         "requested_ftol",
         "strict_gap",
         "remaining_iterations",
