@@ -615,6 +615,67 @@ def _resolve_fixed_boundary_stage_context(
     )
 
 
+def _finalize_fixed_boundary_solver_run(
+    *,
+    cfg: VMECConfig,
+    indata,
+    static,
+    result,
+    signgs: int,
+    flux_local,
+    profiles_local,
+    pressure_local,
+    static_profile_cache,
+    solver: str,
+    verbose: bool,
+    finish_policy_eff: str,
+    cli_fixed_boundary_finish_enabled: bool,
+    multigrid: bool,
+    ns_stages: list[int],
+    maybe_finish_cli_fixed_boundary_run,
+) -> FixedBoundaryRun:
+    """Assemble the public run object after a fixed-boundary solver finishes."""
+
+    _driver_solve_helpers.maybe_print_optimizer_summary(result, solver=solver, verbose=bool(verbose))
+    static, flux, profiles = _driver_flux_helpers.finalize_flux_profiles_for_run(
+        cfg=cfg,
+        indata=indata,
+        static=static,
+        result=result,
+        signgs=signgs,
+        flux_local=flux_local,
+        profiles_local=profiles_local,
+        pressure_local=pressure_local,
+        static_profile_cache=static_profile_cache,
+        final_flux_profiles_from_state_func=_final_flux_profiles_from_state,
+    )
+    run_out = FixedBoundaryRun(
+        cfg=cfg,
+        indata=indata,
+        static=static,
+        state=result.state,
+        result=result,
+        flux=flux,
+        profiles=profiles,
+        signgs=signgs,
+    )
+    if run_out.result is not None:
+        run_out = replace(
+            run_out,
+            result=_result_with_diag(
+                run_out.result,
+                fixed_boundary_finish_policy=str(finish_policy_eff),
+                cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
+            ),
+        )
+    cli_initial_policy = "multigrid" if bool(multigrid) and (len(ns_stages) > 1) else "single_grid"
+    return maybe_finish_cli_fixed_boundary_run(
+        run_out,
+        initial_policy=cli_initial_policy,
+        enabled=bool(cli_fixed_boundary_finish_enabled),
+    )
+
+
 def run_fixed_boundary(
     input_path: str | Path,
     *,
@@ -1109,8 +1170,7 @@ def run_fixed_boundary(
             f"Unknown solver: {solver!r} (expected 'gd', 'lbfgs', 'vmec_lbfgs', 'vmec_gn', or 'vmec2000_iter')"
         )
 
-    _driver_solve_helpers.maybe_print_optimizer_summary(res, solver=solver, verbose=bool(verbose))
-    static, flux, prof = _driver_flux_helpers.finalize_flux_profiles_for_run(
+    return _finalize_fixed_boundary_solver_run(
         cfg=cfg,
         indata=indata,
         static=static,
@@ -1120,33 +1180,13 @@ def run_fixed_boundary(
         profiles_local=prof,
         pressure_local=pressure,
         static_profile_cache=static_profile_cache,
-        final_flux_profiles_from_state_func=_final_flux_profiles_from_state,
-    )
-
-    run_out = FixedBoundaryRun(
-        cfg=cfg,
-        indata=indata,
-        static=static,
-        state=res.state,
-        result=res,
-        flux=flux,
-        profiles=prof,
-        signgs=signgs,
-    )
-    if run_out.result is not None:
-        run_out = replace(
-            run_out,
-            result=_result_with_diag(
-                run_out.result,
-                fixed_boundary_finish_policy=str(finish_policy_eff),
-                cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
-            ),
-        )
-    cli_initial_policy = "multigrid" if bool(multigrid) and (len(ns_stages) > 1) else "single_grid"
-    return _maybe_finish_cli_fixed_boundary_run(
-        run_out,
-        initial_policy=cli_initial_policy,
-        enabled=bool(cli_fixed_boundary_finish_enabled),
+        solver=solver,
+        verbose=bool(verbose),
+        finish_policy_eff=str(finish_policy_eff),
+        cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
+        multigrid=bool(multigrid),
+        ns_stages=list(ns_stages),
+        maybe_finish_cli_fixed_boundary_run=_maybe_finish_cli_fixed_boundary_run,
     )
 
 

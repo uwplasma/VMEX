@@ -6994,3 +6994,69 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.3%.
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
+
+### 2026-06-26: Package fixed-boundary driver finalization seam
+
+Steps taken:
+
+- Extracted the public fixed-boundary post-solve finalization path from
+  ``run_fixed_boundary`` into ``_finalize_fixed_boundary_solver_run`` in
+  ``vmec_jax/driver.py``.
+- The new seam owns solver-summary printing, flux/profile reconciliation,
+  ``FixedBoundaryRun`` assembly, finish-policy diagnostic stamping, and the
+  optional CLI finish callback.
+- Lowered the CI and local source-health baseline for
+  ``vmec_jax/driver.py:run_fixed_boundary`` from ``533`` to ``512`` physical
+  lines.
+- Added a focused test that checks the finalization helper wires the flux
+  finalizer, preserves existing diagnostics, stamps public finish diagnostics,
+  and forwards the correct initial policy to the finish hook.
+
+Results obtained:
+
+- ``run_fixed_boundary`` now reports ``512`` lines in ``source_health.py``,
+  down from the previous ``533`` baseline.
+- ``python -m ruff check
+  vmec_jax/driver.py tools/diagnostics/local_ci_gate.py
+  tests/test_driver_fast_reconstruction.py tests/test_local_ci_gate.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_driver_fast_reconstruction.py tests/test_local_ci_gate.py -q``
+  passed with ``11`` tests.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_driver_api.py tests/test_driver_policy_helpers.py
+  tests/test_driver_policy_coverage_extra.py
+  tests/test_driver_api_finish_more_coverage.py -q`` passed with the existing
+  numerical warnings only.
+- The stricter exact source-health command passed locally with
+  ``solve_fixed_boundary_residual_iter=2508`` and
+  ``run_fixed_boundary=512``.
+- Full ``ruff``, ``compileall`` on changed files, ``git diff --check``, and
+  ``repo_size_audit.py`` passed; tracked size is ``28.40 MiB``.
+
+Best next steps:
+
+1. Push this driver-finalization refactor and let CI validate the tighter
+   public-driver source-health baseline.
+2. If more review-readiness cleanup is needed, target one larger residual-loop
+   phase or split the direct-coil/free-boundary optimization example into
+   reusable source-code helpers; avoid churn in the refreshed benchmark and
+   AD-vs-FD artifacts unless numerical behavior changes.
+3. Keep adaptive free-boundary differentiation claims conservative until the
+   full adaptive branch gate exists; current public evidence remains
+   branch-local/fingerprint-gated.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.2%.
+- Free-boundary production differentiability: 97.4%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 75.2%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.

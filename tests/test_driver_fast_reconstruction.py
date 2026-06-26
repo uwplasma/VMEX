@@ -504,3 +504,67 @@ def test_result_with_diag_returns_copy_without_mutating_original():
     assert updated.diagnostics == {"kept": True, "added": 7}
     assert result.diagnostics == {"kept": True}
     np.testing.assert_allclose(updated.w_history, [1.0, 0.5])
+
+
+def test_finalize_fixed_boundary_solver_run_attaches_public_diagnostics(monkeypatch):
+    result = SolveVmecResidualResult(
+        state="solved-state",
+        n_iter=3,
+        w_history=np.asarray([2.0, 1.0]),
+        fsqr2_history=np.asarray([0.2]),
+        fsqz2_history=np.asarray([0.3]),
+        fsql2_history=np.asarray([0.4]),
+        grad_rms_history=np.asarray([0.5]),
+        step_history=np.asarray([0.6]),
+        diagnostics={"existing": "diag"},
+    )
+    calls: dict[str, object] = {}
+
+    def fake_summary(result_arg, *, solver, verbose):
+        calls["summary"] = (result_arg, solver, verbose)
+
+    def fake_finalize_flux_profiles_for_run(**kwargs):
+        calls["flux_finalize"] = kwargs
+        return "static-out", "flux-out", {"iota": np.asarray([0.0, 0.4])}
+
+    def fake_finish(run_arg, *, initial_policy, enabled):
+        calls["finish"] = (run_arg, initial_policy, enabled)
+        return run_arg
+
+    monkeypatch.setattr(driver._driver_solve_helpers, "maybe_print_optimizer_summary", fake_summary)
+    monkeypatch.setattr(driver._driver_flux_helpers, "finalize_flux_profiles_for_run", fake_finalize_flux_profiles_for_run)
+
+    run = driver._finalize_fixed_boundary_solver_run(
+        cfg="cfg",
+        indata="indata",
+        static="static-in",
+        result=result,
+        signgs=-1,
+        flux_local="flux-local",
+        profiles_local={"pressure": np.asarray([1.0])},
+        pressure_local=np.asarray([1.0]),
+        static_profile_cache="cache",
+        solver="vmec2000_iter",
+        verbose=True,
+        finish_policy_eff="converge",
+        cli_fixed_boundary_finish_enabled=True,
+        multigrid=True,
+        ns_stages=[5, 9],
+        maybe_finish_cli_fixed_boundary_run=fake_finish,
+    )
+
+    assert calls["summary"] == (result, "vmec2000_iter", True)
+    assert calls["flux_finalize"]["final_flux_profiles_from_state_func"] is driver._final_flux_profiles_from_state
+    assert run.cfg == "cfg"
+    assert run.indata == "indata"
+    assert run.static == "static-out"
+    assert run.state == "solved-state"
+    assert run.flux == "flux-out"
+    assert run.profiles["iota"].tolist() == [0.0, 0.4]
+    assert run.signgs == -1
+    assert run.result is not result
+    assert run.result.diagnostics["existing"] == "diag"
+    assert run.result.diagnostics["fixed_boundary_finish_policy"] == "converge"
+    assert run.result.diagnostics["cli_fixed_boundary_finish_enabled"] is True
+    assert calls["finish"][0] is run
+    assert calls["finish"][1:] == ("multigrid", True)
