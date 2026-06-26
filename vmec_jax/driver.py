@@ -183,6 +183,26 @@ class _FixedBoundaryStartupContext:
     routed_run: Any | None
 
 
+@dataclass(frozen=True)
+class _FixedBoundaryStageContext:
+    """Resolved multigrid/stage policy for one fixed-boundary run."""
+
+    ns_list_input: Any
+    niter_list_input: Any
+    ftol_list_input: Any
+    cli_budgeted_multigrid_requested: bool
+    cli_fixed_boundary_finish_enabled: bool
+    finish_policy_eff: str
+    multigrid: bool
+    multigrid_user_provided: bool
+    accelerated_single_grid_default: bool
+    direct_staged_current_driven_3d_cli: bool
+    deferred_staged_current_driven_3d_cli: bool
+    max_iter: int
+    stage_transition_heuristic: bool
+    ns_stages: list[int]
+
+
 def _default_backend_name() -> str:
     try:
         import jax
@@ -537,6 +557,64 @@ def _resolve_fixed_boundary_startup_context(
     )
 
 
+def _resolve_fixed_boundary_stage_context(
+    *,
+    cfg: VMECConfig,
+    indata,
+    solver_lower: str,
+    cli_fixed_boundary_mode: bool,
+    accelerated_mode: bool,
+    multigrid: bool | None,
+    max_iter,
+    max_iter_overridden: bool,
+    restart_state_present: bool,
+    restart_solver_state_present: bool,
+    ns_override: int | None,
+    stage_transition_heuristic: bool | None,
+    finish_policy: str | None,
+) -> _FixedBoundaryStageContext:
+    """Resolve VMEC stage policy and finish-policy overrides."""
+
+    stage_policy = _driver_policy_helpers.resolve_fixed_boundary_stage_policy(
+        cfg=cfg,
+        indata=indata,
+        solver_lower=solver_lower,
+        cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
+        accelerated_mode=bool(accelerated_mode),
+        multigrid=multigrid,
+        max_iter=max_iter,
+        max_iter_sentinel=_MAX_ITER_SENTINEL,
+        max_iter_overridden=bool(max_iter_overridden),
+        restart_state_present=bool(restart_state_present),
+        restart_solver_state_present=bool(restart_solver_state_present),
+        ns_override=ns_override,
+        stage_transition_heuristic=stage_transition_heuristic,
+        getenv=os.getenv,
+    )
+    finish_policy_eff = _normalize_fixed_boundary_finish_policy(finish_policy)
+    cli_fixed_boundary_finish_enabled = bool(stage_policy.cli_fixed_boundary_finish_enabled)
+    if finish_policy_eff == "none":
+        cli_fixed_boundary_finish_enabled = False
+    elif finish_policy_eff == "converge":
+        cli_fixed_boundary_finish_enabled = bool(solver_lower == "vmec2000_iter") and (not bool(cfg.lfreeb))
+    return _FixedBoundaryStageContext(
+        ns_list_input=stage_policy.ns_list_input,
+        niter_list_input=stage_policy.niter_list_input,
+        ftol_list_input=stage_policy.ftol_list_input,
+        cli_budgeted_multigrid_requested=bool(stage_policy.cli_budgeted_multigrid_requested),
+        cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
+        finish_policy_eff=str(finish_policy_eff),
+        multigrid=bool(stage_policy.multigrid),
+        multigrid_user_provided=bool(stage_policy.multigrid_user_provided),
+        accelerated_single_grid_default=bool(stage_policy.accelerated_single_grid_default),
+        direct_staged_current_driven_3d_cli=bool(stage_policy.direct_staged_current_driven_3d_cli),
+        deferred_staged_current_driven_3d_cli=bool(stage_policy.deferred_staged_current_driven_3d_cli),
+        max_iter=int(stage_policy.max_iter),
+        stage_transition_heuristic=bool(stage_policy.stage_transition_heuristic),
+        ns_stages=list(stage_policy.ns_stages),
+    )
+
+
 def run_fixed_boundary(
     input_path: str | Path,
     *,
@@ -656,7 +734,7 @@ def run_fixed_boundary(
             nfp=int(cfg.nfp),
             lasym=bool(cfg.lasym),
         )
-    stage_policy = _driver_policy_helpers.resolve_fixed_boundary_stage_policy(
+    stage_context = _resolve_fixed_boundary_stage_context(
         cfg=cfg,
         indata=indata,
         solver_lower=solver_lower,
@@ -664,32 +742,27 @@ def run_fixed_boundary(
         accelerated_mode=bool(accelerated_mode),
         multigrid=multigrid,
         max_iter=max_iter,
-        max_iter_sentinel=_MAX_ITER_SENTINEL,
         max_iter_overridden=bool(max_iter_overridden),
         restart_state_present=restart_state_eff is not None,
         restart_solver_state_present=restart_solver_state is not None,
         ns_override=ns_override,
         stage_transition_heuristic=stage_transition_heuristic,
-        getenv=os.getenv,
+        finish_policy=finish_policy,
     )
-    ns_list_input = stage_policy.ns_list_input
-    niter_list_input = stage_policy.niter_list_input
-    ftol_list_input = stage_policy.ftol_list_input
-    cli_budgeted_multigrid_requested = bool(stage_policy.cli_budgeted_multigrid_requested)
-    cli_fixed_boundary_finish_enabled = bool(stage_policy.cli_fixed_boundary_finish_enabled)
-    finish_policy_eff = _normalize_fixed_boundary_finish_policy(finish_policy)
-    if finish_policy_eff == "none":
-        cli_fixed_boundary_finish_enabled = False
-    elif finish_policy_eff == "converge":
-        cli_fixed_boundary_finish_enabled = bool(solver_lower == "vmec2000_iter") and (not bool(cfg.lfreeb))
-    multigrid = bool(stage_policy.multigrid)
-    multigrid_user_provided = bool(stage_policy.multigrid_user_provided)
-    accelerated_single_grid_default = bool(stage_policy.accelerated_single_grid_default)
-    direct_staged_current_driven_3d_cli = bool(stage_policy.direct_staged_current_driven_3d_cli)
-    deferred_staged_current_driven_3d_cli = bool(stage_policy.deferred_staged_current_driven_3d_cli)
-    max_iter = int(stage_policy.max_iter)
-    stage_transition_heuristic = bool(stage_policy.stage_transition_heuristic)
-    ns_stages = list(stage_policy.ns_stages)
+    ns_list_input = stage_context.ns_list_input
+    niter_list_input = stage_context.niter_list_input
+    ftol_list_input = stage_context.ftol_list_input
+    cli_budgeted_multigrid_requested = stage_context.cli_budgeted_multigrid_requested
+    cli_fixed_boundary_finish_enabled = stage_context.cli_fixed_boundary_finish_enabled
+    finish_policy_eff = stage_context.finish_policy_eff
+    multigrid = stage_context.multigrid
+    multigrid_user_provided = stage_context.multigrid_user_provided
+    accelerated_single_grid_default = stage_context.accelerated_single_grid_default
+    direct_staged_current_driven_3d_cli = stage_context.direct_staged_current_driven_3d_cli
+    deferred_staged_current_driven_3d_cli = stage_context.deferred_staged_current_driven_3d_cli
+    max_iter = stage_context.max_iter
+    stage_transition_heuristic = stage_context.stage_transition_heuristic
+    ns_stages = stage_context.ns_stages
 
     sanitize_resume_state_for_stage = partial(
         _sanitize_resume_state_for_driver_stage,
