@@ -5740,83 +5740,6 @@ No user input is needed.
 
 
 ---
-## 237. Added Direct Trial-Pressure Profiling Split
-
-### Steps taken
-
-- Ran a direct-coil versus generated-``mgrid`` provider-parity diagnostic for
-  the square-coil stellarator-mirror target with
-  ``MPOL=5, NTOR=28, NZETA=64`` and ``mgrid=88x64x64``.
-- Confirmed the initial-boundary external-field mismatch is small:
-  ``8.7e-5`` relative RMS for the full field vector, ``4.7e-4`` for
-  ``B.n``, and ``1.3e-4`` for ``|B|^2/2``.
-- Launched a short low-priority generated-``mgrid`` ``vmec_jax`` row on
-  ``office`` to distinguish direct-provider trial scoring from shared
-  ``vmec_jax`` free-boundary pressure coupling.
-- Added the profiler flag ``--no-direct-trial-bsqvac-resample``. This keeps
-  production defaults unchanged but lets strict runs benchmark VMEC2000-style
-  committed-pressure trial scoring against direct-coil trial resampling.
-- Cleaned the generated-``mgrid`` backend call formatting in the profiler.
-
-### Results obtained
-
-- The direct coil field sampler is not the current blocker. It agrees with the
-  generated ``mgrid`` field well below the coarse free-boundary residual jump.
-- VMEC2000 is still the stronger strict-reference path for this geometry:
-  it is steadily reducing residuals after vacuum pressure turn-on, while the
-  direct ``vmec_jax`` row jumps at pressure activation and later oscillates.
-- The next controlled comparison can now test whether the direct-only trial
-  ``bsqvac`` resampling is helping or hurting convergence.
-
-### How it was tested
-
-```bash
-ssh office "cd ~/local/vmec_mirror && python3 tools/diagnostics/profile_square_coil_free_boundary.py --outdir results/square_coil_freeb_provider_parity_mpol5_ntor28_nzeta64_mgrid88x64x64 --beta-percent 0 --mpol 5 --ntor 28 --ns 17 --nzeta 64 --ns-array 9,13,17 --niter-array 1,1,1 --ftol-array 1e-8,1e-10,1e-12 --max-iter 1 --ftol 1e-12 --phiedge -0.04 --delt 0.02 --activate-fsq 1e-3 --nvacskip 1 --nstep 1 --axis-kind spline --side-power 1.0 --corner-power 1.0 --n-coils-per-side 4 --coil-segments 64 --coil-chunk-size 512 --mgrid-nr 88 --mgrid-nz 64 --mgrid-nphi 64 --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5 --max-boundary-projection-error 5e-12 --skip-direct --skip-mgrid --solver-mode parity"
-venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py
-python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py tests/test_profile_square_coil_free_boundary.py
-git diff --check
-```
-
-### File structure and best-practice notes
-
-- The new control is confined to ``tools/diagnostics/`` and focused profiler
-  tests. It does not change the production free-boundary default behavior.
-- All generated parity/profile files stay under ignored ``results/`` paths.
-- The diagnostic layout now separates three concerns cleanly: external-field
-  provider parity, VMEC2000 generated-``mgrid`` reference convergence, and
-  direct-provider trial-pressure policy.
-
-### Best next steps
-
-1. Pull this profiler update onto ``office``.
-2. Launch a direct comparison row with
-   ``--no-direct-trial-bsqvac-resample`` and the same ``5,28,64`` target.
-3. Compare that row against the running generated-``mgrid`` ``vmec_jax`` row
-   and the VMEC2000 strict-reference row.
-4. If committed-pressure scoring behaves like VMEC2000, move the policy from
-   diagnostic knob to a production-safe solver option with tests. If it still
-   jumps, inspect the pressure sign/normalization and edge coupling.
-
-### Completion percentages after M237
-
-- Square-coil strict ``FTOL=1e-12`` profiling lane: ``86%``.
-- VMEC2000 robustness/reference lane: ``92%``.
-- Direct-coil GPU/JIT parity lane: ``75%`` with provider parity cleared and
-  trial-pressure policy isolated.
-- Direct-provider profiling/instrumentation lane: ``100%`` for current
-  profiling controls.
-- Square-axis spline-smoothed Fourier closure lane: ``96%``.
-- True spline/control-basis hybrid lane: ``35%`` bridge corrected,
-  solver-native update still open.
-- Overall toroidal stellarator-mirror hybrid production-readiness: ``94%``
-  pending strict ``5,28`` convergence evidence and the direct pressure-policy
-  split.
-
-### User input needed
-
-No user input is needed.
-
----
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
 This lane converted the successful M8u/M8v block-dense split into a scalable
@@ -28085,6 +28008,187 @@ The launcher command was run under ``nohup`` in practice so it can continue on
 - Documentation and diagnostics for active profiling: ``100%``.
 - Overall toroidal stellarator-mirror hybrid production-readiness: ``94%``
   pending strict ``5,28`` convergence evidence.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 237. Added Direct Trial-Pressure Profiling Split
+
+### Steps taken
+
+- Ran a direct-coil versus generated-``mgrid`` provider-parity diagnostic for
+  the square-coil stellarator-mirror target with
+  ``MPOL=5, NTOR=28, NZETA=64`` and ``mgrid=88x64x64``.
+- Confirmed the initial-boundary external-field mismatch is small:
+  ``8.7e-5`` relative RMS for the full field vector, ``4.7e-4`` for
+  ``B.n``, and ``1.3e-4`` for ``|B|^2/2``.
+- Launched a short low-priority generated-``mgrid`` ``vmec_jax`` row on
+  ``office`` to distinguish direct-provider trial scoring from shared
+  ``vmec_jax`` free-boundary pressure coupling.
+- Added the profiler flag ``--no-direct-trial-bsqvac-resample``. This keeps
+  production defaults unchanged but lets strict runs benchmark VMEC2000-style
+  committed-pressure trial scoring against direct-coil trial resampling.
+- Cleaned the generated-``mgrid`` backend call formatting in the profiler.
+
+### Results obtained
+
+- The direct coil field sampler is not the current blocker. It agrees with the
+  generated ``mgrid`` field well below the coarse free-boundary residual jump.
+- VMEC2000 is still the stronger strict-reference path for this geometry:
+  it is steadily reducing residuals after vacuum pressure turn-on, while the
+  direct ``vmec_jax`` row jumps at pressure activation and later oscillates.
+- The next controlled comparison can now test whether the direct-only trial
+  ``bsqvac`` resampling is helping or hurting convergence.
+
+### How it was tested
+
+```bash
+ssh office "cd ~/local/vmec_mirror && python3 tools/diagnostics/profile_square_coil_free_boundary.py --outdir results/square_coil_freeb_provider_parity_mpol5_ntor28_nzeta64_mgrid88x64x64 --beta-percent 0 --mpol 5 --ntor 28 --ns 17 --nzeta 64 --ns-array 9,13,17 --niter-array 1,1,1 --ftol-array 1e-8,1e-10,1e-12 --max-iter 1 --ftol 1e-12 --phiedge -0.04 --delt 0.02 --activate-fsq 1e-3 --nvacskip 1 --nstep 1 --axis-kind spline --side-power 1.0 --corner-power 1.0 --n-coils-per-side 4 --coil-segments 64 --coil-chunk-size 512 --mgrid-nr 88 --mgrid-nz 64 --mgrid-nphi 64 --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5 --max-boundary-projection-error 5e-12 --skip-direct --skip-mgrid --solver-mode parity"
+venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py
+python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py tests/test_profile_square_coil_free_boundary.py
+git diff --check
+```
+
+### File structure and best-practice notes
+
+- The new control is confined to ``tools/diagnostics/`` and focused profiler
+  tests. It does not change the production free-boundary default behavior.
+- All generated parity/profile files stay under ignored ``results/`` paths.
+- The diagnostic layout now separates three concerns cleanly: external-field
+  provider parity, VMEC2000 generated-``mgrid`` reference convergence, and
+  direct-provider trial-pressure policy.
+
+### Best next steps
+
+1. Pull this profiler update onto ``office``.
+2. Launch a direct comparison row with
+   ``--no-direct-trial-bsqvac-resample`` and the same ``5,28,64`` target.
+3. Compare that row against the running generated-``mgrid`` ``vmec_jax`` row
+   and the VMEC2000 strict-reference row.
+4. If committed-pressure scoring behaves like VMEC2000, move the policy from
+   diagnostic knob to a production-safe solver option with tests. If it still
+   jumps, inspect the pressure sign/normalization and edge coupling.
+
+### Completion percentages after M237
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``86%``.
+- VMEC2000 robustness/reference lane: ``92%``.
+- Direct-coil GPU/JIT parity lane: ``75%`` with provider parity cleared and
+  trial-pressure policy isolated.
+- Direct-provider profiling/instrumentation lane: ``100%`` for current
+  profiling controls.
+- Square-axis spline-smoothed Fourier closure lane: ``96%``.
+- True spline/control-basis hybrid lane: ``35%`` bridge corrected,
+  solver-native update still open.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``94%``
+  pending strict ``5,28`` convergence evidence and the direct pressure-policy
+  split.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 238. Isolated Strict-Turn-On Failure From Coil and Projection Effects
+
+### Steps taken
+
+- Ran a Fourier projection scan for representative square-axis resolutions.
+- Compared VMEC2000 source sections in
+  ``/home/rjorge/vmec2000/Sources/General/funct3d.f``,
+  ``forces.f``, and ``NESTOR_vacuum/vacuum.f`` against the current
+  ``vmec_jax`` edge-coupling code.
+- Launched a direct-coil ``NS=9, MPOL=5, NTOR=28, NZETA=64`` comparison with
+  ``--no-direct-trial-bsqvac-resample``.
+- Stopped the duplicate direct row after it reproduced the same post-turn-on
+  failure pattern as the original direct row.
+- Launched a generated-``mgrid`` ``vmec_jax`` comparison first without
+  ``--jit-forces`` and then with ``--jit-forces``; both reached the same
+  pressure turn-on point, and the JIT row remained CPU-bound with no GPU use.
+- Stopped the generated-``mgrid`` comparison so the VMEC2000 strict-reference
+  row could continue with less CPU contention.
+
+### Results obtained
+
+- Projection robustness:
+  - ``MPOL=3, NTOR=8`` is under-resolved for the square-axis target with
+    max component projection error about ``1.5e-4``.
+  - ``MPOL=5, NTOR=28, NZETA=64`` has max component projection error about
+    ``3.5e-12``.
+  - ``MPOL=6, NTOR=23, NZETA=64`` is about ``3.3e-10``.
+  - ``MPOL=7, NTOR=28, NZETA=64`` is again about ``3.5e-12``.
+- Direct no-trial-resample did not fix convergence. It matched the original
+  direct row: after vacuum pressure turned on at iteration ``79``, by
+  iteration ``197`` the live residual was about
+  ``final_total = 6.8e-2`` and ``final_max_component = 3.4e-2`` while the
+  best state remained the pre-turn-on ``1.3e-3`` state.
+- Generated-``mgrid`` ``vmec_jax`` with ``--jit-forces`` reached turn-on but
+  then spent more than a minute in the first coupled step with zero GPU
+  utilization. This makes it a poor strict-reference path at this target until
+  the turn-on/NESTOR timing is instrumented and optimized.
+- VMEC2000 remains the robust reference. It continued decreasing after
+  pressure activation and had reached iteration ``2181`` with
+  ``final_max_component`` about ``2.3e-7`` in the coarse ``FTOL=1e-8`` stage.
+- VMEC2000 source confirms the intended coupling path:
+  ``ivac`` advances when ``fsqr + fsqz <= 1e-3``, full vacuum updates are
+  forced while ``ivac <= 2``, ``vacuum.f`` computes ``bsqvac = 0.5*|B|^2``,
+  ``funct3d.f`` forms ``gcon = bsqvac + presf_ns`` and
+  ``rbsq = gcon * R_edge / hs``, and ``forces.f`` adds the edge force terms.
+  The current ``vmec_jax`` force signs and scaling match this structure.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py
+venv/bin/python -m pytest -q tests/test_summarize_square_coil_profiles.py
+python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py tests/test_profile_square_coil_free_boundary.py
+python -m py_compile tools/diagnostics/summarize_square_coil_profiles.py tests/test_summarize_square_coil_profiles.py
+git diff --check
+ssh office "cd ~/local/vmec_mirror && python3 tools/diagnostics/summarize_square_coil_profiles.py <profile-dirs> --markdown"
+```
+
+### File structure and best-practice notes
+
+- No large output files were committed. All runtime artifacts remain in ignored
+  ``results/`` directories.
+- The profiler-only direct trial-pressure knob is intentionally diagnostic; it
+  does not change production solver behavior.
+- The live summary now distinguishes ``vmec_jax_direct_live`` from
+  ``vmec_jax_mgrid_live`` so mixed backend profiling tables remain readable.
+- The resolution scan supports keeping the current spline-smoothed Fourier
+  bridge for high-mode targets while planning a solver-native spline/control
+  basis for lower-mode square-axis production runs.
+
+### Best next steps
+
+1. Let the VMEC2000 strict row continue into the ``1e-10`` and ``1e-12``
+   stages, then parse the final stage summaries.
+2. Add explicit ``vmec_jax`` turn-on timing instrumentation around NESTOR
+   sampling, NESTOR solve, soft restart, and first coupled force evaluation.
+3. Use VMEC2000 output as the strict reference WOUT for boundary/cross-section
+   plots and for residual/runtime comparison.
+4. Only after VMEC2000 produces a strict reference, revisit ``vmec_jax`` free-
+   boundary pressure coupling and performance; direct coil provider and
+   Fourier projection are no longer the leading suspects.
+5. Keep the solver-native spline/control-basis hybrid as the next geometry
+   simplification lane, but do not expect it to fix the current ``5,28,64``
+   post-turn-on residual jump.
+
+### Completion percentages after M238
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``87%``.
+- VMEC2000 robustness/reference lane: ``93%``.
+- Direct-coil GPU/JIT parity lane: ``77%`` with trial policy ruled out.
+- ``vmec_jax`` generated-``mgrid`` parity/performance lane: ``68%``; field
+  parity is good, but turn-on performance is not production-ready.
+- Square-axis spline-smoothed Fourier closure lane: ``97%`` for high-mode
+  bridge usage.
+- True spline/control-basis hybrid lane: ``35%`` bridge corrected,
+  solver-native update still open.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``94%``
+  pending strict VMEC2000 completion and ``vmec_jax`` pressure-turn-on fixes.
 
 ### User input needed
 
