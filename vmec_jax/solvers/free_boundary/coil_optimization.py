@@ -1227,28 +1227,8 @@ def same_branch_nestor_profile_from_vector_replay(
     return profile
 
 
-def same_branch_rejected_slot_gate_from_vector_replay(
-    *,
-    requested: bool,
-    same_branch: bool,
-    replay_mode_count_guard_triggered: bool,
-    replay_mode_count_guard_reason: str,
-    mode: str,
-    report: dict[str, Any],
-    missing_vector_keys: tuple[str, ...],
-    vector_keys: tuple[str, ...],
-    replay_kwargs: dict[str, Any],
-    run_branch_local_vector: Any,
-    summarize_vector_result: Any,
-    main_vector_replay_plan: dict[str, Any] | None = None,
-    gate_mode: str = "replay",
-) -> tuple[dict[str, Any], float | None]:
-    """Return the fixed accepted/rejected controller-slot gate artifact.
-
-    This is a branch-local replay gate: it checks whether a fixed rejected
-    controller slot can be replayed under the same fingerprint.  It does not
-    claim derivatives through arbitrary host-side adaptive branch selection.
-    """
+def _initial_rejected_slot_gate(requested: bool) -> dict[str, Any]:
+    """Return the unavailable gate payload shared by all early exits."""
 
     gate: dict[str, Any] = {
         "available": False,
@@ -1259,111 +1239,137 @@ def same_branch_rejected_slot_gate_from_vector_replay(
         "differentiates_run_free_boundary": False,
         "same_stacked_step_policy_branch": False,
     }
-    if not requested:
-        return gate, None
-    gate_mode = str(gate_mode).strip().lower()
-    if gate_mode not in {"replay", "fingerprint"}:
-        gate["reason"] = "gate_mode must be 'replay' or 'fingerprint'"
-        return gate, None
-    if replay_mode_count_guard_triggered:
-        gate["reason"] = replay_mode_count_guard_reason
-        return gate, None
-    if not (same_branch and mode == "vector" and "base" in report and not missing_vector_keys):
-        gate["reason"] = "requires same-branch vector report with all requested scalar keys"
-        return gate, None
-    base_traces = tuple(report["base"].get("traces", ()))
-    if not base_traces:
-        gate["reason"] = "base complete-solve payload has no traces"
-        return gate, None
+    return gate
 
-    slot_vector_keys = tuple(key for key in ("aspect", "mean_iota", "lcfs_boundary_moment") if key in vector_keys)[:1]
-    if not slot_vector_keys:
-        slot_vector_keys = tuple(vector_keys[:1])
-    slot_uses_state_only_replay = all(key in STATE_ONLY_SAME_BRANCH_KEYS for key in slot_vector_keys)
+
+def _rejected_slot_vector_keys(vector_keys: tuple[str, ...]) -> tuple[str, ...]:
+    """Pick one cheap physical scalar for the rejected-slot replay gate."""
+
+    preferred_keys = ("aspect", "mean_iota", "lcfs_boundary_moment")
+    slot_keys = tuple(key for key in preferred_keys if key in vector_keys)[:1]
+    return slot_keys or tuple(vector_keys[:1])
+
+
+def _append_rejected_trace(base_traces: tuple[Any, ...]) -> tuple[Any, ...]:
+    """Append a synthetic rejected controller slot to an accepted trace tuple."""
+
     rejected_trace = deepcopy(base_traces[-1])
     rejected_trace["step_status"] = "rejected"
-    padded_traces = base_traces + (rejected_trace,)
-    t0 = time.perf_counter()
-    if gate_mode == "fingerprint":
-        statuses = [
-            str(trace.get("step_status", "accepted")).strip().lower() or "accepted"
-            for trace in padded_traces
-            if isinstance(trace, Mapping)
-        ]
-        accepted_mask = np.asarray(
-            [
-                status != "rejected" and not status.startswith("restart_")
-                for status in statuses
-            ],
-            dtype=bool,
-        )
-        rejected_mask = np.logical_not(accepted_mask)
-        metadata = {
-            "n_steps": len(statuses),
-            "n_free_boundary_replay_steps": int(np.count_nonzero(accepted_mask)),
-            "masks": {
-                "accepted": accepted_mask,
-                "rejected": rejected_mask,
-                "has_active_freeb_replay": accepted_mask,
-                "active_free_boundary": accepted_mask,
-            },
-            "status_masks": {
-                "step_status": statuses,
-                "accept_mask": accepted_mask,
-                "status_acceptance_source": "trace_step_status",
-            },
-            "status_acceptance_source": "trace_step_status",
-            "accepted_mask": accepted_mask,
-            "rejected_mask": rejected_mask,
+    return base_traces + (rejected_trace,)
+
+
+def _rejected_slot_fingerprint_metadata(padded_traces: tuple[Any, ...]) -> dict[str, Any]:
+    """Build controller-slot metadata from fixed trace statuses only."""
+
+    statuses = [
+        str(trace.get("step_status", "accepted")).strip().lower() or "accepted"
+        for trace in padded_traces
+        if isinstance(trace, Mapping)
+    ]
+    accepted_mask = np.asarray(
+        [
+            status != "rejected" and not status.startswith("restart_")
+            for status in statuses
+        ],
+        dtype=bool,
+    )
+    rejected_mask = np.logical_not(accepted_mask)
+    return {
+        "n_steps": len(statuses),
+        "n_free_boundary_replay_steps": int(np.count_nonzero(accepted_mask)),
+        "masks": {
+            "accepted": accepted_mask,
+            "rejected": rejected_mask,
             "has_active_freeb_replay": accepted_mask,
-            "active_free_boundary_mask": accepted_mask,
-        }
-        controller_slot_summary = direct_coil_accepted_trace_controller_slot_summary(metadata)
-        status_derived_rejected_slot = bool(
-            statuses
-            and np.any(rejected_mask)
-            and metadata["status_acceptance_source"] == "trace_step_status"
-        )
-        passed = bool(same_branch and controller_slot_summary.get("fixed_rejected_controller_slot_present", False)
-                      and status_derived_rejected_slot)
-        wall_s = float(time.perf_counter() - t0)
-        return {
-            "available": True,
-            "requested": True,
-            "passed": passed,
-            "gate_mode": "fingerprint",
-            "fingerprint_only": True,
-            "scope": (
-                "fixed accepted/rejected controller-slot fingerprint; "
-                "no additional replay/JVP and no adaptive host-branch differentiation"
-            ),
-            "differentiates_adaptive_controller": False,
-            "differentiates_run_free_boundary": False,
-            "same_branch": same_branch,
-            "same_stacked_step_policy_branch": False,
-            "scalar_keys": list(slot_vector_keys),
-            "full_report_scalar_keys": list(vector_keys),
-            "fixed_rejected_controller_slot_present": bool(
-                controller_slot_summary.get("fixed_rejected_controller_slot_present", False)
-            ),
-            "fixed_rejected_controller_slots": int(controller_slot_summary.get("rejected_slots", 0)),
-            "status_derived_rejected_controller_slot_present": status_derived_rejected_slot,
+            "active_free_boundary": accepted_mask,
+        },
+        "status_masks": {
+            "step_status": statuses,
+            "accept_mask": accepted_mask,
             "status_acceptance_source": "trace_step_status",
-            "controller_slot_fingerprint": direct_coil_accepted_trace_controller_slot_fingerprint(metadata),
-            "controller_slot_summary": controller_slot_summary,
-            "replay_option_flags": {
-                "fingerprint_only": True,
-                "use_stacked_step_controls": bool(replay_kwargs.get("use_stacked_step_controls", False)),
-                "use_accepted_only_fast_path": False,
-                "state_only_replay": bool(slot_uses_state_only_replay),
-            },
-            "replay_branch_metadata": metadata,
-            "max_base_abs_delta": 0.0,
-            "base_delta_source": "not_applicable_fingerprint_only",
-            "scalars": {},
-            "wall_s": wall_s,
-        }, wall_s
-    rejected_replay_plan = None
+        },
+        "status_acceptance_source": "trace_step_status",
+        "accepted_mask": accepted_mask,
+        "rejected_mask": rejected_mask,
+        "has_active_freeb_replay": accepted_mask,
+        "active_free_boundary_mask": accepted_mask,
+    }
+
+
+def _same_branch_rejected_slot_fingerprint_gate(
+    *,
+    same_branch: bool,
+    slot_vector_keys: tuple[str, ...],
+    vector_keys: tuple[str, ...],
+    replay_kwargs: dict[str, Any],
+    slot_uses_state_only_replay: bool,
+    padded_traces: tuple[Any, ...],
+) -> tuple[dict[str, Any], float]:
+    """Return the cheap fixed rejected-slot fingerprint gate."""
+
+    t0 = time.perf_counter()
+    metadata = _rejected_slot_fingerprint_metadata(padded_traces)
+    statuses = metadata["status_masks"]["step_status"]
+    rejected_mask = np.asarray(metadata["rejected_mask"], dtype=bool)
+    controller_slot_summary = direct_coil_accepted_trace_controller_slot_summary(metadata)
+    status_derived_rejected_slot = bool(
+        statuses
+        and np.any(rejected_mask)
+        and metadata["status_acceptance_source"] == "trace_step_status"
+    )
+    passed = bool(
+        same_branch
+        and controller_slot_summary.get("fixed_rejected_controller_slot_present", False)
+        and status_derived_rejected_slot
+    )
+    wall_s = float(time.perf_counter() - t0)
+    return {
+        "available": True,
+        "requested": True,
+        "passed": passed,
+        "gate_mode": "fingerprint",
+        "fingerprint_only": True,
+        "scope": (
+            "fixed accepted/rejected controller-slot fingerprint; "
+            "no additional replay/JVP and no adaptive host-branch differentiation"
+        ),
+        "differentiates_adaptive_controller": False,
+        "differentiates_run_free_boundary": False,
+        "same_branch": same_branch,
+        "same_stacked_step_policy_branch": False,
+        "scalar_keys": list(slot_vector_keys),
+        "full_report_scalar_keys": list(vector_keys),
+        "fixed_rejected_controller_slot_present": bool(
+            controller_slot_summary.get("fixed_rejected_controller_slot_present", False)
+        ),
+        "fixed_rejected_controller_slots": int(controller_slot_summary.get("rejected_slots", 0)),
+        "status_derived_rejected_controller_slot_present": status_derived_rejected_slot,
+        "status_acceptance_source": "trace_step_status",
+        "controller_slot_fingerprint": direct_coil_accepted_trace_controller_slot_fingerprint(metadata),
+        "controller_slot_summary": controller_slot_summary,
+        "replay_option_flags": {
+            "fingerprint_only": True,
+            "use_stacked_step_controls": bool(replay_kwargs.get("use_stacked_step_controls", False)),
+            "use_accepted_only_fast_path": False,
+            "state_only_replay": bool(slot_uses_state_only_replay),
+        },
+        "replay_branch_metadata": metadata,
+        "max_base_abs_delta": 0.0,
+        "base_delta_source": "not_applicable_fingerprint_only",
+        "scalars": {},
+        "wall_s": wall_s,
+    }, wall_s
+
+
+def _rejected_slot_replay_plan(
+    *,
+    padded_traces: tuple[Any, ...],
+    report: dict[str, Any],
+    replay_kwargs: dict[str, Any],
+    main_vector_replay_plan: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Precompute a rejected-slot replay plan when metadata is available."""
+
     try:
         from vmec_jax.free_boundary_adjoint import direct_coil_accepted_trace_controller_replay_plan
 
@@ -1372,7 +1378,7 @@ def same_branch_rejected_slot_gate_from_vector_replay(
             if main_vector_replay_plan is None
             else dict(main_vector_replay_plan.get("boundary_replay_contexts_by_shape", {}))
         )
-        rejected_replay_plan = direct_coil_accepted_trace_controller_replay_plan(
+        return direct_coil_accepted_trace_controller_replay_plan(
             padded_traces,
             static=report["base"]["init"].static,
             use_preconditioner_policy_segments=bool(
@@ -1389,7 +1395,57 @@ def same_branch_rejected_slot_gate_from_vector_replay(
         # The replay call below can still build its own plan.  Keep this gate
         # diagnostic non-fatal so examples do not fail solely due to plan
         # precomputation metadata.
-        rejected_replay_plan = None
+        return None
+
+
+def _rejected_slot_status_summary(
+    rejected_metadata: Mapping[str, Any],
+) -> tuple[str | None, bool, np.ndarray]:
+    """Extract status-source and rejected-mask diagnostics from replay metadata."""
+
+    status_masks = rejected_metadata.get("status_masks", {})
+    status_acceptance_source = rejected_metadata.get("status_acceptance_source")
+    if status_acceptance_source is None and isinstance(status_masks, Mapping):
+        status_acceptance_source = status_masks.get("status_acceptance_source")
+    accepted_mask = np.asarray(rejected_metadata.get("accepted_mask", []), dtype=bool)
+    rejected_mask = np.asarray(rejected_metadata.get("rejected_mask", []), dtype=bool)
+    status_accept_mask = (
+        np.asarray(status_masks.get("accept_mask", []), dtype=bool)
+        if isinstance(status_masks, Mapping)
+        else np.asarray([], dtype=bool)
+    )
+    if status_accept_mask.size == 0 and accepted_mask.size:
+        status_accept_mask = accepted_mask
+    status_derived_rejected_slot = bool(
+        status_acceptance_source == "trace_step_status"
+        and status_accept_mask.size
+        and np.any(np.logical_not(status_accept_mask))
+    )
+    return status_acceptance_source, status_derived_rejected_slot, rejected_mask
+
+
+def _same_branch_rejected_slot_replay_gate(
+    *,
+    same_branch: bool,
+    slot_vector_keys: tuple[str, ...],
+    vector_keys: tuple[str, ...],
+    replay_kwargs: dict[str, Any],
+    run_branch_local_vector: Any,
+    summarize_vector_result: Any,
+    padded_traces: tuple[Any, ...],
+    report: dict[str, Any],
+    slot_uses_state_only_replay: bool,
+    main_vector_replay_plan: dict[str, Any] | None,
+) -> tuple[dict[str, Any], float]:
+    """Replay the fixed accepted/rejected slot and return its gate payload."""
+
+    t0 = time.perf_counter()
+    rejected_replay_plan = _rejected_slot_replay_plan(
+        padded_traces=padded_traces,
+        report=report,
+        replay_kwargs=replay_kwargs,
+        main_vector_replay_plan=main_vector_replay_plan,
+    )
     rejected_vector = run_branch_local_vector(
         slot_vector_keys,
         {
@@ -1410,27 +1466,10 @@ def same_branch_rejected_slot_gate_from_vector_replay(
         if isinstance(rejected_metadata, dict)
         else {}
     )
-    status_masks = rejected_metadata.get("status_masks", {}) if isinstance(rejected_metadata, dict) else {}
-    status_acceptance_source = (
-        rejected_metadata.get("status_acceptance_source")
-        if isinstance(rejected_metadata, dict)
-        else None
-    )
-    if status_acceptance_source is None and isinstance(status_masks, dict):
-        status_acceptance_source = status_masks.get("status_acceptance_source")
-    accepted_mask = np.asarray(rejected_metadata.get("accepted_mask", []), dtype=bool)
-    rejected_mask = np.asarray(rejected_metadata.get("rejected_mask", []), dtype=bool)
-    status_accept_mask = (
-        np.asarray(status_masks.get("accept_mask", []), dtype=bool)
-        if isinstance(status_masks, dict)
-        else np.asarray([], dtype=bool)
-    )
-    if status_accept_mask.size == 0 and accepted_mask.size:
-        status_accept_mask = accepted_mask
-    status_derived_rejected_slot = bool(
-        status_acceptance_source == "trace_step_status"
-        and status_accept_mask.size
-        and np.any(np.logical_not(status_accept_mask))
+    status_acceptance_source, status_derived_rejected_slot, rejected_mask = (
+        _rejected_slot_status_summary(rejected_metadata)
+        if isinstance(rejected_metadata, Mapping)
+        else (None, False, np.asarray([], dtype=bool))
     )
     passed = bool(
         same_branch
@@ -1483,6 +1522,73 @@ def same_branch_rejected_slot_gate_from_vector_replay(
         "scalars": rejected_summary["scalars"],
         "wall_s": wall_s,
     }, wall_s
+
+
+def same_branch_rejected_slot_gate_from_vector_replay(
+    *,
+    requested: bool,
+    same_branch: bool,
+    replay_mode_count_guard_triggered: bool,
+    replay_mode_count_guard_reason: str,
+    mode: str,
+    report: dict[str, Any],
+    missing_vector_keys: tuple[str, ...],
+    vector_keys: tuple[str, ...],
+    replay_kwargs: dict[str, Any],
+    run_branch_local_vector: Any,
+    summarize_vector_result: Any,
+    main_vector_replay_plan: dict[str, Any] | None = None,
+    gate_mode: str = "replay",
+) -> tuple[dict[str, Any], float | None]:
+    """Return the fixed accepted/rejected controller-slot gate artifact.
+
+    This is a branch-local replay gate: it checks whether a fixed rejected
+    controller slot can be replayed under the same fingerprint.  It does not
+    claim derivatives through arbitrary host-side adaptive branch selection.
+    """
+
+    gate = _initial_rejected_slot_gate(requested)
+    if not requested:
+        return gate, None
+    gate_mode = str(gate_mode).strip().lower()
+    if gate_mode not in {"replay", "fingerprint"}:
+        gate["reason"] = "gate_mode must be 'replay' or 'fingerprint'"
+        return gate, None
+    if replay_mode_count_guard_triggered:
+        gate["reason"] = replay_mode_count_guard_reason
+        return gate, None
+    if not (same_branch and mode == "vector" and "base" in report and not missing_vector_keys):
+        gate["reason"] = "requires same-branch vector report with all requested scalar keys"
+        return gate, None
+    base_traces = tuple(report["base"].get("traces", ()))
+    if not base_traces:
+        gate["reason"] = "base complete-solve payload has no traces"
+        return gate, None
+
+    slot_vector_keys = _rejected_slot_vector_keys(vector_keys)
+    slot_uses_state_only_replay = all(key in STATE_ONLY_SAME_BRANCH_KEYS for key in slot_vector_keys)
+    padded_traces = _append_rejected_trace(base_traces)
+    if gate_mode == "fingerprint":
+        return _same_branch_rejected_slot_fingerprint_gate(
+            same_branch=same_branch,
+            slot_vector_keys=slot_vector_keys,
+            vector_keys=vector_keys,
+            replay_kwargs=replay_kwargs,
+            slot_uses_state_only_replay=slot_uses_state_only_replay,
+            padded_traces=padded_traces,
+        )
+    return _same_branch_rejected_slot_replay_gate(
+        same_branch=same_branch,
+        slot_vector_keys=slot_vector_keys,
+        vector_keys=vector_keys,
+        replay_kwargs=replay_kwargs,
+        run_branch_local_vector=run_branch_local_vector,
+        summarize_vector_result=summarize_vector_result,
+        padded_traces=padded_traces,
+        report=report,
+        slot_uses_state_only_replay=slot_uses_state_only_replay,
+        main_vector_replay_plan=main_vector_replay_plan,
+    )
 
 
 def _same_branch_qs_angle_cache_factory(args: Any) -> Any:
