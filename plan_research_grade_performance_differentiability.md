@@ -86,13 +86,13 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   AD-vs-central-FD evidence now passes `1e-9` for fixed-boundary geometry,
   profiles, QS/QI diagnostics, `DMerc`, and `D_R`. Remaining work is
   operator-level implicit/JVP/VJP productionization.
-- Free-boundary production differentiability: 97.5%.
+- Free-boundary production differentiability: 97.6%.
   Direct coil fields, JAX mgrid interpolation, accepted-branch replay, and
   fingerprint-gated branch-local gates pass `1e-9` evidence for selected
   physical scalars. Dynamic replay now tolerates minimal/full preconditioner
   cache payload structure changes in both JVP and VJP paths. Arbitrary adaptive
   branch differentiation remains unclaimed.
-- Single-stage coil optimization: 93.6%.
+- Single-stage coil optimization: 94.0%.
   Examples and branch-local derivative proposal paths exist; complete solves
   still need to remain the acceptance authority until the full adaptive seam is
   validated.
@@ -104,7 +104,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   remains materially higher than VMEC2000, especially for LASYM finite-beta
   rows. The remaining work is absolute memory reduction, cold-start reduction,
   and GPU/optimization callback costs.
-- Refactor/API/examples: 76.4%.
+- Refactor/API/examples: 78.0%.
   Public examples are better, but core source files and tests are still too
   large and too entangled. The fixed-boundary residual timing/setup seam is now
   slightly cleaner, but the main residual loop still needs a larger split.
@@ -6639,6 +6639,69 @@ Updated lane percentages:
 - Single-stage coil optimization: 94.0%.
 - CPU/GPU runtime and memory footprint: 99.2%.
 - Refactor/API/examples: 77.4%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
+### 2026-06-26: Split fixed rejected-slot same-branch gate
+
+Steps taken:
+
+- Split ``same_branch_rejected_slot_gate_from_vector_replay`` in
+  ``vmec_jax/solvers/free_boundary/coil_optimization.py`` into smaller helpers
+  for unavailable payload construction, rejected trace padding, fingerprint
+  metadata construction, replay-plan precomputation, replay status extraction,
+  and final replay-gate payload assembly.
+- Kept the public gate function as a short orchestration seam with the same
+  branch-local scope and the same conservative statements: fixed
+  accepted/rejected controller-slot replay is validated, arbitrary adaptive host
+  branch differentiation is still not claimed.
+- Confirmed the latest pushed CI for ``6a9b1d7e`` completed successfully before
+  committing this tranche.
+
+Results obtained:
+
+- ``same_branch_rejected_slot_gate_from_vector_replay`` no longer appears in
+  the source-health long-function report.
+- ``python -m ruff check
+  vmec_jax/solvers/free_boundary/coil_optimization.py
+  examples/optimization/free_boundary_QS_coil_optimization.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed with the
+  existing expected marker output.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py -q``
+  passed with the existing NESTOR diagnostic runtime warnings.
+- ``python tools/diagnostics/source_health.py --top 25 --top-functions 80
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2508
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=512`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size is ``28.46 MiB``.
+- ``git diff --check`` passed.
+
+Best next steps:
+
+1. Push this rejected-slot gate split and let CI validate it.
+2. If another final cleanup is needed before PR review, target
+   ``write_same_branch_validation_report_core`` or a bounded residual-loop seam;
+   avoid touching refreshed benchmark/AD-FD artifacts unless behavior changes.
+3. Keep PR wording conservative on free-boundary differentiation: current
+   evidence is branch-local/fingerprint-gated, not arbitrary adaptive branch
+   selection.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.2%.
+- Free-boundary production differentiability: 97.6%.
+- Single-stage coil optimization: 94.0%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 78.0%.
 - VMEC2000/VMEC++ parity and physics gates: 99.3%.
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
