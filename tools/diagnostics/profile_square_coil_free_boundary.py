@@ -30,7 +30,7 @@ from examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary impo
     build_square_coils,
     make_free_boundary_indata,
 )
-from vmec_jax.boundary import boundary_from_indata
+from vmec_jax.boundary import BoundaryCoeffs, boundary_from_indata
 from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
 from vmec_jax.external_fields import build_coil_field_geometry, write_mgrid_from_coils
 from vmec_jax.fourier import eval_fourier
@@ -526,19 +526,6 @@ def _internal_to_physical_mode_scale(static: Any) -> np.ndarray:
     return np.where(m == 0.0, 1.0, sqrt2) * np.where(np.abs(n) == 0.0, 1.0, sqrt2)
 
 
-def _stack_boundary_components(components: dict[str, np.ndarray]) -> np.ndarray:
-    """Stack boundary coefficient blocks in the VMEC map order."""
-
-    return np.concatenate(
-        [
-            np.asarray(components["R_cos"], dtype=float).reshape(-1),
-            np.asarray(components["R_sin"], dtype=float).reshape(-1),
-            np.asarray(components["Z_cos"], dtype=float).reshape(-1),
-            np.asarray(components["Z_sin"], dtype=float).reshape(-1),
-        ]
-    )
-
-
 def _boundary_reduced_control_projection_payload(
     *,
     config: ExampleConfig | None,
@@ -557,15 +544,15 @@ def _boundary_reduced_control_projection_payload(
     try:
         basis, matrix = _square_control_fourier_matrix(config)
         jacobian = matrix.stacked_jacobian()
-        target = _stack_boundary_components(deltas)
-        if jacobian.shape[0] != target.size:
+        target_size = int(sum(np.asarray(value, dtype=float).size for value in deltas.values()))
+        if jacobian.shape[0] != target_size:
             return {
                 "status": "shape_mismatch",
                 "axis_kind": axis_kind,
                 "basis_symmetry": basis.symmetry,
                 "labels": list(basis.labels),
                 "jacobian_shape": [int(value) for value in jacobian.shape],
-                "target_size": int(target.size),
+                "target_size": target_size,
             }
         if jacobian.shape[1] == 0:
             return {
@@ -573,41 +560,34 @@ def _boundary_reduced_control_projection_payload(
                 "axis_kind": axis_kind,
                 "basis_symmetry": basis.symmetry,
                 "jacobian_shape": [int(value) for value in jacobian.shape],
-                "target_size": int(target.size),
+                "target_size": target_size,
             }
-        solution, _residuals, rank, singular_values = np.linalg.lstsq(jacobian, target, rcond=None)
-        predicted = jacobian @ solution
-        residual = target - predicted
-        target_norm = float(np.linalg.norm(target))
-        predicted_norm = float(np.linalg.norm(predicted))
-        residual_norm = float(np.linalg.norm(residual))
-        residual_max = float(np.max(np.abs(residual))) if residual.size else 0.0
-        residual_rms = float(np.sqrt(np.mean(residual * residual))) if residual.size else 0.0
-        residual_rel = None if target_norm <= TINY else float(residual_norm / target_norm)
-        captured_fraction = None if residual_rel is None else float(max(0.0, 1.0 - residual_rel))
-        min_sv = float(np.min(singular_values)) if singular_values.size else None
-        max_sv = float(np.max(singular_values)) if singular_values.size else None
-        condition = None if min_sv in (None, 0.0) or max_sv is None else float(max_sv / max(min_sv, TINY))
+        projection = matrix.project_boundary_delta(
+            BoundaryCoeffs(
+                R_cos=np.asarray(deltas["R_cos"], dtype=float),
+                R_sin=np.asarray(deltas["R_sin"], dtype=float),
+                Z_cos=np.asarray(deltas["Z_cos"], dtype=float),
+                Z_sin=np.asarray(deltas["Z_sin"], dtype=float),
+            )
+        )
         return {
-            "status": "available" if target_norm > TINY else "zero_boundary_motion",
+            "status": "available" if projection.target_l2 > TINY else "zero_boundary_motion",
             "axis_kind": axis_kind,
             "basis_symmetry": basis.symmetry,
-            "labels": list(basis.labels),
-            "radius_delta": [float(value) for value in solution],
-            "radius_delta_by_label": {
-                str(label): float(value) for label, value in zip(basis.labels, solution, strict=False)
-            },
-            "rank": int(rank),
-            "singular_values": [float(value) for value in singular_values],
-            "condition_number": condition,
+            "labels": list(projection.labels),
+            "radius_delta": [float(value) for value in projection.radius_delta],
+            "radius_delta_by_label": projection.radius_delta_by_label,
+            "rank": int(projection.rank),
+            "singular_values": [float(value) for value in projection.singular_values],
+            "condition_number": projection.condition_number,
             "jacobian_shape": [int(value) for value in jacobian.shape],
-            "target_l2": target_norm,
-            "predicted_l2": predicted_norm,
-            "residual_l2": residual_norm,
-            "residual_linf": residual_max,
-            "residual_rms": residual_rms,
-            "residual_rel": residual_rel,
-            "captured_fraction": captured_fraction,
+            "target_l2": projection.target_l2,
+            "predicted_l2": projection.predicted_l2,
+            "residual_l2": projection.residual_l2,
+            "residual_linf": projection.residual_linf,
+            "residual_rms": projection.residual_rms,
+            "residual_rel": projection.residual_rel,
+            "captured_fraction": projection.captured_fraction,
         }
     except Exception as exc:
         return {

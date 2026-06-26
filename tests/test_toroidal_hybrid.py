@@ -16,6 +16,7 @@ import vmec_jax.toroidal_hybrid as toroidal_hybrid
 from vmec_jax.toroidal_hybrid import (
     SquareAxisControlBasis,
     SquareAxisControlFourierMatrix,
+    SquareAxisControlProjection,
     SquareAxisSplineControls,
     ToroidalHybridBoundarySamples,
     evaluate_toroidal_hybrid_indata_boundary,
@@ -100,6 +101,7 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert "ZBC" not in indata.indexed
     assert vj.SquareAxisControlBasis is SquareAxisControlBasis
     assert vj.SquareAxisControlFourierMatrix is SquareAxisControlFourierMatrix
+    assert vj.SquareAxisControlProjection is SquareAxisControlProjection
     assert vj.SquareAxisSplineControls is SquareAxisSplineControls
     assert vj.square_axis_spline_control_fourier_matrix is square_axis_spline_control_fourier_matrix
     assert vj.square_axis_spline_radius is square_axis_spline_radius
@@ -114,6 +116,7 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert public_api.square_axis_stellarator_mirror_hybrid_indata is square_axis_stellarator_mirror_hybrid_indata
     assert public_api.SquareAxisControlBasis is SquareAxisControlBasis
     assert public_api.SquareAxisControlFourierMatrix is SquareAxisControlFourierMatrix
+    assert public_api.SquareAxisControlProjection is SquareAxisControlProjection
     assert public_api.SquareAxisSplineControls is SquareAxisSplineControls
     assert public_api.square_axis_spline_control_fourier_matrix is square_axis_spline_control_fourier_matrix
     assert public_api.square_axis_spline_radius is square_axis_spline_radius
@@ -350,6 +353,38 @@ def test_square_axis_spline_control_fourier_matrix_accepts_reduced_basis():
     np.testing.assert_allclose(perturbed.R_sin - base.R_sin, predicted.R_sin, atol=1.0e-13)
     np.testing.assert_allclose(perturbed.Z_cos - base.Z_cos, predicted.Z_cos, atol=1.0e-13)
     np.testing.assert_allclose(perturbed.Z_sin - base.Z_sin, predicted.Z_sin, atol=1.0e-13)
+
+
+def test_square_axis_control_fourier_matrix_projects_boundary_delta():
+    controls = SquareAxisSplineControls.rounded_square(axis_half_width=1.5, corner_radius_factor=1.12)
+    control_basis = square_axis_spline_symmetric_control_basis(controls, symmetry="square")
+    matrix = square_axis_spline_control_fourier_matrix(
+        control_basis=control_basis,
+        mpol=4,
+        ntor=8,
+        ntheta_fit=32,
+        nzeta_fit=64,
+        minor_radius=0.03,
+        side_elongation=0.08,
+        side_minor_modulation=0.08,
+        corner_ellipticity=0.04,
+        corner_amplitude=0.004,
+        corner_rotation=0.30,
+    )
+    reduced_delta = np.array([2.0e-3, -1.0e-3])
+    coeff_delta = matrix.boundary_delta(reduced_delta)
+
+    projection = matrix.project_boundary_delta(coeff_delta)
+
+    assert isinstance(projection, SquareAxisControlProjection)
+    assert projection.labels == ("side", "corner")
+    assert projection.radius_delta_by_label["side"] == pytest.approx(reduced_delta[0])
+    assert projection.radius_delta_by_label["corner"] == pytest.approx(reduced_delta[1])
+    np.testing.assert_allclose(projection.radius_delta, reduced_delta, atol=1.0e-12)
+    assert projection.residual_rel == pytest.approx(0.0, abs=1.0e-12)
+    assert projection.captured_fraction == pytest.approx(1.0)
+    assert projection.condition_number is not None
+    assert projection.rank == 2
 
 
 @pytest.mark.parametrize(

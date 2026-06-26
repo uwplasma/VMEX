@@ -509,6 +509,11 @@ It also includes ``control_fourier_map`` for the square-reduced spline controls:
 side/corner labels, stacked ``4K x 2`` coefficient-Jacobian shape, singular
 values, condition number, and column norms. This is a preflight diagnostic for
 the solver-native reduced-control lane, not a nonlinear convergence claim.
+The reusable source hook is
+``SquareAxisControlFourierMatrix.project_boundary_delta(...)``. It returns a
+``SquareAxisControlProjection`` with the fitted control update, reconstructed
+boundary delta, residual delta, rank, singular values, relative residual, and
+captured fraction.
 Completed JAX backend rows add the complementary postsolve diagnostic
 ``boundary_reduced_control_projection``. It projects the actual accepted LCFS
 coefficient displacement onto the same ``control_fourier_map`` and reports the

@@ -14,6 +14,7 @@ from vmec_jax.config import VMECConfig
 from vmec_jax.namelist import InData
 from vmec_jax.state import StateLayout, VMECState
 from vmec_jax.static import build_static
+from vmec_jax.toroidal_hybrid import SquareAxisControlFourierMatrix
 
 
 def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: Path):
@@ -210,22 +211,21 @@ def test_square_coil_profile_boundary_motion_payload_measures_edge_displacement(
 
 def test_square_coil_profile_boundary_reduced_control_projection_payload(monkeypatch):
     basis = SimpleNamespace(symmetry="square", labels=["side", "corner"])
-
-    class FakeControlMap:
-        def stacked_jacobian(self):
-            return np.asarray(
-                [
-                    [1.0, 0.0],
-                    [0.0, 2.0],
-                    [0.0, 0.0],
-                    [1.0, 1.0],
-                ]
-            )
+    matrix = SquareAxisControlFourierMatrix(
+        controls=SimpleNamespace(),
+        m=np.asarray([0]),
+        n=np.asarray([0]),
+        R_cos=np.asarray([[1.0, 0.0]]),
+        R_sin=np.asarray([[0.0, 2.0]]),
+        Z_cos=np.asarray([[0.0, 0.0]]),
+        Z_sin=np.asarray([[1.0, 1.0]]),
+        control_basis=basis,
+    )
 
     monkeypatch.setattr(
         profile,
         "_square_control_fourier_matrix",
-        lambda _config: (basis, FakeControlMap()),
+        lambda _config: (basis, matrix),
     )
     config = SimpleNamespace(plasma_axis_kind="control_spline")
     payload = profile._boundary_reduced_control_projection_payload(

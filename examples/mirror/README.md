@@ -189,6 +189,8 @@ boundary Fourier coefficients. For production square-hybrid updates, use
 basis to ``square_axis_spline_control_fourier_matrix``. The default square
 basis reduces the eight side/corner spline controls to two symmetry-preserving
 parameters, which is the preferred path before increasing ``MPOL``/``NTOR``.
+The returned control map also has ``project_boundary_delta(...)`` for fitting a
+solved Fourier boundary displacement back to those reduced controls.
 The default square-axis side/corner weights use
 ``SIDE_POWER = CORNER_POWER = 1.0``; this keeps the rounded-square target close
 to finite Fourier bandwidth. Sharper values such as ``1.4`` remain useful

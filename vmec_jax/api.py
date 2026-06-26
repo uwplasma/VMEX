@@ -16,6 +16,7 @@ from .namelist import minimal_fixed_boundary_indata, read_indata, write_indata
 from .toroidal_hybrid import (
     SquareAxisControlBasis,
     SquareAxisControlFourierMatrix,
+    SquareAxisControlProjection,
     SquareAxisSplineControls,
     ToroidalHybridBoundarySamples,
     evaluate_toroidal_hybrid_indata_boundary,
@@ -227,6 +228,7 @@ __all__ = [
     "minimal_fixed_boundary_indata",
     "SquareAxisControlBasis",
     "SquareAxisControlFourierMatrix",
+    "SquareAxisControlProjection",
     "SquareAxisSplineControls",
     "ToroidalHybridBoundarySamples",
     "evaluate_toroidal_hybrid_indata_boundary",
