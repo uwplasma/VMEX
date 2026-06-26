@@ -343,6 +343,7 @@ def test_square_coil_hybrid_example_exposes_strict_drift_restart_env():
         return_best_scored_state=False,
         free_boundary_drift_restart=True,
         free_boundary_drift_restart_factor=2.5,
+        free_boundary_drift_restart_step_factor=0.25,
         free_boundary_drift_restart_min_iter_since_best=12,
         free_boundary_drift_restart_streak=4,
         free_boundary_drift_restart_max_restarts=3,
@@ -353,6 +354,7 @@ def test_square_coil_hybrid_example_exposes_strict_drift_restart_env():
     assert env["VMEC_JAX_RETURN_BEST_SCORED_STATE"] == "0"
     assert env["VMEC_JAX_FREEB_DRIFT_RESTART"] == "1"
     assert env["VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR"] == "2.5"
+    assert env["VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR"] == "0.25"
     assert env["VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST"] == "12"
     assert env["VMEC_JAX_FREEB_DRIFT_RESTART_STREAK"] == "4"
     assert env["VMEC_JAX_FREEB_DRIFT_RESTART_MAX_RESTARTS"] == "3"

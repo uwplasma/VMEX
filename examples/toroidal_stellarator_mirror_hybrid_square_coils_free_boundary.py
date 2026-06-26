@@ -122,6 +122,7 @@ SOLVER_MODE = "parity"
 RETURN_BEST_SCORED_STATE = True
 FREE_BOUNDARY_DRIFT_RESTART = True
 FREE_BOUNDARY_DRIFT_RESTART_FACTOR = 2.0
+FREE_BOUNDARY_DRIFT_RESTART_STEP_FACTOR = 0.5
 FREE_BOUNDARY_DRIFT_RESTART_MIN_ITER_SINCE_BEST = 20
 FREE_BOUNDARY_DRIFT_RESTART_STREAK = 5
 FREE_BOUNDARY_DRIFT_RESTART_MAX_RESTARTS = 4
@@ -204,6 +205,7 @@ class ExampleConfig:
     return_best_scored_state: bool = RETURN_BEST_SCORED_STATE
     free_boundary_drift_restart: bool = FREE_BOUNDARY_DRIFT_RESTART
     free_boundary_drift_restart_factor: float = FREE_BOUNDARY_DRIFT_RESTART_FACTOR
+    free_boundary_drift_restart_step_factor: float = FREE_BOUNDARY_DRIFT_RESTART_STEP_FACTOR
     free_boundary_drift_restart_min_iter_since_best: int = FREE_BOUNDARY_DRIFT_RESTART_MIN_ITER_SINCE_BEST
     free_boundary_drift_restart_streak: int = FREE_BOUNDARY_DRIFT_RESTART_STREAK
     free_boundary_drift_restart_max_restarts: int = FREE_BOUNDARY_DRIFT_RESTART_MAX_RESTARTS
@@ -448,6 +450,9 @@ def _solver_env_overrides(config: ExampleConfig) -> dict[str, str]:
         "VMEC_JAX_RETURN_BEST_SCORED_STATE": _bool_env(config.return_best_scored_state),
         "VMEC_JAX_FREEB_DRIFT_RESTART": _bool_env(config.free_boundary_drift_restart),
         "VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR": f"{float(config.free_boundary_drift_restart_factor):.17g}",
+        "VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR": (
+            f"{float(config.free_boundary_drift_restart_step_factor):.17g}"
+        ),
         "VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST": str(
             max(0, int(config.free_boundary_drift_restart_min_iter_since_best))
         ),
@@ -999,6 +1004,8 @@ def _validate_example_config(config: ExampleConfig) -> None:
         config.free_boundary_drift_restart_factor
     ) < 1.0:
         raise ValueError("free_boundary_drift_restart_factor must be finite and at least 1")
+    if not (0.0 < float(config.free_boundary_drift_restart_step_factor) <= 1.0):
+        raise ValueError("free_boundary_drift_restart_step_factor must be in (0, 1]")
     if int(config.free_boundary_drift_restart_min_iter_since_best) < 0:
         raise ValueError("free_boundary_drift_restart_min_iter_since_best must be nonnegative")
     if int(config.free_boundary_drift_restart_streak) < 1:
@@ -1384,6 +1391,9 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
             "return_best_scored_state": bool(solve_config.return_best_scored_state),
             "free_boundary_drift_restart": bool(solve_config.free_boundary_drift_restart),
             "free_boundary_drift_restart_factor": float(solve_config.free_boundary_drift_restart_factor),
+            "free_boundary_drift_restart_step_factor": float(
+                solve_config.free_boundary_drift_restart_step_factor
+            ),
             "free_boundary_drift_restart_min_iter_since_best": int(
                 solve_config.free_boundary_drift_restart_min_iter_since_best
             ),
@@ -1641,6 +1651,7 @@ def _run_one_beta(
         "return_best_scored_state_requested": bool(config.return_best_scored_state),
         "free_boundary_drift_restart_requested": bool(config.free_boundary_drift_restart),
         "free_boundary_drift_restart_factor": float(config.free_boundary_drift_restart_factor),
+        "free_boundary_drift_restart_step_factor": float(config.free_boundary_drift_restart_step_factor),
         "free_boundary_drift_restart_min_iter_since_best": int(
             config.free_boundary_drift_restart_min_iter_since_best
         ),
@@ -1843,6 +1854,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "return_best_scored_state_requested",
         "free_boundary_drift_restart_requested",
         "free_boundary_drift_restart_factor",
+        "free_boundary_drift_restart_step_factor",
         "free_boundary_drift_restart_min_iter_since_best",
         "free_boundary_drift_restart_streak",
         "free_boundary_drift_restart_max_restarts",
@@ -2378,6 +2390,9 @@ def _metrics_payload(
         "return_best_scored_state": bool(solve_config.return_best_scored_state),
         "free_boundary_drift_restart": bool(solve_config.free_boundary_drift_restart),
         "free_boundary_drift_restart_factor": float(solve_config.free_boundary_drift_restart_factor),
+        "free_boundary_drift_restart_step_factor": float(
+            solve_config.free_boundary_drift_restart_step_factor
+        ),
         "free_boundary_drift_restart_min_iter_since_best": int(
             solve_config.free_boundary_drift_restart_min_iter_since_best
         ),

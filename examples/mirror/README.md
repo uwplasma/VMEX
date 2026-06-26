@@ -201,7 +201,10 @@ best-state drift restarts by default through
 ``FREE_BOUNDARY_DRIFT_RESTART = True``. The solver rolls back to the best fresh
 free-boundary state only after the component residual has drifted above the
 configured factor for the configured streak; the summary CSV and metrics JSON
-record both the requested policy and the observed restart counters.
+record both the requested policy and the observed restart counters.  The
+rollback uses ``FREE_BOUNDARY_DRIFT_RESTART_STEP_FACTOR = 0.5`` by default, so
+drift restarts damp the next time step instead of reusing VMEC's bad-step
+growth factor.
 Use ``vmec_jax.square_axis_spline_radius_matrix`` to inspect the linear map
 from those few control radii to sampled square-axis radius values. The helper
 does not replace VMEC's Fourier state yet, but it makes the low-dimensional

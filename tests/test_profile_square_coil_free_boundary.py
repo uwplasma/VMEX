@@ -50,6 +50,8 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "--freeb-drift-restart",
             "--freeb-drift-restart-factor",
             "2.5",
+            "--freeb-drift-restart-step-factor",
+            "0.25",
             "--freeb-drift-restart-min-iter-since-best",
             "12",
             "--freeb-drift-restart-streak",
@@ -95,6 +97,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.jax_initial_restart_wout == tmp_path / "seed.nc"
     assert args.freeb_drift_restart is True
     assert args.freeb_drift_restart_factor == pytest.approx(2.5)
+    assert args.freeb_drift_restart_step_factor == pytest.approx(0.25)
     assert args.freeb_drift_restart_min_iter_since_best == 12
     assert args.freeb_drift_restart_streak == 4
     assert args.freeb_drift_restart_max_restarts == 3
@@ -1230,6 +1233,7 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert data["configuration"]["nstep"] == 3
     assert data["configuration"]["freeb_drift_restart"] is False
     assert data["configuration"]["freeb_drift_restart_factor"] == pytest.approx(3.0)
+    assert data["configuration"]["freeb_drift_restart_step_factor"] == pytest.approx(0.5)
     assert data["configuration"]["freeb_drift_restart_min_iter_since_best"] == 20
     assert data["configuration"]["freeb_drift_restart_streak"] == 10
     assert data["configuration"]["freeb_drift_restart_max_restarts"] == 4
@@ -1961,6 +1965,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
         "VMEC_JAX_RETURN_BEST_SCORED_STATE",
         "VMEC_JAX_FREEB_DRIFT_RESTART",
         "VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR",
+        "VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR",
         "VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST",
         "VMEC_JAX_FREEB_DRIFT_RESTART_STREAK",
         "VMEC_JAX_FREEB_DRIFT_RESTART_MAX_RESTARTS",
@@ -2013,6 +2018,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
         return_best_scored_state=False,
         freeb_drift_restart=True,
         freeb_drift_restart_factor=2.5,
+        freeb_drift_restart_step_factor=0.25,
         freeb_drift_restart_min_iter_since_best=12,
         freeb_drift_restart_streak=4,
         freeb_drift_restart_max_restarts=3,
@@ -2032,6 +2038,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
     assert out["free_boundary_solver_overrides"]["return_best_scored_state"] is False
     assert out["free_boundary_solver_overrides"]["freeb_drift_restart"] is True
     assert out["free_boundary_solver_overrides"]["freeb_drift_restart_factor"] == pytest.approx(2.5)
+    assert out["free_boundary_solver_overrides"]["freeb_drift_restart_step_factor"] == pytest.approx(0.25)
     assert out["free_boundary_solver_overrides"]["freeb_drift_restart_min_iter_since_best"] == 12
     assert out["free_boundary_solver_overrides"]["freeb_drift_restart_streak"] == 4
     assert out["free_boundary_solver_overrides"]["freeb_drift_restart_max_restarts"] == 3
@@ -2058,6 +2065,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
     assert captured["env"]["VMEC_JAX_RETURN_BEST_SCORED_STATE"] == "0"
     assert captured["env"]["VMEC_JAX_FREEB_DRIFT_RESTART"] == "1"
     assert captured["env"]["VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR"] == "2.5"
+    assert captured["env"]["VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR"] == "0.25"
     assert captured["env"]["VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST"] == "12"
     assert captured["env"]["VMEC_JAX_FREEB_DRIFT_RESTART_STREAK"] == "4"
     assert captured["env"]["VMEC_JAX_FREEB_DRIFT_RESTART_MAX_RESTARTS"] == "3"

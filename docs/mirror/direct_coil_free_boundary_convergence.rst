@@ -1142,13 +1142,15 @@ The remaining work is deliberately narrow:
    from it, enable the opt-in drift rollback before spending a longer plain
    iteration budget.  The profiler flags are ``--freeb-drift-restart``,
    ``--freeb-drift-restart-factor``,
+   ``--freeb-drift-restart-step-factor``,
    ``--freeb-drift-restart-min-iter-since-best``,
    ``--freeb-drift-restart-streak``, and
    ``--freeb-drift-restart-max-restarts``.  This uses the same best-scored
    component residual tracker as ``--return-best-scored-state`` but performs a
    solver restart during the run: it restores the best fresh-vacuum state,
    clears free-boundary/preconditioner caches, zeros velocity memory, and
-   shrinks the time step through the existing bad-progress factor.  The active
+   shrinks the time step through a free-boundary drift step factor that defaults
+   to ``0.5``.  The active
    ``MPOL=5, NTOR=28, NZETA=64`` coordinate-control row is the trigger case:
    it reached its best component residual near iteration ``52`` and had drifted
    more than ``5`` times above that best value by iteration ``835``.  That is

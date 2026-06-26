@@ -259,6 +259,7 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument("--freeb-drift-restart-factor", type=float, default=3.0)
+    p.add_argument("--freeb-drift-restart-step-factor", type=float, default=0.5)
     p.add_argument("--freeb-drift-restart-min-iter-since-best", type=int, default=20)
     p.add_argument("--freeb-drift-restart-streak", type=int, default=10)
     p.add_argument("--freeb-drift-restart-max-restarts", type=int, default=4)
@@ -1838,6 +1839,7 @@ def _run_jax_backend(
     return_best_scored_state: bool,
     freeb_drift_restart: bool = False,
     freeb_drift_restart_factor: float = 3.0,
+    freeb_drift_restart_step_factor: float = 0.5,
     freeb_drift_restart_min_iter_since_best: int = 20,
     freeb_drift_restart_streak: int = 10,
     freeb_drift_restart_max_restarts: int = 4,
@@ -1915,6 +1917,7 @@ def _run_jax_backend(
         "VMEC_JAX_RETURN_BEST_SCORED_STATE": _bool_env(return_best_scored_state),
         "VMEC_JAX_FREEB_DRIFT_RESTART": _bool_env(freeb_drift_restart),
         "VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR": f"{float(freeb_drift_restart_factor):.17g}",
+        "VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR": f"{float(freeb_drift_restart_step_factor):.17g}",
         "VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST": str(
             max(0, int(freeb_drift_restart_min_iter_since_best))
         ),
@@ -2056,6 +2059,7 @@ def _run_jax_backend(
             "return_best_scored_state": bool(return_best_scored_state),
             "freeb_drift_restart": bool(freeb_drift_restart),
             "freeb_drift_restart_factor": float(freeb_drift_restart_factor),
+            "freeb_drift_restart_step_factor": float(freeb_drift_restart_step_factor),
             "freeb_drift_restart_min_iter_since_best": int(freeb_drift_restart_min_iter_since_best),
             "freeb_drift_restart_streak": int(freeb_drift_restart_streak),
             "freeb_drift_restart_max_restarts": int(freeb_drift_restart_max_restarts),
@@ -3340,6 +3344,7 @@ def main(argv: list[str] | None = None) -> int:
                 "freeb_edge_control_update_mode": str(args.freeb_edge_control_update_mode),
                 "freeb_drift_restart": bool(args.freeb_drift_restart),
                 "freeb_drift_restart_factor": float(args.freeb_drift_restart_factor),
+                "freeb_drift_restart_step_factor": float(args.freeb_drift_restart_step_factor),
                 "freeb_drift_restart_min_iter_since_best": int(args.freeb_drift_restart_min_iter_since_best),
                 "freeb_drift_restart_streak": int(args.freeb_drift_restart_streak),
                 "freeb_drift_restart_max_restarts": int(args.freeb_drift_restart_max_restarts),
@@ -3483,6 +3488,7 @@ def main(argv: list[str] | None = None) -> int:
             "return_best_scored_state": bool(args.return_best_scored_state),
             "freeb_drift_restart": bool(args.freeb_drift_restart),
             "freeb_drift_restart_factor": float(args.freeb_drift_restart_factor),
+            "freeb_drift_restart_step_factor": float(args.freeb_drift_restart_step_factor),
             "freeb_drift_restart_min_iter_since_best": int(args.freeb_drift_restart_min_iter_since_best),
             "freeb_drift_restart_streak": int(args.freeb_drift_restart_streak),
             "freeb_drift_restart_max_restarts": int(args.freeb_drift_restart_max_restarts),
@@ -3588,6 +3594,7 @@ def main(argv: list[str] | None = None) -> int:
             return_best_scored_state=bool(args.return_best_scored_state),
             freeb_drift_restart=bool(args.freeb_drift_restart),
             freeb_drift_restart_factor=float(args.freeb_drift_restart_factor),
+            freeb_drift_restart_step_factor=float(args.freeb_drift_restart_step_factor),
             freeb_drift_restart_min_iter_since_best=int(args.freeb_drift_restart_min_iter_since_best),
             freeb_drift_restart_streak=int(args.freeb_drift_restart_streak),
             freeb_drift_restart_max_restarts=int(args.freeb_drift_restart_max_restarts),
@@ -3635,6 +3642,7 @@ def main(argv: list[str] | None = None) -> int:
             return_best_scored_state=bool(args.return_best_scored_state),
             freeb_drift_restart=bool(args.freeb_drift_restart),
             freeb_drift_restart_factor=float(args.freeb_drift_restart_factor),
+            freeb_drift_restart_step_factor=float(args.freeb_drift_restart_step_factor),
             freeb_drift_restart_min_iter_since_best=int(args.freeb_drift_restart_min_iter_since_best),
             freeb_drift_restart_streak=int(args.freeb_drift_restart_streak),
             freeb_drift_restart_max_restarts=int(args.freeb_drift_restart_max_restarts),

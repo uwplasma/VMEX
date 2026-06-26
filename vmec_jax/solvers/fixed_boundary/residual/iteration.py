@@ -722,6 +722,7 @@ class _ResidualIterRuntimeEnv(NamedTuple):
     dump_dir: str
     freeb_drift_restart_enabled: bool
     freeb_drift_restart_factor: float
+    freeb_drift_restart_step_factor: float
     freeb_drift_restart_min_iter_since_best: int
     freeb_drift_restart_streak: int
     freeb_drift_restart_max_restarts: int
@@ -742,6 +743,10 @@ def _residual_iter_runtime_env() -> _ResidualIterRuntimeEnv:
         dump_dir=os.getenv("VMEC_JAX_DUMP_DIR", ""),
         freeb_drift_restart_enabled=_runtime_env_enabled(os.getenv("VMEC_JAX_FREEB_DRIFT_RESTART", "0")),
         freeb_drift_restart_factor=max(1.0, _runtime_env_float("VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR", 3.0)),
+        freeb_drift_restart_step_factor=min(
+            1.0,
+            max(1.0e-6, _runtime_env_float("VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR", 0.5)),
+        ),
         freeb_drift_restart_min_iter_since_best=_runtime_env_int(
             "VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST",
             20,
@@ -3124,7 +3129,7 @@ def solve_fixed_boundary_residual_iter(
                 freeb_nvskip0=freeb_nvskip0,
                 freeb_plascur=freeb_plascur,
                 time_step=time_step,
-                restart_badprog_factor=restart_badprog_factor,
+                restart_badprog_factor=runtime_env.freeb_drift_restart_step_factor,
                 k_ndamp=k_ndamp,
                 iter2=iter2,
                 ijacob=ijacob,

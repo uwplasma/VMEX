@@ -19,6 +19,7 @@ from vmec_jax.solvers.fixed_boundary.residual.iteration import (
     _free_boundary_best_state_drift_restart,
     _new_best_scored_state_tracker,
     _record_best_scored_state,
+    _residual_iter_runtime_env,
 )
 from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualControllerState,
@@ -281,6 +282,17 @@ def test_free_boundary_best_state_drift_restart_restores_vacuum_payload_and_damp
     assert restart.step_status == "restart_freeb_drift"
     assert restart.restart_reason == "freeb_best_state_drift"
     assert restart.pre_restart_reason == "freeb_best_state_drift"
+
+
+def test_free_boundary_drift_restart_step_factor_defaults_to_damping(monkeypatch) -> None:
+    monkeypatch.delenv("VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR", raising=False)
+    assert _residual_iter_runtime_env().freeb_drift_restart_step_factor == pytest.approx(0.5)
+
+    monkeypatch.setenv("VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR", "0.25")
+    assert _residual_iter_runtime_env().freeb_drift_restart_step_factor == pytest.approx(0.25)
+
+    monkeypatch.setenv("VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR", "1.5")
+    assert _residual_iter_runtime_env().freeb_drift_restart_step_factor == pytest.approx(1.0)
 
 
 def test_free_boundary_edge_coordinate_mode_applies_reduced_update_once(monkeypatch) -> None:
