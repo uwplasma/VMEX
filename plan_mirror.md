@@ -31317,3 +31317,133 @@ and compact parsing of the VMEC2000 partial JSON plus direct-GPU launcher logs.
 ### User input needed
 
 No user input is needed.
+
+---
+## 271. Tightened Strict Spline-Bridge and Virtual-Casing Diagnostics
+
+### Steps taken
+
+- Rechecked the clean branch state and the active `office` strict profile jobs.
+- Added virtual-casing postsolve controls to
+  `tools/diagnostics/profile_square_coil_free_boundary.py`:
+  `--virtual-casing-quad-factor`, `--virtual-casing-chunk-size`, and
+  `--virtual-casing-target-chunk-size`.
+- Added a `spline_bridge` JSON block to the square-coil profiler so each
+  preflight/full profile states whether the current square-axis spline controls
+  are solver-native or are still projected to VMEC Fourier coefficients.
+- Changed the older fixed-boundary
+  `examples/toroidal_stellarator_mirror_hybrid_convergence.py` default
+  tolerance from `1e-9` to `1e-12`, keeping the repository-wide hybrid
+  convergence default strict unless a caller explicitly relaxes it.
+- Updated mirror README and convergence notes to explain the new JSON fields
+  and the distinction between the current spline-to-Fourier bridge and the
+  planned solver-native spline/control-basis lane.
+
+### Results obtained
+
+- Cheap preflight reports now explicitly classify the current square-hybrid
+  representation:
+  - `real_space_axis_basis = periodic_spline_controls`;
+  - `nonlinear_solver_boundary_basis = vmec_fourier_coefficients`;
+  - `solver_native_spline_controls = false`;
+  - `recommended_next_action = prototype_solver_native_spline_control_update`
+    once the resolution deck is production-ready.
+- A local preflight smoke with `MPOL=5`, `NTOR=28`, `NZETA=64`,
+  `mgrid_nphi=64`, and `FTOL_ARRAY` ending at `1e-12` reported
+  `resolution_deck.status = production_ready` and
+  `spline_bridge.status = spline_control_to_fourier_bridge`.
+- The active `office` VMEC2000 generated-mgrid row is still running. Latest
+  partial sidecar: iteration `11447`, max component about `1.1e-11`, total
+  about `2.299e-11`, no vacuum-grid overflow. This remains roughly `11x`
+  above the requested per-component `FTOL=1e-12`.
+- The active direct-GPU baseline and Anderson rows are still running and have
+  not written final JSON yet.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_profile_square_coil_free_boundary.py tests/test_toroidal_hybrid.py \
+  -k 'square_coil_profile_parser_accepts_control_spline_axis_kind or square_coil_profile_records_boundary_projection_payload or square_coil_profile_passes_direct_sampler_cache_flags or square_coil_profile_virtual_casing_payload_uses_cached_geometry or toroidal_hybrid_convergence_example_runs_without_solve'
+
+venv/bin/python -m py_compile \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py
+
+ruff check \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  examples/toroidal_stellarator_mirror_hybrid_convergence.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_toroidal_hybrid.py
+
+git diff --check
+```
+
+Results: `5 passed, 69 deselected, 1 warning`; py-compile, ruff, and
+whitespace checks passed.
+
+Additional no-solve smoke:
+
+```bash
+venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py \
+  --outdir /tmp/square_spline_bridge_profile.XXXXXX \
+  --mpol 5 --ntor 28 --nzeta auto --mgrid-nphi 64 \
+  --ns-array 9,13,17 --niter-array 4000,8000,24000 \
+  --ftol-array 1e-8,1e-10,1e-12 \
+  --axis-kind control_spline --side-power 1.0 --corner-power 1.0 \
+  --max-boundary-projection-error 5e-12 \
+  --virtual-casing-quad-factor 3 \
+  --virtual-casing-chunk-size 128 \
+  --virtual-casing-target-chunk-size none \
+  --resolution-diagnostics-only
+```
+
+The report recorded `ftol=1e-12`, `virtual_casing_quad_factor=3`,
+`virtual_casing_chunk_size=128`, target chunk `None`,
+`resolution_deck.status=production_ready`, and
+`spline_bridge.solver_native_spline_controls=false`.
+
+### File structure and best-practice notes
+
+- The implementation stays in the existing square-coil profiler and existing
+  convergence example; no new entry point or generated artifact directory was
+  added.
+- Tests were added to the existing profiler and toroidal-hybrid test modules.
+- Documentation changes are confined to the mirror README and convergence note.
+- No WOUT, mgrid, figure, or result files were tracked.
+- The added diagnostics are metadata-only and keep the forward CLI profiling
+  path separate from the future differentiable solver-native spline-control
+  path.
+
+### Best next steps
+
+1. Let the active VMEC2000 and direct-GPU strict rows finish or reach their
+   time/budget limits.
+2. Summarize the finished rows together, including strict evidence status,
+   tail plateau, accepted-provider parity where available, and the new
+   `spline_bridge` representation status.
+3. If VMEC2000 remains flat around `1e-11`, run the planned narrow
+   `DELT`/stage-budget scan before increasing modes further.
+4. If direct-GPU remains far above the VMEC2000 floor, run accepted-LCFS
+   provider parity on the same `control_spline` deck.
+5. Start the solver-native reduced spline/control-basis prototype only after
+   the current strict backend evidence confirms that the Fourier-projected
+   spline bridge, not just underresolved `MPOL`/`NTOR`/`NZETA`, is the blocker.
+
+### Completion percentages after M271
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `97%`.
+- VMEC2000 robustness/reference lane: `97%`, active row still running.
+- Direct-coil GPU/JIT parity lane: `84%`, active rows still running.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `80%`.
+- Accepted-boundary provider-parity lane: `100%`.
+- Follow-up command reproducibility lane: `100%`.
+- Follow-up recommendation lane: `100%`.
+- Root-example resolution robustness lane: `100%`.
+- Strict spline-bridge diagnostics lane: `100%`.
+- True spline/control-basis hybrid lane: `66%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.

@@ -458,6 +458,12 @@ residual floors. Direct-coil rows produced with
 ``--virtual-casing-diagnostics`` also expose virtual-casing status,
 external-normal residuals, pressure-balance residuals, and required/target
 external-field RMS values in the same summary table.
+The profiler also records ``--virtual-casing-quad-factor``,
+``--virtual-casing-chunk-size``, and
+``--virtual-casing-target-chunk-size`` for finite-beta postsolve diagnostics.
+Those knobs control the optional virtual-casing quadrature and memory use only;
+they do not change the equilibrium solve or promote a coil-only vacuum
+``B.n`` check to a finite-beta boundary condition.
 Rows produced with ``--accepted-provider-parity`` also compare generated-mgrid
 and direct-coil fields on the accepted JAX backend LCFS, not only on the input
 boundary. The compact backend payload is ``accepted_provider_parity``; the
@@ -560,6 +566,12 @@ the solver-native reduced-control lane, not a nonlinear convergence claim.
 Its nested ``candidate_bases`` block records the same conditioning diagnostics
 for both the two-control square basis and the five-control
 stellarator-symmetric basis.
+The adjacent ``spline_bridge`` block states the current representation status:
+``axis_kind="control_spline"`` uses periodic spline controls for the
+real-space square-axis target, but the nonlinear free-boundary solve still
+uses VMEC Fourier boundary coefficients. It can therefore smooth and reduce
+the input geometry, but it is not yet a solver-native spline/control-basis
+equilibrium.
 The reusable source hook is
 ``SquareAxisControlFourierMatrix.project_boundary_delta(...)``. It returns a
 ``SquareAxisControlProjection`` with the fitted control update, reconstructed

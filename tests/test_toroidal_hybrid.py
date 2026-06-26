@@ -1077,6 +1077,7 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     assert all(row["cli_finish"] is True for row in summary["rows"])
     assert all(row["nstep"] == 25 for row in summary["rows"])
     assert all(row["full_solver_diagnostics"] is False for row in summary["rows"])
+    assert all(row["requested_ftol"] == pytest.approx(1.0e-12) for row in summary["rows"])
     assert all(row["diagnostic_step_history_size"] == 0 for row in summary["rows"])
     assert all(row["diagnostic_initial_axis_reset_attempted"] is None for row in summary["rows"])
     assert all(row["diagnostic_initial_axis_reset_reset"] is None for row in summary["rows"])
@@ -1119,6 +1120,7 @@ def test_toroidal_hybrid_convergence_example_runs_without_solve(tmp_path: Path):
     assert csv_row["cli_finish"] == "True"
     assert csv_row["nstep"] == "25"
     assert csv_row["full_solver_diagnostics"] == "False"
+    assert float(csv_row["requested_ftol"]) == pytest.approx(1.0e-12)
     assert csv_row["diagnostic_step_history_size"] == "0"
     assert csv_row["diagnostic_initial_axis_reset_attempted"] == ""
     assert csv_row["diagnostic_initial_axis_reset_reset"] == ""

@@ -215,6 +215,24 @@ def _parser() -> argparse.ArgumentParser:
         help="Add optional finite-beta virtual-casing postsolve diagnostics for the direct-coil backend.",
     )
     p.add_argument(
+        "--virtual-casing-quad-factor",
+        type=int,
+        default=2,
+        help="Virtual-casing source quadrature multiplier for finite-beta diagnostics.",
+    )
+    p.add_argument(
+        "--virtual-casing-chunk-size",
+        type=_parse_virtual_casing_chunk_arg,
+        default="auto",
+        help="Chunk size passed to virtual_casing_jax compute_external_B_functional; use auto or none.",
+    )
+    p.add_argument(
+        "--virtual-casing-target-chunk-size",
+        type=_parse_virtual_casing_chunk_arg,
+        default="auto",
+        help="Target chunk size passed to virtual_casing_jax; use auto or none.",
+    )
+    p.add_argument(
         "--resolution-diagnostics-only",
         action="store_true",
         help=(
@@ -260,6 +278,18 @@ def _parse_optional_positive_float(raw: str) -> float | None:
     parsed = float(value)
     if not np.isfinite(parsed) or parsed <= 0.0:
         raise argparse.ArgumentTypeError("value must be positive, finite, or 'none'")
+    return parsed
+
+
+def _parse_virtual_casing_chunk_arg(raw: str) -> int | str | None:
+    value = str(raw).strip().lower()
+    if value in {"", "auto"}:
+        return "auto"
+    if value in {"0", "none", "null", "false", "no"}:
+        return None
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("virtual-casing chunk sizes must be positive, auto, or none")
     return parsed
 
 
@@ -919,15 +949,26 @@ def _virtual_casing_profile_payload(
     run: Any,
     direct_params: Any | None,
     coil_geometry: Any | None = None,
+    quad_factor: int = 2,
+    chunk_size: int | str | None = "auto",
+    target_chunk_size: int | str | None = "auto",
 ) -> dict[str, Any]:
     """Return optional DESC-style finite-beta postsolve boundary diagnostics."""
 
+    quad = int(quad_factor)
+    if quad < 1:
+        raise ValueError("virtual-casing quad_factor must be at least one")
     if direct_params is None:
         return {"status": "skipped_requires_direct_coils"}
     try:
         __import__("virtual_casing_jax.functional")
     except ImportError:
-        return {"status": "skipped_missing_virtual_casing_jax"}
+        return {
+            "status": "skipped_missing_virtual_casing_jax",
+            "quad_factor": quad,
+            "chunk_size": chunk_size,
+            "target_chunk_size": target_chunk_size,
+        }
 
     t0 = time.perf_counter()
     try:
@@ -935,24 +976,37 @@ def _virtual_casing_profile_payload(
             run,
             coil_params=direct_params,
             coil_geometry=coil_geometry,
+            quad_factor=quad,
+            chunk_size=chunk_size,
+            target_chunk_size=target_chunk_size,
         )
     except Exception as exc:
         return {
             "status": f"failed:{type(exc).__name__}",
             "error": repr(exc),
             "wall_s": float(time.perf_counter() - t0),
+            "quad_factor": quad,
+            "chunk_size": chunk_size,
+            "target_chunk_size": target_chunk_size,
         }
+    ntheta = int(np.asarray(diagnostics.external_bnormal_residual).shape[0])
+    nzeta = int(np.asarray(diagnostics.external_bnormal_residual).shape[1])
     return {
         "status": "computed",
         "wall_s": float(time.perf_counter() - t0),
+        "quad_factor": quad,
+        "chunk_size": chunk_size,
+        "target_chunk_size": target_chunk_size,
+        "quad_ntheta": max(quad * ntheta, ntheta),
+        "quad_nzeta": max(quad * nzeta, nzeta),
         "external_bnormal_residual_rms": diagnostics.external_bnormal_residual_rms,
         "external_bnormal_residual_max": diagnostics.external_bnormal_residual_max,
         "pressure_balance_rms": diagnostics.pressure_balance_rms,
         "pressure_balance_max": diagnostics.pressure_balance_max,
         "required_external_b_rms": _vector_surface_rms(diagnostics.required_external_b),
         "target_external_b_rms": _vector_surface_rms(diagnostics.target_external_b),
-        "ntheta": int(np.asarray(diagnostics.external_bnormal_residual).shape[0]),
-        "nzeta": int(np.asarray(diagnostics.external_bnormal_residual).shape[1]),
+        "ntheta": ntheta,
+        "nzeta": nzeta,
     }
 
 
@@ -991,6 +1045,9 @@ def _run_jax_backend(
     direct_trial_bsqvac_resample: bool = True,
     verbose_solver: bool = False,
     virtual_casing_diagnostics: bool = False,
+    virtual_casing_quad_factor: int = 2,
+    virtual_casing_chunk_size: int | str | None = "auto",
+    virtual_casing_target_chunk_size: int | str | None = "auto",
     accepted_provider_parity: bool = False,
     accepted_provider_parity_mgrid_input: Path | None = None,
     accepted_provider_parity_coil_params: Any | None = None,
@@ -1066,6 +1123,9 @@ def _run_jax_backend(
             run=run,
             direct_params=direct_params,
             coil_geometry=coil_geometry,
+            quad_factor=int(virtual_casing_quad_factor),
+            chunk_size=virtual_casing_chunk_size,
+            target_chunk_size=virtual_casing_target_chunk_size,
         )
         if bool(virtual_casing_diagnostics)
         else {"status": "disabled"}
@@ -1478,6 +1538,61 @@ def _control_fourier_map_payload(config: ExampleConfig) -> dict[str, Any]:
     return payload
 
 
+def _spline_bridge_payload(
+    *,
+    config: ExampleConfig,
+    projection: dict[str, Any],
+    resolution_deck: dict[str, Any],
+    control_basis: dict[str, Any],
+    control_fourier_map: dict[str, Any],
+) -> dict[str, Any]:
+    """State whether the square-axis spline controls are solver-native."""
+
+    axis_kind = str(config.plasma_axis_kind).strip().lower()
+    uses_controls = bool(_square_axis_uses_spline_controls(config))
+    mode_count = int(
+        resolution_deck.get(
+            "mode_count",
+            projection.get("mode_count", control_fourier_map.get("mode_count", 0)),
+        )
+        or 0
+    )
+    bases = control_basis.get("bases", {}) if isinstance(control_basis, dict) else {}
+    square_basis = bases.get("square", {}) if isinstance(bases, dict) else {}
+    stellarator_basis = bases.get("stellarator", {}) if isinstance(bases, dict) else {}
+    square_count = square_basis.get("reduced_count")
+    stellarator_count = stellarator_basis.get("reduced_count")
+    status = "spline_control_to_fourier_bridge" if uses_controls else "fourier_boundary_only"
+    next_action = (
+        "prototype_solver_native_spline_control_update"
+        if resolution_deck.get("status") == "production_ready"
+        else "repair_projection_or_zeta_deck_before_solver_profiling"
+    )
+    return {
+        "status": status,
+        "axis_kind": axis_kind,
+        "real_space_axis_basis": "periodic_spline_controls" if uses_controls else "sampled_fourier_target",
+        "nonlinear_solver_boundary_basis": "vmec_fourier_coefficients",
+        "solver_native_spline_controls": False,
+        "requires_fourier_projection": True,
+        "reduced_square_control_count": None if square_count is None else int(square_count),
+        "reduced_stellarator_control_count": None if stellarator_count is None else int(stellarator_count),
+        "fourier_mode_count": mode_count,
+        "fourier_boundary_channel_count": 4 * mode_count,
+        "projection_status": resolution_deck.get("status"),
+        "projection_max_abs_component_error": projection.get("max_abs_component_error"),
+        "projection_target_max_component_error": resolution_deck.get("projection_target_max_component_error"),
+        "control_map_status": control_fourier_map.get("status") if isinstance(control_fourier_map, dict) else None,
+        "can_reduce_input_shape_dofs": uses_controls,
+        "can_reduce_nonlinear_solver_dofs": False,
+        "recommended_next_action": next_action,
+        "interpretation": (
+            "The current spline path reduces and smooths the real-space square-axis target before projection, "
+            "but strict convergence still depends on the VMEC Fourier deck and free-boundary nonlinear solve."
+        ),
+    }
+
+
 def _resolution_deck_payload(
     *,
     config: ExampleConfig,
@@ -1741,6 +1856,13 @@ def main(argv: list[str] | None = None) -> int:
         target_error=args.max_boundary_projection_error,
         include_recommendation=bool(args.resolution_diagnostics_only),
     )
+    spline_bridge = _spline_bridge_payload(
+        config=config,
+        projection=boundary_projection,
+        resolution_deck=resolution_deck,
+        control_basis=control_basis,
+        control_fourier_map=control_fourier_map,
+    )
     if bool(args.resolution_diagnostics_only):
         payload = {
             "schema": "square_coil_free_boundary_backend_profile",
@@ -1767,6 +1889,9 @@ def main(argv: list[str] | None = None) -> int:
                 "ftol_array": ftol_values,
                 "resolution_diagnostics_only": True,
                 "accepted_provider_parity": bool(args.accepted_provider_parity),
+                "virtual_casing_quad_factor": int(args.virtual_casing_quad_factor),
+                "virtual_casing_chunk_size": args.virtual_casing_chunk_size,
+                "virtual_casing_target_chunk_size": args.virtual_casing_target_chunk_size,
             },
             "mgrid": {
                 "created": False,
@@ -1775,6 +1900,7 @@ def main(argv: list[str] | None = None) -> int:
             "boundary_projection": boundary_projection,
             "control_basis": control_basis,
             "control_fourier_map": control_fourier_map,
+            "spline_bridge": spline_bridge,
             "resolution_deck": resolution_deck,
             "provider_parity": None,
             "backends": {},
@@ -1855,6 +1981,9 @@ def main(argv: list[str] | None = None) -> int:
             "direct_trial_bsqvac_resample": bool(args.direct_trial_bsqvac_resample),
             "verbose_solver": bool(args.verbose_solver),
             "virtual_casing_diagnostics": bool(args.virtual_casing_diagnostics),
+            "virtual_casing_quad_factor": int(args.virtual_casing_quad_factor),
+            "virtual_casing_chunk_size": args.virtual_casing_chunk_size,
+            "virtual_casing_target_chunk_size": args.virtual_casing_target_chunk_size,
             "resolution_diagnostics_only": bool(args.resolution_diagnostics_only),
             "accepted_provider_parity": bool(args.accepted_provider_parity),
             "phiedge": float(config.phiedge),
@@ -1888,6 +2017,7 @@ def main(argv: list[str] | None = None) -> int:
         "boundary_projection": boundary_projection,
         "control_basis": control_basis,
         "control_fourier_map": control_fourier_map,
+        "spline_bridge": spline_bridge,
         "resolution_deck": resolution_deck,
         "provider_parity": None,
         "backends": {},
@@ -1917,6 +2047,9 @@ def main(argv: list[str] | None = None) -> int:
             direct_trial_bsqvac_resample=bool(args.direct_trial_bsqvac_resample),
             verbose_solver=bool(args.verbose_solver),
             virtual_casing_diagnostics=bool(args.virtual_casing_diagnostics),
+            virtual_casing_quad_factor=int(args.virtual_casing_quad_factor),
+            virtual_casing_chunk_size=args.virtual_casing_chunk_size,
+            virtual_casing_target_chunk_size=args.virtual_casing_target_chunk_size,
             accepted_provider_parity=bool(args.accepted_provider_parity),
             accepted_provider_parity_mgrid_input=mgrid_input,
             accepted_provider_parity_coil_params=coils.params,

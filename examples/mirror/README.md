@@ -318,6 +318,11 @@ number, and column norms. Use that block to decide whether a deck is a good
 candidate for reduced spline-control updates before starting a long solve. The
 nested ``candidate_bases`` block compares this with the five-control
 stellarator-symmetric map.
+The same JSON now includes ``spline_bridge``. For the current
+``axis_kind="control_spline"`` path, that block should read as a spline target
+projected to VMEC Fourier coefficients, not as a solver-native spline basis.
+This is the expected state until the reduced-control nonlinear update lane is
+implemented.
 Completed JAX backend rows also write ``boundary_reduced_control_projection``,
 which projects the actual solved LCFS coefficient motion onto that same
 side/corner map. The summary table prints the projection status, relative
@@ -369,7 +374,9 @@ For finite-beta direct-coil evidence, add ``--virtual-casing-diagnostics`` to
 write the optional virtual-casing external-normal and pressure-balance residual
 block. The profiler records a skipped status when ``virtual_casing_jax`` is not
 installed. The summary table exposes these fields as ``virtual_casing_*``
-columns.
+columns. Add ``--virtual-casing-quad-factor`` and the two virtual-casing chunk
+flags when a finite-beta postsolve diagnostic needs more source quadrature or a
+lower memory footprint; these flags do not alter the equilibrium solve.
 Long VMEC2000 runs also refresh
 ``_partial_vmec2000_payload.json`` in the profile directory; use this sidecar
 to inspect the current stage, component residuals, and vacuum-grid warnings

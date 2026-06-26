@@ -1256,7 +1256,7 @@ def main() -> None:
         default=25,
         help="VMEC print cadence written into NSTEP; use 1 for full VMEC2000 threed1 trajectories.",
     )
-    parser.add_argument("--ftol", type=float, default=1.0e-9)
+    parser.add_argument("--ftol", type=float, default=1.0e-12)
     parser.add_argument("--max-iter", type=int, default=3)
     parser.add_argument("--major-radius", type=float, default=1.15)
     parser.add_argument("--minor-radius", type=float, default=0.18)

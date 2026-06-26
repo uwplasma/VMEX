@@ -26,6 +26,12 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "control_spline",
             "--verbose-solver",
             "--virtual-casing-diagnostics",
+            "--virtual-casing-quad-factor",
+            "3",
+            "--virtual-casing-chunk-size",
+            "128",
+            "--virtual-casing-target-chunk-size",
+            "none",
             "--accepted-provider-parity",
             "--resolution-diagnostics-only",
         ]
@@ -36,6 +42,9 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.delt == pytest.approx(profile.ExampleConfig().delt)
     assert args.verbose_solver is True
     assert args.virtual_casing_diagnostics is True
+    assert args.virtual_casing_quad_factor == 3
+    assert args.virtual_casing_chunk_size == 128
+    assert args.virtual_casing_target_chunk_size is None
     assert args.accepted_provider_parity is True
     assert args.resolution_diagnostics_only is True
 
@@ -504,6 +513,13 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert candidate_maps["stellarator"]["basis_symmetry"] == "stellarator"
     assert candidate_maps["stellarator"]["control_count"] == 5
     assert candidate_maps["stellarator"]["jacobian_shape"] == [4 * projection["mode_count"], 5]
+    spline_bridge = data["spline_bridge"]
+    assert spline_bridge["status"] == "spline_control_to_fourier_bridge"
+    assert spline_bridge["solver_native_spline_controls"] is False
+    assert spline_bridge["requires_fourier_projection"] is True
+    assert spline_bridge["reduced_square_control_count"] == 2
+    assert spline_bridge["can_reduce_input_shape_dofs"] is True
+    assert spline_bridge["can_reduce_nonlinear_solver_dofs"] is False
     deck = data["resolution_deck"]
     assert deck["status"] == "production_ready"
     assert deck["projection_meets_gate"] is True
@@ -859,6 +875,12 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
             "--jit-direct-sampler",
             "--no-direct-trial-bsqvac-resample",
             "--virtual-casing-diagnostics",
+            "--virtual-casing-quad-factor",
+            "4",
+            "--virtual-casing-chunk-size",
+            "64",
+            "--virtual-casing-target-chunk-size",
+            "128",
             "--skip-mgrid",
             "--skip-provider-parity",
             "--max-boundary-projection-error",
@@ -873,12 +895,18 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
     assert data["configuration"]["jit_direct_sampler"] is True
     assert data["configuration"]["direct_trial_bsqvac_resample"] is False
     assert data["configuration"]["virtual_casing_diagnostics"] is True
+    assert data["configuration"]["virtual_casing_quad_factor"] == 4
+    assert data["configuration"]["virtual_casing_chunk_size"] == 64
+    assert data["configuration"]["virtual_casing_target_chunk_size"] == 128
     assert captured[0]["config"].side_power == pytest.approx(1.25)
     assert captured[0]["config"].corner_power == pytest.approx(1.5)
     assert captured[0]["direct_static_cache"] is False
     assert captured[0]["jit_direct_sampler"] is True
     assert captured[0]["direct_trial_bsqvac_resample"] is False
     assert captured[0]["virtual_casing_diagnostics"] is True
+    assert captured[0]["virtual_casing_quad_factor"] == 4
+    assert captured[0]["virtual_casing_chunk_size"] == 64
+    assert captured[0]["virtual_casing_target_chunk_size"] == 128
 
 
 def test_square_coil_profile_virtual_casing_payload_uses_cached_geometry(monkeypatch):
@@ -910,9 +938,17 @@ def test_square_coil_profile_virtual_casing_payload_uses_cached_geometry(monkeyp
         run=object(),
         direct_params=direct_params,
         coil_geometry="cached-geometry",
+        quad_factor=3,
+        chunk_size=64,
+        target_chunk_size=128,
     )
 
     assert payload["status"] == "computed"
+    assert payload["quad_factor"] == 3
+    assert payload["chunk_size"] == 64
+    assert payload["target_chunk_size"] == 128
+    assert payload["quad_ntheta"] == 6
+    assert payload["quad_nzeta"] == 9
     assert payload["external_bnormal_residual_rms"] == pytest.approx(1.0e-9)
     assert payload["pressure_balance_max"] == pytest.approx(4.0e-6)
     assert payload["required_external_b_rms"] == pytest.approx(np.sqrt(3.0))
@@ -921,6 +957,9 @@ def test_square_coil_profile_virtual_casing_payload_uses_cached_geometry(monkeyp
     assert payload["nzeta"] == 3
     assert captured["coil_params"] is direct_params
     assert captured["coil_geometry"] == "cached-geometry"
+    assert captured["quad_factor"] == 3
+    assert captured["chunk_size"] == 64
+    assert captured["target_chunk_size"] == 128
 
 
 def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypatch, tmp_path: Path):
