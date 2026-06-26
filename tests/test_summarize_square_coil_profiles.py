@@ -326,6 +326,38 @@ def test_square_coil_profile_summary_prefers_active_partial_sidecar(tmp_path: Pa
     assert row["strict_components_met"] is True
 
 
+def test_square_coil_profile_summary_accepts_renamed_copied_sidecar(tmp_path: Path):
+    sidecar = tmp_path / "copied_active_payload.json"
+    sidecar.write_text(
+        json.dumps(
+            {
+                "stage_summaries": [{"ns": 17, "niter": 24000, "ftolv": 1.0e-12}],
+                "last_row": {"it": 5200, "fsqr": 2.48e-11, "fsqz": 5.45e-12, "fsql": 2.35e-12},
+                "tail_rows": [
+                    {"it": 5198, "total": 2.69e-11, "max_component": 2.49e-11},
+                    {"it": 5199, "total": 2.68e-11, "max_component": 2.48e-11},
+                    {"it": 5200, "total": 2.68e-11, "max_component": 2.48e-11},
+                ],
+                "vacuum_grid_exceeded_count": 0,
+            }
+        )
+    )
+
+    rows = summary.rows_from_source(sidecar)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["case"] == "copied_active_payload"
+    assert row["backend"] == "vmec2000_mgrid"
+    assert row["status"] == "running_partial"
+    assert row["max_iter"] == 24000
+    assert row["requested_ftol"] == pytest.approx(1.0e-12)
+    assert row["final_iter"] == 5200
+    assert row["final_max_component"] == pytest.approx(2.48e-11)
+    assert row["strict_gap"] == pytest.approx(24.8)
+    assert row["remaining_iterations"] == 18800
+
+
 def test_square_coil_profile_summary_reports_vmec2000_tail_plateau_from_sidecar(tmp_path: Path):
     case_dir = tmp_path / "square_coil_freeb_backend_profile_plateau_sidecar"
     case_dir.mkdir()

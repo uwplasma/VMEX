@@ -370,6 +370,9 @@ directories, and active VMEC2000 profile directories. For active VMEC2000
 folders it reads ``_partial_vmec2000_payload.json`` when present, otherwise it
 parses ``vmec2000_mgrid/threed1*`` directly and labels the row
 ``running_partial``.
+Copied VMEC2000 sidecars can also be summarized locally after transfer from a
+remote machine, even if the filename is no longer
+``_partial_vmec2000_payload.json``.
 The summary table reports both ``final_total`` and ``final_max_component``.
 Use ``final_max_component <= requested_ftol`` / ``strict_components_met`` for
 the production convergence gate; ``final_total`` is useful for trend

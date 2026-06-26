@@ -206,6 +206,8 @@ def _case_name(path: Path) -> str:
         name = parent.name
         if name.startswith("square_coil_freeb_backend_profile_"):
             return name.replace("square_coil_freeb_backend_profile_", "")
+    if path.name != FINAL_REPORT_NAME:
+        return path.stem
     return path.parent.name
 
 
@@ -793,9 +795,15 @@ def _vmec2000_partial_payload_from_threed1(path: Path) -> dict[str, Any]:
     }
 
 
+def _looks_like_vmec2000_partial_payload(payload: dict[str, Any]) -> bool:
+    return any(key in payload for key in ("stage_summaries", "last_row", "tail_rows", "progress_phase"))
+
+
 def rows_from_vmec2000_partial(path: Path) -> list[dict[str, Any]]:
-    if path.name == PARTIAL_VMEC2000_NAME:
+    if path.name == PARTIAL_VMEC2000_NAME or path.suffix.lower() == ".json":
         backend = json.loads(path.read_text())
+        if not isinstance(backend, dict) or not _looks_like_vmec2000_partial_payload(backend):
+            return []
         if isinstance(backend, dict) and backend.get("progress_phase") is None:
             threed1_matches = sorted((path.parent / "vmec2000_mgrid").glob("threed1*"))
             if threed1_matches:
@@ -842,6 +850,8 @@ def rows_from_source(path: Path) -> list[dict[str, Any]]:
     if path.name == FINAL_REPORT_NAME:
         return rows_from_profile(path)
     if path.name == PARTIAL_VMEC2000_NAME or path.name.startswith("threed1"):
+        return rows_from_vmec2000_partial(path)
+    if path.suffix.lower() == ".json":
         return rows_from_vmec2000_partial(path)
     if path.name == LAUNCHER_LOG_NAME:
         return rows_from_launcher_log(path)

@@ -29287,3 +29287,78 @@ Targeted test result: `34 passed, 1 warning`.
 ### User input needed
 
 No user input is needed.
+---
+## 253. Made Copied VMEC2000 Sidecars Summarizable Locally
+
+### Steps taken
+
+- Polled the active office VMEC2000 square-coil strict run without modifying the
+  remote checkout.
+- Copied the active `_partial_vmec2000_payload.json` sidecar to `/tmp` locally.
+- Found that a renamed copied sidecar did not summarize because the summary
+  helper only recognized the canonical sidecar filename.
+- Updated `tools/diagnostics/summarize_square_coil_profiles.py` so any JSON
+  file with VMEC2000 partial-payload fields can be summarized as a running
+  VMEC2000 row.
+- Updated the examples README to document copied-sidecar summaries.
+
+### Results obtained
+
+- The active VMEC2000 run is still running and improving, with no vacuum-grid
+  overflow observed.
+- The copied sidecar now summarizes locally with the new decision columns. The
+  current copied snapshot reports:
+  - `final_iter=5177`;
+  - `final_max_component=2.7e-11`;
+  - `strict_gap=27`;
+  - `iters_to_1e-12_est=4396`;
+  - `tail_plateau_status=flat_above_stage_ftol`;
+  - `next_action=let_current_run_finish_then_scan_delt_or_stage_budget`.
+- Since the estimated additional iterations are within the remaining final
+  stage budget, the active VMEC2000 row should keep running before any
+  competing `DELT` scan is launched.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_summarize_square_coil_profiles.py
+venv/bin/python tools/diagnostics/summarize_square_coil_profiles.py \
+  /tmp/square_coil_vmec2000_active_payload.json --markdown
+venv/bin/python -m py_compile \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_summarize_square_coil_profiles.py
+```
+
+Targeted test result: `13 passed`.
+
+### File structure and best-practice notes
+
+- The fix stays in the existing summary helper; no new result files or bulky
+  profile artifacts are committed.
+- Standalone copied sidecars use their file stem as the case name, while
+  canonical profile directories still use the `square_coil_freeb_backend_*`
+  directory naming convention.
+
+### Best next steps
+
+1. Let the active VMEC2000 run continue until it either reaches strict
+   per-component `1e-12` or exhausts the final-stage budget.
+2. If the row exits above tolerance, run the generated `DELT`/stage-budget
+   follow-up commands.
+3. After the VMEC2000 reference decision, run matching `vmec_jax`
+   generated-`mgrid` and direct-coil profiles on the best schedule.
+
+### Completion percentages after M253
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `95%`.
+- VMEC2000 robustness/reference lane: `96%`, active row still running.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `77%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `75%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- True spline/control-basis hybrid lane: `36%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
