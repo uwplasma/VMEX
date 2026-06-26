@@ -372,12 +372,18 @@ row on ``MPOL=5, NTOR=28, NZETA=64`` reached final-grid iteration ``3631`` with
 max component about ``3.36e-12`` and a flat 12-row tail above the strict target;
 it was stopped so the reduced coordinate edge-control row could use the same
 GPU.  The concurrent VMEC2000 generated-``mgrid`` row at ``DELT=0.015`` was
-still running at final-grid iteration ``6001`` with max component about
-``3.54e-11``; its tail projection remained above the strict component target,
+still running at final-grid iteration ``7981`` with max component about
+``1.4e-11``; its tail projection remained above the strict component target,
 although it was still slowly trending downward and had no vacuum-grid overflow.
 This evidence does not support replacing the direct research lane by VMEC2000.
 Use VMEC2000 as the mgrid reference while the direct lane tests projection,
 pressure-coupling, JAX-NESTOR kernels, and reduced spline/control edge updates.
+Edited square-axis decks are now treated as production only after the effective
+``MPOL/NTOR/NZETA`` closure has been checked.  For example,
+``MPOL=4, NTOR=12, NZETA=16`` and ``MPOL=5, NTOR=28, NZETA=32`` both preflight
+to an effective ``NZETA=64`` production deck under the strict projection gate;
+underresolved edited decks must either auto-promote or run as diagnostic-only
+profiles with the projection gate disabled.
 The first 30-iteration direct-GPU coordinate-control smoke on the same
 ``MPOL=5, NTOR=28, NZETA=64`` hot-restart state preserved the LCFS in the
 two-control square subspace to about ``3e-15`` relative reconstruction residual
@@ -391,9 +397,15 @@ hot-restart scale.  The matching direct-GPU
 stopped early after iteration ``121`` because the tail flattened and then
 drifted upward around ``FSQR=4.6e-10``, ``FSQZ=3.8e-10``, and
 ``FSQL=3.4e-11``.  The active direct-lane follow-up is now the
-``direct-gpu-edge-jax-nestor-polish`` A/B row: it keeps the same WOUT seed,
+``direct-gpu-edge-jax-nestor-polish`` A/B row: it kept the same WOUT seed,
 coordinate edge-control bridge, ``FTOL=1e-12``, and ``DELT=0.02``, while
 enabling ``--freeb-jax-nestor-operator`` and ``--freeb-dense-solve-mode mode``.
+Both the JIT and non-JIT JAX-NESTOR strict-deck probes were stopped before
+iteration ``3`` because they stayed in setup/assembly for several minutes after
+the first vacuum turn-on rows; the JIT row reached about ``6.4 GB`` RSS, and
+the non-JIT row was lower-memory but still did not advance.  This makes native
+or reduced-control operator work more useful than spending more strict-deck
+time on the current experimental JAX-NESTOR path.
 The follow-up command helper now exposes two finite strict-polish lanes for the
 direct research path:
 
