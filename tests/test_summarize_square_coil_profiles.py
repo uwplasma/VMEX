@@ -771,6 +771,15 @@ def test_square_coil_profile_summary_recommends_direct_gpu_after_jax_nestor_prob
                         "tail_plateau": {"status": "oscillatory"},
                         "accepted_provider_parity": {"status": "completed"},
                         "final_residual_recomputed_on_accepted_state": True,
+                        "multigrid_resume_enabled": True,
+                        "multigrid_resume_env_default": "1",
+                        "multigrid_resume_stage_applied": [False, True, True],
+                        "multigrid_resume_freeb_runtime_present": [False, True, True],
+                        "multigrid_resume_freeb_model": [
+                            None,
+                            "vmec2000_like_dense_integral",
+                            "vmec2000_like_dense_integral",
+                        ],
                         "free_boundary_solver_overrides": {
                             "freeb_jax_nestor_operator": True,
                             "freeb_jax_nestor_jit_operator": False,
@@ -793,8 +802,24 @@ def test_square_coil_profile_summary_recommends_direct_gpu_after_jax_nestor_prob
                             "executed_count": 1,
                             "stopped_after_strict_convergence": False,
                             "stages": [
-                                {"strict_status": "underconverged", "component_max": 3.0e-9},
-                                {"strict_status": "stalled_above_strict_ftol", "component_max": 3.0e-9},
+                                {
+                                    "strict_status": "underconverged",
+                                    "component_max": 3.0e-9,
+                                    "restart_solver_state": {
+                                        "present": False,
+                                        "freeb_nestor_runtime_present": False,
+                                        "freeb_model": None,
+                                    },
+                                },
+                                {
+                                    "strict_status": "stalled_above_strict_ftol",
+                                    "component_max": 3.0e-9,
+                                    "restart_solver_state": {
+                                        "present": True,
+                                        "freeb_nestor_runtime_present": True,
+                                        "freeb_model": "vmec2000_like_dense_integral",
+                                    },
+                                },
                             ],
                         },
                         "free_boundary_jax_nestor_operator_applied": True,
@@ -821,6 +846,17 @@ def test_square_coil_profile_summary_recommends_direct_gpu_after_jax_nestor_prob
     assert row["jax_hot_restart_stopped_after_strict"] is False
     assert row["jax_hot_restart_last_status"] == "stalled_above_strict_ftol"
     assert row["jax_hot_restart_last_component_max"] == pytest.approx(3.0e-9)
+    assert row["jax_hot_restart_resume_present_last"] is True
+    assert row["jax_hot_restart_resume_freeb_runtime_present_last"] is True
+    assert row["jax_hot_restart_resume_freeb_runtime_present_any"] is True
+    assert row["jax_hot_restart_resume_freeb_model_last"] == "vmec2000_like_dense_integral"
+    assert row["multigrid_resume_enabled"] is True
+    assert row["multigrid_resume_env_default"] == "1"
+    assert row["multigrid_resume_applied_any"] is True
+    assert row["multigrid_resume_applied_last"] is True
+    assert row["multigrid_resume_freeb_runtime_present_any"] is True
+    assert row["multigrid_resume_freeb_runtime_present_last"] is True
+    assert row["multigrid_resume_freeb_model_last"] == "vmec2000_like_dense_integral"
     assert row["free_boundary_jax_nestor_operator_applied"] is True
     assert row["free_boundary_jax_nestor_operator_reason"] == "applied"
     assert row["free_boundary_jax_nestor_operator_jitted"] is False

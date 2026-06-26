@@ -446,6 +446,9 @@ free-boundary resume state across radial ``NS_ARRAY`` stages by default, and
 same-process ``--jax-hot-restart-policy freeb`` carries the accepted NESTOR
 runtime object. Set ``VMEC_JAX_MULTIGRID_RESUME=0`` only when deliberately
 testing a cold stage transition for parity debugging.
+Completed profile summaries report ``multigrid_resume_*`` and
+``jax_hot_restart_resume_*`` columns so strict runs can prove whether that
+runtime-bearing resume path was actually used.
 The summary helper also parses those live direct launcher logs, so
 ``python tools/diagnostics/summarize_square_coil_profiles.py <profile-dir> --markdown``
 reports running direct residuals, axis-repair status, and the vacuum-pressure

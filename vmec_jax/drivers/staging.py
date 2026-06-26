@@ -561,6 +561,9 @@ def run_vmec2000_staged_solve(ctx: Vmec2000StagedSolveContext) -> Vmec2000Staged
     stage_mode_history: list[str] = []
     stage_wall_s: list[float] = []
     stage_solve_total_s: list[float] = []
+    stage_resume_applied: list[bool] = []
+    stage_resume_freeb_runtime_present: list[bool] = []
+    stage_resume_freeb_model: list[str | None] = []
     ftol_last = None
     step_size_last = None
     last_niter_stage = 0
@@ -667,6 +670,14 @@ def run_vmec2000_staged_solve(ctx: Vmec2000StagedSolveContext) -> Vmec2000Staged
         stage_offsets.append(sum(int(np.asarray(r.w_history).size) for r in stage_results))
         stage_prev_fsq = prev_stage_fsq if bool(ctx.stage_transition_heuristic) else None
         is_last_stage = i == len(ctx.ns_stages) - 1
+        resume_dict = resume_state_stage if isinstance(resume_state_stage, dict) else {}
+        stage_resume_applied.append(bool(resume_dict))
+        stage_resume_freeb_runtime_present.append(resume_dict.get("freeb_nestor_runtime") is not None)
+        stage_resume_freeb_model.append(
+            None
+            if not resume_dict
+            else str(resume_dict.get("freeb_model", resume_dict.get("freeb_last_model", "")))
+        )
         stage_plan = _build_vmec2000_stage_solve_plan(
             ctx,
             stage_index=int(i),
@@ -765,6 +776,16 @@ def run_vmec2000_staged_solve(ctx: Vmec2000StagedSolveContext) -> Vmec2000Staged
         stage_solve_total_s=stage_solve_total_s,
         niter_stages_input=ctx.niter_stages_input,
     )
+    diag = dict(res.diagnostics)
+    diag["multigrid_resume_enabled"] = bool(multigrid_resume)
+    diag["multigrid_resume_env_default"] = "1" if bool(getattr(ctx.cfg, "lfreeb", False)) else "0"
+    diag["multigrid_resume_stage_applied"] = np.asarray(stage_resume_applied, dtype=bool)
+    diag["multigrid_resume_freeb_runtime_present"] = np.asarray(
+        stage_resume_freeb_runtime_present,
+        dtype=bool,
+    )
+    diag["multigrid_resume_freeb_model"] = np.asarray(stage_resume_freeb_model, dtype=object)
+    res = ctx.result_with_diag(res, **diag)
     res = ctx.maybe_apply_scan_wout_corrector(
         result=res,
         stage_results=stage_results,
@@ -953,6 +974,9 @@ def run_cli_explicit_staged_followup(
     stage_modes: list[str] = []
     stage_wall_s: list[float] = []
     stage_solve_total_s: list[float] = []
+    stage_resume_applied: list[bool] = []
+    stage_resume_freeb_runtime_present: list[bool] = []
+    stage_resume_freeb_model: list[str | None] = []
 
     for idx, (ns_i, niter_i, _ftol_i) in enumerate(zip(ns_stage_list, niter_stage_list, ftol_stage_list)):
         if int(idx) < int(start_stage_index) or int(niter_i) <= 0:
@@ -1008,6 +1032,14 @@ def run_cli_explicit_staged_followup(
             kwargs["restart_state"] = stage_state
             if stage_resume_state is not None:
                 kwargs["restart_solver_state"] = stage_resume_state
+        resume_dict = stage_resume_state if isinstance(stage_resume_state, dict) else {}
+        stage_resume_applied.append(bool(resume_dict))
+        stage_resume_freeb_runtime_present.append(resume_dict.get("freeb_nestor_runtime") is not None)
+        stage_resume_freeb_model.append(
+            None
+            if not resume_dict
+            else str(resume_dict.get("freeb_model", resume_dict.get("freeb_last_model", "")))
+        )
         stage_t0 = time.perf_counter()
         stage_run = ctx.run_fixed_boundary(ctx.input_path, **kwargs)
         _append_stage_summary(
@@ -1056,6 +1088,12 @@ def run_cli_explicit_staged_followup(
         [float(np.asarray(stage_run.result.w_history)[-1]) for stage_run in stage_runs],
         dtype=float,
     )
+    diag["cli_staged_followup_resume_stage_applied"] = np.asarray(stage_resume_applied, dtype=bool)
+    diag["cli_staged_followup_resume_freeb_runtime_present"] = np.asarray(
+        stage_resume_freeb_runtime_present,
+        dtype=bool,
+    )
+    diag["cli_staged_followup_resume_freeb_model"] = np.asarray(stage_resume_freeb_model, dtype=object)
     return replace(final_run, result=replace(final_run.result, diagnostics=diag))
 
 

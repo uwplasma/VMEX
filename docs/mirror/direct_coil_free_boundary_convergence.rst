@@ -437,6 +437,9 @@ counts. The resume sanitizers still drop unrelated cached arrays on grid
 changes, but retain the VMEC free-boundary cadence, ``prev_rz_fsq``, and
 NESTOR runtime. This should be treated as the next strict-profile baseline;
 older running rows did not have this state transfer.
+Completed profile summaries expose this proof through
+``multigrid_resume_*`` and ``jax_hot_restart_resume_*`` columns, including
+whether the stage/hot-restart payload actually carried a NESTOR runtime.
 
 The Anderson(1) pressure lane is now implemented as an opt-in diagnostic path
 for ``vmec_jax``. Set ``VMEC_JAX_FREEB_ANDERSON_PRESSURE=1`` or pass

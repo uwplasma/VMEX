@@ -1645,6 +1645,7 @@ def test_square_coil_profile_run_jax_backend_hot_restarts_from_freeb_state(
                     "freeb_nvacskip": 5,
                     "freeb_nvskip0": 1,
                     "freeb_last_model": "vmec2000_like_dense_integral",
+                    "freeb_nestor_runtime": "runtime-object",
                     "prev_rz_fsq": fsqr + fsqz,
                 },
                 "free_boundary": {
@@ -1703,6 +1704,7 @@ def test_square_coil_profile_run_jax_backend_hot_restarts_from_freeb_state(
     restart_solver_state = calls[1]["kwargs"]["restart_solver_state"]
     assert restart_solver_state["freeb_ivac"] == 4
     assert restart_solver_state["freeb_nvacskip"] == 5
+    assert restart_solver_state["freeb_nestor_runtime"] == "runtime-object"
     assert "time_step" not in restart_solver_state
     assert out["strict_convergence"]["strict_components_met"] is True
     assert out["hot_restart"]["requested_count"] == 2
@@ -1711,6 +1713,11 @@ def test_square_coil_profile_run_jax_backend_hot_restarts_from_freeb_state(
     assert out["hot_restart"]["stopped_after_strict_convergence"] is True
     assert out["hot_restart"]["stages"][0]["strict_status"] == "loose_only_above_strict"
     assert out["hot_restart"]["stages"][1]["strict_status"] == "strict_components_met"
+    assert out["hot_restart"]["stages"][0]["restart_solver_state"]["present"] is False
+    restart_summary = out["hot_restart"]["stages"][1]["restart_solver_state"]
+    assert restart_summary["present"] is True
+    assert restart_summary["freeb_nestor_runtime_present"] is True
+    assert restart_summary["freeb_model"] == "vmec2000_like_dense_integral"
     assert out["free_boundary_solver_overrides"]["jax_hot_restart_count"] == 2
     assert out["free_boundary_solver_overrides"]["jax_hot_restart_iters"] == 5
     assert out["free_boundary_solver_overrides"]["jax_hot_restart_policy"] == "freeb"

@@ -635,7 +635,7 @@ def test_free_boundary_multigrid_resumes_by_default(
         solver=fake_solver,
     )
 
-    driver.run_fixed_boundary(
+    run = driver.run_fixed_boundary(
         tmp_path / "input.freeb_multigrid_resume",
         solver="vmec2000_iter",
         solver_mode="default",
@@ -656,3 +656,9 @@ def test_free_boundary_multigrid_resumes_by_default(
     assert resume["freeb_ivac"] == 3
     assert resume["freeb_model"] == "direct-coil"
     assert resume["freeb_nestor_runtime"] == {"runtime": "accepted"}
+    diag = run.result.diagnostics
+    assert diag["multigrid_resume_enabled"] is True
+    assert diag["multigrid_resume_env_default"] == "1"
+    np.testing.assert_array_equal(diag["multigrid_resume_stage_applied"], [False, True])
+    np.testing.assert_array_equal(diag["multigrid_resume_freeb_runtime_present"], [False, True])
+    assert diag["multigrid_resume_freeb_model"].tolist() == [None, "direct-coil"]

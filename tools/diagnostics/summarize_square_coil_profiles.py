@@ -88,6 +88,36 @@ def _finite_float(value: Any) -> float | None:
     return out if out == out and abs(out) != float("inf") else None
 
 
+def _as_bool_list(value: Any) -> list[bool]:
+    if value is None:
+        return []
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, (list, tuple)):
+        return [bool(item) for item in value]
+    return [bool(value)]
+
+
+def _bool_last(value: Any) -> bool | None:
+    values = _as_bool_list(value)
+    return values[-1] if values else None
+
+
+def _bool_any(value: Any) -> bool | None:
+    values = _as_bool_list(value)
+    return any(values) if values else None
+
+
+def _last_sequence_value(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, (list, tuple)):
+        return value[-1] if value else None
+    return value
+
+
 def _vmec2000_total(backend: dict[str, Any]) -> tuple[float | None, float | None, int | None]:
     last = backend.get("last_row")
     last_total = None
@@ -1215,6 +1245,24 @@ def _summary_row(
         and isinstance(hot_restart_stages[-1], dict)
         else {}
     )
+    hot_restart_stage_summaries = (
+        [stage for stage in hot_restart_stages if isinstance(stage, dict)]
+        if isinstance(hot_restart_stages, list)
+        else []
+    )
+    hot_restart_resume_summaries = [
+        stage.get("restart_solver_state")
+        for stage in hot_restart_stage_summaries
+        if isinstance(stage.get("restart_solver_state"), dict)
+    ]
+    hot_restart_last_resume = (
+        hot_restart_resume_summaries[-1] if hot_restart_resume_summaries else {}
+    )
+    hot_restart_runtime_flags = [
+        bool(summary.get("freeb_nestor_runtime_present"))
+        for summary in hot_restart_resume_summaries
+        if isinstance(summary, dict)
+    ]
     strict_met = _strict_components_met(final_max_component, requested_ftol)
     strict_gap = _strict_gap(final_max_component, requested_ftol)
     promotion = _promotion_payload(
@@ -1330,6 +1378,27 @@ def _summary_row(
         "jax_hot_restart_last_status": hot_restart_last_stage.get("strict_status"),
         "jax_hot_restart_last_component_max": _finite_float(
             hot_restart_last_stage.get("component_max")
+        ),
+        "jax_hot_restart_resume_present_last": hot_restart_last_resume.get("present"),
+        "jax_hot_restart_resume_freeb_runtime_present_last": hot_restart_last_resume.get(
+            "freeb_nestor_runtime_present"
+        ),
+        "jax_hot_restart_resume_freeb_runtime_present_any": any(hot_restart_runtime_flags)
+        if hot_restart_runtime_flags
+        else None,
+        "jax_hot_restart_resume_freeb_model_last": hot_restart_last_resume.get("freeb_model"),
+        "multigrid_resume_enabled": backend.get("multigrid_resume_enabled"),
+        "multigrid_resume_env_default": backend.get("multigrid_resume_env_default"),
+        "multigrid_resume_applied_any": _bool_any(backend.get("multigrid_resume_stage_applied")),
+        "multigrid_resume_applied_last": _bool_last(backend.get("multigrid_resume_stage_applied")),
+        "multigrid_resume_freeb_runtime_present_any": _bool_any(
+            backend.get("multigrid_resume_freeb_runtime_present")
+        ),
+        "multigrid_resume_freeb_runtime_present_last": _bool_last(
+            backend.get("multigrid_resume_freeb_runtime_present")
+        ),
+        "multigrid_resume_freeb_model_last": _last_sequence_value(
+            backend.get("multigrid_resume_freeb_model")
         ),
         "freeb_jax_nestor_operator": freeb_jax_nestor_operator,
         "freeb_jax_nestor_jit_operator": freeb_jax_nestor_jit_operator,
@@ -1810,6 +1879,17 @@ def main(argv: list[str] | None = None) -> int:
         "jax_hot_restart_stopped_after_strict",
         "jax_hot_restart_last_status",
         "jax_hot_restart_last_component_max",
+        "jax_hot_restart_resume_present_last",
+        "jax_hot_restart_resume_freeb_runtime_present_last",
+        "jax_hot_restart_resume_freeb_runtime_present_any",
+        "jax_hot_restart_resume_freeb_model_last",
+        "multigrid_resume_enabled",
+        "multigrid_resume_env_default",
+        "multigrid_resume_applied_any",
+        "multigrid_resume_applied_last",
+        "multigrid_resume_freeb_runtime_present_any",
+        "multigrid_resume_freeb_runtime_present_last",
+        "multigrid_resume_freeb_model_last",
         "freeb_jax_nestor_operator",
         "freeb_jax_nestor_jit_operator",
         "freeb_edge_control_projection_status",

@@ -1277,6 +1277,11 @@ def _final_residuals(run: Any, *, config: ExampleConfig | None = None) -> dict[s
         "free_boundary_last_nvacskip": freeb.get("nvacskip"),
         "free_boundary_last_nestor_solve_time_s": _last_finite(diag.get("freeb_nestor_solve_time_history")),
         "free_boundary_last_nestor_sample_time_s": _last_finite(diag.get("freeb_nestor_sample_time_history")),
+        "multigrid_resume_enabled": diag.get("multigrid_resume_enabled"),
+        "multigrid_resume_env_default": diag.get("multigrid_resume_env_default"),
+        "multigrid_resume_stage_applied": diag.get("multigrid_resume_stage_applied"),
+        "multigrid_resume_freeb_runtime_present": diag.get("multigrid_resume_freeb_runtime_present"),
+        "multigrid_resume_freeb_model": diag.get("multigrid_resume_freeb_model"),
         "history": _jax_history_payload(run, diag),
     }
     out["strict_convergence"] = _strict_convergence_verdict(
@@ -1554,6 +1559,27 @@ def _jax_hot_restart_solver_state(run: Any, *, policy: str) -> dict[str, Any] | 
     return out or None
 
 
+def _freeb_resume_summary(resume_state: Any) -> dict[str, Any]:
+    """Return compact evidence for a free-boundary resume payload."""
+
+    if not isinstance(resume_state, dict) or not resume_state:
+        return {
+            "present": False,
+            "freeb_nestor_runtime_present": False,
+            "freeb_model": None,
+            "key_count": 0,
+        }
+    runtime = resume_state.get("freeb_nestor_runtime")
+    model = resume_state.get("freeb_model", resume_state.get("freeb_last_model"))
+    return {
+        "present": True,
+        "freeb_nestor_runtime_present": runtime is not None,
+        "freeb_model": None if model is None else str(model),
+        "key_count": int(len(resume_state)),
+        "keys": sorted(str(key) for key in resume_state.keys()),
+    }
+
+
 def _strict_residual_met(residuals: dict[str, Any]) -> bool:
     strict = residuals.get("strict_convergence")
     if isinstance(strict, dict) and strict.get("strict_components_met") is not None:
@@ -1569,6 +1595,7 @@ def _jax_hot_restart_stage_payload(
     restart_policy: str | None,
     run: Any,
     residuals: dict[str, Any],
+    restart_solver_state: Any | None = None,
 ) -> dict[str, Any]:
     """Return compact per-stage convergence data for hot-restart profiling."""
 
@@ -1587,6 +1614,7 @@ def _jax_hot_restart_stage_payload(
         "component_max": strict.get("component_max"),
         "component_sum": strict.get("component_sum"),
         "component_max_over_strict_target": strict.get("component_max_over_strict_target"),
+        "restart_solver_state": _freeb_resume_summary(restart_solver_state),
         "final_fsq_component_sum": residuals.get("final_fsq_component_sum"),
         "final_residual_recomputed_on_accepted_state": residuals.get(
             "final_residual_recomputed_on_accepted_state"
@@ -1741,6 +1769,7 @@ def _run_jax_backend(
                 restart_policy="wout" if jax_initial_restart_wout is not None else None,
                 run=run,
                 residuals=residuals,
+                restart_solver_state=None,
             )
         ]
         for restart_index in range(1, hot_restart_count + 1):
@@ -1768,6 +1797,7 @@ def _run_jax_backend(
                     restart_policy=hot_restart_policy,
                     run=run,
                     residuals=residuals,
+                    restart_solver_state=restart_solver_state,
                 )
             )
     finally:
