@@ -221,6 +221,12 @@ During long VMEC2000 runs the profiler writes
 vacuum-grid overflow before ``xvmec`` exits. The summary tool also accepts an
 active VMEC2000 profile directory and will read that sidecar, or parse
 ``vmec2000_mgrid/threed1*`` directly when the sidecar is not present.
+Completed ``vmec_jax`` backend rows also report
+``boundary_coeff_delta_*`` and ``boundary_sample_displacement_*`` fields, which
+measure how far the accepted LCFS moved from the initial prescribed boundary.
+These are evidence that a row used a moving free boundary; they complement, but
+do not replace, the strict force-component and finite-beta pressure-balance
+promotion gates.
 The rounded-square ``axis_kind="spline"`` option is now the default because it
 reduces low-mode projection error relative to the superellipse axis. It is
 still projected to VMEC Fourier coefficients, so large straight sections plus

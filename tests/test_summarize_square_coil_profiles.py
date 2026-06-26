@@ -59,6 +59,12 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                         "free_boundary_convergence_blocked_count": 4,
                         "free_boundary_anderson_pressure_enabled": True,
                         "free_boundary_anderson_pressure_last_theta": 0.25,
+                        "boundary_coeff_delta_l2": 0.04,
+                        "boundary_coeff_delta_linf": 0.02,
+                        "boundary_coeff_delta_rel": 1.0e-2,
+                        "boundary_sample_displacement_rms": 0.03,
+                        "boundary_sample_displacement_max": 0.07,
+                        "boundary_sample_displacement_rel": 8.0e-3,
                         "history": {
                             "dt_eff_stats": {"last": 0.02, "min": 0.01},
                             "time_step_stats": {"last": 0.019},
@@ -155,6 +161,12 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["max_boundary_projection_error"] == pytest.approx(1.0e-4)
     assert rows[1]["boundary_proj_max"] == pytest.approx(1.2e-4)
     assert rows[1]["boundary_proj_rel"] == pytest.approx(4.5e-4)
+    assert rows[1]["boundary_coeff_delta_l2"] == pytest.approx(0.04)
+    assert rows[1]["boundary_coeff_delta_linf"] == pytest.approx(0.02)
+    assert rows[1]["boundary_coeff_delta_rel"] == pytest.approx(1.0e-2)
+    assert rows[1]["boundary_sample_displacement_rms"] == pytest.approx(0.03)
+    assert rows[1]["boundary_sample_displacement_max"] == pytest.approx(0.07)
+    assert rows[1]["boundary_sample_displacement_rel"] == pytest.approx(8.0e-3)
     assert rows[1]["dt_eff_last"] == pytest.approx(0.02)
     assert rows[1]["dt_eff_min"] == pytest.approx(0.01)
     assert rows[1]["time_step_last"] == pytest.approx(0.019)

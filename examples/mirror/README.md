@@ -186,7 +186,8 @@ and field-line traces, top-view solved boundaries, side/corner cross sections,
 solved-boundary ``|B|``, and residual/iota diagnostics. The metrics JSON records
 convergence status, force components, free-boundary ``B.n`` diagnostics, WOUT
 paths, beta scan rows, solver objective-history extrema, bad-Jacobian/reset
-counts, best fresh free-boundary residuals, and a stall classification. Current
+counts, best fresh free-boundary residuals, accepted-LCFS motion relative to
+the input boundary, and a stall classification. Current
 direct-coil square-hybrid runs are therefore treated as explicit convergence
 diagnostics: if the final recomputed force components miss the requested
 ``FTOL``, the run is labelled as ``not_converged_or_max_iter`` rather than being
@@ -253,6 +254,9 @@ direct-coil, ``vmec_jax`` generated-mgrid, and optional raw VMEC2000
 generated-mgrid residuals for the same square-coil field. To profile a staged
 VMEC-style ladder without editing the example, add for example
 ``--ns-array 9,13,17 --niter-array 4000,8000,12000 --ftol-array 1e-8,1e-10,1e-12``.
+Completed ``vmec_jax`` backend rows include ``boundary_coeff_delta_*`` and
+``boundary_sample_displacement_*`` columns so the summary table shows whether
+the accepted LCFS moved from the initial prescribed boundary.
 Long VMEC2000 runs also refresh
 ``_partial_vmec2000_payload.json`` in the profile directory; use this sidecar
 to inspect the current stage, component residuals, and vacuum-grid warnings

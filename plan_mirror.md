@@ -27075,3 +27075,89 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 227. Accepted-LCFS Motion Diagnostics For Free-Boundary Profiles
+
+### Steps taken
+
+- Added accepted-boundary motion metrics to
+  ``tools/diagnostics/profile_square_coil_free_boundary.py``.
+- The profiler now compares the accepted edge coefficients against the input
+  boundary after converting VMEC internal edge coefficients back to physical
+  Fourier coefficients.
+- The profiler also evaluates the initial and accepted LCFS on the solver
+  angular grid and records RMS, max, and relative sampled displacement.
+- Added the same fields to
+  ``tools/diagnostics/summarize_square_coil_profiles.py``:
+  ``boundary_coeff_delta_l2``, ``boundary_coeff_delta_linf``,
+  ``boundary_coeff_delta_rel``, ``boundary_sample_displacement_rms``,
+  ``boundary_sample_displacement_max``, and
+  ``boundary_sample_displacement_rel``.
+- Updated the active convergence docs and mirror examples README so users know
+  these fields are a moving-boundary diagnostic, not a substitute for strict
+  force residual or finite-beta boundary-balance gates.
+
+### Results obtained
+
+- Future direct-coil and generated-``mgrid`` ``vmec_jax`` profile rows now
+  show whether the accepted LCFS actually moved from the initial prescribed
+  surface.
+- This closes a reporting ambiguity in the strict ``FTOL=1e-12`` lane: a
+  profile row can now show residuals, active free-boundary updates, provider
+  timing, and accepted-boundary motion in one summary table.
+- VMEC2000 partial rows remain residual-only because the active sidecar is
+  parsed from ``threed1``/progress files, not from an accepted Python
+  ``run.state`` object.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py tests/test_summarize_square_coil_profiles.py
+venv/bin/python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py tools/diagnostics/summarize_square_coil_profiles.py
+git diff --check
+```
+
+Results:
+
+- Profile and summary tests: ``19 passed``.
+- Py-compile checks passed.
+- Whitespace checks passed.
+
+### File structure and best-practice notes
+
+- The change stays in diagnostics/reporting and does not alter nonlinear
+  solver behavior.
+- The profile script remains the single backend-comparison writer; the summary
+  script remains the single table reader.
+- The motion helper uses existing boundary and Fourier utilities instead of
+  duplicating geometry evaluation.
+- No output figures or large result files were added to the repository.
+
+### Best next steps
+
+1. Commit and push the accepted-LCFS motion diagnostics.
+2. Fast-forward ``office`` before the next launched strict direct-coil profile
+   so completed JSON rows include the new motion fields.
+3. Let the active VMEC2000 ``8,32`` and direct ``6,23`` runs finish, then
+   compare force components, tail projections, vacuum-grid warnings, and
+   accepted-boundary motion.
+4. If high-mode Fourier ladders still plateau above the per-component
+   ``1e-12`` target, move to the true spline/control-basis free-boundary lane
+   rather than increasing only iteration count.
+
+### Completion percentages after M227
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``79%``.
+- VMEC2000 robustness/reference lane: ``86%``.
+- Direct-coil GPU/JIT parity lane: ``70%``.
+- Direct-provider profiling/instrumentation lane: ``97%``.
+- Square-axis spline-smoothed Fourier closure lane: ``90%``.
+- True spline/control-basis hybrid lane: ``15%`` planned, not yet implemented.
+- Documentation and diagnostics for active profiling: ``99%``.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``92%``
+  pending strict high-mode evidence.
+
+### User input needed
+
+No user input is needed.

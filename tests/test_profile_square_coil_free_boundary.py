@@ -8,6 +8,10 @@ import numpy as np
 import pytest
 
 from tools.diagnostics import profile_square_coil_free_boundary as profile
+from vmec_jax.config import VMECConfig
+from vmec_jax.namelist import InData
+from vmec_jax.state import StateLayout, VMECState
+from vmec_jax.static import build_static
 
 
 def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tails():
@@ -111,6 +115,58 @@ def test_square_coil_profile_tail_decay_projection_estimates_remaining_iteration
     assert projection["per_iter_factor"] == pytest.approx(0.3)
     assert projection["estimated_additional_iterations_to_target"]["1e-08"] == 1
     assert projection["estimated_additional_iterations_to_target"]["1e-12"] == 9
+
+
+def test_square_coil_profile_boundary_motion_payload_measures_edge_displacement():
+    cfg = VMECConfig(
+        mpol=2,
+        ntor=0,
+        ns=3,
+        nfp=1,
+        lasym=False,
+        lthreed=False,
+        lconm1=True,
+        ntheta=8,
+        nzeta=1,
+    )
+    static = build_static(cfg)
+    indata = InData(
+        scalars={
+            "MPOL": 2,
+            "NTOR": 0,
+            "NS_ARRAY": [3],
+            "NFP": 1,
+            "LASYM": False,
+            "LCONM1": True,
+        },
+        indexed={"RBC": {(0, 0): 3.0}},
+    )
+    layout = StateLayout(ns=3, K=static.modes.K, lasym=False)
+    zeros = np.zeros((3, static.modes.K), dtype=float)
+    rcos = zeros.copy()
+    rcos[:, 0] = 3.0
+    rcos[-1, 0] += 0.1
+    state = VMECState(
+        layout=layout,
+        Rcos=rcos,
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+
+    payload = profile._boundary_motion_payload(
+        SimpleNamespace(state=state, static=static, indata=indata)
+    )
+
+    assert payload is not None
+    assert payload["boundary_coeff_delta_l2"] == pytest.approx(0.1)
+    assert payload["boundary_coeff_delta_linf"] == pytest.approx(0.1)
+    assert payload["boundary_coeff_delta_rel"] == pytest.approx(0.1 / 3.0)
+    assert payload["boundary_sample_displacement_rms"] == pytest.approx(0.1)
+    assert payload["boundary_sample_displacement_max"] == pytest.approx(0.1)
+    assert payload["boundary_sample_displacement_rel"] == pytest.approx(0.1 / 3.0)
 
 
 def test_square_coil_profile_partial_vmec2000_payload_reads_timeout_rows(tmp_path: Path):

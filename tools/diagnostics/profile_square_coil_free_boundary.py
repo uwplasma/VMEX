@@ -30,8 +30,10 @@ from examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary impo
     build_square_coils,
     make_free_boundary_indata,
 )
+from vmec_jax.boundary import boundary_from_indata
 from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
 from vmec_jax.external_fields import build_coil_field_geometry, write_mgrid_from_coils
+from vmec_jax.fourier import eval_fourier
 from vmec_jax.free_boundary import _sample_external_boundary_arrays
 from vmec_jax.namelist import write_indata
 from vmec_jax.toroidal_hybrid import (
@@ -454,6 +456,81 @@ def _component_sum_history(run: Any) -> np.ndarray:
     return histories[0][-n:] + histories[1][-n:] + histories[2][-n:]
 
 
+def _internal_to_physical_mode_scale(static: Any) -> np.ndarray:
+    """Return the VMEC-internal to physical Fourier coefficient scale."""
+
+    modes = getattr(static, "modes", None)
+    m = np.asarray(getattr(modes, "m"), dtype=float)
+    n = np.asarray(getattr(modes, "n"), dtype=float)
+    sqrt2 = np.sqrt(2.0)
+    return np.where(m == 0.0, 1.0, sqrt2) * np.where(np.abs(n) == 0.0, 1.0, sqrt2)
+
+
+def _boundary_motion_payload(run: Any) -> dict[str, float] | None:
+    """Measure how far the accepted LCFS moved from the input boundary."""
+
+    try:
+        state = getattr(run, "state")
+        static = getattr(run, "static")
+        indata = getattr(run, "indata")
+        initial = boundary_from_indata(indata, static.modes)
+        scale = _internal_to_physical_mode_scale(static)
+        final = {
+            "R_cos": np.asarray(state.Rcos, dtype=float)[-1] * scale,
+            "R_sin": np.asarray(state.Rsin, dtype=float)[-1] * scale,
+            "Z_cos": np.asarray(state.Zcos, dtype=float)[-1] * scale,
+            "Z_sin": np.asarray(state.Zsin, dtype=float)[-1] * scale,
+        }
+        initial_components = {
+            "R_cos": np.asarray(initial.R_cos, dtype=float),
+            "R_sin": np.asarray(initial.R_sin, dtype=float),
+            "Z_cos": np.asarray(initial.Z_cos, dtype=float),
+            "Z_sin": np.asarray(initial.Z_sin, dtype=float),
+        }
+        coeff_norm_sq = 0.0
+        coeff_ref_norm_sq = 0.0
+        coeff_max = 0.0
+        for name, final_values in final.items():
+            initial_values = initial_components[name]
+            if final_values.shape != initial_values.shape:
+                return None
+            delta = final_values - initial_values
+            coeff_norm_sq += float(np.sum(delta * delta))
+            coeff_ref_norm_sq += float(np.sum(initial_values * initial_values))
+            if delta.size:
+                coeff_max = max(coeff_max, float(np.max(np.abs(delta))))
+
+        R0 = np.asarray(eval_fourier(initial.R_cos, initial.R_sin, static.basis), dtype=float)
+        Z0 = np.asarray(eval_fourier(initial.Z_cos, initial.Z_sin, static.basis), dtype=float)
+        R1 = np.asarray(
+            eval_fourier(state.Rcos[-1], state.Rsin[-1], static.basis, coeffs_internal=True),
+            dtype=float,
+        )
+        Z1 = np.asarray(
+            eval_fourier(state.Zcos[-1], state.Zsin[-1], static.basis, coeffs_internal=True),
+            dtype=float,
+        )
+        if R0.shape != R1.shape or Z0.shape != Z1.shape:
+            return None
+        displacement = np.sqrt((R1 - R0) ** 2 + (Z1 - Z0) ** 2)
+        ref_radius = np.sqrt(R0 * R0 + Z0 * Z0)
+        rms = float(np.sqrt(np.mean(displacement * displacement)))
+        max_abs = float(np.max(displacement))
+        ref_rms = float(np.sqrt(np.mean(ref_radius * ref_radius)))
+        coeff_norm = float(np.sqrt(coeff_norm_sq))
+        coeff_ref_norm = float(np.sqrt(coeff_ref_norm_sq))
+        return {
+            "boundary_coeff_delta_l2": coeff_norm,
+            "boundary_coeff_delta_linf": coeff_max,
+            "boundary_coeff_delta_rel": float(coeff_norm / max(coeff_ref_norm, TINY)),
+            "boundary_sample_displacement_rms": rms,
+            "boundary_sample_displacement_max": max_abs,
+            "boundary_sample_displacement_rel": float(rms / max(ref_rms, TINY)),
+        }
+    except Exception:
+        return None
+
+
 def _jax_history_payload(run: Any, diag: dict[str, Any], *, length: int = 12) -> dict[str, Any]:
     result = None if run is None else getattr(run, "result", None)
     component_sum = _component_sum_history(run)
@@ -638,6 +715,9 @@ def _final_residuals(run: Any) -> dict[str, Any]:
         "free_boundary_last_nestor_sample_time_s": _last_finite(diag.get("freeb_nestor_sample_time_history")),
         "history": _jax_history_payload(run, diag),
     }
+    boundary_motion = _boundary_motion_payload(run)
+    if boundary_motion is not None:
+        out.update(boundary_motion)
     out["stall_classification"] = _classify_run(diag, out)
     return out
 

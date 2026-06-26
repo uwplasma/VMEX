@@ -294,6 +294,18 @@ def _summary_row(
         "max_boundary_projection_error": cfg.get("max_boundary_projection_error"),
         "boundary_proj_max": _finite_float(projection.get("max_abs_component_error")),
         "boundary_proj_rel": _finite_float(projection.get("max_abs_component_error_rel")),
+        "boundary_coeff_delta_l2": _finite_float(backend.get("boundary_coeff_delta_l2")),
+        "boundary_coeff_delta_linf": _finite_float(backend.get("boundary_coeff_delta_linf")),
+        "boundary_coeff_delta_rel": _finite_float(backend.get("boundary_coeff_delta_rel")),
+        "boundary_sample_displacement_rms": _finite_float(
+            backend.get("boundary_sample_displacement_rms")
+        ),
+        "boundary_sample_displacement_max": _finite_float(
+            backend.get("boundary_sample_displacement_max")
+        ),
+        "boundary_sample_displacement_rel": _finite_float(
+            backend.get("boundary_sample_displacement_rel")
+        ),
         "final_iter": final_iter,
         "final_total": final_total,
         "final_max_component": final_max_component,
@@ -506,6 +518,12 @@ def main(argv: list[str] | None = None) -> int:
         "max_boundary_projection_error",
         "boundary_proj_max",
         "boundary_proj_rel",
+        "boundary_coeff_delta_l2",
+        "boundary_coeff_delta_linf",
+        "boundary_coeff_delta_rel",
+        "boundary_sample_displacement_rms",
+        "boundary_sample_displacement_max",
+        "boundary_sample_displacement_rel",
         "final_iter",
         "final_total",
         "final_max_component",
