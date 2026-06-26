@@ -239,8 +239,9 @@ the requested threshold. This is a boundary-representation gate, not a
 nonlinear-convergence claim.
 A higher-mode projection spot check on the same spline shape gives max
 component boundary errors of about ``1.27e-4`` for ``MPOL=5, NTOR=12``,
-``4.77e-5`` for ``5,16``, ``1.44e-5`` for ``6,23``, ``8.96e-6`` for
-``7,28``, and ``6.12e-6`` for ``8,32``. If the current ``6,23`` strict solves
+``4.76e-5`` for ``6,16``, ``2.41e-5`` for ``6,20``, ``1.44e-5`` for
+``6,23``, ``8.98e-6`` for ``7,28``, and ``6.14e-6`` for ``8,32``.
+If the current ``6,23`` strict solves
 plateau above ``1e-12``, the next finite resolution ladder should therefore be
 ``7,28`` and ``8,32`` with ``NZETA`` at least the corresponding
 ``recommended_square_axis_nzeta`` value, rather than a blind iteration-budget
