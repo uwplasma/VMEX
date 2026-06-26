@@ -8084,6 +8084,62 @@ Current lane percentages after this tranche:
 - Repository layout/navigation cleanup: 88.0%.
 - Overall: 99.82%.
 
+## 2026-06-26 QI package and driver lifecycle naming tranche
+
+Steps taken:
+
+- Consolidated the root-level `quasi_isodynamic.py`, `qi_diagnostics.py`,
+  `qi_legacy.py`, and `qi_optimization.py` modules into the
+  `vmec_jax/quasi_isodynamic/` domain package.
+- Added `vmec_jax/quasi_isodynamic/__init__.py` as the public QI package
+  surface and `vmec_jax/quasi_isodynamic/README.md` to document the roles of
+  `objectives.py`, `diagnostics.py`, `legacy.py`, and `optimization.py`.
+- Updated public API imports, lazy exports, tests, examples, diagnostic tools,
+  and docs to use `vmec_jax.quasi_isodynamic.*` module names.
+- Renamed `vmec_jax/drivers/finish.py` to `vmec_jax/drivers/lifecycle.py` so
+  the driver package describes finalization as a lifecycle policy rather than a
+  vague "finish" bucket.
+
+Results obtained:
+
+- Removed three QI-specific implementation modules from the package root and
+  replaced them with a single domain package.
+- Preserved public convenience imports such as
+  `vmec_jax.quasi_isodynamic_residual_from_state`,
+  `vmec_jax.qi_diagnostics_from_state`, and
+  `from vmec_jax.quasi_isodynamic import ...` for documented functions.
+- Private QI helpers now live in `quasi_isodynamic.objectives`, which keeps the
+  package public surface cleaner while retaining explicit internal access.
+- Focused QI diagnostics, QI objective, QI optimization-helper, driver, and
+  example API tests pass after the move.
+
+Best next steps:
+
+1. Run full docs with warnings as errors after the package move.
+2. Run source-health and repo-size gates to confirm the root module count and
+   tracked payload remain within policy.
+3. If green, commit this as the second coherent refactor tranche.
+4. Defer deeper solver-file splitting to a planned extraction of
+   `solvers/fixed_boundary/residual/iteration.py` and free-boundary adjoint
+   tests; do not create more root-level modules.
+
+User needs:
+
+- No input needed for this tranche.
+
+Current lane percentages after this tranche:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.5%.
+- Free-boundary production differentiability: 97.7%.
+- Single-stage coil optimization: 94.2%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 90.0%.
+- VMEC2000/VMEC++ parity and physics gates: 99.4%.
+- Docs/release hygiene: 100%.
+- Repository layout/navigation cleanup: 93.0%.
+- Overall: 99.85%.
+
 ### 2026-06-26: Extract residual free-boundary and boundary setup objects
 
 Steps taken:
