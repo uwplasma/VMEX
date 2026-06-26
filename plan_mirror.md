@@ -5738,6 +5738,119 @@ Visual validation:
 
 No user input is needed.
 
+## M319. Strict spline-bridge metadata and live VMEC2000/JAX profile triage
+
+### Steps taken
+
+- Committed and pushed the pending docs/plan tranche as `f9047dc6`.
+- Fast-forwarded the waiting `office` profiling worktrees to `f9047dc6`.
+- Checked the active strict rows:
+  - direct JAX hot restart is still active and oscillatory near
+    `fsqr ~ 3e-11`, `fsqz ~ 3e-11`, `fsql ~ 6e-12`;
+  - VMEC2000/generated-`mgrid` is still active and plateauing around
+    `max(fsqr, fsqz, fsql) ~ 1e-9` in the `NS=13, FTOL=1e-10` stage.
+- Repaired the remote queued stellarator-control worker that was failing its
+  load-gate snippet because `python` was not on `PATH`; it now uses
+  `/usr/bin/python3` for the gate and remains queued behind active solves.
+- Ran local resolution-only preflights for:
+  - `MPOL=5, NTOR=28, NZETA=64`;
+  - intentionally underrecommended `MPOL=5, NTOR=28, NZETA=48`;
+  - higher mode `MPOL=7, NTOR=36, NZETA=auto`.
+- Fixed a metadata overclaim in the square-hybrid spline bridge:
+  `can_reduce_nonlinear_solver_dofs` is now `False` until a solver-native
+  spline/control state exists.  The payload now separately reports that the
+  current path can reduce input-shape degrees of freedom and project
+  free-boundary LCFS edge updates.
+
+### Results obtained
+
+- The local preflights classify the recommended `MPOL=5, NTOR=28, NZETA=64`
+  deck as `production_ready`, with projection max component error
+  `3.48e-12`, `nzeta_margin=0`, and 1028 Fourier boundary channels.
+- The intentionally underrecommended `NZETA=48` deck is diagnostic-only:
+  `nzeta_margin=-16`, `mgrid_nphi_not_multiple_of_nzeta`, and
+  `points_per_toroidal_mode=1.71`.
+- The higher `NTOR=36` auto deck resolves to `NZETA=80`, remains
+  `production_ready`, and has 1900 Fourier boundary channels.
+- Current evidence does not show VMEC2000 being more robust for this deck:
+  the generated-`mgrid` row is roughly two orders of magnitude farther from
+  the `1e-12` target than the direct JAX hot restart, although both remain
+  non-strict.
+- The spline/control path is now described consistently:
+  it is a spline-to-Fourier bridge with optional reduced LCFS edge projection,
+  not a full reduced nonlinear VMEC solve.
+
+### How it was tested
+
+```bash
+./venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py \
+  --outdir /tmp/vmec_square_preflight_m5_n28_z64 \
+  --beta-percent 0 --mpol 5 --ntor 28 --ns 17 --nzeta 64 \
+  --ns-array 9,13,17 --niter-array 1000,2000,8000 \
+  --ftol-array 1e-8,1e-10,1e-12 --max-iter 1 --ftol 1e-12 \
+  --axis-kind control_spline --mgrid-nphi 64 \
+  --max-boundary-projection-error 5e-12 --resolution-diagnostics-only
+```
+
+Result: passed and wrote a `production_ready` diagnostics JSON.
+
+```bash
+./venv/bin/python -m pytest -q \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_records_boundary_projection_payload \
+  tests/test_toroidal_hybrid.py::test_square_axis_recommended_nzeta_and_example_guard \
+  tests/test_toroidal_hybrid.py::test_square_axis_strict_convergence_assessment_separates_fourier_and_spline_claims
+```
+
+Result: `3 passed, 1 warning`.
+
+```bash
+./venv/bin/python -m py_compile \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  vmec_jax/toroidal_hybrid.py
+git diff --check
+```
+
+Result: passed.
+
+### File structure and best-practice adherence
+
+- Source metadata lives with the two producers:
+  `tools/diagnostics/profile_square_coil_free_boundary.py` for profiler JSON
+  and `examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py`
+  for root example/preflight JSON.
+- Tests stay next to the existing square-hybrid coverage in
+  `tests/test_profile_square_coil_free_boundary.py` and
+  `tests/test_toroidal_hybrid.py`.
+- No solver output files, WOUTs, figures, or generated metrics were committed.
+
+### Best next steps
+
+1. Commit and push the metadata clarification.
+2. Let the active direct JAX and VMEC2000 rows continue without blocking on
+   them.
+3. When office load clears, let the queued square, stellarator, small-DELT,
+   edge-velocity, and generated-`mgrid` JAX comparator rows run.
+4. If direct JAX, generated-`mgrid` JAX, and VMEC2000 all plateau above
+   `1e-12`, start the solver-native spline/control-state implementation rather
+   than adding more Fourier-projected polish.
+
+### Completion percentages after M319
+
+- Strict `ftol=1e-12` diagnostics lane: `97%`, gates and live triage are in
+  place; strict closure remains open.
+- VMEC2000/mgrid comparison lane: `99%`, active profile is running and already
+  indicates worse plateauing than direct JAX for the current deck.
+- `MPOL`/`NTOR`/`NZETA` robustness lane: `98%`, production preflight and auto
+  `NZETA` behavior work for tested decks.
+- True spline/control-basis hybrid lane: `92%`, metadata and edge projection
+  are clear; solver-native reduced state remains open.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M318. Native spline/control interface boundary and docs refresh
 
 ### Steps taken

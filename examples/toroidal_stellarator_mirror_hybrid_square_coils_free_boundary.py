@@ -771,8 +771,10 @@ def _spline_bridge_payload(config: ExampleConfig, *, resolution_deck: dict[str, 
         "solver_edge_control_projection": edge_control,
         "requires_fourier_projection": True,
         "can_reduce_input_shape_dofs": bool(uses_controls),
-        "can_reduce_nonlinear_solver_dofs": edge_enabled,
+        "can_project_free_boundary_edge_updates": edge_enabled,
         "can_reduce_free_boundary_edge_dofs": edge_enabled,
+        "can_reduce_nonlinear_solver_dofs": False,
+        "requires_native_spline_state_for_reduced_nonlinear_dofs": bool(uses_controls),
         "recommended_next_action": (
             "profile_projected_edge_control_strict_convergence"
             if edge_enabled and resolution_deck.get("status") == "production_ready"

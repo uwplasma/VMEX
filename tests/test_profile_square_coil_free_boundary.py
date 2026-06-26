@@ -773,7 +773,10 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert spline_bridge["requires_fourier_projection"] is True
     assert spline_bridge["reduced_square_control_count"] == 2
     assert spline_bridge["can_reduce_input_shape_dofs"] is True
-    assert spline_bridge["can_reduce_nonlinear_solver_dofs"] is True
+    assert spline_bridge["can_project_free_boundary_edge_updates"] is True
+    assert spline_bridge["can_reduce_free_boundary_edge_dofs"] is True
+    assert spline_bridge["can_reduce_nonlinear_solver_dofs"] is False
+    assert spline_bridge["requires_native_spline_state_for_reduced_nonlinear_dofs"] is True
     assessment = data["strict_convergence_assessment"]
     assert assessment["schema"] == "square_axis_strict_convergence_assessment.v1"
     assert assessment["full_fourier_strict_profile_status"] == "ready_to_attempt"

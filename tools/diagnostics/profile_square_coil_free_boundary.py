@@ -2209,7 +2209,10 @@ def _spline_bridge_payload(
         "projection_target_max_component_error": resolution_deck.get("projection_target_max_component_error"),
         "control_map_status": control_fourier_map.get("status") if isinstance(control_fourier_map, dict) else None,
         "can_reduce_input_shape_dofs": uses_controls,
-        "can_reduce_nonlinear_solver_dofs": uses_controls,
+        "can_project_free_boundary_edge_updates": uses_controls,
+        "can_reduce_free_boundary_edge_dofs": uses_controls,
+        "can_reduce_nonlinear_solver_dofs": False,
+        "requires_native_spline_state_for_reduced_nonlinear_dofs": uses_controls,
         "recommended_next_action": next_action,
         "interpretation": (
             "The square-axis spline path still enters VMEC through Fourier coefficients, but the vmec_jax "

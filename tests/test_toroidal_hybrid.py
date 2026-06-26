@@ -592,8 +592,10 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["spline_bridge"]["solver_native_spline_controls"] is False
     assert preflight["spline_bridge"]["can_reduce_input_shape_dofs"] is True
     assert preflight["spline_bridge"]["solver_edge_control_projection_enabled"] is True
-    assert preflight["spline_bridge"]["can_reduce_nonlinear_solver_dofs"] is True
+    assert preflight["spline_bridge"]["can_project_free_boundary_edge_updates"] is True
     assert preflight["spline_bridge"]["can_reduce_free_boundary_edge_dofs"] is True
+    assert preflight["spline_bridge"]["can_reduce_nonlinear_solver_dofs"] is False
+    assert preflight["spline_bridge"]["requires_native_spline_state_for_reduced_nonlinear_dofs"] is True
     assert preflight["edge_control_projection"]["enabled"] is True
     assert preflight["edge_control_projection"]["basis_symmetry"] == "square"
     assert preflight["edge_control_projection"]["control_count"] == 2
