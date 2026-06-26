@@ -32366,6 +32366,11 @@ No user input is needed.
     a flat tail above stage tolerance.
 - This makes completed JAX, direct-coil, and VMEC2000 raw reports
   self-describing before running the larger summary CSV tool.
+- The two already-running direct-GPU rows were launched before this commit, so
+  their final raw JSON will not contain the new block unless those rows are
+  rerun. Classify those two legacy rows with the summary tool; the queued
+  JAX-NESTOR and VMEC2000 rows fetch the latest branch before launching and
+  will include the new raw verdict.
 - Current active direct-GPU rows are still running and remain above strict
   target:
   - baseline near iteration `6240`: about
@@ -32400,8 +32405,9 @@ No user input is needed.
 
 ### Best next steps
 
-1. Let the active direct-GPU rows finish and classify their final JSON with the
-   new `strict_convergence` block.
+1. Let the active direct-GPU rows finish and classify those legacy reports with
+   the summary tool; use the raw `strict_convergence` block on reruns and on
+   queued profiles launched after this commit.
 2. Let the queued direct-GPU JAX-NESTOR operator row run after the direct rows
    finish; compare whether it lowers the current `~1e-9` floor.
 3. Let the queued VMEC2000 `DELT=0.015/0.02/0.025` scan run after that and use
