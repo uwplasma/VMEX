@@ -7712,3 +7712,63 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.3%.
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
+
+### 2026-06-26: Extract fixed-boundary runtime setup
+
+Steps taken:
+
+- Split late-bound fixed-boundary runtime preparation out of
+  ``run_fixed_boundary`` into ``_prepare_fixed_boundary_runtime_setup``.
+- Isolated the VMEC-style fixed-boundary run header printing into
+  ``_maybe_print_fixed_boundary_run_intro``.
+- Tightened the CI/local source-health baseline for
+  ``vmec_jax/driver.py:run_fixed_boundary`` from 464 lines to 420 lines.
+- Kept the change to driver orchestration only; no force kernels, scan
+  controller, WOUT construction, optimization kernels, or public figure inputs
+  changed.
+
+Results obtained:
+
+- ``run_fixed_boundary`` is now exactly 420 source lines by ``inspect``.
+- ``python -m ruff check vmec_jax/driver.py`` passed.
+- ``python -m compileall -q vmec_jax/driver.py`` passed.
+- ``JAX_ENABLE_X64=1 python tools/diagnostics/readme_ad_fd_evidence.py
+  --branch-local-report
+  outputs/pr20_ad_fd/qs_same_branch/same_branch_complete_solve_report.json``
+  regenerated the 10-row AD/FD evidence panel from existing provenance with no
+  retained tracked diff.
+- ``python tools/diagnostics/readme_runtime_compare.py --cpu-summary
+  outputs/pr20_full_matrix_current_cpu_sg_fulljit/summary.json`` rerendered the
+  16-row README runtime figure from existing provenance; only a timestamp changed,
+  so that timestamp-only churn was reverted.
+- ``LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs
+  docs/_build/html_final_tranche_last`` passed.
+- The promoted WOUT parity rerun was started, but the local run entered a long
+  JAX preconditioner path after the first VMEC2000 row and did not produce a
+  summary before it was stopped. The checked-in parity summary was left
+  unchanged.
+
+Best next steps:
+
+1. Run the focused driver/API tests and source-health/local-CI gates with the
+   tightened 420-line baseline.
+2. Let GitHub CI validate the pushed tip; reproduce any failed shard locally.
+3. If review requests further refactor, target the residual-loop phase seam or
+   split the largest free-boundary validation tests rather than changing public
+   artifact generation.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.2%.
+- Free-boundary production differentiability: 97.6%.
+- Single-stage coil optimization: 94.0%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 81.0%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
