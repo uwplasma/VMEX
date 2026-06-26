@@ -268,6 +268,7 @@ _LAZY_ATTRS = {
     "recommended_square_axis_nzeta": ".toroidal_hybrid",
     "sample_square_axis_stellarator_mirror_hybrid_boundary": ".toroidal_hybrid",
     "sample_toroidal_stellarator_mirror_hybrid_boundary": ".toroidal_hybrid",
+    "square_axis_free_boundary_edge_control_projection_payload": ".toroidal_hybrid",
     "square_axis_resolution_deck_status": ".toroidal_hybrid",
     "square_axis_spline_control_fourier_map_status": ".toroidal_hybrid",
     "square_axis_spline_control_fourier_matrix": ".toroidal_hybrid",

@@ -324,6 +324,59 @@ def square_axis_spline_control_fourier_map_status(
     }
 
 
+def square_axis_free_boundary_edge_control_projection_payload(
+    *,
+    controls: SquareAxisSplineControls | None = None,
+    symmetry: str = "square",
+    rcond: float = 1.0e-12,
+    source: str = "square_axis_free_boundary_edge_control_projection",
+    nfp: int = 1,
+    mpol: int = 5,
+    ntor: int = 28,
+    ntheta_fit: int = 64,
+    nzeta_fit: int = 224,
+    **sample_kwargs: Any,
+) -> dict[str, Any] | None:
+    """Return the solver payload for reduced square-axis LCFS edge controls.
+
+    The free-boundary solver still stores the LCFS in VMEC Fourier
+    coefficients.  This payload adds a reduced control layer by projecting edge
+    updates onto the spline-control Jacobian for the requested symmetry.
+    """
+
+    symmetry_key = str(symmetry).strip().lower()
+    if symmetry_key in {"", "none", "off", "false"}:
+        return None
+    if symmetry_key not in {"square", "stellarator"}:
+        raise ValueError("symmetry must be 'square', 'stellarator', or 'none'")
+    rcond_value = float(rcond)
+    if not np.isfinite(rcond_value) or rcond_value <= 0.0:
+        raise ValueError("rcond must be positive and finite")
+    basis = square_axis_spline_symmetric_control_basis(controls, symmetry=symmetry_key)
+    matrix = square_axis_spline_control_fourier_matrix(
+        control_basis=basis,
+        nfp=int(nfp),
+        mpol=int(mpol),
+        ntor=int(ntor),
+        ntheta_fit=int(ntheta_fit),
+        nzeta_fit=int(nzeta_fit),
+        **sample_kwargs,
+    )
+    jacobian = np.asarray(matrix.stacked_jacobian(), dtype=float)
+    if jacobian.ndim != 2 or jacobian.shape[1] <= 0:
+        raise ValueError(f"empty edge-control Jacobian for symmetry {symmetry_key!r}")
+    return {
+        "enabled": True,
+        "source": str(source),
+        "basis_symmetry": basis.symmetry,
+        "labels": list(basis.labels),
+        "control_jacobian": jacobian,
+        "control_count": int(jacobian.shape[1]),
+        "mode_count": int(np.asarray(matrix.m).size),
+        "rcond": rcond_value,
+    }
+
+
 def _periodic_angle_distance(a: Any, b: Any) -> np.ndarray:
     return np.abs((np.asarray(a, dtype=float) - np.asarray(b, dtype=float) + np.pi) % (2.0 * np.pi) - np.pi)
 

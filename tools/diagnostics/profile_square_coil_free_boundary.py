@@ -45,6 +45,7 @@ from vmec_jax.toroidal_hybrid import (
     evaluate_toroidal_hybrid_indata_boundary,
     recommend_square_axis_stellarator_mirror_hybrid_resolution,
     recommended_square_axis_nzeta,
+    square_axis_free_boundary_edge_control_projection_payload,
     square_axis_resolution_deck_status,
     square_axis_spline_control_fourier_map_status,
     square_axis_spline_control_fourier_matrix,
@@ -1983,18 +1984,23 @@ def _freeb_edge_control_projection_solver_payload(
         raise ValueError(f"unsupported free-boundary edge-control projection: {symmetry!r}")
     if not _square_axis_uses_spline_controls(config):
         raise ValueError("--freeb-edge-control-projection requires --axis-kind control_spline")
-    basis, matrix = _square_control_fourier_matrix(config, symmetry=symmetry)
-    jacobian = matrix.stacked_jacobian()
-    if jacobian.ndim != 2 or jacobian.shape[1] <= 0:
-        raise ValueError(f"empty edge-control Jacobian for symmetry {symmetry!r}")
-    return {
-        "enabled": True,
-        "source": "profile_square_coil_free_boundary",
-        "basis_symmetry": basis.symmetry,
-        "labels": list(basis.labels),
-        "control_jacobian": np.asarray(jacobian, dtype=float),
-        "rcond": float(rcond),
+    sample_kwargs = {
+        key: value
+        for key, value in _square_axis_sample_kwargs(config).items()
+        if key not in {"axis_kind", "axis_spline_controls"}
     }
+    return square_axis_free_boundary_edge_control_projection_payload(
+        controls=_square_axis_controls(config),
+        symmetry=symmetry,
+        rcond=float(rcond),
+        source="profile_square_coil_free_boundary",
+        nfp=int(config.nfp),
+        mpol=int(config.mpol),
+        ntor=int(config.ntor),
+        ntheta_fit=max(64, 4 * int(config.mpol)),
+        nzeta_fit=max(128, 8 * int(config.ntor)),
+        **sample_kwargs,
+    )
 
 
 def _freeb_edge_control_projection_summary(payload: dict[str, Any] | None, *, requested: str) -> dict[str, Any]:

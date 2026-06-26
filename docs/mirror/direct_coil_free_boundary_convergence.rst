@@ -236,6 +236,11 @@ native spline-coordinate VMEC solve: the equilibrium state is still represented
 by VMEC Fourier coefficients. It does, however, constrain free-boundary edge
 motion to the low-dimensional square-axis spline-control subspace and is the
 next A/B profile against the full-Fourier and VMEC2000/mgrid rows.
+The repo-root square-coil example now uses the same projection path by default
+through ``FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"`` and records the
+requested basis, control count, mode count, and solver apply count in both its
+preflight JSON and per-beta summary rows. Set that top-level option to
+``"none"`` when an unconstrained full-Fourier edge-motion comparison is needed.
 
 The same profiling identified an ``NZETA`` robustness rule. ``MPOL=5,
 NTOR=12, NZETA=16`` fails in VMEC2000 after the initial Jacobian changes sign,
@@ -641,9 +646,11 @@ stellarator-symmetric basis.
 The adjacent ``spline_bridge`` block states the current representation status:
 ``axis_kind="control_spline"`` uses periodic spline controls for the
 real-space square-axis target, but the nonlinear free-boundary solve still
-uses VMEC Fourier boundary coefficients. It can therefore smooth and reduce
-the input geometry, but it is not yet a solver-native spline/control-basis
-equilibrium.
+uses VMEC Fourier boundary coefficients. With edge-control projection enabled,
+the VMEC state remains Fourier-based but the free-boundary LCFS edge updates
+are least-squares projected back to the reduced square-axis spline-control
+subspace before vacuum-pressure sampling. It is still not a solver-native
+spline/control-basis equilibrium.
 The reusable source hook is
 ``SquareAxisControlFourierMatrix.project_boundary_delta(...)``. It returns a
 ``SquareAxisControlProjection`` with the fitted control update, reconstructed

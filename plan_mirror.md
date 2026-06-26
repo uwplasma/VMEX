@@ -5738,6 +5738,130 @@ Visual validation:
 
 No user input is needed.
 
+## M292 - Merge recovery and square-axis projected edge-control example wiring
+
+### Steps taken
+
+- Merged the mirror branch with the upstream driver/solver refactor and ported
+  the free-boundary edge-control projection hook through the new
+  ``vmec_jax/solvers/*`` and ``vmec_jax/drivers/*`` structure.
+- Added the reusable
+  ``vmec_jax.square_axis_free_boundary_edge_control_projection_payload`` source
+  helper so examples and backend profilers build the same reduced
+  side/corner-control payload.
+- Updated the repo-root square-coil stellarator-mirror hybrid free-boundary
+  example to enable ``FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"`` by
+  default, pass the payload into ``run_free_boundary``, and record requested
+  basis, control count, mode count, apply count, and solver status in preflight
+  JSON, metrics JSON, and CSV rows.
+- Fixed a post-refactor import-depth issue in
+  ``vmec_jax/solvers/free_boundary/validation.py`` so solved-boundary field
+  sampling uses the top-level field, geometry, and external-field modules.
+- Updated docs to clarify that the example now constrains LCFS edge motion to
+  the reduced square-axis spline-control subspace while the VMEC state remains
+  Fourier-based.
+
+### Results obtained
+
+- The root example now uses the same reduced-control projection path as the
+  backend profiler instead of only documenting a future control-space solve.
+- The current strict deck remains ``FTOL=1e-12`` with production-style
+  ``MPOL=5, NTOR=28, NZETA=64`` and the ``5e-12`` boundary-projection gate.
+- The local resolution matrix still classifies ``MPOL=5, NTOR=20, NZETA=48``
+  as underresolved, ``MPOL=5, NTOR=28, NZETA=48`` as under-``NZETA``, and
+  ``MPOL=5, NTOR=28, NZETA=64`` plus higher decks as production-ready for this
+  spline-smoothed target.
+- Active office profiling at the time of this log still shows the direct JAX
+  hot-restart row stalling/oscillating near the ``1e-10`` component scale,
+  while the VMEC2000 generated-``mgrid`` row remains the speed/robustness
+  reference but has not yet proven the strict ``1e-12`` component gate.
+
+### How it was tested
+
+Commands run locally:
+
+```bash
+venv/bin/python -m py_compile \
+  vmec_jax/toroidal_hybrid.py \
+  vmec_jax/api.py \
+  vmec_jax/__init__.py \
+  vmec_jax/solvers/free_boundary/validation.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tests/test_toroidal_hybrid.py
+
+venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py::test_square_axis_free_boundary_edge_control_projection_payload \
+  tests/test_toroidal_hybrid.py::test_square_axis_recommended_nzeta_and_example_guard \
+  tests/test_toroidal_hybrid.py::test_square_coil_hybrid_free_boundary_example_runs_without_plots \
+  tests/test_free_boundary_validation_unit.py
+
+python3 -m ruff check \
+  vmec_jax/toroidal_hybrid.py \
+  vmec_jax/api.py \
+  vmec_jax/__init__.py \
+  vmec_jax/solvers/free_boundary/validation.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tests/test_toroidal_hybrid.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_free_boundary_validation_unit.py
+
+venv/bin/python -m pytest -q tests/test_toroidal_hybrid.py
+venv/bin/python -m pytest -q \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_free_boundary_validation_unit.py
+
+git diff --check
+```
+
+Result: ``tests/test_toroidal_hybrid.py`` passed ``52`` tests; the profile,
+summary, and validation tests passed ``52`` more tests; focused projection and
+example checks passed. Only pre-existing JAX/Numpy warnings were reported.
+
+### File structure and best-practice adherence
+
+- Public construction of the square-axis projection payload lives in the
+  existing ``vmec_jax/toroidal_hybrid.py`` facade with public re-exports from
+  ``api.py`` and ``__init__.py``.
+- Solver application remains in the free-boundary/fixed-boundary solver
+  packages; the example only builds a payload and passes it through the public
+  driver.
+- The example keeps its SIMSOPT-like top-level parameter block, no parser, and
+  writes only ignored result artifacts when run.
+- Tests cover public API exposure, payload shape/metadata, example preflight,
+  CSV fields, and the solved-field validation import path.
+- No large result files, WOUTs, or figures were added to git.
+
+### Best next steps
+
+1. Run the broader focused suite and lint gate for the touched files.
+2. Commit and push M292.
+3. Let the active VMEC2000 generated-``mgrid`` row and queued projected-control
+   GPU row continue on ``office``; compare strict component floors after they
+   finish rather than polling CI or remote jobs continuously.
+4. If the square projected-control row still stalls above ``1e-12``, run the
+   same deck with the five-control ``stellarator`` basis and then move to the
+   solver-native spline-coordinate lane if both reduced Fourier-projection rows
+   stall.
+
+### Completion percentages after M292
+
+- Direct-coil GPU/JIT parity lane: ``96%``, strict component floor still open.
+- Seeded hot-restart lane: ``99%``, active row remains component-limited.
+- VMEC2000 robustness/reference lane: ``99%``, active strict row still running.
+- Resolution/edit robustness lane: ``100%``.
+- True spline/control-basis hybrid lane: ``83%``, projected-control path is now
+  source-backed and active in the root example, but not solver-native.
+- Strict convergence diagnostics lane: ``100%``.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``96%``.
+
+### User input needed
+
+No user input is needed.
+
 ---
 ## M283 - Stage-Budget Summary for Strict Direct Rows
 

@@ -241,8 +241,8 @@ def edge_pressure_from_run(run: Any) -> float:
 def sample_solved_boundary_field(run: Any, *, nfp: int | None = None) -> SolvedBoundaryFieldSample:
     """Sample solved LCFS geometry, field strength, and Cartesian total field."""
 
-    from .field import b2_from_bsup, b_cartesian_from_bsup, bsup_from_geom, lamscale_from_phips
-    from .geom import eval_geom
+    from ...field import b2_from_bsup, b_cartesian_from_bsup, bsup_from_geom, lamscale_from_phips
+    from ...geom import eval_geom
 
     nfp_eff = int(nfp if nfp is not None else getattr(getattr(run.static, "cfg", None), "nfp", 1))
     geom = eval_geom(run.state, run.static)
@@ -290,7 +290,7 @@ def coil_external_b_on_surface(
 ) -> np.ndarray:
     """Sample a direct-coil Cartesian field on a ``(3, ntheta, nzeta)`` surface."""
 
-    from .external_fields import build_coil_field_geometry, sample_coil_field_xyz_from_geometry
+    from ...external_fields import build_coil_field_geometry, sample_coil_field_xyz_from_geometry
 
     x = _as_vector_surface(surface_xyz, name="surface_xyz")
     geometry = build_coil_field_geometry(coil_params) if coil_geometry is None else coil_geometry

@@ -24,6 +24,7 @@ from vmec_jax.toroidal_hybrid import (
     recommended_square_axis_nzeta,
     sample_square_axis_stellarator_mirror_hybrid_boundary,
     sample_toroidal_stellarator_mirror_hybrid_boundary,
+    square_axis_free_boundary_edge_control_projection_payload,
     square_axis_resolution_deck_status,
     square_axis_spline_control_fourier_map_status,
     square_axis_spline_control_fourier_matrix,
@@ -110,6 +111,10 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert vj.square_axis_spline_radius is square_axis_spline_radius
     assert vj.square_axis_spline_radius_matrix is square_axis_spline_radius_matrix
     assert vj.square_axis_spline_symmetric_control_basis is square_axis_spline_symmetric_control_basis
+    assert (
+        vj.square_axis_free_boundary_edge_control_projection_payload
+        is square_axis_free_boundary_edge_control_projection_payload
+    )
     assert vj.sample_square_axis_stellarator_mirror_hybrid_boundary is sample_square_axis_stellarator_mirror_hybrid_boundary
     assert vj.square_axis_stellarator_mirror_hybrid_indata is square_axis_stellarator_mirror_hybrid_indata
     assert (
@@ -126,6 +131,10 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert public_api.square_axis_spline_radius is square_axis_spline_radius
     assert public_api.square_axis_spline_radius_matrix is square_axis_spline_radius_matrix
     assert public_api.square_axis_spline_symmetric_control_basis is square_axis_spline_symmetric_control_basis
+    assert (
+        public_api.square_axis_free_boundary_edge_control_projection_payload
+        is square_axis_free_boundary_edge_control_projection_payload
+    )
     assert (
         public_api.square_axis_stellarator_mirror_hybrid_projection_error
         is square_axis_stellarator_mirror_hybrid_projection_error
@@ -418,6 +427,43 @@ def test_square_axis_control_fourier_map_status_reports_conditioning():
     assert len(status["singular_values"]) == 5
 
 
+def test_square_axis_free_boundary_edge_control_projection_payload():
+    controls = SquareAxisSplineControls.rounded_square(axis_half_width=1.5, corner_radius_factor=1.12)
+    payload = square_axis_free_boundary_edge_control_projection_payload(
+        controls=controls,
+        symmetry="square",
+        rcond=1.0e-11,
+        source="unit_test",
+        mpol=4,
+        ntor=8,
+        ntheta_fit=32,
+        nzeta_fit=64,
+        minor_radius=0.03,
+        side_elongation=0.08,
+        side_minor_modulation=0.08,
+        corner_ellipticity=0.04,
+        corner_amplitude=0.004,
+        corner_rotation=0.30,
+    )
+
+    assert payload is not None
+    assert payload["enabled"] is True
+    assert payload["source"] == "unit_test"
+    assert payload["basis_symmetry"] == "square"
+    assert payload["labels"] == ["side", "corner"]
+    assert payload["control_count"] == 2
+    assert payload["mode_count"] > 0
+    assert payload["rcond"] == pytest.approx(1.0e-11)
+    jacobian = np.asarray(payload["control_jacobian"], dtype=float)
+    assert jacobian.shape == (4 * int(payload["mode_count"]), 2)
+    assert np.all(np.isfinite(jacobian))
+    assert square_axis_free_boundary_edge_control_projection_payload(symmetry="none") is None
+    with pytest.raises(ValueError, match="symmetry must"):
+        square_axis_free_boundary_edge_control_projection_payload(symmetry="bad")
+    with pytest.raises(ValueError, match="rcond"):
+        square_axis_free_boundary_edge_control_projection_payload(symmetry="square", rcond=0.0)
+
+
 @pytest.mark.parametrize(
     ("controls", "match"),
     [
@@ -509,7 +555,12 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["control_fourier_map"]["stellarator"]["control_count"] == 5
     assert preflight["spline_bridge"]["solver_native_spline_controls"] is False
     assert preflight["spline_bridge"]["can_reduce_input_shape_dofs"] is True
-    assert preflight["spline_bridge"]["can_reduce_nonlinear_solver_dofs"] is False
+    assert preflight["spline_bridge"]["solver_edge_control_projection_enabled"] is True
+    assert preflight["spline_bridge"]["can_reduce_nonlinear_solver_dofs"] is True
+    assert preflight["spline_bridge"]["can_reduce_free_boundary_edge_dofs"] is True
+    assert preflight["edge_control_projection"]["enabled"] is True
+    assert preflight["edge_control_projection"]["basis_symmetry"] == "square"
+    assert preflight["edge_control_projection"]["control_count"] == 2
     controls = SquareAxisSplineControls.rounded_square(axis_half_width=1.5, corner_radius_factor=1.12)
     spline_config = module.ExampleConfig(
         plasma_axis_kind="control_spline",
@@ -990,10 +1041,14 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert metrics["plasma_axis_control_symmetry"] == "square"
     assert metrics["plasma_axis_reduced_radii"] is None
     assert metrics["plasma_axis_spline_controls"]["radius"][0] == pytest.approx(1.5)
+    assert metrics["free_boundary_edge_control_projection"] == "square"
+    assert metrics["free_boundary_edge_control_rcond"] == pytest.approx(1.0e-12)
     assert Path(metrics["preflight_json"]).exists()
     assert metrics["preflight"]["schema"] == "square_coil_hybrid_preflight"
     assert metrics["preflight"]["strict_schedule"]["requested_final_ftol_meets_target"] is False
     assert metrics["preflight"]["spline_bridge"]["solver_native_spline_controls"] is False
+    assert metrics["preflight"]["spline_bridge"]["solver_edge_control_projection_enabled"] is True
+    assert metrics["preflight"]["edge_control_projection"]["enabled"] is True
     assert metrics["betas_percent"] == [0.0]
     assert metrics["figures"] == {}
     assert Path(metrics["coils_json"]).exists()
@@ -1004,7 +1059,11 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert np.isfinite(float(rows[0]["final_fsqr"]))
     assert np.isfinite(float(rows[0]["final_fsqz"]))
     assert np.isfinite(float(rows[0]["final_fsql"]))
-    assert rows[0]["free_boundary_bnormal_rms"] is not None
+    assert rows[0]["free_boundary_edge_control_projection_requested"] == "square"
+    assert rows[0]["free_boundary_edge_control_projection_enabled"] is True
+    assert int(rows[0]["free_boundary_edge_control_projection_control_count"]) == 2
+    if rows[0]["free_boundary_bnormal_rms"] is not None:
+        assert np.isfinite(float(rows[0]["free_boundary_bnormal_rms"]))
     assert rows[0]["boundary_condition_mode"] == "vacuum_coil_normal"
     assert rows[0]["coil_bnormal_role"] == "vacuum_boundary_condition"
     assert rows[0]["production_candidate"] is False
@@ -1017,6 +1076,8 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert len(csv_rows) == len(rows)
     assert csv_rows[0]["beta_percent"] == "0.0"
     assert csv_rows[0]["boundary_condition_mode"] == "vacuum_coil_normal"
+    assert csv_rows[0]["free_boundary_edge_control_projection_requested"] == "square"
+    assert csv_rows[0]["free_boundary_edge_control_projection_enabled"] == "True"
     assert "virtual_casing_status" in csv_rows[0]
 
 

@@ -46,6 +46,7 @@ from vmec_jax.toroidal_hybrid import (
     SquareAxisSplineControls,
     recommend_square_axis_stellarator_mirror_hybrid_resolution,
     recommended_square_axis_nzeta,
+    square_axis_free_boundary_edge_control_projection_payload,
     square_axis_resolution_deck_status,
     square_axis_spline_control_fourier_map_status,
     square_axis_spline_symmetric_control_basis,
@@ -107,6 +108,8 @@ PHIEDGE = -0.04 * PLASMA_MINOR_RADIUS**2 / 0.03**2
 TOROIDAL_CURRENT = 3.0e3
 DELT: float | None = 0.02
 FREE_BOUNDARY_ACTIVATE_FSQ: float | None = 1.0e-3
+FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"
+FREE_BOUNDARY_EDGE_CONTROL_RCOND = 1.0e-12
 SOLVER_MODE = "parity"
 RETURN_BEST_SCORED_STATE = True
 LIMIT_UPDATE_RMS = False
@@ -173,6 +176,8 @@ class ExampleConfig:
     toroidal_current: float = TOROIDAL_CURRENT
     delt: float | None = DELT
     free_boundary_activate_fsq: float | None = FREE_BOUNDARY_ACTIVATE_FSQ
+    free_boundary_edge_control_projection: str = FREE_BOUNDARY_EDGE_CONTROL_PROJECTION
+    free_boundary_edge_control_rcond: float = FREE_BOUNDARY_EDGE_CONTROL_RCOND
     solver_mode: str | None = SOLVER_MODE
     return_best_scored_state: bool = RETURN_BEST_SCORED_STATE
     limit_update_rms: bool = LIMIT_UPDATE_RMS
@@ -682,27 +687,89 @@ def _control_fourier_map_payload(config: ExampleConfig) -> dict[str, Any]:
     return payload
 
 
+def _edge_control_projection_payload(config: ExampleConfig) -> dict[str, Any] | None:
+    """Return the reduced edge-control payload passed to the solver."""
+
+    symmetry = str(config.free_boundary_edge_control_projection).strip().lower()
+    if symmetry in {"", "none", "off", "false"}:
+        return None
+    if symmetry not in {"square", "stellarator"}:
+        raise ValueError("free_boundary_edge_control_projection must be 'square', 'stellarator', or 'none'")
+    controls = _resolved_axis_spline_controls(config)
+    if controls is None:
+        raise ValueError("free_boundary_edge_control_projection requires plasma_axis_kind='control_spline'")
+    rcond = float(config.free_boundary_edge_control_rcond)
+    if not np.isfinite(rcond) or rcond <= 0.0:
+        raise ValueError("free_boundary_edge_control_rcond must be positive and finite")
+    sample_kwargs = {
+        key: value
+        for key, value in _square_axis_sample_kwargs(config).items()
+        if key not in {"axis_kind", "axis_spline_controls"}
+    }
+    return square_axis_free_boundary_edge_control_projection_payload(
+        controls=controls,
+        symmetry=symmetry,
+        rcond=rcond,
+        source="toroidal_stellarator_mirror_hybrid_square_coils_free_boundary",
+        nfp=int(config.nfp),
+        mpol=int(config.mpol),
+        ntor=int(config.ntor),
+        **_boundary_fit_grid(config),
+        **sample_kwargs,
+    )
+
+
+def _edge_control_projection_summary(config: ExampleConfig) -> dict[str, Any]:
+    """Return JSON-safe metadata for the requested edge-control projection."""
+
+    requested = str(config.free_boundary_edge_control_projection).strip().lower()
+    payload = _edge_control_projection_payload(config)
+    if payload is None:
+        return {
+            "requested": requested,
+            "enabled": False,
+            "status": "disabled",
+        }
+    jacobian = np.asarray(payload.get("control_jacobian"), dtype=float)
+    return {
+        "requested": requested,
+        "enabled": bool(payload.get("enabled", False)),
+        "status": "enabled" if bool(payload.get("enabled", False)) else "disabled",
+        "basis_symmetry": payload.get("basis_symmetry"),
+        "labels": list(payload.get("labels", [])),
+        "control_count": int(jacobian.shape[1]) if jacobian.ndim == 2 else None,
+        "mode_count": int(payload.get("mode_count", 0)),
+        "jacobian_shape": [int(value) for value in jacobian.shape],
+        "rcond": float(payload.get("rcond", config.free_boundary_edge_control_rcond)),
+    }
+
+
 def _spline_bridge_payload(config: ExampleConfig, *, resolution_deck: dict[str, Any]) -> dict[str, Any]:
     """State what the spline controls can and cannot do in the current solver."""
 
     controls = _resolved_axis_spline_controls(config)
     uses_controls = controls is not None
+    edge_control = _edge_control_projection_summary(config)
+    edge_enabled = bool(edge_control.get("enabled"))
     return {
         "real_space_axis_basis": "periodic_spline_controls" if uses_controls else "sampled_fourier_target",
         "nonlinear_solver_boundary_basis": "vmec_fourier_coefficients",
         "solver_native_spline_controls": False,
+        "solver_edge_control_projection_enabled": edge_enabled,
+        "solver_edge_control_projection": edge_control,
         "requires_fourier_projection": True,
         "can_reduce_input_shape_dofs": bool(uses_controls),
-        "can_reduce_nonlinear_solver_dofs": False,
+        "can_reduce_nonlinear_solver_dofs": edge_enabled,
+        "can_reduce_free_boundary_edge_dofs": edge_enabled,
         "recommended_next_action": (
-            "prototype_solver_native_spline_control_update"
-            if resolution_deck.get("status") == "production_ready"
+            "profile_projected_edge_control_strict_convergence"
+            if edge_enabled and resolution_deck.get("status") == "production_ready"
             else "repair_projection_or_zeta_deck_before_solver_profiling"
         ),
         "interpretation": (
             "The control-spline path smooths and reduces the input target before projection. "
-            "The active VMEC solve still moves Fourier coefficients, so lower nonlinear "
-            "dimension requires a new reduced-control boundary update path."
+            "The VMEC state still stores Fourier coefficients, but free-boundary LCFS edge "
+            "updates can be projected to the reduced square-axis control subspace."
         ),
     }
 
@@ -746,6 +813,7 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
         "boundary_projection": projection,
         "resolution_deck": resolution_deck,
         "control_fourier_map": _control_fourier_map_payload(config),
+        "edge_control_projection": _edge_control_projection_summary(config),
         "spline_bridge": _spline_bridge_payload(config, resolution_deck=resolution_deck),
     }
 
@@ -864,6 +932,7 @@ def _run_one_beta(
     t0 = time.perf_counter()
     run_budget = _run_budget(config, restart_state=restart_state)
     use_multigrid = bool(config.use_multigrid_schedule and restart_state is None)
+    edge_control_projection = _edge_control_projection_payload(config)
     previous_return_best = os.environ.get("VMEC_JAX_RETURN_BEST_SCORED_STATE")
     os.environ["VMEC_JAX_RETURN_BEST_SCORED_STATE"] = "1" if bool(config.return_best_scored_state) else "0"
     try:
@@ -881,9 +950,9 @@ def _run_one_beta(
             external_field_provider_kind="direct_coils",
             external_field_provider_params=coils.params,
             limit_update_rms=bool(config.limit_update_rms),
-            backtracking=bool(config.backtracking),
             use_direct_fallback=bool(config.use_direct_fallback),
             restart_state=restart_state,
+            free_boundary_edge_control_projection=edge_control_projection,
             use_initial_guess=False,
         )
     finally:
@@ -898,6 +967,9 @@ def _run_one_beta(
 
     diag = run.result.diagnostics if run.result is not None else {}
     freeb = diag.get("free_boundary", {}) if isinstance(diag, dict) else {}
+    edge_projection_diag = freeb.get("edge_control_projection", {}) if isinstance(freeb, dict) else {}
+    if not isinstance(edge_projection_diag, dict):
+        edge_projection_diag = {}
     nestor = freeb.get("last_nestor_diagnostics", {}) if isinstance(freeb, dict) else {}
     w_stats = _history_stats([] if run.result is None else getattr(run.result, "w_history", []))
     bnormal_stats = _history_stats(diag.get("freeb_nestor_bnormal_rms_history", []) if isinstance(diag, dict) else [])
@@ -928,6 +1000,12 @@ def _run_one_beta(
         "use_scan": diag.get("use_scan") if isinstance(diag, dict) else None,
         "nvacskip": int(config.nvacskip),
         "return_best_scored_state_requested": bool(config.return_best_scored_state),
+        "free_boundary_edge_control_projection_requested": str(config.free_boundary_edge_control_projection),
+        "free_boundary_edge_control_projection_enabled": edge_projection_diag.get("enabled"),
+        "free_boundary_edge_control_projection_apply_count": edge_projection_diag.get("apply_count"),
+        "free_boundary_edge_control_projection_control_count": edge_projection_diag.get("control_count"),
+        "free_boundary_edge_control_projection_mode_count": edge_projection_diag.get("mode_count"),
+        "free_boundary_edge_control_projection_reason": edge_projection_diag.get("reason"),
         "converged": None
         if run.result is None
         else bool(diag.get("converged", getattr(run.result, "converged", False))),
@@ -1060,6 +1138,12 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "use_scan",
         "nvacskip",
         "return_best_scored_state_requested",
+        "free_boundary_edge_control_projection_requested",
+        "free_boundary_edge_control_projection_enabled",
+        "free_boundary_edge_control_projection_apply_count",
+        "free_boundary_edge_control_projection_control_count",
+        "free_boundary_edge_control_projection_mode_count",
+        "free_boundary_edge_control_projection_reason",
         "converged",
         "converged_strict",
         "boundary_condition_mode",
@@ -1498,6 +1582,8 @@ def _metrics_payload(
         "free_boundary_activate_fsq": (
             None if config.free_boundary_activate_fsq is None else float(config.free_boundary_activate_fsq)
         ),
+        "free_boundary_edge_control_projection": str(config.free_boundary_edge_control_projection),
+        "free_boundary_edge_control_rcond": float(config.free_boundary_edge_control_rcond),
         "solver_mode": None if config.solver_mode is None else str(config.solver_mode),
         "limit_update_rms": bool(config.limit_update_rms),
         "backtracking": bool(config.backtracking),

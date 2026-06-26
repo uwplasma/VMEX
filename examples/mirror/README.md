@@ -183,6 +183,11 @@ motion to this same reduced spline-control subspace with
 opt-in A/B convergence path: VMEC still stores Fourier coefficients, but the
 LCFS edge update is projected through the spline-control Fourier map before
 vacuum-pressure sampling.
+The repo-root square-coil example now enables the square reduced-control
+projection by default with ``FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"``
+and writes the projected-control status to the preflight JSON and summary CSV.
+Set that top-level option to ``"none"`` for an unconstrained full-Fourier
+comparison.
 Use ``vmec_jax.square_axis_spline_radius_matrix`` to inspect the linear map
 from those few control radii to sampled square-axis radius values. The helper
 does not replace VMEC's Fourier state yet, but it makes the low-dimensional

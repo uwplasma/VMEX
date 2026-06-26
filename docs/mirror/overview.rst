@@ -249,6 +249,10 @@ about ``1.5e-4`` at ``MPOL=3, NTOR=8``, about ``5.6e-6`` at
 square-coil example now rejects projection errors above ``5e-12`` by default,
 so low-mode edits fail before spending a long ``FTOL=1e-12`` solve on an
 underfit Fourier deck.
+It also enables the reduced square-axis free-boundary edge-control projection
+by default, so the solve still stores VMEC Fourier coefficients but constrains
+LCFS edge motion to the two-control side/corner spline subspace unless the
+top-level example option is set to ``"none"``.
 Direct-coil convergence
 candidates are gated by a fresh residual recompute using the current
 plasma-current normalization, and the square-coil example records near-axis
