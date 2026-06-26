@@ -746,7 +746,7 @@ def test_square_coil_profile_summary_infers_underresolved_live_launcher_log(
     assert row["strict_evidence_status"] == "diagnostic_underresolved"
 
 
-def test_square_coil_profile_summary_recommends_direct_gpu_after_jax_nestor_probe(
+def test_square_coil_profile_summary_recommends_native_spline_after_jax_nestor_probe(
     tmp_path: Path,
 ):
     case_dir = tmp_path / "square_coil_freeb_backend_profile_stalled_direct_jax_nestor"
@@ -862,8 +862,11 @@ def test_square_coil_profile_summary_recommends_direct_gpu_after_jax_nestor_prob
     assert row["free_boundary_jax_nestor_operator_jitted"] is False
     assert row["free_boundary_jax_nestor_operator_cache_hit"] is False
     assert row["free_boundary_jax_nestor_operator_time_s"] == pytest.approx(0.25)
-    assert row["recommended_followup_profile_kind"] == "direct-gpu"
-    assert row["recommended_followup_reason"] == "scan_delt_stage_budget_or_pressure_acceleration"
+    assert row["recommended_followup_profile_kind"] == "native-spline-control-prototype"
+    assert (
+        row["recommended_followup_reason"]
+        == "edge_control_and_jax_nestor_still_stalled_promote_native_spline_controls"
+    )
 
 
 def test_square_coil_profile_summary_markdown_includes_virtual_casing_columns(

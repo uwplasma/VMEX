@@ -800,7 +800,10 @@ def _recommended_followup_payload(
             if not edge_enabled:
                 kind = "direct-gpu-edge-polish"
             elif bool(freeb_jax_nestor_operator):
-                kind = "direct-gpu"
+                return {
+                    "recommended_followup_profile_kind": "native-spline-control-prototype",
+                    "recommended_followup_reason": "edge_control_and_jax_nestor_still_stalled_promote_native_spline_controls",
+                }
             else:
                 kind = "direct-gpu-edge-jax-nestor-polish"
         elif backend == "vmec2000_mgrid":
