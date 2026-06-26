@@ -97,14 +97,14 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   still need to remain the acceptance authority until the full adaptive seam is
   validated.
 - CPU/GPU runtime and memory footprint: 99.2%.
-  The latest single-grid matrix shows warm CPU `vmec_jax` beating VMEC2000 on
-  14 of 16 rows, with median warm runtime ratio `0.83x` VMEC2000 and median
-  peak-memory ratio `3.04x` VMEC2000. Cold process runtime remains slower
-  (`2.23x` median) because it includes Python/JAX/XLA startup, and peak memory
-  remains materially higher than VMEC2000, especially for LASYM finite-beta
-  rows. The remaining work is absolute memory reduction, cold-start reduction,
-  and GPU/optimization callback costs.
-- Refactor/API/examples: 78.0%.
+  The latest committed full fixed-boundary single-grid matrix shows warm CPU
+  `vmec_jax` beating VMEC2000 on 7 of 16 rows, with median warm runtime ratio
+  `1.41x` VMEC2000 and median peak-memory ratio `4.44x` VMEC2000. Cold process
+  runtime remains slower (`2.93x` median) because it includes Python/JAX/XLA
+  startup, and peak memory remains materially higher than VMEC2000, especially
+  for LASYM finite-beta rows. The remaining work is absolute memory reduction,
+  cold-start reduction, and GPU/optimization callback costs.
+- Refactor/API/examples: 78.6%.
   Public examples are better, but core source files and tests are still too
   large and too entangled. The fixed-boundary residual timing/setup seam is now
   slightly cleaner, but the main residual loop still needs a larger split.
@@ -6703,6 +6703,66 @@ Updated lane percentages:
 - Single-stage coil optimization: 94.0%.
 - CPU/GPU runtime and memory footprint: 99.2%.
 - Refactor/API/examples: 78.0%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
+### 2026-06-26: Compact same-branch report writer orchestration
+
+Steps taken:
+
+- Added ``SameBranchReportContext`` to collect reusable report setup values for
+  complete-solve finite-difference and branch-local replay sections.
+- Split ``write_same_branch_validation_report_core`` into focused helpers for
+  context construction, compact complete-solve metadata construction, and the
+  optional scalar/vector/rejected-slot/NESTOR replay sections.
+- Corrected the authoritative plan header runtime/memory summary to match the
+  regenerated ``readme_runtime_compare.csv`` and ``docs/performance.rst``:
+  warm ``vmec_jax`` faster on 7 of 16 rows, cold faster on 2 of 16 rows,
+  median warm runtime ratio ``1.41x`` VMEC2000, median cold runtime ratio
+  ``2.93x`` VMEC2000, and median peak-memory ratio ``4.44x`` VMEC2000.
+
+Results obtained:
+
+- ``write_same_branch_validation_report_core`` is now ``89`` lines, down from
+  the source-health warning list.
+- ``_same_branch_report_replay_sections`` is ``150`` lines, exactly at the
+  warning threshold and below the current source-health warning list.
+- ``python -m ruff check
+  vmec_jax/solvers/free_boundary/coil_optimization.py
+  examples/optimization/free_boundary_QS_coil_optimization.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_qs_coil_optimization_smoke.py -q`` passed with the
+  existing expected marker output.
+- ``python tools/diagnostics/source_health.py --top 25 --top-functions 80
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2508
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=512`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size remains ``28.42 MiB``.
+- ``git diff --check`` passed.
+
+Best next steps:
+
+1. Push this same-branch writer compacting tranche and let CI validate it.
+2. If more refactor work is needed before review, target one of the remaining
+   true source seams: residual-loop phase extraction, ``run_fixed_boundary``
+   API orchestration, or the long free-boundary NESTOR kernel helpers.
+3. Do not refresh benchmark/AD-FD artifacts again unless a numerical behavior
+   change occurs.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.2%.
+- Free-boundary production differentiability: 97.6%.
+- Single-stage coil optimization: 94.0%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 78.6%.
 - VMEC2000/VMEC++ parity and physics gates: 99.3%.
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
