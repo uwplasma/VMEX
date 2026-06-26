@@ -3066,6 +3066,9 @@ def solve_fixed_boundary_residual_iter(
                     delta_tuple_projector=freeb_edge_control_projector.delta_tuple_projector(),
                 )
             velocity_blocks = update_proposal.velocities
+            velocity_blocks = freeb_edge_control_projector.scrub_velocity(
+                velocity_blocks, host_update=bool(host_update_assembly)
+            )
             update_rms_j, update_rms, update_rms_preclip = _strict_update_rms_pair(update_proposal)
             update_delta_rms_j, update_delta_rms = _strict_update_delta_rms_pair(update_proposal)
             scl = update_proposal.scale
