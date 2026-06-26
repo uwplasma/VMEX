@@ -174,6 +174,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable opt-in Anderson(1) mixing for free-boundary vacuum pressure in vmec_jax backends.",
     )
+    p.add_argument(
+        "--verbose-solver",
+        action="store_true",
+        help="Print VMEC-style vmec_jax iteration progress for long direct/mgrid backend profiles.",
+    )
     return p
 
 
@@ -774,6 +779,7 @@ def _run_jax_backend(
     freeb_anderson_pressure: bool = False,
     direct_static_cache: bool = True,
     jit_direct_sampler: bool = False,
+    verbose_solver: bool = False,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
     if direct_params is not None:
@@ -801,7 +807,7 @@ def _run_jax_backend(
             max_iter=_run_budget(config, restart_state=None),
             multigrid=bool(config.use_multigrid_schedule),
             multigrid_use_input_niter=True,
-            verbose=False,
+            verbose=bool(verbose_solver),
             jit_forces=config.jit_forces,
             solver_mode=solver_mode,
             free_boundary_activate_fsq=None
@@ -1215,6 +1221,7 @@ def main(argv: list[str] | None = None) -> int:
             "freeb_anderson_pressure": bool(args.freeb_anderson_pressure),
             "direct_static_cache": bool(args.direct_static_cache),
             "jit_direct_sampler": bool(args.jit_direct_sampler),
+            "verbose_solver": bool(args.verbose_solver),
             "phiedge": float(config.phiedge),
             "delt": float(args.delt),
             "activate_fsq": float(args.activate_fsq),
@@ -1268,6 +1275,7 @@ def main(argv: list[str] | None = None) -> int:
             freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
             direct_static_cache=bool(args.direct_static_cache),
             jit_direct_sampler=bool(args.jit_direct_sampler),
+            verbose_solver=bool(args.verbose_solver),
         )
     if not args.skip_mgrid:
         _log_step("running vmec_jax generated-mgrid backend")
@@ -1277,9 +1285,10 @@ def main(argv: list[str] | None = None) -> int:
             config=config,
             direct_params=None,
             solver_mode=solver_mode,
-            return_best_scored_state=bool(args.return_best_scored_state),
-            freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
-        )
+                return_best_scored_state=bool(args.return_best_scored_state),
+                freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
+                verbose_solver=bool(args.verbose_solver),
+            )
     if bool(args.run_vmec2000):
         exe = args.vmec2000_exec or find_vmec2000_exec()
         if exe is None:

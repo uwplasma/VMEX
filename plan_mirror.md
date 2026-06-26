@@ -27819,3 +27819,104 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 235. Direct-Backend Stall Observability
+
+### Steps taken
+
+- Inspected the active ``office`` direct GPU and VMEC2000 processes after the
+  spline-control commits.
+- Checked GPU utilization, process memory, thread count, and launcher logs for
+  the active direct ``MPOL=6, NTOR=23`` row.
+- Confirmed JAX sees both GPUs on ``office``.
+- Added a ``--verbose-solver`` flag to
+  ``tools/diagnostics/profile_square_coil_free_boundary.py`` and threaded it to
+  ``run_free_boundary`` for ``vmec_jax`` direct/mgrid backend profiles.
+- Added parser coverage for ``--verbose-solver``.
+- Updated the mirror README profiling command and direct-row observability note.
+
+### Results obtained
+
+- The active direct row has been running for more than two hours with only
+  input and launcher files written. Its log stops after
+  ``running vmec_jax direct-coil backend``.
+- The process is CPU-saturated with about ``252`` threads and roughly
+  ``2.7 GB`` RSS, while ``nvidia-smi`` reports essentially zero GPU utilization.
+- The process has NVIDIA device handles open and JAX reports
+  ``backend gpu`` with two ``CudaDevice`` entries, so this is not simply a
+  missing-GPU environment. It is a direct-backend performance/observability
+  problem for this launched configuration.
+- The active direct row used ``--coil-chunk-size 0`` without the cached JIT
+  direct sampler, which is a poor profiling choice for long strict runs because
+  it has high CPU cost and no intermediate residual log.
+- VMEC2000 remains the more useful live strict-reference run right now:
+  - current row:
+    ``square_coil_freeb_backend_profile_vmec2000_ns9_13_17_mpol5_ntor28_nzeta64_mgrid88x64x64_niter24k_firstorder_nstep1``;
+  - phase: ``force_iterations``;
+  - last checked iteration: ``861``;
+  - live ``final_max_component``: about ``4.68e-4``;
+  - ``vacuum_grid_exceeded_count``: ``0``;
+  - still in the coarse ``FTOL=1e-8`` stage, not a strict ``1e-12`` result.
+
+### How it was tested
+
+```bash
+ssh office "nvidia-smi --query-gpu=index,name,utilization.gpu,utilization.memory,memory.used,memory.total --format=csv,noheader,nounits"
+ssh office "nvidia-smi pmon -c 1"
+ssh office "cat /proc/504339/status | egrep 'State|Threads|VmRSS|VmSize|voluntary_ctxt_switches|nonvoluntary_ctxt_switches'"
+ssh office "cd ~/local/vmec_mirror && python3 - <<'PY'
+import jax
+print('backend', jax.default_backend())
+print('devices', jax.devices())
+PY"
+git diff --check
+venv/bin/python -m pytest -q tests/test_toroidal_hybrid.py tests/test_profile_square_coil_free_boundary.py
+venv/bin/python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py
+```
+
+Results:
+
+- ``git diff --check`` passed.
+- ``60 passed`` for the focused toroidal-hybrid/profile suite.
+- Profiler compilation passed.
+- Existing warnings only: one JAX deprecation warning and one NumPy binary-size
+  runtime warning from the local environment.
+
+### File structure and best-practice notes
+
+- The new profiler flag is CLI-only and does not affect library defaults.
+- ``--verbose-solver`` is intentionally opt-in because verbose progress rows can
+  slow highly optimized runs, but they are valuable for diagnosing long
+  direct-coil profiles.
+- No generated results, WOUT files, mgrid files, or plots are committed.
+
+### Best next steps
+
+1. Run focused tests and compilation for the new flag.
+2. Commit and push the observability change.
+3. Stop the current nonproductive full direct-sampler row and relaunch a
+   chunked direct row with ``--coil-chunk-size 512`` and ``--verbose-solver``.
+4. Let the VMEC2000 ``5,28`` row continue; it is making measurable residual
+   progress and remains the current strict-reference candidate.
+5. Do not launch a long ``control_spline`` solve yet unless it uses a distinct
+   control shape; the corrected default control-spline path intentionally
+   projects to the same low-bandwidth target as ``axis_kind="spline"``.
+
+### Completion percentages after M235
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``84%``.
+- VMEC2000 robustness/reference lane: ``91%``.
+- Direct-coil GPU/JIT parity lane: ``71%`` observability improved, productive
+  chunked relaunch still open.
+- Direct-provider profiling/instrumentation lane: ``100%`` for current
+  profiling controls.
+- Square-axis spline-smoothed Fourier closure lane: ``96%``.
+- True spline/control-basis hybrid lane: ``35%`` bridge corrected, solver-native update still open.
+- Documentation and diagnostics for active profiling: ``100%``.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``94%``
+  pending strict ``5,28``/``7,28`` convergence evidence.
+
+### User input needed
+
+No user input is needed.

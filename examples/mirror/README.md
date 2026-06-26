@@ -248,6 +248,7 @@ For direct-provider versus mgrid/VMEC2000 profiling, use::
     --ftol-array 1e-8,1e-10,1e-12 \
     --mgrid-nr 72 --mgrid-nz 56 --mgrid-nphi 64 \
     --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5 \
+    --verbose-solver \
     --run-vmec2000
 
 The production square-axis shape uses the first-order localization defaults
@@ -278,6 +279,9 @@ row.
 Use ``--nstep 1`` for strict VMEC2000 profiling when live residual cadence
 matters; larger values can hide force rows for long high-mode startup or early
 iteration windows.
+For long ``vmec_jax`` direct-coil rows, add ``--verbose-solver`` so VMEC-style
+iteration rows are written to the launcher log instead of waiting until the
+backend exits before any residual evidence appears.
 Use larger ``--nvacskip`` only as a speed experiment; for convergence review,
 ``--nvacskip 1`` avoids stale free-boundary residuals on this square-hybrid
 Fourier deck. For ``NS`` ladders above the initial surface, use a widened mgrid
