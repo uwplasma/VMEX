@@ -5737,6 +5737,95 @@ Visual validation:
 ### User input needed
 
 No user input is needed.
+---
+## 263. Added Explicit Free-Boundary Promotion Gates To Profiles And Examples
+
+### Steps taken
+
+- Added `free_boundary_promotion_status` in
+  `vmec_jax/free_boundary_validation.py`.
+- Wired that helper into:
+  - the square-coil backend profiler;
+  - the square-coil profile summary table;
+  - the root square-coil free-boundary example rows and CSV.
+- Exported the helper through `vmec_jax` and `vmec_jax.api`.
+- Updated the direct-coil convergence notes and mirror README.
+- Refreshed live office-profile summaries instead of waiting on long jobs.
+
+### Results obtained
+
+- New profile/example fields make the promotion logic explicit:
+  - `boundary_condition_mode`;
+  - `coil_bnormal_role`;
+  - `production_candidate`;
+  - `promotion_blockers`;
+  - `virtual_casing_required`;
+  - `virtual_casing_available`.
+- Vacuum rows label coil-only `B.n` as the vacuum boundary condition.
+- Finite-beta direct-coil rows label coil-only `B.n` as diagnostic-only and
+  block production promotion unless:
+  - all final force components satisfy the requested `FTOL`;
+  - the final residual was freshly recomputed on the accepted state;
+  - virtual-casing finite-beta boundary diagnostics were computed.
+- The active VMEC2000 `MPOL=5, NTOR=28, NZETA=64` generated-`mgrid` strict row
+  remains the best robustness reference but is not yet converged: the latest
+  partial summary reached final-stage iteration `8897`, total residual
+  `2.141e-11`, max component `1.03e-11`, strict gate false, and zero
+  vacuum-grid overflows.
+- The two active GPU direct-coil JAX rows are still far from the strict lane in
+  this stage: max components are about `2.4e-4` to `2.6e-4`, with oscillatory
+  tails. This supports continuing to use VMEC2000/generated-`mgrid` as the
+  reference backend while tightening the solver-native spline/control path.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_free_boundary_validation_unit.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_toroidal_hybrid.py::test_square_coil_hybrid_free_boundary_example_runs_without_plots
+```
+
+Result: `40 passed, 2 warnings`.
+
+### File structure and best-practice notes
+
+- The physics/promotion rule lives in `vmec_jax/free_boundary_validation.py`
+  because it is shared by examples, diagnostics, and downstream notebooks.
+- CLI/profile scripts only attach and print the shared status block.
+- The root example schema was bumped to `0.4` because row/CSV semantics changed.
+- No WOUT files, figures, generated `mgrid` files, or raw profile outputs were
+  added to git.
+
+### Best next steps
+
+1. Let the active VMEC2000 reference row continue, then summarize the final
+   strict component residuals and tail classification.
+2. Do not spend more time on direct-coil GPU rows with the same oscillatory
+   stage settings; use their logs to choose a `DELT`/stage-budget or pressure
+   acceleration scan.
+3. Start the solver-native reduced spline/control-basis prototype while keeping
+   Fourier projection for VMEC2000 parity and WOUT export.
+4. Keep `--resolution-diagnostics-only` as the required preflight whenever
+   `MPOL`, `NTOR`, `NZETA`, or `mgrid_nphi` changes.
+
+### Completion percentages after M263
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `97%`.
+- VMEC2000 robustness/reference lane: `98%`, active row still running and near
+  `1e-11` component residual.
+- Direct-coil finite-beta diagnostic lane: `91%`.
+- Direct-coil GPU/JIT parity lane: `80%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `77%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- Strict production deck gating lane: `100%`.
+- True spline/control-basis hybrid lane: `62%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
 
 ---
 ## 251. Added Reproducible Next-Action Classification For Strict Profile Rows

@@ -8,12 +8,57 @@ import pytest
 
 import vmec_jax.free_boundary_validation as validation
 from vmec_jax.free_boundary_validation import (
+    free_boundary_promotion_status,
     free_boundary_response_metrics,
     virtual_casing_finite_beta_boundary_diagnostics,
     wout_beta_percent,
     wout_fsq_total,
     wout_mean_iota,
 )
+
+
+@pytest.mark.py311_coverage_only
+def test_free_boundary_promotion_status_separates_vacuum_and_finite_beta() -> None:
+    vacuum = free_boundary_promotion_status(
+        beta_percent=0.0,
+        strict_components_met=True,
+        final_residual_recomputed=True,
+        virtual_casing_status=None,
+    )
+
+    assert vacuum["boundary_condition_mode"] == "vacuum_coil_normal"
+    assert vacuum["coil_bnormal_role"] == "vacuum_boundary_condition"
+    assert vacuum["virtual_casing_required"] is False
+    assert vacuum["production_candidate"] is True
+    assert vacuum["promotion_blockers"] == []
+
+    finite_beta = free_boundary_promotion_status(
+        beta_percent=3.0,
+        strict_components_met=True,
+        final_residual_recomputed=True,
+        virtual_casing_status="skipped_missing_virtual_casing_jax",
+    )
+
+    assert finite_beta["boundary_condition_mode"] == "finite_beta_total_field"
+    assert finite_beta["coil_bnormal_role"] == "diagnostic_only"
+    assert finite_beta["virtual_casing_required"] is True
+    assert finite_beta["virtual_casing_available"] is False
+    assert finite_beta["production_candidate"] is False
+    assert finite_beta["promotion_blockers"] == [
+        "virtual_casing_diagnostics_skipped_missing_virtual_casing_jax"
+    ]
+
+    string_false = free_boundary_promotion_status(
+        beta_percent=0.0,
+        strict_components_met="False",
+        final_residual_recomputed="nan",
+    )
+    assert string_false["strict_force_components_met"] is False
+    assert string_false["fresh_final_residual_met"] is None
+    assert string_false["promotion_blockers"] == [
+        "strict_force_components_not_met",
+        "fresh_final_residual_unknown",
+    ]
 
 
 @pytest.mark.py311_coverage_only

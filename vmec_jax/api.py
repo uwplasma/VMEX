@@ -73,6 +73,7 @@ from .finite_beta import (
     finite_beta_scalars_from_state,
     magnetic_well_from_state,
 )
+from .free_boundary_validation import free_boundary_promotion_status
 from .bootstrap_current import (
     BootstrapCurrentIteration,
     BootstrapCurrentOptions,
@@ -329,6 +330,7 @@ __all__ = [
     "vmec_current_profile_from_bootstrap_update",
     "GlasserResistiveInterchange",
     "FiniteBetaTargets",
+    "free_boundary_promotion_status",
     "finite_beta_global_residuals_from_state",
     "finite_beta_scalars_from_state",
     "glasser_resistive_interchange_from_mercier_terms",

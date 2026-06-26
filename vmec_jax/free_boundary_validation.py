@@ -86,6 +86,83 @@ class SolvedBoundaryFieldSample:
     surface_xyz: np.ndarray
 
 
+def free_boundary_promotion_status(
+    *,
+    beta_percent: Any,
+    strict_components_met: Any,
+    final_residual_recomputed: Any | None = None,
+    virtual_casing_status: Any | None = None,
+    direct_coil_backend: bool = True,
+    require_fresh_residual: bool = True,
+    beta_tol: float = 1.0e-12,
+) -> dict[str, Any]:
+    """Classify whether a free-boundary row is promotion-ready.
+
+    The VMEC force residual is the hard convergence gate.  For finite-beta
+    direct-coil rows, coil-only ``B.n`` is only a diagnostic because the plasma
+    field also contributes at the boundary; those rows need a total-field
+    boundary diagnostic such as virtual casing before being treated as
+    production evidence.
+    """
+
+    def _optional_bool(value: Any) -> bool | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            key = value.strip().lower()
+            if key in {"true", "1", "yes"}:
+                return True
+            if key in {"false", "0", "no", "none", "null", "nan", ""}:
+                return False if key in {"false", "0", "no"} else None
+        try:
+            scalar = float(value)
+        except Exception:
+            return bool(value)
+        if not np.isfinite(scalar):
+            return None
+        return bool(scalar)
+
+    try:
+        beta_value = float(beta_percent)
+    except Exception:
+        beta_value = 0.0
+    finite_beta = bool(abs(beta_value) > float(beta_tol))
+    strict_met = _optional_bool(strict_components_met)
+    strict_known = strict_met is not None
+    fresh_met = _optional_bool(final_residual_recomputed)
+    fresh_known = fresh_met is not None
+    vc_status = None if virtual_casing_status is None else str(virtual_casing_status)
+    vc_required = bool(finite_beta and direct_coil_backend)
+    vc_available = None if not vc_required else bool(vc_status == "computed")
+
+    blockers: list[str] = []
+    if strict_met is not True:
+        blockers.append("strict_force_components_unknown" if not strict_known else "strict_force_components_not_met")
+    if bool(require_fresh_residual) and fresh_met is not True:
+        blockers.append("fresh_final_residual_unknown" if not fresh_known else "fresh_final_residual_not_recomputed")
+    if vc_required and vc_available is not True:
+        if vc_status is None:
+            blockers.append("virtual_casing_diagnostics_missing")
+        else:
+            blockers.append(f"virtual_casing_diagnostics_{vc_status}")
+
+    return {
+        "beta_percent": beta_value,
+        "finite_beta": finite_beta,
+        "boundary_condition_mode": "finite_beta_total_field" if finite_beta else "vacuum_coil_normal",
+        "coil_bnormal_role": "diagnostic_only" if finite_beta else "vacuum_boundary_condition",
+        "strict_force_components_met": strict_met,
+        "fresh_final_residual_required": bool(require_fresh_residual),
+        "fresh_final_residual_met": fresh_met,
+        "direct_coil_backend": bool(direct_coil_backend),
+        "virtual_casing_required": vc_required,
+        "virtual_casing_status": vc_status,
+        "virtual_casing_available": vc_available,
+        "production_candidate": not blockers,
+        "promotion_blockers": blockers,
+    }
+
+
 def _as_wout(wout_or_path: Any) -> Any:
     if isinstance(wout_or_path, (str, Path)):
         return read_wout(wout_or_path)

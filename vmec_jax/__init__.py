@@ -182,6 +182,7 @@ from .finite_beta import (
     redl_bootstrap_mismatch_from_state,
     trapped_fraction_from_modb_sqrtg,
 )
+from .free_boundary_validation import free_boundary_promotion_status
 from .bootstrap_current import (
     BootstrapCurrentIteration,
     BootstrapCurrentOptions,
@@ -713,6 +714,7 @@ __all__ = [
     "standard_pressure_profile",
     "with_pressure_profile",
     "FiniteBetaTargets",
+    "free_boundary_promotion_status",
     "finite_beta_global_residuals_from_state",
     "finite_beta_scalars_from_state",
     "glasser_resistive_interchange_from_mercier_terms",

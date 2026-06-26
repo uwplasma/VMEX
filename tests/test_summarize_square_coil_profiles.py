@@ -151,6 +151,11 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["final_total"] == pytest.approx(9.0e-7)
     assert rows[1]["final_max_component"] == pytest.approx(4.0e-7)
     assert rows[1]["strict_components_met"] is True
+    assert rows[1]["boundary_condition_mode"] == "vacuum_coil_normal"
+    assert rows[1]["coil_bnormal_role"] == "vacuum_boundary_condition"
+    assert rows[1]["production_candidate"] is True
+    assert rows[1]["promotion_blockers"] == ""
+    assert rows[1]["virtual_casing_required"] is False
     assert rows[1]["best_total"] == pytest.approx(8.0e-7)
     assert rows[1]["returned_best_scored_state"] is True
     assert rows[1]["best_scored_full_boundary_count"] == 10
@@ -229,15 +234,23 @@ def test_square_coil_profile_summary_markdown_includes_virtual_casing_columns(
     report.write_text(
         json.dumps(
             {
-                "configuration": {"mpol": 5, "ntor": 28, "ns": 9, "nzeta": 64, "ftol": 1.0e-12},
+                "configuration": {
+                    "beta_percent": 3.0,
+                    "mpol": 5,
+                    "ntor": 28,
+                    "ns": 9,
+                    "nzeta": 64,
+                    "ftol": 1.0e-12,
+                },
                 "backends": {
                     "vmec_jax_direct": {
                         "status": "completed",
                         "n_iter": 2,
-                        "final_fsqr": 1.0e-9,
-                        "final_fsqz": 2.0e-9,
-                        "final_fsql": 3.0e-9,
-                        "final_fsq_component_sum": 6.0e-9,
+                        "final_fsqr": 1.0e-13,
+                        "final_fsqz": 2.0e-13,
+                        "final_fsql": 3.0e-13,
+                        "final_fsq_component_sum": 6.0e-13,
+                        "final_residual_recomputed_on_accepted_state": True,
                         "virtual_casing": {
                             "status": "computed",
                             "external_bnormal_residual_rms": 4.0e-8,
@@ -254,6 +267,8 @@ def test_square_coil_profile_summary_markdown_includes_virtual_casing_columns(
 
     assert "virtual_casing_status" in out
     assert "virtual_casing_pressure_balance_rms" in out
+    assert "finite_beta_total_field" in out
+    assert "diagnostic_only" in out
     assert "computed" in out
     assert "5e-06" in out
 

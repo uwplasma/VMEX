@@ -35,7 +35,10 @@ from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_ru
 from vmec_jax.external_fields import build_coil_field_geometry, write_mgrid_from_coils
 from vmec_jax.fourier import eval_fourier
 from vmec_jax.free_boundary import _sample_external_boundary_arrays
-from vmec_jax.free_boundary_validation import virtual_casing_diagnostics_from_run
+from vmec_jax.free_boundary_validation import (
+    free_boundary_promotion_status,
+    virtual_casing_diagnostics_from_run,
+)
 from vmec_jax.namelist import write_indata
 from vmec_jax.toroidal_hybrid import (
     SquareAxisSplineControls,
@@ -859,6 +862,7 @@ def _run_jax_backend(
     input_path: Path,
     wout_path: Path,
     config: ExampleConfig,
+    beta_percent: float = 0.0,
     direct_params: Any | None,
     solver_mode: str | None,
     return_best_scored_state: bool,
@@ -919,19 +923,29 @@ def _run_jax_backend(
     wall_s = time.perf_counter() - t0
     write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
     residuals = _final_residuals(run)
+    vc_payload = (
+        _virtual_casing_profile_payload(
+            run=run,
+            direct_params=direct_params,
+            coil_geometry=coil_geometry,
+        )
+        if bool(virtual_casing_diagnostics)
+        else {"status": "disabled"}
+    )
     return {
         "status": "completed",
         "wall_s": float(wall_s),
         "input": input_path,
         "wout": wout_path,
         **residuals,
-        "virtual_casing": _virtual_casing_profile_payload(
-            run=run,
-            direct_params=direct_params,
-            coil_geometry=coil_geometry,
-        )
-        if bool(virtual_casing_diagnostics)
-        else {"status": "disabled"},
+        "virtual_casing": vc_payload,
+        "free_boundary_promotion": free_boundary_promotion_status(
+            beta_percent=float(beta_percent),
+            strict_components_met=residuals.get("converged_strict"),
+            final_residual_recomputed=residuals.get("final_residual_recomputed_on_accepted_state"),
+            virtual_casing_status=vc_payload.get("status"),
+            direct_coil_backend=direct_params is not None,
+        ),
     }
 
 
@@ -1620,6 +1634,7 @@ def main(argv: list[str] | None = None) -> int:
             input_path=direct_input,
             wout_path=direct_wout,
             config=config,
+            beta_percent=float(args.beta_percent),
             direct_params=coils.params,
             solver_mode=solver_mode,
             return_best_scored_state=bool(args.return_best_scored_state),
@@ -1636,6 +1651,7 @@ def main(argv: list[str] | None = None) -> int:
             input_path=mgrid_input,
             wout_path=mgrid_wout,
             config=config,
+            beta_percent=float(args.beta_percent),
             direct_params=None,
             solver_mode=solver_mode,
             return_best_scored_state=bool(args.return_best_scored_state),
@@ -1669,6 +1685,9 @@ def main(argv: list[str] | None = None) -> int:
                 totals = [float(row.fsqr) + float(row.fsqz) + float(row.fsql) for row in rows]
                 final_max_component = None if last is None else _vmec2000_max_component(last)
                 stage_ftol = float(run.stages[-1].ftolv) if run.stages else float(config.ftol)
+                strict_components_met = (
+                    None if last is None else _vmec2000_strict_components_met(last, float(config.ftol))
+                )
                 payload["backends"]["vmec2000_mgrid"] = {
                     "status": "completed" if run.returncode == 0 else "nonzero_exit",
                     "returncode": int(run.returncode),
@@ -1687,8 +1706,13 @@ def main(argv: list[str] | None = None) -> int:
                     "last_row": None if last is None else _vmec2000_row_payload(last),
                     "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
                     "final_max_component": final_max_component,
-                    "strict_components_met": (
-                        None if last is None else _vmec2000_strict_components_met(last, float(config.ftol))
+                    "strict_components_met": strict_components_met,
+                    "free_boundary_promotion": free_boundary_promotion_status(
+                        beta_percent=float(args.beta_percent),
+                        strict_components_met=strict_components_met,
+                        final_residual_recomputed=True,
+                        direct_coil_backend=False,
+                        require_fresh_residual=False,
                     ),
                     "tail_plateau": _vmec2000_tail_plateau_payload(rows, stage_ftol=stage_ftol),
                 }

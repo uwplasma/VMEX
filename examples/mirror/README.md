@@ -326,6 +326,12 @@ VMEC-style ladder without editing the example, add for example
 Completed ``vmec_jax`` backend rows include ``boundary_coeff_delta_*`` and
 ``boundary_sample_displacement_*`` columns so the summary table shows whether
 the accepted LCFS moved from the initial prescribed boundary.
+They also include ``boundary_condition_mode``, ``coil_bnormal_role``,
+``production_candidate``, ``promotion_blockers``, ``virtual_casing_required``,
+and ``virtual_casing_available``. Use these columns with
+``strict_components_met``: finite-beta direct-coil rows intentionally mark
+coil-only ``B.n`` as ``diagnostic_only`` and require a computed virtual-casing
+boundary diagnostic before the row can be treated as production evidence.
 For finite-beta direct-coil evidence, add ``--virtual-casing-diagnostics`` to
 write the optional virtual-casing external-normal and pressure-balance residual
 block. The profiler records a skipped status when ``virtual_casing_jax`` is not

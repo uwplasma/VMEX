@@ -863,6 +863,10 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
 
     assert out["status"] == "completed"
     assert out["virtual_casing"]["status"] == "disabled"
+    assert out["free_boundary_promotion"]["boundary_condition_mode"] == "vacuum_coil_normal"
+    assert out["free_boundary_promotion"]["coil_bnormal_role"] == "vacuum_boundary_condition"
+    assert out["free_boundary_promotion"]["production_candidate"] is False
+    assert "strict_force_components_not_met" in out["free_boundary_promotion"]["promotion_blockers"]
     assert captured["external_field_provider_kind"] == "direct_coils"
     assert captured["external_field_provider_params"] is direct_params
     static = captured["external_field_provider_static"]

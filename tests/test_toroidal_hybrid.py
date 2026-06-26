@@ -828,7 +828,7 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     metrics = json.loads(metrics_path.read_text())
     rows = metrics["rows"]
     assert metrics["metrics_schema"] == "toroidal_stellarator_mirror_hybrid_square_coils_free_boundary_solve"
-    assert metrics["metrics_schema_version"] == "0.3"
+    assert metrics["metrics_schema_version"] == "0.4"
     assert metrics["workflow_status"] == "actual_vmec_jax_free_boundary_beta_scan"
     assert metrics["actual_free_boundary_solve"] is True
     assert metrics["production_free_boundary_claim"] is False
@@ -852,6 +852,9 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert np.isfinite(float(rows[0]["final_fsqz"]))
     assert np.isfinite(float(rows[0]["final_fsql"]))
     assert rows[0]["free_boundary_bnormal_rms"] is not None
+    assert rows[0]["boundary_condition_mode"] == "vacuum_coil_normal"
+    assert rows[0]["coil_bnormal_role"] == "vacuum_boundary_condition"
+    assert rows[0]["production_candidate"] is False
     assert rows[0]["virtual_casing_status"] == "computed" or rows[0]["virtual_casing_status"].startswith(
         ("skipped_", "failed:")
     )
@@ -860,6 +863,7 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
         csv_rows = list(csv.DictReader(file_obj))
     assert len(csv_rows) == len(rows)
     assert csv_rows[0]["beta_percent"] == "0.0"
+    assert csv_rows[0]["boundary_condition_mode"] == "vacuum_coil_normal"
     assert "virtual_casing_status" in csv_rows[0]
 
 

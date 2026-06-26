@@ -19,6 +19,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1
+from vmec_jax.free_boundary_validation import free_boundary_promotion_status
 
 
 DEFAULT_GLOB = "results/square_coil_freeb_backend_profile_*/square_coil_free_boundary_backend_profile.json"
@@ -269,6 +270,29 @@ def _last_stage_value(backend: dict[str, Any], key: str) -> Any:
 def _virtual_casing_payload(backend: dict[str, Any]) -> dict[str, Any]:
     payload = backend.get("virtual_casing")
     return payload if isinstance(payload, dict) else {}
+
+
+def _promotion_payload(
+    *,
+    backend_name: str,
+    backend: dict[str, Any],
+    cfg: dict[str, Any],
+    strict_components_met: bool | None,
+    virtual_casing: dict[str, Any],
+) -> dict[str, Any]:
+    payload = backend.get("free_boundary_promotion")
+    if isinstance(payload, dict):
+        return payload
+    direct_backend = str(backend_name) in {"vmec_jax_direct", "vmec_jax_direct_live"}
+    require_fresh = not str(backend_name).startswith("vmec2000")
+    return free_boundary_promotion_status(
+        beta_percent=cfg.get("beta_percent", 0.0),
+        strict_components_met=strict_components_met,
+        final_residual_recomputed=backend.get("final_residual_recomputed_on_accepted_state"),
+        virtual_casing_status=virtual_casing.get("status"),
+        direct_coil_backend=direct_backend,
+        require_fresh_residual=require_fresh,
+    )
 
 
 def _vmec2000_tail_projection(rows: list[Any], *, length: int = 12) -> dict[str, Any]:
@@ -583,6 +607,18 @@ def _summary_row(
     virtual_casing = _virtual_casing_payload(backend)
     strict_met = _strict_components_met(final_max_component, requested_ftol)
     strict_gap = _strict_gap(final_max_component, requested_ftol)
+    promotion = _promotion_payload(
+        backend_name=backend_name,
+        backend=backend,
+        cfg=cfg,
+        strict_components_met=strict_met,
+        virtual_casing=virtual_casing,
+    )
+    promotion_blockers = promotion.get("promotion_blockers")
+    if isinstance(promotion_blockers, list):
+        promotion_blockers_text = ",".join(str(item) for item in promotion_blockers)
+    else:
+        promotion_blockers_text = promotion_blockers
     iters_to_target = _tail_projection(backend_for_projection, "", target=1.0e-12)
     max_iter = cfg.get("max_iter")
     if max_iter is None:
@@ -647,6 +683,12 @@ def _summary_row(
         "final_total": final_total,
         "final_max_component": final_max_component,
         "strict_components_met": strict_met,
+        "boundary_condition_mode": promotion.get("boundary_condition_mode"),
+        "coil_bnormal_role": promotion.get("coil_bnormal_role"),
+        "production_candidate": promotion.get("production_candidate"),
+        "promotion_blockers": promotion_blockers_text,
+        "virtual_casing_required": promotion.get("virtual_casing_required"),
+        "virtual_casing_available": promotion.get("virtual_casing_available"),
         "best_total": best_total,
         "returned_best_scored_state": backend.get("returned_best_scored_state"),
         "best_scored_full_boundary_count": backend.get("best_scored_full_boundary_count"),
@@ -933,6 +975,12 @@ def main(argv: list[str] | None = None) -> int:
         "final_total",
         "final_max_component",
         "strict_components_met",
+        "boundary_condition_mode",
+        "coil_bnormal_role",
+        "production_candidate",
+        "promotion_blockers",
+        "virtual_casing_required",
+        "virtual_casing_available",
         "best_total",
         "returned_best_scored_state",
         "best_scored_full_boundary_count",

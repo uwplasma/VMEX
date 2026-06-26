@@ -35,6 +35,7 @@ from vmec_jax.external_fields import (
 )
 from vmec_jax.fieldlines import FieldLine, trace_fieldline_on_surface
 from vmec_jax.free_boundary_validation import (
+    free_boundary_promotion_status,
     sample_solved_boundary_field,
     virtual_casing_diagnostics_from_run,
 )
@@ -118,7 +119,7 @@ FIELD_LINE_TURNS = 1.25
 
 
 SCHEMA = "toroidal_stellarator_mirror_hybrid_square_coils_free_boundary_solve"
-SCHEMA_VERSION = "0.3"
+SCHEMA_VERSION = "0.4"
 
 
 @dataclass(frozen=True)
@@ -802,6 +803,23 @@ def _run_one_beta(
         "mean_iota": mean_iota,
     }
     row.update(_virtual_casing_row_metrics(run=run, coils=coils, config=config))
+    promotion = free_boundary_promotion_status(
+        beta_percent=float(beta_percent),
+        strict_components_met=row.get("converged_strict"),
+        final_residual_recomputed=row.get("final_residual_recomputed_on_accepted_state"),
+        virtual_casing_status=row.get("virtual_casing_status"),
+        direct_coil_backend=True,
+    )
+    row.update(
+        {
+            "boundary_condition_mode": promotion["boundary_condition_mode"],
+            "coil_bnormal_role": promotion["coil_bnormal_role"],
+            "production_candidate": promotion["production_candidate"],
+            "promotion_blockers": ",".join(str(item) for item in promotion["promotion_blockers"]),
+            "virtual_casing_required": promotion["virtual_casing_required"],
+            "virtual_casing_available": promotion["virtual_casing_available"],
+        }
+    )
     components = [row["final_fsqr"], row["final_fsqz"], row["final_fsql"]]
     finite_components = [float(value) for value in components if value is not None and np.isfinite(float(value))]
     row["final_fsq_component_sum"] = float(sum(finite_components)) if finite_components else None
@@ -848,6 +866,12 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "return_best_scored_state_requested",
         "converged",
         "converged_strict",
+        "boundary_condition_mode",
+        "coil_bnormal_role",
+        "production_candidate",
+        "promotion_blockers",
+        "virtual_casing_required",
+        "virtual_casing_available",
         "requested_ftol",
         "final_fsq",
         "final_fsqr",

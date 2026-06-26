@@ -248,6 +248,15 @@ measure how far the accepted LCFS moved from the initial prescribed boundary.
 These are evidence that a row used a moving free boundary; they complement, but
 do not replace, the strict force-component and finite-beta pressure-balance
 promotion gates.
+Backend rows now also include a compact ``free_boundary_promotion`` block. The
+summary table exposes this as ``boundary_condition_mode``,
+``coil_bnormal_role``, ``production_candidate``, ``promotion_blockers``,
+``virtual_casing_required``, and ``virtual_casing_available``. For vacuum rows,
+coil-only ``B.n`` is labelled as the vacuum boundary condition. For finite-beta
+direct-coil rows, coil-only ``B.n`` is labelled ``diagnostic_only`` and the row
+is blocked from production promotion unless the strict force components pass,
+the final residual was freshly recomputed on the accepted state, and the
+finite-beta virtual-casing boundary diagnostic was computed.
 The rounded-square ``axis_kind="control_spline"`` bridge is now the default
 because it keeps the intended side/corner axis controls independent of
 ``MPOL`` and ``NTOR`` before the VMEC Fourier projection. With the default
