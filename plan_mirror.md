@@ -32036,3 +32036,43 @@ passed.
 ### User input needed
 
 No user input is needed.
+
+---
+## M282 - Scheduled JAX-NESTOR A/B After Active Direct Rows
+
+### Steps taken
+
+- Created a separate updated office worktree:
+  `/home/rjorge/local/vmec_mirror_jax_nestor`.
+- Checked it out at `codex/mirror-geometry` commit `a8a33a3b`.
+- Started a lightweight waiter process, PID `546285`, that watches active
+  direct-GPU PIDs `530365` and `530366`.
+- The waiter will launch the `direct-gpu-jax-nestor` A/B row only after both
+  current direct rows exit.
+
+### Results obtained
+
+- Waiter log:
+  `results/square_coil_freeb_backend_profile_direct_gpu_jax_nestor_ns9_13_17_mpol5_ntor28_nzeta64_mgrid88x64x64_delt0p02_niter8k_control_spline/waiter.log`.
+- No JAX-NESTOR launcher PID exists yet, confirming the heavy A/B job has not
+  started while the current direct rows are still running.
+- The queued command uses:
+  - `--freeb-jax-nestor-operator`;
+  - `--freeb-jax-nestor-jit-operator`;
+  - `--coil-chunk-size 0`;
+  - `--jit-forces`;
+  - `--jit-direct-sampler`;
+  - `--verbose-solver`;
+  - `--return-best-scored-state`.
+
+### Best next steps
+
+1. Let current direct rows finish naturally.
+2. When the waiter launches the A/B row, summarize its `launcher.log` live and
+   verify `free_boundary_jax_nestor_operator_applied` once final JSON exists.
+3. If the waiter does not launch after PIDs exit, inspect `waiter.log` before
+   rerunning anything manually.
+
+### User input needed
+
+No user input is needed.
