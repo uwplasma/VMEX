@@ -560,6 +560,60 @@ def test_square_coil_profile_summary_recommends_vmec2000_for_failed_flat_tail(
     assert row["recommended_followup_reason"] == "scan_delt_or_stage_budget"
 
 
+def test_square_coil_profile_summary_uses_limiting_component_tail_for_strict_followup(
+    tmp_path: Path,
+):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_vmec2000_component_tail"
+    case_dir.mkdir()
+    report = case_dir / "square_coil_free_boundary_backend_profile.json"
+    report.write_text(
+        json.dumps(
+            {
+                "configuration": {
+                    "mpol": 5,
+                    "ntor": 28,
+                    "ns": 17,
+                    "nzeta": 64,
+                    "ftol": 1e-12,
+                    "max_iter": 24000,
+                },
+                "backends": {
+                    "vmec2000_mgrid": {
+                        "status": "failed",
+                        "last_row": {
+                            "it": 5200,
+                            "fsqr": 5.2e-11,
+                            "fsqz": 4.0e-12,
+                            "fsql": 2.0e-12,
+                        },
+                        "tail_rows": [
+                            {"it": 5198, "fsqr": 5.0e-11, "fsqz": 5.0e-12, "fsql": 2.2e-12},
+                            {"it": 5199, "fsqr": 5.1e-11, "fsqz": 4.5e-12, "fsql": 2.1e-12},
+                            {"it": 5200, "fsqr": 5.2e-11, "fsqz": 4.0e-12, "fsql": 2.0e-12},
+                        ],
+                        "vacuum_grid_exceeded_count": 0,
+                    }
+                },
+            }
+        )
+    )
+
+    row = summary.rows_from_profile(report)[0]
+
+    assert row["limiting_component"] == "fsqr"
+    assert row["strict_tail_projection_status"] == "flat_or_growing_above_target"
+    assert row["strict_tail_limiting_component"] == "fsqr"
+    assert row["strict_tail_limiting_component_status"] == "flat_or_growing_above_target"
+    assert row["strict_tail_limiting_component_factor"] > 1.0
+    assert row["strict_tail_limiting_iters_to_1e-12_est"] is None
+    assert row["strict_tail_component_statuses"] == (
+        "fsql:projected_to_target,fsqr:flat_or_growing_above_target,fsqz:projected_to_target"
+    )
+    assert row["next_action"] == "scan_delt_or_promote_native_spline_controls"
+    assert row["recommended_followup_profile_kind"] == "vmec2000"
+    assert row["recommended_followup_reason"] == "scan_delt_or_promote_native_spline_controls"
+
+
 def test_square_coil_profile_summary_recommends_direct_gpu_for_stalled_direct(
     tmp_path: Path,
 ):

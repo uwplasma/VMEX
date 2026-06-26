@@ -465,7 +465,11 @@ The same sidecar writes ``history.fsq_component_sum_tail_projection`` and
 ``history.fsq_component_tail_projection_by_component`` while VMEC2000 is still
 running. Use their ``estimated_additional_iterations_to_target["1e-12"]``
 entries to decide whether the current ``NITER`` budget is plausibly large
-enough for the strict component-wise target.
+enough for the strict component-wise target. New sidecars and summary rows also
+carry ``strict_tail_projection_status`` plus the limiting-component factor and
+iteration estimate. A limiting component marked
+``flat_or_growing_above_target`` or ``weak_or_oscillatory_above_target`` should
+be treated as a stalled strict row even if the summed tail looks nearly flat.
 Use ``--nstep 1`` for strict VMEC2000 profiling when live residual cadence
 matters; larger values can hide force rows for long high-mode startup or early
 iteration windows.
@@ -555,6 +559,12 @@ It also prints ``final_fsqr``, ``final_fsqz``, ``final_fsql``,
 counts: an ``fsqr``-limited oscillatory tail points to solve/control updates,
 while a monotone component tail with enough remaining budget can simply be left
 running.
+The stricter ``strict_tail_projection_status`` column classifies the limiting
+component itself. ``projected_to_target`` means the current component tail can
+reach ``1e-12`` within a finite projected budget; ``flat_or_growing_above_target``
+or ``weak_or_oscillatory_above_target`` means the next row should change
+``DELT``/schedule or promote the spline-control basis instead of only adding
+more iterations.
 The ``strict_gap`` column is ``final_max_component / requested_ftol`` and the
 ``next_action`` column turns the compact residual evidence into a run decision:
 for example, a flat tail above tolerance with no vacuum-grid overflow points to

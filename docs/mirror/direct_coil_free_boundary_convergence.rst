@@ -693,6 +693,13 @@ The live ``_partial_vmec2000_payload.json`` sidecar also includes
 ``history.fsq_component_tail_projection_by_component``. These fields estimate
 the additional VMEC iterations needed to hit ``1e-12`` from the latest printed
 tail, so long strict runs can be triaged before the external executable exits.
+The profiler and summary table now classify the limiting force component with
+``strict_tail_projection_status``. ``projected_to_target`` means the current
+component tail has a finite projection to ``1e-12``;
+``flat_or_growing_above_target`` and
+``weak_or_oscillatory_above_target`` mean the row should feed a
+``DELT``/schedule or native spline-control follow-up rather than a blind
+iteration extension.
 Raw backend payloads also include a compact ``strict_convergence`` block.  It
 reports the component-wise force maximum, summed residual, gap to the strict
 ``1e-12`` target, gap to the requested ``FTOL``, loose ``1e-8`` status, and

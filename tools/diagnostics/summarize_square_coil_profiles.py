@@ -205,6 +205,8 @@ def _recommended_next_action(
     iters_to_target: float | None,
     remaining_iterations: int | None,
     vacuum_grid_exceeded_count: Any,
+    strict_tail_projection_status: Any = None,
+    strict_tail_iters_to_target: float | None = None,
 ) -> str:
     """Classify the next convergence action from compact summary evidence."""
 
@@ -224,7 +226,25 @@ def _recommended_next_action(
         return "widen_mgrid_before_interpreting_residual"
 
     tail_status = "" if tail_plateau_status is None else str(tail_plateau_status)
+    strict_tail_status = "" if strict_tail_projection_status is None else str(strict_tail_projection_status)
     running = str(status or "").startswith("running")
+    if strict_tail_status in {"flat_or_growing_above_target", "weak_or_oscillatory_above_target"}:
+        return (
+            "let_current_run_finish_then_scan_delt_or_control_basis"
+            if running
+            else "scan_delt_or_promote_native_spline_controls"
+        )
+    if strict_tail_status == "projected_to_target":
+        estimate = strict_tail_iters_to_target
+        if estimate is not None:
+            try:
+                estimate = float(estimate)
+            except Exception:
+                estimate = np.nan
+            if np.isfinite(estimate):
+                if remaining_iterations is not None and estimate <= float(remaining_iterations):
+                    return "continue_current_schedule"
+                return "increase_final_stage_budget_or_change_schedule"
     if tail_status == "flat_above_stage_ftol":
         return "let_current_run_finish_then_scan_delt_or_stage_budget" if running else "scan_delt_or_stage_budget"
     if tail_status == "oscillatory":
@@ -431,6 +451,107 @@ def _component_tail_projection(
     if not isinstance(estimates, dict):
         return None
     return _finite_float(estimates.get(f"{float(target):.0e}"))
+
+
+def _tail_projection_payload(backend: dict[str, Any], *, component: str | None = None) -> dict[str, Any]:
+    history = backend.get("history")
+    if not isinstance(history, dict):
+        return {}
+    if component is None:
+        projection = history.get("fsq_component_sum_tail_projection")
+    else:
+        by_component = history.get("fsq_component_tail_projection_by_component")
+        projection = by_component.get(component) if isinstance(by_component, dict) else None
+    return projection if isinstance(projection, dict) else {}
+
+
+def _tail_projection_estimate(
+    projection: dict[str, Any],
+    *,
+    target: float = 1.0e-12,
+) -> float | None:
+    estimates = projection.get("estimated_additional_iterations_to_target")
+    if not isinstance(estimates, dict):
+        return None
+    return _finite_float(estimates.get(f"{float(target):.0e}"))
+
+
+def _tail_projection_status(
+    projection: dict[str, Any],
+    *,
+    target: float = 1.0e-12,
+) -> str:
+    """Classify whether a residual tail can plausibly reach the strict target."""
+
+    last = _finite_float(projection.get("last"))
+    if last is None:
+        return "missing_tail"
+    target_f = float(target)
+    if last <= target_f:
+        return "target_met"
+    try:
+        window = int(projection.get("window") or 0)
+    except Exception:
+        window = 0
+    if window < 2:
+        return "insufficient_tail"
+    if _tail_projection_estimate(projection, target=target_f) is not None:
+        return "projected_to_target"
+    factor = _finite_float(projection.get("per_iter_factor"))
+    if factor is not None and float(factor) >= 1.0:
+        return "flat_or_growing_above_target"
+    monotone_fraction = _finite_float(projection.get("monotone_decrease_fraction"))
+    if monotone_fraction is not None and float(monotone_fraction) <= 0.25:
+        return "weak_or_oscillatory_above_target"
+    return "unprojected_above_target"
+
+
+def _strict_tail_projection_payload(
+    backend: dict[str, Any],
+    *,
+    limiting_component: str | None,
+    target: float = 1.0e-12,
+) -> dict[str, Any]:
+    """Return compact component-wise strict-tail evidence."""
+
+    history = backend.get("history")
+    if isinstance(history, dict) and isinstance(history.get("strict_tail_projection_status"), str):
+        status_by_component = history.get("strict_tail_component_status_by_component")
+        limiting = history.get("strict_tail_limiting_component") or limiting_component
+        return {
+            "status": history.get("strict_tail_projection_status"),
+            "target": _finite_float(history.get("strict_tail_projection_target")) or float(target),
+            "component_statuses": status_by_component if isinstance(status_by_component, dict) else {},
+            "limiting_component": limiting,
+            "limiting_component_status": history.get("strict_tail_limiting_component_status"),
+            "limiting_component_factor": _finite_float(
+                history.get("strict_tail_limiting_component_factor")
+            ),
+            "limiting_component_iters_to_target": _finite_float(
+                history.get("strict_tail_limiting_component_estimated_additional_iterations")
+            ),
+        }
+
+    statuses: dict[str, str] = {}
+    for component in FORCE_COMPONENTS:
+        projection = _tail_projection_payload(backend, component=component)
+        if projection:
+            statuses[component] = _tail_projection_status(projection, target=target)
+    limiting = limiting_component if limiting_component in FORCE_COMPONENTS else None
+    if limiting is None and statuses:
+        limiting = next(iter(statuses))
+    limiting_projection = _tail_projection_payload(backend, component=limiting) if limiting else {}
+    return {
+        "status": statuses.get(limiting or "", "missing_tail"),
+        "target": float(target),
+        "component_statuses": statuses,
+        "limiting_component": limiting,
+        "limiting_component_status": statuses.get(limiting or "", "missing_tail"),
+        "limiting_component_factor": _finite_float(limiting_projection.get("per_iter_factor")),
+        "limiting_component_iters_to_target": _tail_projection_estimate(
+            limiting_projection, target=target
+        ),
+    }
 
 
 def _final_force_components(backend: dict[str, Any]) -> dict[str, float | None]:
@@ -796,6 +917,8 @@ def _recommended_followup_payload(
         "scan_delt_stage_budget_or_pressure_acceleration",
         "scan_delt_or_stage_budget",
         "let_current_run_finish_then_scan_delt_or_stage_budget",
+        "scan_delt_or_promote_native_spline_controls",
+        "let_current_run_finish_then_scan_delt_or_control_basis",
     }:
         if "direct" in backend:
             if not edge_enabled:
@@ -803,7 +926,9 @@ def _recommended_followup_payload(
             elif bool(freeb_jax_nestor_operator):
                 return {
                     "recommended_followup_profile_kind": "native-spline-control-prototype",
-                    "recommended_followup_reason": "edge_control_and_jax_nestor_still_stalled_promote_native_spline_controls",
+                    "recommended_followup_reason": (
+                        "edge_control_and_jax_nestor_still_stalled_promote_native_spline_controls"
+                    ),
                 }
             else:
                 kind = "direct-gpu-edge-jax-nestor-polish"
@@ -893,15 +1018,42 @@ def _vmec2000_tail_projection(rows: list[Any], *, length: int = 12) -> dict[str,
     pairs.reverse()
     out: dict[str, Any] = {
         "window": len(pairs),
+        "first_iter": None,
+        "last_iter": None,
+        "first": None,
+        "last": None,
+        "min": None,
+        "max": None,
         "monotone_decrease_fraction": None,
         "per_iter_log_slope": None,
         "per_iter_factor": None,
         "estimated_additional_iterations_to_target": {},
     }
     if len(pairs) < 2:
+        if pairs:
+            out.update(
+                {
+                    "first_iter": int(pairs[0][0]),
+                    "last_iter": int(pairs[-1][0]),
+                    "first": float(pairs[0][1]),
+                    "last": float(pairs[-1][1]),
+                    "min": float(pairs[-1][1]),
+                    "max": float(pairs[-1][1]),
+                }
+            )
         return out
     iters = np.asarray([pair[0] for pair in pairs], dtype=float)
     totals = np.asarray([pair[1] for pair in pairs], dtype=float)
+    out.update(
+        {
+            "first_iter": int(iters[0]),
+            "last_iter": int(iters[-1]),
+            "first": float(totals[0]),
+            "last": float(totals[-1]),
+            "min": float(np.nanmin(totals)),
+            "max": float(np.nanmax(totals)),
+        }
+    )
     diffs = np.diff(totals)
     out["monotone_decrease_fraction"] = float(np.mean(diffs < 0.0)) if diffs.size else None
     try:
@@ -1303,6 +1455,17 @@ def _summary_row(
     iters_to_target = _tail_projection(backend_for_projection, "", target=1.0e-12)
     component_values = _final_force_components(backend)
     limiting_component = _limiting_component(backend_for_projection, component_values)
+    strict_tail_projection = _strict_tail_projection_payload(
+        backend_for_projection,
+        limiting_component=limiting_component,
+        target=1.0e-12,
+    )
+    strict_tail_statuses = strict_tail_projection.get("component_statuses")
+    strict_tail_statuses_text = (
+        ",".join(f"{key}:{value}" for key, value in sorted(strict_tail_statuses.items()))
+        if isinstance(strict_tail_statuses, dict)
+        else ""
+    )
     max_iter = cfg.get("max_iter")
     if max_iter is None:
         max_iter = _last_stage_value(backend, "niter")
@@ -1326,6 +1489,10 @@ def _summary_row(
         iters_to_target=iters_to_target,
         remaining_iterations=remaining_iterations,
         vacuum_grid_exceeded_count=vacuum_grid_exceeded_count,
+        strict_tail_projection_status=strict_tail_projection.get("status"),
+        strict_tail_iters_to_target=_finite_float(
+            strict_tail_projection.get("limiting_component_iters_to_target")
+        ),
     )
     resolution = resolution_deck if isinstance(resolution_deck, dict) else {}
     strict_evidence = _strict_evidence_payload(
@@ -1716,6 +1883,17 @@ def _summary_row(
         "virtual_casing_wall_s": _finite_float(virtual_casing.get("wall_s")),
         "tail_decay_factor": _tail_projection(backend_for_projection, "per_iter_factor"),
         "iters_to_1e-12_est": iters_to_target,
+        "strict_tail_projection_status": strict_tail_projection.get("status"),
+        "strict_tail_projection_target": _finite_float(strict_tail_projection.get("target")),
+        "strict_tail_component_statuses": strict_tail_statuses_text,
+        "strict_tail_limiting_component": strict_tail_projection.get("limiting_component"),
+        "strict_tail_limiting_component_status": strict_tail_projection.get("limiting_component_status"),
+        "strict_tail_limiting_component_factor": _finite_float(
+            strict_tail_projection.get("limiting_component_factor")
+        ),
+        "strict_tail_limiting_iters_to_1e-12_est": _finite_float(
+            strict_tail_projection.get("limiting_component_iters_to_target")
+        ),
         "fsqr_tail_decay_factor": _component_tail_projection(
             backend_for_projection, "fsqr", "per_iter_factor"
         ),
@@ -2169,6 +2347,13 @@ def main(argv: list[str] | None = None) -> int:
         "virtual_casing_wall_s",
         "tail_decay_factor",
         "iters_to_1e-12_est",
+        "strict_tail_projection_status",
+        "strict_tail_projection_target",
+        "strict_tail_component_statuses",
+        "strict_tail_limiting_component",
+        "strict_tail_limiting_component_status",
+        "strict_tail_limiting_component_factor",
+        "strict_tail_limiting_iters_to_1e-12_est",
         "fsqr_tail_decay_factor",
         "fsqz_tail_decay_factor",
         "fsql_tail_decay_factor",

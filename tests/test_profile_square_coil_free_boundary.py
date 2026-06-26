@@ -337,6 +337,16 @@ def test_square_coil_profile_vmec2000_tail_history_projects_strict_target():
     assert components["fsql"]["estimated_additional_iterations_to_target"]["1e-12"] == 0
     assert history["fsq_limiting_component"] == "fsqr"
     assert history["fsq_limiting_component_value"] == pytest.approx(1.0e-10)
+    assert history["strict_tail_projection_status"] == "projected_to_target"
+    assert history["strict_tail_limiting_component"] == "fsqr"
+    assert history["strict_tail_limiting_component_status"] == "projected_to_target"
+    assert history["strict_tail_limiting_component_factor"] == pytest.approx(0.1)
+    assert history["strict_tail_limiting_component_estimated_additional_iterations"] == pytest.approx(2)
+    assert history["strict_tail_component_status_by_component"] == {
+        "fsqr": "projected_to_target",
+        "fsqz": "projected_to_target",
+        "fsql": "target_met",
+    }
 
 
 def test_square_coil_profile_boundary_motion_payload_measures_edge_displacement():
@@ -862,6 +872,9 @@ def test_square_coil_profile_writes_partial_vmec2000_sidecar(tmp_path: Path):
     assert data["history"]["fsq_component_sum_tail_projection"]["window"] == 1
     assert data["history"]["fsq_component_tail_projection_by_component"]["fsqr"]["last"] == pytest.approx(4.0e-11)
     assert data["history"]["fsq_limiting_component"] == "fsqr"
+    assert data["history"]["strict_tail_projection_status"] == "insufficient_tail"
+    assert data["history"]["strict_tail_limiting_component"] == "fsqr"
+    assert data["history"]["strict_tail_limiting_component_status"] == "insufficient_tail"
     assert data["tail_plateau"]["stage_ftol"] == pytest.approx(1.0e-12)
 
 

@@ -2854,11 +2854,45 @@ def _vmec2000_tail_projection(
     return out
 
 
+def _tail_projection_status(
+    projection: dict[str, Any],
+    *,
+    target: float = STRICT_COMPONENT_FTOL,
+) -> str:
+    """Classify whether a residual tail can plausibly reach a strict target."""
+
+    window = int(projection.get("window") or 0)
+    last = _finite_float_or_none(projection.get("last"))
+    target_f = float(target)
+    if last is None:
+        return "missing_tail"
+    if last <= target_f:
+        return "target_met"
+    if window < 2:
+        return "insufficient_tail"
+    estimates = projection.get("estimated_additional_iterations_to_target")
+    estimate = None
+    if isinstance(estimates, dict):
+        estimate = _finite_float_or_none(estimates.get(f"{target_f:.0e}"))
+    if estimate is not None:
+        return "projected_to_target"
+    factor = _finite_float_or_none(projection.get("per_iter_factor"))
+    if factor is not None and factor >= 1.0:
+        return "flat_or_growing_above_target"
+    monotone_fraction = _finite_float_or_none(projection.get("monotone_decrease_fraction"))
+    if monotone_fraction is not None and monotone_fraction <= 0.25:
+        return "weak_or_oscillatory_above_target"
+    return "unprojected_above_target"
+
+
 def _vmec2000_tail_history_payload(rows: list[Any]) -> dict[str, Any]:
     """Return live VMEC2000 residual-tail projections for strict FTOL decisions."""
 
     components = {
         component: _vmec2000_tail_projection(rows, component=component) for component in FORCE_COMPONENTS
+    }
+    component_status = {
+        component: _tail_projection_status(projection) for component, projection in components.items()
     }
     limiting_component: str | None = None
     limiting_value: float | None = None
@@ -2871,11 +2905,31 @@ def _vmec2000_tail_history_payload(rows: list[Any]) -> dict[str, Any]:
             if value is not None and (limiting_value is None or value > limiting_value):
                 limiting_component = component
                 limiting_value = value
+    limiting_projection = components.get(limiting_component or "", {})
+    limiting_estimates = (
+        limiting_projection.get("estimated_additional_iterations_to_target")
+        if isinstance(limiting_projection, dict)
+        else {}
+    )
+    limiting_iters = (
+        _finite_float_or_none(limiting_estimates.get(f"{STRICT_COMPONENT_FTOL:.0e}"))
+        if isinstance(limiting_estimates, dict)
+        else None
+    )
     return {
         "fsq_component_sum_tail_projection": _vmec2000_tail_projection(rows),
         "fsq_component_tail_projection_by_component": components,
         "fsq_limiting_component": limiting_component,
         "fsq_limiting_component_value": limiting_value,
+        "strict_tail_projection_target": STRICT_COMPONENT_FTOL,
+        "strict_tail_projection_status": component_status.get(limiting_component or "", "missing_tail"),
+        "strict_tail_component_status_by_component": component_status,
+        "strict_tail_limiting_component": limiting_component,
+        "strict_tail_limiting_component_status": component_status.get(limiting_component or "", "missing_tail"),
+        "strict_tail_limiting_component_factor": _finite_float_or_none(
+            limiting_projection.get("per_iter_factor") if isinstance(limiting_projection, dict) else None
+        ),
+        "strict_tail_limiting_component_estimated_additional_iterations": limiting_iters,
     }
 
 
