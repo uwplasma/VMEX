@@ -727,6 +727,13 @@ The same report includes
 spline-control radii plus the square and stellarator-symmetric reduced bases.
 This makes it clear whether a strict run is testing the intended compact spline
 controls or only a larger Fourier projection deck.
+The root square-coil example now also records ``effective_mode_deck``.  For
+strict production-style runs, ``AUTO_BUMP_MODE_DECK_TO_RECOMMENDED = True``
+promotes an underfit requested ``MPOL``/``NTOR`` pair to the finite Fourier
+closure recommended by the spline-target projection gate, while preserving the
+requested values in the JSON and CSV provenance.  Set that flag to ``False`` or
+disable ``MAX_BOUNDARY_PROJECTION_ERROR`` when the purpose is an exact
+underresolved diagnostic deck.
 It also includes ``control_fourier_map`` for the square-reduced spline controls:
 side/corner labels, stacked ``4K x 2`` coefficient-Jacobian shape, singular
 values, condition number, and column norms. This is a preflight diagnostic for

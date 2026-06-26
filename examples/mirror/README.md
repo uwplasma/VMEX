@@ -235,12 +235,18 @@ raise before solving because ``NTOR=12, NZETA=16`` was observed to fail while
 ``NZETA=32`` completed the same VMEC2000 generated-``mgrid`` case. The top-level
 ``MAX_BOUNDARY_PROJECTION_ERROR`` gate also rejects low-mode decks whose
 Fourier-projected square-axis boundary is too far from the sampled spline
-target. The previous ``MPOL=6, NTOR=23, NZETA=64`` deck remains a useful
-reference, but ``MPOL=5, NTOR=28, NZETA=64`` is now the stricter default and
-reaches a projection-error scale compatible with ``FTOL=1e-12`` studies. Lower-mode
-decks such as ``MPOL=5, NTOR=12`` remain diagnostic-only unless the projection
-gate is explicitly disabled; the older sharpened ``1.4`` diagnostic deck also
-does not pass the strict gate. Set
+target. In the root square-coil example,
+``AUTO_BUMP_MODE_DECK_TO_RECOMMENDED = True`` promotes underfit production
+requests to the finite ``MPOL``/``NTOR`` recommendation and records both the
+requested and effective mode decks in ``effective_mode_deck``. Set it to
+``False`` when deliberately testing the exact requested Fourier deck. The
+previous ``MPOL=6, NTOR=23, NZETA=64`` deck remains a useful reference, but
+``MPOL=5, NTOR=28, NZETA=64`` is now the stricter default and reaches a
+projection-error scale compatible with ``FTOL=1e-12`` studies. Lower-mode decks
+such as ``MPOL=5, NTOR=12`` remain diagnostic-only unless the projection gate is
+disabled or the example auto-promotes them to the recommended effective deck;
+the older sharpened ``1.4`` diagnostic deck also does not pass the strict gate.
+Set
 ``MAX_BOUNDARY_PROJECTION_ERROR = None`` only when deliberately profiling an
 underfit diagnostic input. Use
 ``vmec_jax.recommend_square_axis_stellarator_mirror_hybrid_resolution`` to get

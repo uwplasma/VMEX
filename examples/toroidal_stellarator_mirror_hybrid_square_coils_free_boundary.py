@@ -13,7 +13,7 @@ solved LCFS and solved-equilibrium field-line traces.
 from __future__ import annotations
 
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -103,6 +103,7 @@ FTOL_ARRAY = (1.0e-8, 1.0e-10, 1.0e-12)
 USE_MULTIGRID_SCHEDULE = True
 ENFORCE_RECOMMENDED_NZETA = True
 AUTO_BUMP_NZETA_TO_RECOMMENDED = True
+AUTO_BUMP_MODE_DECK_TO_RECOMMENDED = True
 MAX_BOUNDARY_PROJECTION_ERROR: float | None = 5.0e-12
 NSTEP = 1
 NVACSKIP = 1
@@ -174,6 +175,7 @@ class ExampleConfig:
     use_multigrid_schedule: bool = USE_MULTIGRID_SCHEDULE
     enforce_recommended_nzeta: bool = ENFORCE_RECOMMENDED_NZETA
     auto_bump_nzeta_to_recommended: bool = AUTO_BUMP_NZETA_TO_RECOMMENDED
+    auto_bump_mode_deck_to_recommended: bool = AUTO_BUMP_MODE_DECK_TO_RECOMMENDED
     max_boundary_projection_error: float | None = MAX_BOUNDARY_PROJECTION_ERROR
     nstep: int = NSTEP
     nvacskip: int = NVACSKIP
@@ -279,6 +281,52 @@ class EffectiveSquareAxisResolution:
             "auto_bumped_to_recommended": bool(self.nzeta_auto_bumped_to_recommended),
             "enforce_recommended_nzeta": bool(self.enforce_recommended_nzeta),
             "auto_bump_nzeta_to_recommended": bool(self.auto_bump_nzeta_to_recommended),
+        }
+
+
+@dataclass(frozen=True)
+class EffectiveSquareAxisModeDeck:
+    """Requested and effective Fourier modes for the square-axis target."""
+
+    requested_mpol: int
+    requested_ntor: int
+    effective_mpol: int
+    effective_ntor: int
+    target_max_component_error: float | None
+    requested_projection_max_abs_component_error: float
+    effective_projection_max_abs_component_error: float
+    requested_projection_meets_target: bool
+    effective_projection_meets_target: bool
+    auto_bump_mode_deck_to_recommended: bool
+    mode_deck_auto_bumped_to_recommended: bool
+    recommendation_status: str | None
+    recommended_mpol: int
+    recommended_ntor: int
+    recommended_nzeta: int
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-friendly mode-deck provenance block."""
+
+        return {
+            "requested_mpol": int(self.requested_mpol),
+            "requested_ntor": int(self.requested_ntor),
+            "effective_mpol": int(self.effective_mpol),
+            "effective_ntor": int(self.effective_ntor),
+            "target_max_component_error": self.target_max_component_error,
+            "requested_projection_max_abs_component_error": float(
+                self.requested_projection_max_abs_component_error
+            ),
+            "effective_projection_max_abs_component_error": float(
+                self.effective_projection_max_abs_component_error
+            ),
+            "requested_projection_meets_target": bool(self.requested_projection_meets_target),
+            "effective_projection_meets_target": bool(self.effective_projection_meets_target),
+            "auto_bump_mode_deck_to_recommended": bool(self.auto_bump_mode_deck_to_recommended),
+            "mode_deck_auto_bumped_to_recommended": bool(self.mode_deck_auto_bumped_to_recommended),
+            "recommendation_status": self.recommendation_status,
+            "recommended_mpol": int(self.recommended_mpol),
+            "recommended_ntor": int(self.recommended_ntor),
+            "recommended_nzeta": int(self.recommended_nzeta),
         }
 
 
@@ -517,11 +565,15 @@ def _spline_controls_payload(controls: SquareAxisSplineControls | None) -> dict[
     }
 
 
-def _boundary_fit_grid(config: ExampleConfig) -> dict[str, int]:
+def _boundary_fit_grid_for_modes(*, mpol: int, ntor: int) -> dict[str, int]:
     return {
-        "ntheta_fit": max(64, 4 * int(config.mpol)),
-        "nzeta_fit": max(128, 8 * int(config.ntor)),
+        "ntheta_fit": max(64, 4 * int(mpol)),
+        "nzeta_fit": max(128, 8 * int(ntor)),
     }
+
+
+def _boundary_fit_grid(config: ExampleConfig) -> dict[str, int]:
+    return _boundary_fit_grid_for_modes(mpol=int(config.mpol), ntor=int(config.ntor))
 
 
 def _resolved_nzeta(config: ExampleConfig) -> int:
@@ -594,6 +646,153 @@ def _ntheta_resolution_payload(config: ExampleConfig) -> dict[str, Any]:
     return _effective_square_axis_resolution(config).ntheta_payload()
 
 
+_MODE_DECK_CACHE: dict[tuple[Any, ...], EffectiveSquareAxisModeDeck] = {}
+
+
+def _mode_deck_cache_key(config: ExampleConfig) -> tuple[Any, ...]:
+    """Return a compact cache key for square-axis projection recommendations."""
+
+    controls_payload = _spline_controls_payload(config.plasma_axis_spline_controls)
+    return (
+        int(config.nfp),
+        int(config.mpol),
+        int(config.ntor),
+        None if config.max_boundary_projection_error is None else float(config.max_boundary_projection_error),
+        bool(config.auto_bump_mode_deck_to_recommended),
+        tuple(int(value) for value in config.ns_array),
+        tuple(int(value) for value in config.niter_array),
+        tuple(float(value) for value in config.ftol_array),
+        float(config.phiedge),
+        float(config.plasma_axis_half_width),
+        str(config.plasma_axis_kind),
+        float(config.plasma_axis_square_power),
+        float(config.plasma_axis_spline_corner_radius_factor),
+        None if config.plasma_axis_reduced_radii is None else tuple(float(value) for value in config.plasma_axis_reduced_radii),
+        None
+        if controls_payload is None
+        else (
+            tuple(float(value) for value in controls_payload["zeta"]),
+            tuple(float(value) for value in controls_payload["radius"]),
+        ),
+        float(config.plasma_minor_radius),
+        float(config.side_elongation),
+        float(config.side_minor_modulation),
+        float(config.side_power),
+        float(config.corner_power),
+        float(config.corner_ellipticity),
+        float(config.corner_amplitude),
+        float(config.corner_rotation),
+        int(config.corner_helicity),
+    )
+
+
+def _projection_payload_for_modes(config: ExampleConfig, *, mpol: int, ntor: int) -> dict[str, Any]:
+    """Return the square-axis projection error for one explicit mode deck."""
+
+    ns_values, niter_values, ftol_values = _stage_values(config)
+    return square_axis_stellarator_mirror_hybrid_projection_error(
+        nfp=int(config.nfp),
+        mpol=int(mpol),
+        ntor=int(ntor),
+        **_boundary_fit_grid_for_modes(mpol=int(mpol), ntor=int(ntor)),
+        ns_array=ns_values,
+        niter_array=niter_values,
+        ftol_array=ftol_values,
+        phiedge=float(config.phiedge),
+        **_square_axis_sample_kwargs(config),
+    )
+
+
+def _effective_square_axis_mode_deck(config: ExampleConfig) -> EffectiveSquareAxisModeDeck:
+    """Return the mode deck that should be used for a strict production run."""
+
+    cache_key = _mode_deck_cache_key(config)
+    cached = _MODE_DECK_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    requested_mpol = int(config.mpol)
+    requested_ntor = int(config.ntor)
+    target = None if config.max_boundary_projection_error is None else float(config.max_boundary_projection_error)
+    requested_projection = _projection_payload_for_modes(
+        config,
+        mpol=requested_mpol,
+        ntor=requested_ntor,
+    )
+    requested_error = float(requested_projection["max_abs_component_error"])
+    requested_meets = bool(target is None or requested_error <= target)
+    effective_mpol = requested_mpol
+    effective_ntor = requested_ntor
+    effective_projection = requested_projection
+    recommendation_status: str | None = None
+    recommended_mpol = requested_mpol
+    recommended_ntor = requested_ntor
+    recommended_nzeta = int(recommended_square_axis_nzeta(requested_ntor))
+
+    if target is not None and not requested_meets:
+        recommendation = recommend_square_axis_stellarator_mirror_hybrid_resolution(
+            target_max_component_error=target,
+            mpol=requested_mpol,
+            ntor=requested_ntor,
+            max_mpol=max(8, requested_mpol + 2),
+            max_ntor=max(32, requested_ntor + 8),
+            nfp=int(config.nfp),
+            ns_array=[int(value) for value in config.ns_array],
+            niter_array=[int(value) for value in config.niter_array],
+            ftol_array=[float(value) for value in config.ftol_array],
+            phiedge=float(config.phiedge),
+            **_square_axis_sample_kwargs(config),
+        )
+        recommendation_status = str(recommendation.get("status"))
+        suggested = dict(recommendation["recommended"])
+        recommended_mpol = int(suggested["mpol"])
+        recommended_ntor = int(suggested["ntor"])
+        recommended_nzeta = int(suggested["recommended_nzeta"])
+        if bool(config.auto_bump_mode_deck_to_recommended) and recommendation_status == "met":
+            effective_mpol = recommended_mpol
+            effective_ntor = recommended_ntor
+            effective_projection = _projection_payload_for_modes(
+                config,
+                mpol=effective_mpol,
+                ntor=effective_ntor,
+            )
+
+    effective_error = float(effective_projection["max_abs_component_error"])
+    effective_meets = bool(target is None or effective_error <= target)
+    deck = EffectiveSquareAxisModeDeck(
+        requested_mpol=requested_mpol,
+        requested_ntor=requested_ntor,
+        effective_mpol=effective_mpol,
+        effective_ntor=effective_ntor,
+        target_max_component_error=target,
+        requested_projection_max_abs_component_error=requested_error,
+        effective_projection_max_abs_component_error=effective_error,
+        requested_projection_meets_target=requested_meets,
+        effective_projection_meets_target=effective_meets,
+        auto_bump_mode_deck_to_recommended=bool(config.auto_bump_mode_deck_to_recommended),
+        mode_deck_auto_bumped_to_recommended=bool(
+            effective_mpol != requested_mpol or effective_ntor != requested_ntor
+        ),
+        recommendation_status=recommendation_status,
+        recommended_mpol=recommended_mpol,
+        recommended_ntor=recommended_ntor,
+        recommended_nzeta=recommended_nzeta,
+    )
+    if len(_MODE_DECK_CACHE) > 64:
+        _MODE_DECK_CACHE.clear()
+    _MODE_DECK_CACHE[cache_key] = deck
+    return deck
+
+
+def _effective_solve_config(config: ExampleConfig) -> ExampleConfig:
+    """Return a config with production mode-deck auto-promotion applied."""
+
+    deck = _effective_square_axis_mode_deck(config)
+    if not bool(deck.mode_deck_auto_bumped_to_recommended):
+        return config
+    return replace(config, mpol=int(deck.effective_mpol), ntor=int(deck.effective_ntor))
+
+
 def _run_budget(config: ExampleConfig, *, restart_state: Any | None) -> int:
     if bool(config.use_multigrid_schedule) and restart_state is None:
         return int(sum(int(value) for value in config.niter_array))
@@ -605,12 +804,6 @@ def _validate_example_config(config: ExampleConfig) -> None:
         raise ValueError("mpol must be at least 3 so the square-hybrid corner shaping fits")
     if int(config.ntor) < 4:
         raise ValueError("ntor must be at least 4 so the square-like axis fits")
-    ntheta = _resolved_ntheta(config)
-    nzeta = _resolved_nzeta(config)
-    if ntheta < 8:
-        raise ValueError("ntheta must be at least 8")
-    if nzeta < 8:
-        raise ValueError("nzeta must be at least 8")
     if int(config.nstep) < 1:
         raise ValueError("nstep must be at least 1")
     if config.solver_mode is not None:
@@ -621,14 +814,18 @@ def _validate_example_config(config: ExampleConfig) -> None:
         raise ValueError("nvacskip must be at least 1")
     if config.plasma_axis_reduced_radii is not None and str(config.plasma_axis_kind).strip().lower() != "control_spline":
         raise ValueError("plasma_axis_reduced_radii requires plasma_axis_kind='control_spline'")
-    if bool(config.enforce_recommended_nzeta):
-        recommended = recommended_square_axis_nzeta(int(config.ntor))
-        if nzeta < recommended:
-            raise ValueError(
-                f"NZETA={nzeta} is underresolved for NTOR={int(config.ntor)}; "
-                f"use at least {recommended}, keep auto_bump_nzeta_to_recommended=True, or set "
-                "enforce_recommended_nzeta=False for a diagnostic-only run"
-            )
+    mode_deck = _effective_square_axis_mode_deck(config)
+    solve_config = (
+        config
+        if not bool(mode_deck.mode_deck_auto_bumped_to_recommended)
+        else replace(config, mpol=int(mode_deck.effective_mpol), ntor=int(mode_deck.effective_ntor))
+    )
+    ntheta = _resolved_ntheta(solve_config)
+    nzeta = _resolved_nzeta(solve_config)
+    if ntheta < 8:
+        raise ValueError("ntheta must be at least 8")
+    if nzeta < 8:
+        raise ValueError("nzeta must be at least 8")
     if config.max_boundary_projection_error is not None:
         limit = float(config.max_boundary_projection_error)
         if not np.isfinite(limit) or limit <= 0.0:
@@ -641,51 +838,51 @@ def _validate_example_config(config: ExampleConfig) -> None:
                 "Use FTOL_ARRAY ending at 1e-12, or set max_boundary_projection_error=None for a "
                 "diagnostic-only run."
             )
-        projection = _boundary_projection_payload(config)
-        observed = float(projection["max_abs_component_error"])
-        if observed > limit:
-            recommendation = recommend_square_axis_stellarator_mirror_hybrid_resolution(
-                target_max_component_error=limit,
-                mpol=int(config.mpol),
-                ntor=int(config.ntor),
-                max_mpol=max(8, int(config.mpol) + 2),
-                max_ntor=max(32, int(config.ntor) + 8),
-                nfp=int(config.nfp),
-                ns_array=[int(value) for value in config.ns_array],
-                niter_array=[int(value) for value in config.niter_array],
-                ftol_array=[float(value) for value in config.ftol_array],
-                phiedge=float(config.phiedge),
-                **_square_axis_sample_kwargs(config),
-            )
-            suggested = recommendation["recommended"]
+        if not bool(mode_deck.effective_projection_meets_target):
             raise ValueError(
                 "square-hybrid boundary projection error is too large for a production solve: "
-                f"max_abs_component_error={observed:.3e} exceeds {limit:.3e} "
-                f"for MPOL={int(config.mpol)}, NTOR={int(config.ntor)}, NZETA={nzeta}. "
+                f"max_abs_component_error={mode_deck.effective_projection_max_abs_component_error:.3e} "
+                f"exceeds {limit:.3e} for MPOL={int(solve_config.mpol)}, "
+                f"NTOR={int(solve_config.ntor)}, NZETA={nzeta}. "
                 "Suggested finite Fourier closure for the current spline-smoothed target: "
-                f"MPOL={int(suggested['mpol'])}, NTOR={int(suggested['ntor'])}, "
-                f"NZETA>={int(suggested['recommended_nzeta'])} "
-                f"(projection error {float(suggested['max_abs_component_error']):.3e}). "
-                "Increase MPOL/NTOR/NZETA, keep plasma_axis_kind='control_spline' or 'spline', or set "
+                f"MPOL={mode_deck.recommended_mpol}, NTOR={mode_deck.recommended_ntor}, "
+                f"NZETA>={mode_deck.recommended_nzeta}. Increase MPOL/NTOR/NZETA, keep "
+                "auto_bump_mode_deck_to_recommended=True when a feasible recommendation exists, "
+                "keep plasma_axis_kind='control_spline' or 'spline', or set "
                 "max_boundary_projection_error=None for a diagnostic-only run."
+            )
+    if bool(solve_config.enforce_recommended_nzeta):
+        recommended = recommended_square_axis_nzeta(int(solve_config.ntor))
+        if nzeta < recommended:
+            bump_note = (
+                f" (requested NTOR={int(mode_deck.requested_ntor)}; mode deck auto-bumped to "
+                f"NTOR={int(mode_deck.effective_ntor)})"
+                if bool(mode_deck.mode_deck_auto_bumped_to_recommended)
+                else ""
+            )
+            raise ValueError(
+                f"NZETA={nzeta} is underresolved for effective NTOR={int(solve_config.ntor)}{bump_note}; "
+                f"use at least {recommended}, keep auto_bump_nzeta_to_recommended=True, or set "
+                "enforce_recommended_nzeta=False for a diagnostic-only run"
             )
 
 
 def make_free_boundary_indata(config: ExampleConfig, *, beta_percent: float) -> InData:
     """Return the free-boundary input deck for one beta case."""
 
-    ns_values, niter_values, ftol_values = _stage_values(config)
-    resolution = _effective_square_axis_resolution(config)
+    solve_config = _effective_solve_config(config)
+    ns_values, niter_values, ftol_values = _stage_values(solve_config)
+    resolution = _effective_square_axis_resolution(solve_config)
     indata = square_axis_stellarator_mirror_hybrid_indata(
-        nfp=int(config.nfp),
-        mpol=int(config.mpol),
-        ntor=int(config.ntor),
-        **_boundary_fit_grid(config),
+        nfp=int(solve_config.nfp),
+        mpol=int(solve_config.mpol),
+        ntor=int(solve_config.ntor),
+        **_boundary_fit_grid(solve_config),
         ns_array=ns_values,
         niter_array=niter_values,
         ftol_array=ftol_values,
-        phiedge=float(config.phiedge),
-        **_square_axis_sample_kwargs(config),
+        phiedge=float(solve_config.phiedge),
+        **_square_axis_sample_kwargs(solve_config),
     )
     am, pres_scale = _pressure_terms(float(beta_percent))
     indata.scalars.update(
@@ -721,32 +918,37 @@ def make_free_boundary_indata(config: ExampleConfig, *, beta_percent: float) -> 
 def _boundary_projection_payload(config: ExampleConfig) -> dict[str, Any]:
     """Return the Fourier truncation error for the configured input boundary."""
 
-    ns_values, niter_values, ftol_values = _stage_values(config)
-    return square_axis_stellarator_mirror_hybrid_projection_error(
-        nfp=int(config.nfp),
-        mpol=int(config.mpol),
-        ntor=int(config.ntor),
-        **_boundary_fit_grid(config),
-        ns_array=ns_values,
-        niter_array=niter_values,
-        ftol_array=ftol_values,
-        phiedge=float(config.phiedge),
-        **_square_axis_sample_kwargs(config),
+    mode_deck = _effective_square_axis_mode_deck(config)
+    projection = _projection_payload_for_modes(
+        config,
+        mpol=int(mode_deck.effective_mpol),
+        ntor=int(mode_deck.effective_ntor),
     )
+    projection.update(
+        {
+            "requested_mpol": int(mode_deck.requested_mpol),
+            "requested_ntor": int(mode_deck.requested_ntor),
+            "mpol": int(mode_deck.effective_mpol),
+            "ntor": int(mode_deck.effective_ntor),
+            "mode_deck": mode_deck.to_dict(),
+        }
+    )
+    return projection
 
 
 def _resolution_deck_payload(config: ExampleConfig) -> dict[str, Any]:
     """Return the cheap representation/grid gate for edited mode settings."""
 
-    resolution = _effective_square_axis_resolution(config)
+    solve_config = _effective_solve_config(config)
+    resolution = _effective_square_axis_resolution(solve_config)
     return square_axis_resolution_deck_status(
         projection=_boundary_projection_payload(config),
-        mpol=int(config.mpol),
-        ntor=int(config.ntor),
-        ns=int(config.ns),
+        mpol=int(solve_config.mpol),
+        ntor=int(solve_config.ntor),
+        ns=int(solve_config.ns),
         ntheta=resolution.effective_ntheta,
         nzeta=resolution.effective_nzeta,
-        target_max_component_error=config.max_boundary_projection_error,
+        target_max_component_error=solve_config.max_boundary_projection_error,
     )
 
 
@@ -771,28 +973,29 @@ def _strict_schedule_payload(config: ExampleConfig) -> dict[str, Any]:
 def _control_fourier_map_payload(config: ExampleConfig) -> dict[str, Any]:
     """Return spline-control to Fourier-map diagnostics for this deck."""
 
-    controls = _resolved_axis_spline_controls(config)
+    solve_config = _effective_solve_config(config)
+    controls = _resolved_axis_spline_controls(solve_config)
     if controls is None:
         return {
             "status": "not_applicable_for_axis_kind",
-            "axis_kind": str(config.plasma_axis_kind),
+            "axis_kind": str(solve_config.plasma_axis_kind),
         }
-    sample_kwargs = _square_axis_sample_kwargs(config)
+    sample_kwargs = _square_axis_sample_kwargs(solve_config)
     sample_kwargs.pop("axis_kind", None)
     sample_kwargs.pop("axis_spline_controls", None)
     payload: dict[str, Any] = {
         "status": "available",
-        "axis_kind": str(config.plasma_axis_kind),
+        "axis_kind": str(solve_config.plasma_axis_kind),
     }
     for symmetry in ("square", "stellarator"):
         try:
             status = square_axis_spline_control_fourier_map_status(
                 controls=controls,
                 symmetry=symmetry,
-                nfp=int(config.nfp),
-                mpol=int(config.mpol),
-                ntor=int(config.ntor),
-                **_boundary_fit_grid(config),
+                nfp=int(solve_config.nfp),
+                mpol=int(solve_config.mpol),
+                ntor=int(solve_config.ntor),
+                **_boundary_fit_grid(solve_config),
                 **sample_kwargs,
             )
         except Exception as exc:
@@ -815,20 +1018,21 @@ def _control_fourier_map_payload(config: ExampleConfig) -> dict[str, Any]:
 def _edge_control_projection_payload(config: ExampleConfig) -> dict[str, Any] | None:
     """Return the reduced edge-control payload passed to the solver."""
 
-    symmetry = str(config.free_boundary_edge_control_projection).strip().lower()
+    solve_config = _effective_solve_config(config)
+    symmetry = str(solve_config.free_boundary_edge_control_projection).strip().lower()
     if symmetry in {"", "none", "off", "false"}:
         return None
     if symmetry not in {"square", "stellarator"}:
         raise ValueError("free_boundary_edge_control_projection must be 'square', 'stellarator', or 'none'")
-    controls = _resolved_axis_spline_controls(config)
+    controls = _resolved_axis_spline_controls(solve_config)
     if controls is None:
         raise ValueError("free_boundary_edge_control_projection requires plasma_axis_kind='control_spline'")
-    rcond = float(config.free_boundary_edge_control_rcond)
+    rcond = float(solve_config.free_boundary_edge_control_rcond)
     if not np.isfinite(rcond) or rcond <= 0.0:
         raise ValueError("free_boundary_edge_control_rcond must be positive and finite")
     sample_kwargs = {
         key: value
-        for key, value in _square_axis_sample_kwargs(config).items()
+        for key, value in _square_axis_sample_kwargs(solve_config).items()
         if key not in {"axis_kind", "axis_spline_controls"}
     }
     return square_axis_free_boundary_edge_control_projection_payload(
@@ -836,10 +1040,10 @@ def _edge_control_projection_payload(config: ExampleConfig) -> dict[str, Any] | 
         symmetry=symmetry,
         rcond=rcond,
         source="toroidal_stellarator_mirror_hybrid_square_coils_free_boundary",
-        nfp=int(config.nfp),
-        mpol=int(config.mpol),
-        ntor=int(config.ntor),
-        **_boundary_fit_grid(config),
+        nfp=int(solve_config.nfp),
+        mpol=int(solve_config.mpol),
+        ntor=int(solve_config.ntor),
+        **_boundary_fit_grid(solve_config),
         **sample_kwargs,
     )
 
@@ -910,16 +1114,18 @@ def _spline_bridge_payload(config: ExampleConfig, *, resolution_deck: dict[str, 
 def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
     """Return cheap checks that should pass before a long square-coil solve."""
 
-    resolution = _effective_square_axis_resolution(config)
+    mode_deck = _effective_square_axis_mode_deck(config)
+    solve_config = _effective_solve_config(config)
+    resolution = _effective_square_axis_resolution(solve_config)
     projection = _boundary_projection_payload(config)
     resolution_deck = square_axis_resolution_deck_status(
         projection=projection,
-        mpol=int(config.mpol),
-        ntor=int(config.ntor),
-        ns=int(config.ns),
+        mpol=int(solve_config.mpol),
+        ntor=int(solve_config.ntor),
+        ns=int(solve_config.ns),
         ntheta=resolution.effective_ntheta,
         nzeta=resolution.effective_nzeta,
-        target_max_component_error=config.max_boundary_projection_error,
+        target_max_component_error=solve_config.max_boundary_projection_error,
     )
     schedule = _strict_schedule_payload(config)
     production_ready = bool(
@@ -941,21 +1147,27 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
         "status": "production_ready" if production_ready else "diagnostic_only",
         "production_ready_for_strict_profile": production_ready,
         "configuration": {
-            "mpol": int(config.mpol),
-            "ntor": int(config.ntor),
+            "requested_mpol": int(mode_deck.requested_mpol),
+            "requested_ntor": int(mode_deck.requested_ntor),
+            "mpol": int(mode_deck.effective_mpol),
+            "ntor": int(mode_deck.effective_ntor),
+            "mode_deck_auto_bumped_to_recommended": bool(mode_deck.mode_deck_auto_bumped_to_recommended),
             "ntheta": resolution.effective_ntheta,
             "requested_ntheta": resolution.requested_ntheta,
             "recommended_ntheta": resolution.recommended_ntheta,
             "nzeta": resolution.effective_nzeta,
             "requested_nzeta": resolution.requested_nzeta,
             "recommended_nzeta": resolution.recommended_nzeta,
-            "axis_kind": str(config.plasma_axis_kind),
-            "side_power": float(config.side_power),
-            "corner_power": float(config.corner_power),
+            "axis_kind": str(solve_config.plasma_axis_kind),
+            "side_power": float(solve_config.side_power),
+            "corner_power": float(solve_config.corner_power),
             "max_boundary_projection_error": (
-                None if config.max_boundary_projection_error is None else float(config.max_boundary_projection_error)
+                None
+                if solve_config.max_boundary_projection_error is None
+                else float(solve_config.max_boundary_projection_error)
             ),
         },
+        "effective_mode_deck": mode_deck.to_dict(),
         "strict_schedule": schedule,
         "strict_convergence_assessment": convergence_assessment,
         "effective_resolution": resolution.to_dict(),
@@ -1072,6 +1284,8 @@ def _run_one_beta(
     beta_percent: float,
     restart_state: Any | None = None,
 ) -> SolvedBetaCase:
+    mode_deck = _effective_square_axis_mode_deck(config)
+    solve_config = _effective_solve_config(config)
     label = _case_label(beta_percent)
     case_dir = Path(config.outdir) / label
     case_dir.mkdir(parents=True, exist_ok=True)
@@ -1083,7 +1297,7 @@ def _run_one_beta(
     t0 = time.perf_counter()
     run_budget = _run_budget(config, restart_state=restart_state)
     use_multigrid = bool(config.use_multigrid_schedule and restart_state is None)
-    edge_control_projection = _edge_control_projection_payload(config)
+    edge_control_projection = _edge_control_projection_payload(solve_config)
     previous_return_best = os.environ.get("VMEC_JAX_RETURN_BEST_SCORED_STATE")
     os.environ["VMEC_JAX_RETURN_BEST_SCORED_STATE"] = "1" if bool(config.return_best_scored_state) else "0"
     try:
@@ -1113,8 +1327,8 @@ def _run_one_beta(
             os.environ["VMEC_JAX_RETURN_BEST_SCORED_STATE"] = previous_return_best
     wall_s = time.perf_counter() - t0
     write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
-    theta, zeta, R, Z, Bmag, Bmag_near_axis, Bxyz, bsupu, bsupv = _solved_surface_and_field(run, config)
-    field_lines = _trace_solved_field_lines(R=R, Z=Z, bsupu=bsupu, bsupv=bsupv, Bmag=Bmag, config=config)
+    theta, zeta, R, Z, Bmag, Bmag_near_axis, Bxyz, bsupu, bsupv = _solved_surface_and_field(run, solve_config)
+    field_lines = _trace_solved_field_lines(R=R, Z=Z, bsupu=bsupu, bsupv=bsupv, Bmag=Bmag, config=solve_config)
 
     diag = run.result.diagnostics if run.result is not None else {}
     freeb = diag.get("free_boundary", {}) if isinstance(diag, dict) else {}
@@ -1144,14 +1358,17 @@ def _run_one_beta(
         mean_iota = float(np.nanmean(np.asarray(iotas, dtype=float)))
     except Exception:
         mean_iota = None
-    resolution = _effective_square_axis_resolution(config)
+    resolution = _effective_square_axis_resolution(solve_config)
     row = {
         "beta_percent": float(beta_percent),
         "input": str(input_path),
         "wout": str(wout_path),
         "wall_s": float(wall_s),
-        "mpol": int(config.mpol),
-        "ntor": int(config.ntor),
+        "requested_mpol": int(mode_deck.requested_mpol),
+        "requested_ntor": int(mode_deck.requested_ntor),
+        "mpol": int(mode_deck.effective_mpol),
+        "ntor": int(mode_deck.effective_ntor),
+        "mode_deck_auto_bumped_to_recommended": bool(mode_deck.mode_deck_auto_bumped_to_recommended),
         "ntheta": resolution.effective_ntheta,
         "requested_ntheta": resolution.requested_ntheta,
         "recommended_ntheta": resolution.recommended_ntheta,
@@ -1310,8 +1527,11 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "input",
         "wout",
         "wall_s",
+        "requested_mpol",
+        "requested_ntor",
         "mpol",
         "ntor",
+        "mode_deck_auto_bumped_to_recommended",
         "ntheta",
         "requested_ntheta",
         "recommended_ntheta",
@@ -1714,8 +1934,10 @@ def _metrics_payload(
     all_converged = bool(complete) and all(bool(row.get("converged")) for row in rows)
     completed = [float(row.get("beta_percent")) for row in rows]
     remaining = [float(beta) for beta in config.betas_percent if float(beta) not in completed]
-    resolved_controls = _resolved_axis_spline_controls(config)
-    resolution = _effective_square_axis_resolution(config)
+    mode_deck = _effective_square_axis_mode_deck(config)
+    solve_config = _effective_solve_config(config)
+    resolved_controls = _resolved_axis_spline_controls(solve_config)
+    resolution = _effective_square_axis_resolution(solve_config)
     reduced_radii = (
         None
         if config.plasma_axis_reduced_radii is None
@@ -1736,25 +1958,30 @@ def _metrics_payload(
         "remaining_betas_percent": remaining,
         "coil_count": int(coils.centers.shape[0]),
         "n_coils_per_side": int(config.n_coils_per_side),
-        "plasma_axis_half_width": float(config.plasma_axis_half_width),
-        "plasma_axis_kind": str(config.plasma_axis_kind),
-        "plasma_axis_spline_corner_radius_factor": float(config.plasma_axis_spline_corner_radius_factor),
-        "plasma_axis_control_symmetry": str(config.plasma_axis_control_symmetry),
+        "plasma_axis_half_width": float(solve_config.plasma_axis_half_width),
+        "plasma_axis_kind": str(solve_config.plasma_axis_kind),
+        "plasma_axis_spline_corner_radius_factor": float(solve_config.plasma_axis_spline_corner_radius_factor),
+        "plasma_axis_control_symmetry": str(solve_config.plasma_axis_control_symmetry),
         "plasma_axis_reduced_radii": reduced_radii,
         "plasma_axis_spline_controls": _spline_controls_payload(resolved_controls),
-        "side_power": float(config.side_power),
-        "corner_power": float(config.corner_power),
+        "side_power": float(solve_config.side_power),
+        "corner_power": float(solve_config.corner_power),
         "coil_square_side_length": float(config.coil_square_side_length),
         "toroidal_current": float(config.toroidal_current),
         "boundary_projection": _boundary_projection_payload(config),
         "resolution_deck": _resolution_deck_payload(config),
+        "effective_mode_deck": mode_deck.to_dict(),
         "preflight_json": str(preflight_json),
         "preflight": preflight,
         "delt": None if config.delt is None else float(config.delt),
-        "ns": int(config.ns),
-        "ns_array": [int(value) for value in config.ns_array],
-        "mpol": int(config.mpol),
-        "ntor": int(config.ntor),
+        "ns": int(solve_config.ns),
+        "ns_array": [int(value) for value in solve_config.ns_array],
+        "requested_mpol": int(mode_deck.requested_mpol),
+        "requested_ntor": int(mode_deck.requested_ntor),
+        "mpol": int(mode_deck.effective_mpol),
+        "ntor": int(mode_deck.effective_ntor),
+        "auto_bump_mode_deck_to_recommended": bool(config.auto_bump_mode_deck_to_recommended),
+        "mode_deck_auto_bumped_to_recommended": bool(mode_deck.mode_deck_auto_bumped_to_recommended),
         "recommended_ntheta": resolution.recommended_ntheta,
         "ntheta": resolution.effective_ntheta,
         "requested_ntheta": resolution.requested_ntheta,
@@ -1766,27 +1993,31 @@ def _metrics_payload(
         "requested_nzeta": resolution.requested_nzeta,
         "nzeta_resolution": resolution.nzeta_payload(),
         "nzeta_underrecommended": resolution.nzeta_underrecommended,
-        "max_iter": int(config.max_iter),
-        "ftol": float(config.ftol),
-        "niter_array": [int(value) for value in config.niter_array],
-        "ftol_array": [float(value) for value in config.ftol_array],
-        "use_multigrid_schedule": bool(config.use_multigrid_schedule),
-        "enforce_recommended_nzeta": bool(config.enforce_recommended_nzeta),
-        "auto_bump_nzeta_to_recommended": bool(config.auto_bump_nzeta_to_recommended),
+        "max_iter": int(solve_config.max_iter),
+        "ftol": float(solve_config.ftol),
+        "niter_array": [int(value) for value in solve_config.niter_array],
+        "ftol_array": [float(value) for value in solve_config.ftol_array],
+        "use_multigrid_schedule": bool(solve_config.use_multigrid_schedule),
+        "enforce_recommended_nzeta": bool(solve_config.enforce_recommended_nzeta),
+        "auto_bump_nzeta_to_recommended": bool(solve_config.auto_bump_nzeta_to_recommended),
         "max_boundary_projection_error": (
-            None if config.max_boundary_projection_error is None else float(config.max_boundary_projection_error)
+            None
+            if solve_config.max_boundary_projection_error is None
+            else float(solve_config.max_boundary_projection_error)
         ),
-        "nvacskip": int(config.nvacskip),
-        "return_best_scored_state": bool(config.return_best_scored_state),
+        "nvacskip": int(solve_config.nvacskip),
+        "return_best_scored_state": bool(solve_config.return_best_scored_state),
         "free_boundary_activate_fsq": (
-            None if config.free_boundary_activate_fsq is None else float(config.free_boundary_activate_fsq)
+            None
+            if solve_config.free_boundary_activate_fsq is None
+            else float(solve_config.free_boundary_activate_fsq)
         ),
-        "free_boundary_edge_control_projection": str(config.free_boundary_edge_control_projection),
-        "free_boundary_edge_control_rcond": float(config.free_boundary_edge_control_rcond),
-        "solver_mode": None if config.solver_mode is None else str(config.solver_mode),
-        "limit_update_rms": bool(config.limit_update_rms),
-        "backtracking": bool(config.backtracking),
-        "use_direct_fallback": bool(config.use_direct_fallback),
+        "free_boundary_edge_control_projection": str(solve_config.free_boundary_edge_control_projection),
+        "free_boundary_edge_control_rcond": float(solve_config.free_boundary_edge_control_rcond),
+        "solver_mode": None if solve_config.solver_mode is None else str(solve_config.solver_mode),
+        "limit_update_rms": bool(solve_config.limit_update_rms),
+        "backtracking": bool(solve_config.backtracking),
+        "use_direct_fallback": bool(solve_config.use_direct_fallback),
         "beta_continuation_restart": bool(config.beta_continuation_restart),
         "checkpoint_each_beta": bool(config.checkpoint_each_beta),
         "coils_json": str(coils_json),

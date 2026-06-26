@@ -543,7 +543,11 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
         write_plots=False,
         beta_continuation_restart=False,
     )
-    with pytest.raises(ValueError, match="NZETA=16 is underresolved for NTOR=12"):
+    mode_deck = module._effective_square_axis_mode_deck(config)
+    assert mode_deck.requested_ntor == 12
+    assert mode_deck.effective_ntor >= mode_deck.requested_ntor
+    assert mode_deck.mode_deck_auto_bumped_to_recommended is True
+    with pytest.raises(ValueError, match="NZETA=16 is underresolved for effective NTOR="):
         module.run_example(config)
 
     assert module.ExampleConfig().solver_mode == "parity"
@@ -554,6 +558,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().coil_chunk_size == 512
     assert module.ExampleConfig().max_boundary_projection_error == pytest.approx(5.0e-12)
     assert module.ExampleConfig().auto_bump_nzeta_to_recommended is True
+    assert module.ExampleConfig().auto_bump_mode_deck_to_recommended is True
     assert module.ExampleConfig().side_power == pytest.approx(1.0)
     assert module.ExampleConfig().corner_power == pytest.approx(1.0)
     assert module.ExampleConfig().nstep == 1
@@ -563,6 +568,10 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().plasma_axis_spline_controls is None
     assert module.ExampleConfig().plasma_axis_control_symmetry == "square"
     assert module.ExampleConfig().plasma_axis_reduced_radii is None
+    module._MODE_DECK_CACHE.clear()
+    cached_deck = module._effective_square_axis_mode_deck(module.ExampleConfig())
+    assert module._effective_square_axis_mode_deck(module.ExampleConfig()) is cached_deck
+    assert len(module._MODE_DECK_CACHE) == 1
     assert module.build_square_coils(module.ExampleConfig()).params.chunk_size == 512
     assert module.build_square_coils(module.ExampleConfig(coil_chunk_size=None)).params.chunk_size is None
     default_kwargs = module._square_axis_sample_kwargs(module.ExampleConfig())
@@ -596,6 +605,9 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     preflight = module._preflight_payload(module.ExampleConfig())
     assert preflight["schema"] == "square_coil_hybrid_preflight"
     assert preflight["production_ready_for_strict_profile"] is True
+    assert preflight["effective_mode_deck"]["mode_deck_auto_bumped_to_recommended"] is False
+    assert preflight["configuration"]["requested_mpol"] == module.ExampleConfig().mpol
+    assert preflight["configuration"]["requested_ntor"] == module.ExampleConfig().ntor
     assert preflight["strict_schedule"]["requested_final_ftol"] == pytest.approx(1.0e-12)
     assert preflight["strict_schedule"]["requested_final_ftol_meets_target"] is True
     assert preflight["strict_convergence_assessment"]["full_fourier_strict_profile_status"] == "ready_to_attempt"
@@ -664,6 +676,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
                 nzeta=32,
                 side_power=1.4,
                 corner_power=1.4,
+                auto_bump_mode_deck_to_recommended=False,
                 write_plots=False,
             )
         )
@@ -677,6 +690,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
                 nzeta=32,
                 side_power=1.4,
                 corner_power=1.4,
+                auto_bump_mode_deck_to_recommended=False,
                 write_plots=False,
             )
         )
@@ -1178,6 +1192,11 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert metrics["n_coils_per_side"] == 1
     assert metrics["boundary_projection"]["mpol"] == 3
     assert metrics["boundary_projection"]["ntor"] == 4
+    assert metrics["requested_mpol"] == 3
+    assert metrics["requested_ntor"] == 4
+    assert metrics["mode_deck_auto_bumped_to_recommended"] is False
+    assert metrics["effective_mode_deck"]["effective_mpol"] == 3
+    assert metrics["effective_mode_deck"]["effective_ntor"] == 4
     assert metrics["effective_resolution"]["effective_ntheta"] == metrics["ntheta"]
     assert metrics["effective_resolution"]["effective_nzeta"] == metrics["nzeta"]
     assert np.isfinite(float(metrics["boundary_projection"]["max_abs_error"]))
