@@ -747,6 +747,12 @@ def _edge_control_projection_summary(config: ExampleConfig) -> dict[str, Any]:
         "mode_count": int(payload.get("mode_count", 0)),
         "jacobian_shape": [int(value) for value in jacobian.shape],
         "rcond": float(payload.get("rcond", config.free_boundary_edge_control_rcond)),
+        "rank": payload.get("rank"),
+        "rank_deficient": payload.get("rank_deficient"),
+        "condition_number": payload.get("condition_number"),
+        "gram_condition_number": payload.get("gram_condition_number"),
+        "max_offdiag_column_correlation": payload.get("max_offdiag_column_correlation"),
+        "native_reduced_solver_ready": payload.get("native_reduced_solver_ready"),
     }
 
 

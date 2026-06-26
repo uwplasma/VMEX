@@ -271,6 +271,55 @@ class SquareAxisControlFourierMatrix:
         )
 
 
+def _control_operator_diagnostics(jacobian: Any, *, rcond: float | None = None) -> dict[str, Any]:
+    """Return dense reduced-control operator diagnostics for one Jacobian."""
+
+    jacobian_arr = np.asarray(jacobian, dtype=float)
+    if jacobian_arr.ndim != 2:
+        raise ValueError("control Jacobian must be a two-dimensional array")
+    singular_values = np.linalg.svd(jacobian_arr, compute_uv=False)
+    finite_singular_values = singular_values[np.isfinite(singular_values)]
+    min_sv = float(np.min(finite_singular_values)) if finite_singular_values.size else None
+    max_sv = float(np.max(finite_singular_values)) if finite_singular_values.size else None
+    if max_sv is None:
+        rank_tol = np.finfo(float).eps
+    elif rcond is None:
+        rank_tol = max(jacobian_arr.shape) * np.finfo(float).eps * max_sv
+    else:
+        rank_tol = max(float(rcond) * max_sv, np.finfo(float).eps)
+    rank = int(np.sum(finite_singular_values > rank_tol))
+    condition = None if min_sv in (None, 0.0) or max_sv is None else float(max_sv / max(min_sv, np.finfo(float).tiny))
+    gram = jacobian_arr.T @ jacobian_arr
+    gram_eigenvalues = np.linalg.eigvalsh(gram) if gram.size else np.asarray([], dtype=float)
+    finite_gram = gram_eigenvalues[np.isfinite(gram_eigenvalues)]
+    min_gram = float(np.min(finite_gram)) if finite_gram.size else None
+    max_gram = float(np.max(finite_gram)) if finite_gram.size else None
+    gram_condition = (
+        None
+        if min_gram in (None, 0.0) or max_gram is None
+        else float(max_gram / max(min_gram, np.finfo(float).tiny))
+    )
+    column_norms = np.linalg.norm(jacobian_arr, axis=0)
+    valid = column_norms > np.finfo(float).tiny
+    max_corr = None
+    if int(jacobian_arr.shape[1]) > 1 and np.count_nonzero(valid) > 1:
+        normalized = jacobian_arr[:, valid] / column_norms[valid]
+        corr = np.abs(normalized.T @ normalized)
+        max_corr = float(np.max(corr[np.triu_indices_from(corr, k=1)]))
+    return {
+        "rank": rank,
+        "rank_tolerance": float(rank_tol),
+        "rank_deficient": bool(rank < int(jacobian_arr.shape[1])),
+        "singular_values": [float(value) for value in singular_values],
+        "condition_number": condition,
+        "gram_eigenvalues": [float(value) for value in gram_eigenvalues],
+        "gram_condition_number": gram_condition,
+        "column_norms": [float(value) for value in column_norms],
+        "max_offdiag_column_correlation": max_corr,
+        "native_reduced_solver_ready": bool(rank == int(jacobian_arr.shape[1]) and condition is not None),
+    }
+
+
 def square_axis_spline_control_fourier_map_status(
     *,
     controls: SquareAxisSplineControls | None = None,
@@ -306,11 +355,7 @@ def square_axis_spline_control_fourier_map_status(
         **sample_kwargs,
     )
     jacobian = matrix.stacked_jacobian()
-    singular_values = np.linalg.svd(jacobian, compute_uv=False)
-    finite_singular_values = singular_values[np.isfinite(singular_values)]
-    min_sv = float(np.min(finite_singular_values)) if finite_singular_values.size else None
-    max_sv = float(np.max(finite_singular_values)) if finite_singular_values.size else None
-    condition = None if min_sv in (None, 0.0) or max_sv is None else float(max_sv / max(min_sv, np.finfo(float).tiny))
+    operator = _control_operator_diagnostics(jacobian)
     return {
         "status": "available",
         "basis_symmetry": basis.symmetry,
@@ -318,9 +363,7 @@ def square_axis_spline_control_fourier_map_status(
         "control_count": int(matrix.control_count),
         "mode_count": int(np.asarray(matrix.m).size),
         "jacobian_shape": [int(value) for value in jacobian.shape],
-        "singular_values": [float(value) for value in singular_values],
-        "condition_number": condition,
-        "column_norms": [float(value) for value in np.linalg.norm(jacobian, axis=0)],
+        **operator,
     }
 
 
@@ -365,6 +408,7 @@ def square_axis_free_boundary_edge_control_projection_payload(
     jacobian = np.asarray(matrix.stacked_jacobian(), dtype=float)
     if jacobian.ndim != 2 or jacobian.shape[1] <= 0:
         raise ValueError(f"empty edge-control Jacobian for symmetry {symmetry_key!r}")
+    operator = _control_operator_diagnostics(jacobian, rcond=rcond_value)
     return {
         "enabled": True,
         "source": str(source),
@@ -374,6 +418,12 @@ def square_axis_free_boundary_edge_control_projection_payload(
         "control_count": int(jacobian.shape[1]),
         "mode_count": int(np.asarray(matrix.m).size),
         "rcond": rcond_value,
+        "rank": operator["rank"],
+        "rank_deficient": operator["rank_deficient"],
+        "condition_number": operator["condition_number"],
+        "gram_condition_number": operator["gram_condition_number"],
+        "max_offdiag_column_correlation": operator["max_offdiag_column_correlation"],
+        "native_reduced_solver_ready": operator["native_reduced_solver_ready"],
     }
 
 

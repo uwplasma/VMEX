@@ -5738,6 +5738,117 @@ Visual validation:
 
 No user input is needed.
 
+## M312. Reduced-control operator readiness for native spline-control promotion
+
+### Steps taken
+
+- Added dense reduced-control operator diagnostics for the square-axis
+  control-to-Fourier map:
+  - numerical rank and rank tolerance;
+  - rank-deficient flag;
+  - singular values and condition number;
+  - Gram-matrix eigenvalues and Gram condition number;
+  - maximum off-diagonal column correlation;
+  - `native_reduced_solver_ready`, true when the reduced operator is full rank
+    and has finite conditioning.
+- Reused the same diagnostics in:
+  - `square_axis_spline_control_fourier_map_status`;
+  - `square_axis_free_boundary_edge_control_projection_payload`;
+  - the root square-coil example preflight edge-control summary.
+- Kept the current solver path unchanged. This is a native-spline promotion
+  precursor: it tells us whether a reduced dense control operator is suitable
+  before replacing full Fourier edge updates with a native control state.
+
+### Results obtained
+
+- The square and stellarator reduced control maps are full-rank in the tested
+  decks.
+- The example preflight now records whether the reduced edge-control operator
+  is ready for a native reduced solver step, not merely whether a projection
+  payload exists.
+
+### How it was tested
+
+```bash
+venv/bin/python -m py_compile \
+  vmec_jax/toroidal_hybrid.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tests/test_toroidal_hybrid.py
+```
+
+Result: passed.
+
+```bash
+ruff check \
+  vmec_jax/toroidal_hybrid.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tests/test_toroidal_hybrid.py
+```
+
+Result: passed.
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+```
+
+Result: `108 passed, 2 warnings`.
+
+```bash
+venv/bin/python tools/diagnostics/source_health.py --top 20 \
+  --max-root-helper-prefix-files 2 \
+  --max-function-lines-at \
+    vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2440 \
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=420
+```
+
+Result: passed current source-health ratchets.
+
+```bash
+git diff --check
+```
+
+Result: passed.
+
+### File structure and best-practice adherence
+
+- The reduced-operator diagnostic lives beside the square-axis control map in
+  `vmec_jax/toroidal_hybrid.py`.
+- It is a small private helper reused by public status and solver-payload
+  builders, avoiding duplicated rank/conditioning logic.
+- The example preflight receives scalar metadata only; no generated artifacts
+  are committed.
+- No full-force convergence criteria or solver acceptance gates were changed.
+
+### Best next steps
+
+1. Fast-forward the waiting `office` checkouts so queued rows report these
+   readiness fields.
+2. When projected-control results finish, decide from full force residuals,
+   captured fractions, and `native_reduced_solver_ready` whether to promote a
+   native reduced-control state.
+3. If promoted, implement the first native step as a dense reduced edge-control
+   solve/Jacobian around the existing VMEC Fourier state, with full
+   `fsqr/fsqz/fsql` convergence still required.
+
+### Completion percentages after M312
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row remains flat above `1e-12`.
+- VMEC2000 robustness/reference lane: `99%`, still running and not yet strict.
+- True spline/control-basis hybrid lane: `89%`, reduced-operator readiness is
+  now explicit; native reduced-control state remains open.
+- DELT/stage-budget polish lane: `75%`, still queued.
+- Finite-beta virtual-casing validation lane: `87%`, unchanged in this tranche.
+- CI/API health lane: `99%`, local affected checks pass.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M311. Reduced-control capture diagnostics for square-axis strict runs
 
 ### Steps taken

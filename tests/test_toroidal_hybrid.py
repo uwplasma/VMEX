@@ -428,8 +428,14 @@ def test_square_axis_control_fourier_map_status_reports_conditioning():
     assert status["basis_symmetry"] == "stellarator"
     assert status["control_count"] == 5
     assert status["mode_count"] > 0
+    assert status["rank"] == 5
+    assert status["rank_deficient"] is False
+    assert status["native_reduced_solver_ready"] is True
     assert status["condition_number"] is not None
+    assert status["gram_condition_number"] is not None
+    assert status["max_offdiag_column_correlation"] is not None
     assert len(status["singular_values"]) == 5
+    assert len(status["gram_eigenvalues"]) == 5
 
 
 def test_square_axis_free_boundary_edge_control_projection_payload():
@@ -459,6 +465,11 @@ def test_square_axis_free_boundary_edge_control_projection_payload():
     assert payload["control_count"] == 2
     assert payload["mode_count"] > 0
     assert payload["rcond"] == pytest.approx(1.0e-11)
+    assert payload["rank"] == 2
+    assert payload["rank_deficient"] is False
+    assert payload["native_reduced_solver_ready"] is True
+    assert payload["condition_number"] is not None
+    assert payload["gram_condition_number"] is not None
     jacobian = np.asarray(payload["control_jacobian"], dtype=float)
     assert jacobian.shape == (4 * int(payload["mode_count"]), 2)
     assert np.all(np.isfinite(jacobian))
@@ -586,6 +597,9 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["edge_control_projection"]["enabled"] is True
     assert preflight["edge_control_projection"]["basis_symmetry"] == "square"
     assert preflight["edge_control_projection"]["control_count"] == 2
+    assert preflight["edge_control_projection"]["rank"] == 2
+    assert preflight["edge_control_projection"]["rank_deficient"] is False
+    assert preflight["edge_control_projection"]["native_reduced_solver_ready"] is True
     controls = SquareAxisSplineControls.rounded_square(axis_half_width=1.5, corner_radius_factor=1.12)
     spline_config = module.ExampleConfig(
         plasma_axis_kind="control_spline",
