@@ -26,6 +26,7 @@ from vmec_jax.toroidal_hybrid import (
     sample_toroidal_stellarator_mirror_hybrid_boundary,
     square_axis_free_boundary_edge_control_projection_payload,
     square_axis_resolution_deck_status,
+    square_axis_strict_convergence_assessment,
     square_axis_spline_control_fourier_map_status,
     square_axis_spline_control_fourier_matrix,
     square_axis_spline_radius,
@@ -112,6 +113,7 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert vj.square_axis_spline_radius is square_axis_spline_radius
     assert vj.square_axis_spline_radius_matrix is square_axis_spline_radius_matrix
     assert vj.square_axis_spline_symmetric_control_basis is square_axis_spline_symmetric_control_basis
+    assert vj.square_axis_strict_convergence_assessment is square_axis_strict_convergence_assessment
     assert (
         vj.square_axis_free_boundary_edge_control_projection_payload
         is square_axis_free_boundary_edge_control_projection_payload
@@ -132,6 +134,7 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert public_api.square_axis_spline_radius is square_axis_spline_radius
     assert public_api.square_axis_spline_radius_matrix is square_axis_spline_radius_matrix
     assert public_api.square_axis_spline_symmetric_control_basis is square_axis_spline_symmetric_control_basis
+    assert public_api.square_axis_strict_convergence_assessment is square_axis_strict_convergence_assessment
     assert public_api.square_axis_strict_schedule_status is square_axis_strict_schedule_status
     assert (
         public_api.square_axis_free_boundary_edge_control_projection_payload
@@ -566,6 +569,10 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["production_ready_for_strict_profile"] is True
     assert preflight["strict_schedule"]["requested_final_ftol"] == pytest.approx(1.0e-12)
     assert preflight["strict_schedule"]["requested_final_ftol_meets_target"] is True
+    assert preflight["strict_convergence_assessment"]["full_fourier_strict_profile_status"] == "ready_to_attempt"
+    assert preflight["strict_convergence_assessment"]["reduced_control_profile_status"] == "enabled_bridge"
+    assert preflight["strict_convergence_assessment"]["solver_native_spline_status"] == "not_implemented"
+    assert preflight["strict_convergence_assessment"]["vmec2000_expected_to_fix_fourier_bottleneck"] is False
     assert preflight["nzeta_resolution"]["auto_defaulted"] is True
     assert preflight["nzeta_resolution"]["auto_bump_nzeta_to_recommended"] is True
     assert preflight["resolution_deck"]["status"] == "production_ready"
@@ -797,6 +804,50 @@ def test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates
     )
     assert diagnostic["status"] == "diagnostic_gate_disabled"
     assert diagnostic["reasons"] == ["projection_gate_disabled"]
+
+
+def test_square_axis_strict_convergence_assessment_separates_fourier_and_spline_claims():
+    projection = {
+        "mode_count": 3,
+        "max_abs_component_error": 1.0e-13,
+        "rms_error": 1.0e-14,
+    }
+    deck = square_axis_resolution_deck_status(
+        projection=projection,
+        mpol=5,
+        ntor=28,
+        ns=17,
+        nzeta=64,
+        mgrid_nphi=64,
+        target_max_component_error=5.0e-12,
+    )
+    schedule = square_axis_strict_schedule_status(
+        ns_array=(9, 13, 17),
+        niter_array=(1000, 2000, 8000),
+        ftol_array=(1.0e-8, 1.0e-10, 1.0e-12),
+    )
+    assessment = square_axis_strict_convergence_assessment(
+        resolution_deck=deck,
+        strict_schedule=schedule,
+        edge_control_projection_enabled=True,
+    )
+
+    assert assessment["full_fourier_strict_profile_status"] == "ready_to_attempt"
+    assert assessment["reduced_control_profile_status"] == "enabled_bridge"
+    assert assessment["solver_native_spline_status"] == "not_implemented"
+    assert assessment["vmec2000_expected_to_fix_fourier_bottleneck"] is False
+    assert "promote_native_spline_control_state_if_full_fourier_and_vmec2000_stall_above_target" in assessment[
+        "recommended_next_steps"
+    ]
+
+    blocked = square_axis_strict_convergence_assessment(
+        resolution_deck={**deck, "status": "diagnostic_underresolved", "reasons": ["projection_error_exceeds_gate"]},
+        strict_schedule={**schedule, "requested_final_ftol_meets_target": False, "reasons": ["final_ftol_above_strict_target"]},
+        edge_control_projection_enabled=False,
+    )
+    assert blocked["full_fourier_strict_profile_status"] == "blocked_by_preflight"
+    assert "projection_error_exceeds_gate" in blocked["blockers"]
+    assert "spline_control_updates_not_enabled" in blocked["blockers"]
 
 
 def test_square_axis_projection_error_rejects_sampler_grid_aliases():
@@ -1076,6 +1127,11 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert Path(metrics["preflight_json"]).exists()
     assert metrics["preflight"]["schema"] == "square_coil_hybrid_preflight"
     assert metrics["preflight"]["strict_schedule"]["requested_final_ftol_meets_target"] is False
+    assert (
+        metrics["preflight"]["strict_convergence_assessment"]["full_fourier_strict_profile_status"]
+        == "blocked_by_preflight"
+    )
+    assert "final_ftol_above_strict_target" in metrics["preflight"]["strict_convergence_assessment"]["blockers"]
     assert metrics["preflight"]["spline_bridge"]["solver_native_spline_controls"] is False
     assert metrics["preflight"]["spline_bridge"]["solver_edge_control_projection_enabled"] is True
     assert metrics["preflight"]["edge_control_projection"]["enabled"] is True

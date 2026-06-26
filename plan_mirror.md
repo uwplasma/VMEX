@@ -5738,6 +5738,120 @@ Visual validation:
 
 No user input is needed.
 
+## M309. Strict-convergence assessment for square-axis spline/VMEC2000 runs
+
+### Steps taken
+
+- Rechecked the live strict runs on `office`:
+  - direct `vmec_jax` hot restart, `MPOL=5`, `NTOR=28`, `NZETA=64`,
+    `NS=17`, `FTOL=1e-12`, was at iteration `6669/8000` with max component
+    about `1.6e-11`, still flat above the target;
+  - VMEC2000 generated-`mgrid`, same Fourier deck, was in its `FTOL=1e-10`
+    stage at iteration `787/16000` with max component about `2.0e-8`, also not
+    strict evidence.
+- Rechecked external guidance:
+  - VMEC/SIMSOPT still converts arbitrary surface representations to Fourier
+    surface coefficients and requires compatible `mgrid`/`NZETA` planes;
+  - DESC finite-beta free-boundary work separates vacuum `VacuumBoundaryError`
+    from finite-beta `BoundaryError` with virtual casing;
+  - VMEC2000 remains the backend/NESTOR/mgrid reference, but it does not remove
+    the Fourier representation burden for a linear-axis square target.
+- Added `square_axis_strict_convergence_assessment` in
+  `vmec_jax/toroidal_hybrid.py`.
+- Exported it through `vmec_jax.api` and `vmec_jax.__init__`.
+- Wired the assessment into:
+  - `examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py`
+    preflight JSON;
+  - `tools/diagnostics/profile_square_coil_free_boundary.py` profile JSON;
+  - `tools/diagnostics/summarize_square_coil_profiles.py` summary columns.
+
+### Results obtained
+
+- Edited `MPOL`/`NTOR`/`NZETA` decks now explicitly report:
+  - whether full Fourier VMEC strict convergence is ready to attempt;
+  - whether reduced spline-control edge projection is enabled;
+  - that solver-native spline controls are still not implemented;
+  - that VMEC2000/mgrid is a backend reference and is not expected to fix the
+    Fourier bottleneck.
+- A local smoke with `--freeb-edge-control-projection square` wrote:
+  - `full_fourier_strict_profile_status = ready_to_attempt`;
+  - `reduced_control_profile_status = enabled_bridge`;
+  - `solver_native_spline_status = not_implemented`;
+  - `vmec2000_expected_to_fix_fourier_bottleneck = false`.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py::test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates \
+  tests/test_toroidal_hybrid.py::test_square_axis_strict_convergence_assessment_separates_fourier_and_spline_claims \
+  tests/test_toroidal_hybrid.py::test_square_axis_recommended_nzeta_and_example_guard \
+  tests/test_toroidal_hybrid.py::test_square_coil_hybrid_free_boundary_example_runs_without_plots \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_records_boundary_projection_payload
+```
+
+Result: `5 passed, 2 warnings`.
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_toroidal_hybrid.py::test_square_axis_strict_convergence_assessment_separates_fourier_and_spline_claims \
+  tests/test_toroidal_hybrid.py::test_square_coil_hybrid_free_boundary_example_runs_without_plots
+```
+
+Result: `57 passed, 2 warnings`.
+
+```bash
+ruff check vmec_jax/toroidal_hybrid.py vmec_jax/api.py vmec_jax/__init__.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_toroidal_hybrid.py tests/test_profile_square_coil_free_boundary.py
+
+venv/bin/python -m py_compile vmec_jax/toroidal_hybrid.py vmec_jax/api.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/summarize_square_coil_profiles.py
+
+git diff --check
+```
+
+Results: passed.
+
+### File structure and best-practice adherence
+
+- Shared interpretation logic lives in `vmec_jax/toroidal_hybrid.py`, next to
+  the square-axis resolution and strict-schedule helpers.
+- User-facing scripts only emit the shared payload; they do not duplicate the
+  convergence semantics.
+- The summary tool adds compact columns for long-run comparisons.
+- No solver behavior, WOUTs, figures, or generated result artifacts were added.
+
+### Best next steps
+
+1. Commit and push this diagnostics tranche.
+2. Let the current direct and VMEC2000 strict rows finish without interruption.
+3. Summarize the queued projected-control row with the new columns once it runs.
+4. If full Fourier direct, projected-control direct, and VMEC2000 remain above
+   `1e-12`, start the solver-native spline-control state/Jacobian lane rather
+   than adding more Fourier-polish variants.
+
+### Completion percentages after M309
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row remains flat above strict.
+- VMEC2000 robustness/reference lane: `99%`, useful comparator but not strict.
+- True spline/control-basis hybrid lane: `86%`, bridge and assessment are in
+  place; solver-native spline state remains open.
+- Resolution/edit robustness lane: `100%`.
+- Strict convergence diagnostics lane: `100%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M308. Control-space update-direction diagnostics for spline LCFS solves
 
 ### Steps taken

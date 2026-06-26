@@ -1368,6 +1368,90 @@ def square_axis_strict_schedule_status(
     }
 
 
+def square_axis_strict_convergence_assessment(
+    *,
+    resolution_deck: dict[str, Any],
+    strict_schedule: dict[str, Any],
+    edge_control_projection_enabled: bool = False,
+    solver_native_spline_controls: bool = False,
+    target_ftol: float = 1.0e-12,
+) -> dict[str, Any]:
+    """Interpret strict convergence readiness for square-axis hybrid solves.
+
+    This helper keeps three claims separate: ordinary VMEC Fourier convergence,
+    reduced spline-control convergence, and VMEC2000/mgrid backend parity. It is
+    diagnostic metadata only; it does not change the nonlinear update path or
+    relax the requested force tolerance.
+    """
+
+    target = float(target_ftol)
+    if not np.isfinite(target) or target <= 0.0:
+        raise ValueError("target_ftol must be positive and finite")
+    resolution_status = str(resolution_deck.get("status", "unknown"))
+    schedule_status = str(strict_schedule.get("status", "unknown"))
+    strict_ftol_requested = bool(strict_schedule.get("requested_final_ftol_meets_target", False))
+    representation_ready = bool(resolution_status == "production_ready")
+    full_fourier_ready = bool(representation_ready and strict_ftol_requested)
+    reduced_enabled = bool(edge_control_projection_enabled)
+    native_spline = bool(solver_native_spline_controls)
+
+    blockers: list[str] = []
+    if not representation_ready:
+        blockers.append(f"resolution_deck_{resolution_status}")
+        blockers.extend(str(reason) for reason in resolution_deck.get("reasons", []) or [])
+    if not strict_ftol_requested:
+        blockers.append("final_ftol_above_strict_target")
+        blockers.extend(str(reason) for reason in strict_schedule.get("reasons", []) or [])
+    if not reduced_enabled and not native_spline:
+        blockers.append("spline_control_updates_not_enabled")
+
+    next_steps: list[str] = []
+    if not representation_ready:
+        next_steps.append("repair_fourier_projection_nzeta_or_mgrid_deck_before_long_solve")
+    if not strict_ftol_requested:
+        next_steps.append("request_final_component_ftol_at_or_below_1e-12")
+    if reduced_enabled:
+        next_steps.append("profile_reduced_edge_control_state_and_update_residuals")
+    elif native_spline:
+        next_steps.append("profile_solver_native_spline_control_state")
+    else:
+        next_steps.append("enable_edge_control_projection_or_promote_solver_native_spline_controls")
+    next_steps.append("compare_direct_coils_against_vmec2000_generated_mgrid_reference")
+    if full_fourier_ready and reduced_enabled and not native_spline:
+        next_steps.append("promote_native_spline_control_state_if_full_fourier_and_vmec2000_stall_above_target")
+
+    return {
+        "schema": "square_axis_strict_convergence_assessment.v1",
+        "target_component_ftol": target,
+        "resolution_deck_status": resolution_status,
+        "strict_schedule_status": schedule_status,
+        "full_fourier_strict_profile_status": "ready_to_attempt" if full_fourier_ready else "blocked_by_preflight",
+        "full_fourier_strict_claim_requires": [
+            "final_fsqr <= target_component_ftol",
+            "final_fsqz <= target_component_ftol",
+            "final_fsql <= target_component_ftol",
+            "final residual recomputed on the accepted boundary",
+            "finite-beta cases include virtual-casing/plasma-field boundary diagnostics",
+        ],
+        "edge_control_projection_enabled": reduced_enabled,
+        "reduced_control_profile_status": "enabled_bridge" if reduced_enabled else "not_enabled",
+        "reduced_control_claim_requires": [
+            "edge-control state residual measured on the accepted LCFS",
+            "edge-control update-direction residual measured on the final update",
+            "full VMEC Fourier residual still reported separately",
+        ],
+        "solver_native_spline_controls": native_spline,
+        "solver_native_spline_status": "available" if native_spline else "not_implemented",
+        "vmec2000_reference_role": (
+            "generated-mgrid VMEC2000 is a backend/NESTOR/mgrid reference for the same Fourier deck; "
+            "it cannot remove Fourier representation error from a linear-axis square target"
+        ),
+        "vmec2000_expected_to_fix_fourier_bottleneck": False,
+        "blockers": list(dict.fromkeys(blockers)),
+        "recommended_next_steps": list(dict.fromkeys(next_steps)),
+    }
+
+
 def toroidal_stellarator_mirror_hybrid_metrics(samples: ToroidalHybridBoundarySamples) -> dict[str, float]:
     """Return lightweight geometry checks for a sampled hybrid boundary."""
     theta_reflect = (-np.arange(samples.theta.size)) % samples.theta.size

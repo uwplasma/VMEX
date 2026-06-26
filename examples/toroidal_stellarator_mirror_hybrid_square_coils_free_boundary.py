@@ -51,6 +51,7 @@ from vmec_jax.toroidal_hybrid import (
     square_axis_spline_control_fourier_map_status,
     square_axis_spline_symmetric_control_basis,
     square_axis_strict_schedule_status,
+    square_axis_strict_convergence_assessment,
     square_axis_stellarator_mirror_hybrid_indata,
     square_axis_stellarator_mirror_hybrid_projection_error,
 )
@@ -796,6 +797,15 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
         resolution_deck.get("status") == "production_ready"
         and schedule.get("requested_final_ftol_meets_target")
     )
+    edge_control = _edge_control_projection_summary(config)
+    spline_bridge = _spline_bridge_payload(config, resolution_deck=resolution_deck)
+    convergence_assessment = square_axis_strict_convergence_assessment(
+        resolution_deck=resolution_deck,
+        strict_schedule=schedule,
+        edge_control_projection_enabled=bool(edge_control.get("enabled", False)),
+        solver_native_spline_controls=bool(spline_bridge.get("solver_native_spline_controls", False)),
+        target_ftol=STRICT_COMPONENT_FTOL_TARGET,
+    )
     return {
         "schema": "square_coil_hybrid_preflight",
         "schema_version": 1,
@@ -814,12 +824,13 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
             ),
         },
         "strict_schedule": schedule,
+        "strict_convergence_assessment": convergence_assessment,
         "nzeta_resolution": _nzeta_resolution_payload(config),
         "boundary_projection": projection,
         "resolution_deck": resolution_deck,
         "control_fourier_map": _control_fourier_map_payload(config),
-        "edge_control_projection": _edge_control_projection_summary(config),
-        "spline_bridge": _spline_bridge_payload(config, resolution_deck=resolution_deck),
+        "edge_control_projection": edge_control,
+        "spline_bridge": spline_bridge,
     }
 
 

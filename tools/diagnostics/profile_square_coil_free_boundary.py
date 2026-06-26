@@ -50,6 +50,7 @@ from vmec_jax.toroidal_hybrid import (
     square_axis_spline_control_fourier_map_status,
     square_axis_spline_control_fourier_matrix,
     square_axis_spline_symmetric_control_basis,
+    square_axis_strict_convergence_assessment,
     square_axis_strict_schedule_status,
 )
 from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1, find_vmec2000_exec, run_xvmec2000
@@ -2508,6 +2509,19 @@ def main(argv: list[str] | None = None) -> int:
         control_basis=control_basis,
         control_fourier_map=control_fourier_map,
     )
+    edge_control_requested = str(args.freeb_edge_control_projection).strip().lower() not in {
+        "",
+        "none",
+        "off",
+        "false",
+    }
+    strict_convergence_assessment = square_axis_strict_convergence_assessment(
+        resolution_deck=resolution_deck,
+        strict_schedule=strict_schedule,
+        edge_control_projection_enabled=bool(edge_control_requested and _square_axis_uses_spline_controls(config)),
+        solver_native_spline_controls=bool(spline_bridge.get("solver_native_spline_controls", False)),
+        target_ftol=STRICT_COMPONENT_FTOL,
+    )
     if bool(args.resolution_diagnostics_only):
         payload = {
             "schema": "square_coil_free_boundary_backend_profile",
@@ -2574,6 +2588,7 @@ def main(argv: list[str] | None = None) -> int:
             "control_fourier_map": control_fourier_map,
             "spline_bridge": spline_bridge,
             "strict_schedule": strict_schedule,
+            "strict_convergence_assessment": strict_convergence_assessment,
             "resolution_deck": resolution_deck,
             "provider_parity": None,
             "backends": {},
@@ -2722,6 +2737,7 @@ def main(argv: list[str] | None = None) -> int:
         "control_fourier_map": control_fourier_map,
         "spline_bridge": spline_bridge,
         "strict_schedule": strict_schedule,
+        "strict_convergence_assessment": strict_convergence_assessment,
         "resolution_deck": resolution_deck,
         "provider_parity": None,
         "backends": {},

@@ -1126,6 +1126,7 @@ def _summary_row(
     cfg: dict[str, Any],
     projection: dict[str, Any],
     resolution_deck: dict[str, Any] | None = None,
+    strict_convergence_assessment: dict[str, Any] | None = None,
     status: str | None = None,
 ) -> dict[str, Any]:
     case = _case_name(path)
@@ -1282,6 +1283,9 @@ def _summary_row(
         freeb_edge_control_projection=freeb_edge_control_projection,
         vacuum_grid_exceeded_count=vacuum_grid_exceeded_count,
     )
+    convergence_assessment = (
+        strict_convergence_assessment if isinstance(strict_convergence_assessment, dict) else {}
+    )
     return {
         "case": case,
         "backend": backend_name,
@@ -1385,6 +1389,18 @@ def _summary_row(
         "strict_gap": strict_gap,
         "remaining_iterations": remaining_iterations,
         "next_action": next_action,
+        "strict_assessment_full_fourier_status": convergence_assessment.get(
+            "full_fourier_strict_profile_status"
+        ),
+        "strict_assessment_reduced_control_status": convergence_assessment.get(
+            "reduced_control_profile_status"
+        ),
+        "strict_assessment_solver_native_spline_status": convergence_assessment.get(
+            "solver_native_spline_status"
+        ),
+        "strict_assessment_vmec2000_fix_fourier_bottleneck": convergence_assessment.get(
+            "vmec2000_expected_to_fix_fourier_bottleneck"
+        ),
         "resolution_deck_status": resolution.get("status"),
         "resolution_deck_reasons": ",".join(_as_text_list(resolution.get("reasons"))),
         "accepted_provider_parity_status": accepted_parity.get("status"),
@@ -1542,6 +1558,10 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
     projection = projection if isinstance(projection, dict) else {}
     resolution_deck = data.get("resolution_deck", {})
     resolution_deck = resolution_deck if isinstance(resolution_deck, dict) else {}
+    strict_convergence_assessment = data.get("strict_convergence_assessment", {})
+    strict_convergence_assessment = (
+        strict_convergence_assessment if isinstance(strict_convergence_assessment, dict) else {}
+    )
     rows: list[dict[str, Any]] = []
     for backend_name, backend in sorted((data.get("backends", {}) or {}).items()):
         if isinstance(backend, dict):
@@ -1553,6 +1573,7 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                     cfg=cfg,
                     projection=projection,
                     resolution_deck=resolution_deck,
+                    strict_convergence_assessment=strict_convergence_assessment,
                 )
             )
     return rows
@@ -1787,6 +1808,10 @@ def main(argv: list[str] | None = None) -> int:
         "strict_gap",
         "remaining_iterations",
         "next_action",
+        "strict_assessment_full_fourier_status",
+        "strict_assessment_reduced_control_status",
+        "strict_assessment_solver_native_spline_status",
+        "strict_assessment_vmec2000_fix_fourier_bottleneck",
         "recommended_followup_profile_kind",
         "recommended_followup_reason",
         "resolution_deck_status",

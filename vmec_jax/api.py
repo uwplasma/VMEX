@@ -34,6 +34,7 @@ from .toroidal_hybrid import (
     sample_toroidal_stellarator_mirror_hybrid_boundary,
     square_axis_free_boundary_edge_control_projection_payload,
     square_axis_resolution_deck_status,
+    square_axis_strict_convergence_assessment,
     square_axis_spline_control_fourier_map_status,
     square_axis_spline_control_fourier_matrix,
     square_axis_spline_radius,
