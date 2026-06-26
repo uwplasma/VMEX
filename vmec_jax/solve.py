@@ -10615,6 +10615,14 @@ def solve_fixed_boundary_residual_iter(
     freeb_anderson_pressure_history = AndersonPressureHistory()
     freeb_anderson_applied_bsqvac = None
     freeb_plascur = 0.0
+
+    def _reset_freeb_anderson_pressure() -> None:
+        """Discard vacuum-pressure mixing history after VMEC-style restarts."""
+
+        nonlocal freeb_anderson_pressure_history, freeb_anderson_applied_bsqvac
+        freeb_anderson_pressure_history = AndersonPressureHistory()
+        freeb_anderson_applied_bsqvac = None
+
     try:
         icurv_arr = np.asarray(getattr(wout_like, "icurv", np.asarray([0.0], dtype=float)), dtype=float)
         if icurv_arr.size > 0:
@@ -11456,8 +11464,7 @@ def solve_fixed_boundary_residual_iter(
                         anderson_result = None
                         if bool(freeb_anderson_pressure) and (not bool(freeb_reused)):
                             if bool(freeb_turnon_iter):
-                                freeb_anderson_pressure_history = AndersonPressureHistory()
-                                freeb_anderson_applied_bsqvac = None
+                                _reset_freeb_anderson_pressure()
                             anderson_result = anderson1_vacuum_pressure_update(
                                 old_pressure=freeb_anderson_applied_bsqvac,
                                 raw_pressure=bsqvac_edge,
@@ -11872,6 +11879,7 @@ def solve_fixed_boundary_residual_iter(
                 bad_growth_streak = 0
                 inv_tau = [0.15 / max(float(time_step), 1e-12)] * k_ndamp
                 freeb_turnon_applied = True
+                _reset_freeb_anderson_pressure()
             fsq0_curr = fsqr_f + fsqz_f + fsql_f
             prev_rz_fsq_before = prev_rz_fsq
             prev_rz_fsq = _free_boundary_prev_rz_fsq_next(
@@ -13381,6 +13389,7 @@ def solve_fixed_boundary_residual_iter(
                     axis_reset_done = True
                     iter1 = iter2
                     freeb_controls_cached = None
+                    _reset_freeb_anderson_pressure()
                     bad_growth_streak = 0
                     inv_tau = [0.15 / time_step] * k_ndamp
                     vmec2000_cache_valid = False
@@ -13532,6 +13541,7 @@ def solve_fixed_boundary_residual_iter(
                     bad_resets += 1
                     iter1 = iter2
                     freeb_controls_cached = None
+                    _reset_freeb_anderson_pressure()
                     bad_growth_streak = 0
                     fsq_prev = fsq_prev_before
                     fsq0_prev = fsq0_prev_before
@@ -13697,6 +13707,7 @@ def solve_fixed_boundary_residual_iter(
                 bad_resets += 1
                 iter1 = iter2
                 freeb_controls_cached = None
+                _reset_freeb_anderson_pressure()
                 bad_growth_streak = 0
                 fsq_prev = fsq_prev_before
                 fsq0_prev = fsq0_prev_before
@@ -14628,6 +14639,7 @@ def solve_fixed_boundary_residual_iter(
                         bad_resets += 1
                         iter1 = iter2
                         freeb_controls_cached = None
+                        _reset_freeb_anderson_pressure()
                         fsq_prev = fsq_prev_before
                         fsq0_prev = fsq0_prev_before
                         inv_tau = [0.15 / time_step] * k_ndamp
@@ -14672,6 +14684,7 @@ def solve_fixed_boundary_residual_iter(
                     bad_resets += 1
                     iter1 = iter2
                     freeb_controls_cached = None
+                    _reset_freeb_anderson_pressure()
                     fsq_prev = fsq_prev_before
                     fsq0_prev = fsq0_prev_before
                     inv_tau = [0.15 / time_step] * k_ndamp
