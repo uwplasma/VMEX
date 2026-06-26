@@ -1836,7 +1836,7 @@ def build_minimal_wout_data_kwargs(
     it performs output normalization and dtype coercion, but no physics
     calculations.  Keeping the final schema mapping here makes the high-level
     builder easier to audit while avoiding an import cycle with
-    :class:`vmec_jax.io.wout.schema.WoutData`.
+    :class:`vmec_jax.io.wout_files.schema.WoutData`.
     """
 
     main_modes = context["main_modes"]

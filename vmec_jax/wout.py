@@ -23,15 +23,15 @@ from .kernels.realspace import (
     vmec_realspace_geom_from_state,
 )
 from .kernels.residue import vmec_pwint_from_trig, vmec_wint_from_trig
-from .io.wout import bsubs as _wout_bsubs_helpers
-from .io.wout import debug as _wout_debug_helpers
-from .io.wout import diagnostics as _wout_diagnostics
-from .io.wout import flux as _wout_flux_helpers
-from .io.wout import jxbforce as _wout_jxbforce_helpers
-from .io.wout import mercier as _wout_mercier
-from .io.wout import parity as _wout_parity_helpers
-from .io.wout import state as _wout_state_helpers
-from .io.wout.minimal import (
+from .io.wout_files import bsubs as _wout_bsubs_helpers
+from .io.wout_files import debug as _wout_debug_helpers
+from .io.wout_files import diagnostics as _wout_diagnostics
+from .io.wout_files import flux as _wout_flux_helpers
+from .io.wout_files import jxbforce as _wout_jxbforce_helpers
+from .io.wout_files import mercier as _wout_mercier
+from .io.wout_files import parity as _wout_parity_helpers
+from .io.wout_files import state as _wout_state_helpers
+from .io.wout_files.minimal import (
     attach_force_payload_geometry,
     build_minimal_wout_data_kwargs,
     compute_minimal_wout_derived_profiles,
@@ -45,12 +45,12 @@ from .io.wout.minimal import (
     prepare_minimal_wout_force_sources,
     prepare_minimal_wout_nyquist_fields,
 )
-from .io.wout.netcdf import (
+from .io.wout_files.netcdf import (
     read_wout_payload,
     read_wout_scalar_metadata,
     write_wout_payload,
 )
-from .io.wout.nyquist import (
+from .io.wout_files.nyquist import (
     apply_nyquist_half_weight as _apply_nyquist_half_weight,  # noqa: F401 - compatibility export
     minimal_wout_lasym_nyquist_coefficients,
     minimal_wout_symmetric_nyquist_coefficients,
@@ -67,7 +67,7 @@ from .io.wout.nyquist import (
     vmec_wrout_nyquist_sin_coeffs_loop as _vmec_wrout_nyquist_sin_coeffs_loop,  # noqa: F401 - compatibility export
     vmec_wrout_nyquist_synthesis as _vmec_wrout_nyquist_synthesis,  # noqa: F401 - compatibility export
 )
-from .io.wout.schema import (
+from .io.wout_files.schema import (
     WoutData,
     _bool_from_nc,  # noqa: F401 - compatibility export
     _nc_scalar,  # noqa: F401 - compatibility export

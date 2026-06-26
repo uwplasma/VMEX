@@ -146,8 +146,8 @@ ALGORITHM_MAP: list[dict[str, Any]] = [
             "src/vmecpp/cpp/util/hdf5_io/hdf5_io.cc",
         ],
         "vmec_jax_sources": [
-            "vmec_jax/io/wout",
-            "vmec_jax/io/wout/mercier.py",
+            "vmec_jax/io/wout_files",
+            "vmec_jax/io/wout_files/mercier.py",
             "vmec_jax/wout.py",
         ],
         "profiler_keys": [
