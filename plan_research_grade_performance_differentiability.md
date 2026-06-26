@@ -7941,3 +7941,83 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.3%.
 - Docs/release hygiene: 100%.
 - Overall: 99.7%.
+
+### 2026-06-26: Extract residual index and state setup
+
+Steps taken:
+
+- Split mode-transform setup and initial residual-state construction out of
+  ``solve_fixed_boundary_residual_iter`` into
+  ``_prepare_residual_index_state_setup`` and a typed
+  ``_ResidualIndexStateSetup`` record.
+- Preserved the scan adapter contract by keeping the ``_mode_context`` local
+  available for the accelerated scan path.
+- Tightened the source-health baseline for
+  ``solve_fixed_boundary_residual_iter`` from 2463 to 2441 source lines.
+- Kept this tranche setup-only: no force equations, preconditioner algebra,
+  VMEC2000 time-step logic, scan acceptance, WOUT fields, or public benchmark
+  artifacts changed.
+
+Results obtained:
+
+- ``solve_fixed_boundary_residual_iter`` is now 2441 source lines by
+  ``inspect``.
+- ``python -m ruff check
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  tools/diagnostics/local_ci_gate.py tests/test_local_ci_gate.py`` passed.
+- ``python -m compileall -q
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  tools/diagnostics/local_ci_gate.py tests/test_local_ci_gate.py`` passed.
+- ``python tools/diagnostics/source_health.py --top 20
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2441
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=420`` passed.
+- ``python tools/diagnostics/local_ci_gate.py --dry-run --only
+  source-health`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_solve_performance_instrumentation.py
+  tests/test_solve_residual_iter_mode_transform_helpers.py
+  tests/test_solve_residual_iter_update_helpers.py tests/test_local_ci_gate.py
+  -q`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_driver_api.py tests/test_driver_fast_reconstruction.py
+  tests/test_driver_api_finish_more_coverage.py tests/test_driver_policy_helpers.py
+  tests/test_driver_policy_coverage_extra.py -q`` passed with existing
+  optimized-controller numerical warnings.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_residue_getfsq_parity.py
+  tests/test_wout_profiles_currents_bundled_parity.py
+  tests/test_physics_parity_helper_gates.py
+  tests/test_vmec_parity_physics_fast_gates.py
+  tests/test_converged_wout_matrix_parity.py
+  tests/test_parity_sweep_manifest_thresholds.py -q`` passed with the
+  existing expected xfail.
+- ``LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs
+  docs/_build/html_final_tranche_residual_state`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 30 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size is 28.48 MiB.
+
+Best next steps:
+
+1. Commit and push this residual state setup extraction, then let CI validate
+   the latest source-health baseline.
+2. If another source-health tranche is needed before review, the next highest
+   ROI item is splitting one of the very large free-boundary validation tests;
+   further residual-loop extraction should avoid tiny setup-only moves.
+3. Keep PR readiness conservative until the newest CI run is green.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.3%.
+- Free-boundary production differentiability: 97.6%.
+- Single-stage coil optimization: 94.0%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 82.5%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.7%.
