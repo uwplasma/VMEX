@@ -104,7 +104,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   startup, and peak memory remains materially higher than VMEC2000, especially
   for LASYM finite-beta rows. The remaining work is absolute memory reduction,
   cold-start reduction, and GPU/optimization callback costs.
-- Refactor/API/examples: 79.1%.
+- Refactor/API/examples: 79.3%.
   Public examples are better, but core source files and tests are still too
   large and too entangled. The fixed-boundary residual timing/setup seam is now
   slightly cleaner, but the main residual loop still needs a larger split.
@@ -6640,6 +6640,61 @@ Updated lane percentages:
 - Single-stage coil optimization: 94.0%.
 - CPU/GPU runtime and memory footprint: 99.2%.
 - Refactor/API/examples: 77.4%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
+### 2026-06-26: Factor fixed-boundary default grid setup
+
+Steps taken:
+
+- Extracted the default VMEC angle-grid construction in ``run_fixed_boundary``
+  into ``_maybe_default_fixed_boundary_grid``.
+- Kept grid creation limited to the solver paths that need it:
+  ``vmec_lbfgs``, ``vmec_gn``, and ``vmec2000_iter``.
+- Preserved the public driver behavior while creating another small named seam
+  around fixed-boundary setup.
+
+Results obtained:
+
+- ``run_fixed_boundary`` now reports ``504`` lines in ``source_health.py``,
+  down from the previous ``512``-line source-health baseline.
+- ``python -m ruff check vmec_jax/driver.py vmec_jax/drivers/finish.py``
+  passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_driver_api.py tests/test_driver_fast_reconstruction.py
+  tests/test_driver_api_finish_more_coverage.py -q`` passed with existing
+  numerical warnings only.
+- ``python tools/diagnostics/source_health.py --top 25 --top-functions 80
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2508
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=512`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size is ``28.43 MiB``.
+- ``git diff --check`` passed.
+- The previous pushed CI run for ``166a6d75`` is still in progress; earlier
+  cancelled runs are expected superseded commits.
+
+Best next steps:
+
+1. Commit and push this final public-driver setup extraction.
+2. Let CI validate the new ``main`` tip; avoid watching it continuously unless
+   it fails.
+3. If one more code-only cleanup is needed before review, target a larger
+   residual-loop phase extraction rather than refreshed public artifacts.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.2%.
+- Free-boundary production differentiability: 97.6%.
+- Single-stage coil optimization: 94.0%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 79.3%.
 - VMEC2000/VMEC++ parity and physics gates: 99.3%.
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
