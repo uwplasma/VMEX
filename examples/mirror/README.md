@@ -157,7 +157,11 @@ matching the raw VMEC2000 generated-``mgrid`` vacuum sign check. The default
 iteration ladder is ``NS_ARRAY = 9, 13, 17``,
 ``NITER_ARRAY = 4000, 8000, 12000``, and
 ``FTOL_ARRAY = 1e-8, 1e-10, 1e-12``, with ``DELT = 0.02`` and
-``NVACSKIP = 1``. The default
+``NVACSKIP = 1``. The default Fourier deck is
+``MPOL = 5, NTOR = 28, NZETA = 64`` and the default boundary-projection gate is
+``MAX_BOUNDARY_PROJECTION_ERROR = 5e-12``. This is intentionally strict enough
+for ``FTOL=1e-12`` studies; set the gate to ``None`` only for diagnostic
+underresolved runs. The default
 square axis uses the low-bandwidth rounded ``axis_kind="spline"`` profile before
 VMEC Fourier projection, which is less sensitive to ``NTOR`` than the sharper
 polar superellipse. For the spline-control bridge, set

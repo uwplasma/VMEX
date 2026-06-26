@@ -404,14 +404,14 @@ These metrics should be reviewed whenever changing ``MPOL``, ``NTOR``, or
 ``NZETA``: they diagnose input-boundary underfitting before the free-boundary
 nonlinear solve is interpreted.
 The root square-coil example now enforces
-``MAX_BOUNDARY_PROJECTION_ERROR = 5e-5`` by default. This keeps the current
-``MPOL=6, NTOR=23, NZETA=64`` production-style deck enabled, while still
-rejecting intentionally sharpened low-mode decks unless the user explicitly
-sets the threshold to ``None`` for diagnostic profiling. With the current
-first-order side/corner powers, ``MPOL=5, NTOR=12`` is no longer rejected by the
-projection gate; it remains a solver-convergence question, not an input
-underfitting failure. This guard keeps Fourier boundary underfitting separate
-from nonlinear-solver or direct-coil provider failures.
+``MAX_BOUNDARY_PROJECTION_ERROR = 5e-12`` by default and uses
+``MPOL=5, NTOR=28, NZETA=64`` as the production-style deck. This is strict
+enough for ``FTOL=1e-12`` studies on the current spline-smoothed square target.
+Lower-mode decks remain useful for diagnostic profiling, but they should set
+the threshold to ``None`` or pass ``--max-boundary-projection-error none`` so
+the report explicitly labels them as underresolved experiments. This guard
+keeps Fourier boundary underfitting separate from nonlinear-solver or
+direct-coil provider failures.
 
 Promotion Gates
 ---------------

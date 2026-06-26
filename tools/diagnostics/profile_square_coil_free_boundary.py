@@ -74,8 +74,8 @@ def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--outdir", type=Path, default=DEFAULT_OUTDIR)
     p.add_argument("--beta-percent", type=float, default=0.0)
-    p.add_argument("--mpol", type=int, default=6)
-    p.add_argument("--ntor", type=int, default=12)
+    p.add_argument("--mpol", type=int, default=ExampleConfig().mpol)
+    p.add_argument("--ntor", type=int, default=ExampleConfig().ntor)
     p.add_argument("--ns", type=int, default=9)
     p.add_argument(
         "--nzeta",
@@ -115,7 +115,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--max-boundary-projection-error",
         type=_parse_optional_positive_float,
-        default=None,
+        default=ExampleConfig().max_boundary_projection_error,
         help=(
             "Optional production gate on the Fourier boundary projection max component error. "
             "Use 'none' to keep diagnostic underresolved profiles runnable."

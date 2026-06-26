@@ -224,7 +224,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().delt == pytest.approx(0.02)
     assert module.ExampleConfig().niter_array == (4000, 8000, 12000)
     assert module.ExampleConfig().coil_chunk_size == 512
-    assert module.ExampleConfig().max_boundary_projection_error == pytest.approx(5.0e-5)
+    assert module.ExampleConfig().max_boundary_projection_error == pytest.approx(5.0e-12)
     assert module.ExampleConfig().side_power == pytest.approx(1.0)
     assert module.ExampleConfig().corner_power == pytest.approx(1.0)
     assert module.ExampleConfig().nstep == 1

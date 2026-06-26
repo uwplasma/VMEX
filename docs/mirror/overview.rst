@@ -242,11 +242,13 @@ Fourier closure suggestion for the current spline-smoothed target before a long
 solve is launched, and the profiler treats omitted ``--nzeta`` as the
 recommendation for the selected ``NTOR``. On the current square-coil shape, the
 spline envelope
-cuts max component projection error from about ``3.2e-4`` to ``1.3e-4`` at
-``MPOL=5, NTOR=12`` and to about ``1.4e-5`` at ``MPOL=6, NTOR=23``. The root
-square-coil example now rejects projection errors above ``5e-5`` by default, so
-low-mode edits fail before spending a long ``FTOL=1e-12`` solve on an underfit
-Fourier deck.
+cuts max component projection error from superellipse-scale underfitting to
+about ``1.5e-4`` at ``MPOL=3, NTOR=8``, about ``5.6e-6`` at
+``MPOL=3, NTOR=12``, about ``3.3e-10`` at ``MPOL=6, NTOR=23``, and about
+``3.5e-12`` at the strict ``MPOL=5, NTOR=28, NZETA=64`` deck. The root
+square-coil example now rejects projection errors above ``5e-12`` by default,
+so low-mode edits fail before spending a long ``FTOL=1e-12`` solve on an
+underfit Fourier deck.
 Direct-coil convergence
 candidates are gated by a fresh residual recompute using the current
 plasma-current normalization, and the square-coil example records near-axis

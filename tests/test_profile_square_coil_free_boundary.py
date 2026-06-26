@@ -312,6 +312,8 @@ def test_square_coil_profile_rejects_mgrid_nphi_not_multiple_of_nzeta(tmp_path: 
                 "--skip-direct",
                 "--skip-mgrid",
                 "--skip-provider-parity",
+                "--max-boundary-projection-error",
+                "none",
             ]
         )
 
@@ -421,6 +423,8 @@ def test_square_coil_profile_defaults_nzeta_to_square_axis_recommendation(monkey
             "--skip-direct",
             "--skip-mgrid",
             "--skip-provider-parity",
+            "--max-boundary-projection-error",
+            "none",
         ]
     )
 
@@ -453,6 +457,8 @@ def test_square_coil_profile_records_direct_coil_chunk_size(monkeypatch, tmp_pat
             "--skip-direct",
             "--skip-mgrid",
             "--skip-provider-parity",
+            "--max-boundary-projection-error",
+            "none",
         ]
     )
 
@@ -490,6 +496,8 @@ def test_square_coil_profile_direct_only_skips_mgrid_write(monkeypatch, tmp_path
             "--skip-direct",
             "--skip-mgrid",
             "--skip-provider-parity",
+            "--max-boundary-projection-error",
+            "none",
         ]
     )
 
@@ -526,6 +534,8 @@ def test_square_coil_profile_chunks_mgrid_when_direct_sampler_is_jit(monkeypatch
             "0",
             "--skip-direct",
             "--skip-provider-parity",
+            "--max-boundary-projection-error",
+            "none",
         ]
     )
 
@@ -569,6 +579,8 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
             "--no-direct-trial-bsqvac-resample",
             "--skip-mgrid",
             "--skip-provider-parity",
+            "--max-boundary-projection-error",
+            "none",
         ]
     )
 

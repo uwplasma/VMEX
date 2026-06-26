@@ -28253,3 +28253,100 @@ git diff --check
 ### User input needed
 
 No user input is needed.
+
+---
+## 240. Promoted Square-Coil Hybrid Defaults To Strict Fourier Closure
+
+### Steps taken
+
+- Rechecked the square-axis spline/control-spline projection ladder for the
+  user-facing ``MPOL``, ``NTOR``, and ``NZETA`` knobs.
+- Compared the rounded ``axis_kind="spline"`` and explicit
+  ``axis_kind="control_spline"`` paths. For the default eight side/corner
+  controls they are intentionally equivalent at the production target; both
+  are much lower bandwidth than the sharp superellipse target.
+- Changed the square-coil hybrid example default from
+  ``MPOL=6, NTOR=23`` to ``MPOL=5, NTOR=28`` with ``NZETA=64``.
+- Tightened the default square-coil boundary-projection gate from ``5e-5`` to
+  ``5e-12`` so the input boundary is represented at a scale compatible with
+  ``FTOL=1e-12`` studies.
+- Changed the square-coil backend profiler defaults to the same strict deck
+  and projection gate. Underresolved diagnostic runs now opt out explicitly
+  with ``--max-boundary-projection-error none``.
+- Updated the mirror README and convergence documentation to describe the
+  strict deck, the opt-out path for diagnostic profiling, and the current
+  VMEC2000/vmec_jax interpretation.
+- Re-polled the active VMEC2000 strict-reference profile on ``office``.
+
+### Results obtained
+
+- Projection ladder for the current rounded spline square-axis target:
+  - ``MPOL=3, NTOR=8`` gives max component projection error about
+    ``1.52e-4`` and is underresolved for production.
+  - ``MPOL=3, NTOR=12`` gives about ``5.60e-6`` and remains diagnostic-only
+    for ``FTOL=1e-12`` work.
+  - ``MPOL=6, NTOR=23`` gives about ``3.32e-10``; this is much better than the
+    low-mode decks but still loose relative to a ``1e-12`` solve target.
+  - ``MPOL=5, NTOR=28, NZETA=64`` gives about ``3.48e-12`` and is now the
+    default strict deck.
+- The explicit control-spline axis did not reduce projection error beyond the
+  rounded spline default for the current controls because both represent the
+  same smooth fourfold envelope. A true solver-native spline/control basis is
+  still a larger future reparameterization, not a quick fix to the current
+  VMEC Fourier solve.
+- The active VMEC2000 strict-reference run remains productive. In the
+  ``FTOL=1e-10`` stage it decreased from max component residual
+  ``1.54e-8`` at iteration ``699`` to ``5.42e-9`` at iteration ``909`` with
+  tail factor about ``0.9964`` and no vacuum-grid excursions. This supports
+  VMEC2000 as the more robust reference for the square-coil generated-``mgrid``
+  problem, while also showing that ``1e-12`` needs a long staged budget.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py tests/test_toroidal_hybrid.py
+python -m py_compile examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py tools/diagnostics/profile_square_coil_free_boundary.py
+git diff --check
+ssh office "cd ~/local/vmec_mirror && python3 tools/diagnostics/summarize_square_coil_profiles.py results/square_coil_freeb_backend_profile_vmec2000_ns9_13_17_mpol5_ntor28_nzeta64_mgrid88x64x64_niter24k_firstorder_nstep1 --markdown"
+```
+
+### File structure and best-practice notes
+
+- The example keeps its single top-of-file parameter block and remains
+  self-contained for local runs.
+- The stricter defaults live in the root example and in the profiling tool
+  only; no new helper modules or output artifacts were added.
+- Documentation was updated in the existing mirror README and convergence
+  pages rather than creating another planning document.
+- No ``results/`` files or figure artifacts were committed.
+
+### Best next steps
+
+1. Let the active VMEC2000 run complete the ``1e-10`` stage and attempt the
+   ``1e-12`` stage; parse the final stage summaries before making a production
+   convergence claim.
+2. If VMEC2000 stalls above ``1e-12``, run a small timestep/staging scan using
+   the same strict ``5,28,64`` deck and generated ``mgrid``.
+3. When CPU is free, relaunch a short ``vmec_jax`` generated-``mgrid`` row with
+   the new turn-on timing logs to isolate whether NESTOR sampling, the vacuum
+   solve, or the coupled force evaluation dominates the post-turn-on stall.
+4. Keep the solver-native spline/control-basis hybrid as a later geometry
+   simplification lane. It is useful for reducing future Fourier-mode burden,
+   but the current strict-deck failure mode is already beyond the projection
+   bottleneck.
+
+### Completion percentages after M240
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``90%``.
+- VMEC2000 robustness/reference lane: ``94%``.
+- Direct-coil GPU/JIT parity lane: ``77%``.
+- ``vmec_jax`` generated-``mgrid`` parity/performance lane: ``72%``.
+- Square-axis spline-smoothed Fourier closure lane: ``99%`` for the VMEC
+  Fourier bridge.
+- True spline/control-basis hybrid lane: ``36%``.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``95%``
+  pending strict VMEC2000 completion and ``vmec_jax`` pressure-turn-on fixes.
+
+### User input needed
+
+No user input is needed.
