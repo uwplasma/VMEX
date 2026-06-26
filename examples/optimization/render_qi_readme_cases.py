@@ -8,6 +8,8 @@ contours only.
 
 from __future__ import annotations
 
+import argparse
+from collections.abc import Sequence
 import csv
 import json
 from dataclasses import dataclass
@@ -628,8 +630,8 @@ def _case_record(case: QICase) -> dict[str, str | float]:
     }
 
 
-def _write_csv(records: list[dict[str, str | float]]) -> None:
-    FIGURE_DIR.mkdir(parents=True, exist_ok=True)
+def _write_csv(records: list[dict[str, str | float]], csv_out: Path = OUT_CSV) -> None:
+    csv_out.parent.mkdir(parents=True, exist_ok=True)
     fields = [
         "case",
         "input_file",
@@ -663,7 +665,7 @@ def _write_csv(records: list[dict[str, str | float]]) -> None:
         "selected_lambda_mirror",
         "final_wout",
     ]
-    with OUT_CSV.open("w", newline="") as f:
+    with csv_out.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(records)
@@ -889,7 +891,7 @@ def _row_title(record: dict[str, str | float]) -> str:
     )
 
 
-def _render(records: list[dict[str, str | float]]) -> None:
+def _render(records: list[dict[str, str | float]], figure_out: Path = OUT_PNG) -> None:
     import matplotlib
 
     matplotlib.use("Agg")
@@ -958,17 +960,45 @@ def _render(records: list[dict[str, str | float]]) -> None:
             ha="left",
             va="bottom",
         )
-    fig.savefig(OUT_PNG, dpi=130, bbox_inches="tight")
+    figure_out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(figure_out, dpi=130, bbox_inches="tight")
     plt.close(fig)
 
 
-def main() -> None:
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--figure-out",
+        type=Path,
+        default=OUT_PNG,
+        help="PNG output path for the QI README panel.",
+    )
+    parser.add_argument(
+        "--csv-out",
+        type=Path,
+        default=OUT_CSV,
+        help="CSV output path for the QI README summary table.",
+    )
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Write only the CSV summary and skip the Matplotlib figure render.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
     prepare_matplotlib_3d()
     records = [_case_record(case) for case in CASES]
-    _write_csv(records)
-    _render(records)
-    print(f"Wrote {OUT_PNG}")
-    print(f"Wrote {OUT_CSV}")
+    _write_csv(records, args.csv_out)
+    if not args.summary_only:
+        _render(records, args.figure_out)
+        print(f"Wrote {args.figure_out}")
+    print(f"Wrote {args.csv_out}")
     for record in records:
         print(
             f"{record['case']}: QI={record['qi_legacy_total']:.6e} "
@@ -979,7 +1009,8 @@ def main() -> None:
             f"aspect={record['aspect']:.6g} "
             f"cpu_min={record['cpu_time_min']:.3f}"
         )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

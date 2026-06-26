@@ -11,6 +11,8 @@ elongation diagnostics enter the selection.
 
 from __future__ import annotations
 
+import argparse
+from collections.abc import Sequence
 import csv
 import json
 from dataclasses import dataclass
@@ -844,34 +846,51 @@ def _render_single_run(run: BestRun, out_png: Path) -> None:
     plt.close(fig)
 
 
-def main() -> None:
-    prepare_matplotlib_3d()
-    import matplotlib
-
-    matplotlib.use("Agg")
-    from matplotlib import pyplot as plt
-
-    plt.rcParams.update(
-        {
-            "figure.facecolor": "white",
-            "axes.facecolor": "white",
-            "font.family": "DejaVu Serif",
-            "font.size": 9,
-            "axes.titlesize": 9,
-            "axes.labelsize": 8,
-            "xtick.labelsize": 7,
-            "ytick.labelsize": 7,
-        }
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Write only the README best-run CSV and skip figure rendering.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
+    if not args.summary_only:
+        prepare_matplotlib_3d()
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from matplotlib import pyplot as plt
+
+        plt.rcParams.update(
+            {
+                "figure.facecolor": "white",
+                "axes.facecolor": "white",
+                "font.family": "DejaVu Serif",
+                "font.size": 9,
+                "axes.titlesize": 9,
+                "axes.labelsize": 8,
+                "xtick.labelsize": 7,
+                "ytick.labelsize": 7,
+            }
+        )
 
     runs = _best_runs()
     _write_readme_summary(runs)
-    for run in runs:
-        out_png = FIGURE_DIR / f"readme_best_optimization_{run.problem}.png"
-        _render_single_run(run, out_png)
-        print(f"Wrote {out_png}")
+    if not args.summary_only:
+        for run in runs:
+            out_png = FIGURE_DIR / f"readme_best_optimization_{run.problem}.png"
+            _render_single_run(run, out_png)
+            print(f"Wrote {out_png}")
     print(f"Wrote {OUT_CSV}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -25,6 +26,8 @@ from vmec_jax.free_boundary import (
     vacuum_boundary_fields_from_cylindrical,
 )
 from vmec_jax.namelist import read_indata
+from vmec_jax.solvers.fixed_boundary.residual.runtime import resolve_free_boundary_coupling_runtime
+from vmec_jax.solvers.free_boundary.control import free_boundary_nestor_iteration_coupling
 from vmec_jax.solve import (
     _free_boundary_iter_controls_vmec,
     _free_boundary_prev_rz_fsq_next,
@@ -198,6 +201,179 @@ def test_free_boundary_iter_controls_vmec_updates_nvacskip_on_full_step():
     assert ivacskip == 0
     # fsq=1e-12 -> max(1e-1,1e11*fsq)=1e-1 -> nvacskip target=10
     assert nvacskip == 10
+
+
+def test_free_boundary_nestor_iteration_coupling_promotes_turnon_and_records_diagnostics():
+    class Static:
+        free_boundary_extcur = (1.5,)
+
+    class NestorResult:
+        model = "fake-nestor"
+        reused = True
+        solve_time_s = 0.25
+        sample_time_s = 0.5
+        trace_arrays = {"branch": "trace"}
+        diagnostics = {
+            "source_reused": True,
+            "provider_allows_source_reuse": False,
+            "bnormal_rms": 1.0e-3,
+            "gsource_rms": 2.0e-3,
+            "bsqvac_rms": 3.0e-3,
+        }
+
+    calls = []
+
+    def fake_nestor(**kwargs):
+        calls.append(kwargs)
+        return NestorResult(), {"runtime": "next"}
+
+    edge = np.asarray([[4.0, 5.0]])
+    histories = {
+        "source": [],
+        "provider": [],
+        "bnormal": [],
+        "gsource": [],
+        "bsqvac": [],
+    }
+
+    out = free_boundary_nestor_iteration_coupling(
+        free_boundary_enabled=True,
+        freeb_couple_edge=True,
+        state="state",
+        static=Static(),
+        freeb_ivac=0,
+        freeb_ivacskip=0,
+        iter2=7,
+        freeb_nestor_runtime={"runtime": "old"},
+        freeb_plascur=1.25,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_static={"provider": "static"},
+        external_field_provider_params={"provider": "params"},
+        collect_trace_arrays=True,
+        freeb_turnon_iter=True,
+        freeb_ivac_effective=1,
+        freeb_nvacskip=3,
+        controls_cached=(0, 0, 3),
+        last_model="none",
+        last_diagnostics={},
+        env_freeb_raise=True,
+        nestor_external_only_step_func=fake_nestor,
+        edge_bsqvac_from_nestor_func=lambda _res, _static: edge,
+        source_reused_history=histories["source"],
+        provider_allows_source_reuse_history=histories["provider"],
+        bnormal_rms_history=histories["bnormal"],
+        gsource_rms_history=histories["gsource"],
+        bsqvac_rms_history=histories["bsqvac"],
+    )
+
+    assert calls and calls[0]["ivac"] == 0
+    assert calls[0]["collect_trace_arrays"] is True
+    assert out.ivac == 1
+    assert out.ivac_effective == 1
+    assert out.controls_cached == (1, 0, 3)
+    assert out.runtime == {"runtime": "next"}
+    assert out.trace_arrays == {"branch": "trace"}
+    assert out.reused is True
+    assert out.solve_time == pytest.approx(0.25)
+    assert out.sample_time == pytest.approx(0.5)
+    assert out.last_model == "fake-nestor"
+    np.testing.assert_allclose(out.bsqvac_half_current, edge)
+    assert histories["source"] == [1]
+    assert histories["provider"] == [0]
+    np.testing.assert_allclose(histories["bnormal"], [1.0e-3])
+    np.testing.assert_allclose(histories["gsource"], [2.0e-3])
+    np.testing.assert_allclose(histories["bsqvac"], [3.0e-3])
+
+
+def test_residual_runtime_free_boundary_coupling_binds_trial_resampler():
+    accepted_calls = []
+    trial_calls = []
+    source_reused_history = []
+    trial_reused_history = []
+
+    def fake_accepted_coupling(**kwargs):
+        accepted_calls.append(kwargs)
+        kwargs["source_reused_history"].append(1)
+        return SimpleNamespace(
+            bsqvac_half_current="accepted-bsqvac",
+            runtime={"runtime": "accepted"},
+            trace_arrays={"trace": "accepted"},
+            reused=True,
+            solve_time=0.125,
+            sample_time=0.25,
+            last_model="accepted-model",
+            last_diagnostics={"bnormal_rms": 1.0e-4},
+            ivac=1,
+            ivac_effective=1,
+            controls_cached=(1, 0, 4),
+        )
+
+    def fake_trial_bsqvac_half(candidate_state, **kwargs):
+        trial_calls.append((candidate_state, kwargs))
+        kwargs["trial_reused_history"].append(1)
+        return "trial-bsqvac"
+
+    out = resolve_free_boundary_coupling_runtime(
+        free_boundary_enabled=True,
+        freeb_couple_edge=True,
+        state="state",
+        static=SimpleNamespace(free_boundary_extcur=(2.0,)),
+        freeb_ivac=0,
+        freeb_ivacskip=0,
+        iter2=5,
+        freeb_nestor_runtime={"runtime": "old"},
+        freeb_plascur=1.25,
+        external_field_provider_kind="direct_coils",
+        external_field_provider_static={"static": True},
+        external_field_provider_params={"params": True},
+        collect_trace_arrays=True,
+        freeb_turnon_iter=True,
+        freeb_ivac_effective=1,
+        freeb_nvacskip=4,
+        controls_cached=(0, 0, 4),
+        last_model="none",
+        last_diagnostics={},
+        env_freeb_raise=True,
+        nestor_external_only_step_func=lambda **_kwargs: None,
+        edge_bsqvac_from_nestor_func=lambda *_args: None,
+        nestor_iteration_coupling_func=fake_accepted_coupling,
+        trial_bsqvac_half_func=fake_trial_bsqvac_half,
+        source_history_lists={
+            "source_reused_history": source_reused_history,
+            "provider_allows_source_reuse_history": [],
+            "bnormal_rms_history": [],
+            "gsource_rms_history": [],
+            "bsqvac_rms_history": [],
+        },
+        trial_history_lists={
+            "trial_reused_history": trial_reused_history,
+            "trial_solve_time_history": [],
+            "trial_sample_time_history": [],
+            "trial_failed_history": [],
+        },
+    )
+
+    assert accepted_calls and accepted_calls[0]["freeb_ivac"] == 0
+    assert accepted_calls[0]["collect_trace_arrays"] is True
+    assert source_reused_history == [1]
+    assert out.bsqvac_half_current == "accepted-bsqvac"
+    assert out.nestor_runtime == {"runtime": "accepted"}
+    assert out.trace_arrays == {"trace": "accepted"}
+    assert out.reused is True
+    assert out.solve_time == pytest.approx(0.125)
+    assert out.sample_time == pytest.approx(0.25)
+    assert out.last_model == "accepted-model"
+    assert out.last_diagnostics == {"bnormal_rms": 1.0e-4}
+    assert out.ivac == 1
+    assert out.ivac_effective == 1
+    assert out.controls_cached == (1, 0, 4)
+
+    assert out.trial_bsqvac_half_for_state("candidate") == "trial-bsqvac"
+    assert trial_reused_history == [1]
+    assert trial_calls and trial_calls[0][0] == "candidate"
+    assert trial_calls[0][1]["freeb_bsqvac_half_current"] == "accepted-bsqvac"
+    assert trial_calls[0][1]["freeb_nestor_runtime"] == {"runtime": "accepted"}
+    assert trial_calls[0][1]["freeb_ivac_effective"] == 1
 
 
 def test_free_boundary_prev_rz_fsq_next_preserves_pre_turnon_value():

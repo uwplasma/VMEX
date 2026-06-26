@@ -531,6 +531,17 @@ Regenerate these lightweight artifacts with:
 
    PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
 
+For quick provenance checks without a Matplotlib render, or to write review
+copies outside the tracked docs tree, use:
+
+.. code-block:: bash
+
+   PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py \
+     --summary-only --csv-out outputs/qi_readme_cases_check.csv
+   PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py \
+     --figure-out outputs/qi_readme_cases_review.png \
+     --csv-out outputs/qi_readme_cases_review.csv
+
 This renderer intentionally consumes the curated
 ``docs/_static/qi_readme_cases`` bundle instead of ignored local
 ``results/`` directories.  Large WOUT files in that bundle are ignored by git

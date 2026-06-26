@@ -9,6 +9,8 @@ explicit and writes a diagnostics table used by the README selector.
 
 from __future__ import annotations
 
+import argparse
+from collections.abc import Sequence
 import csv
 import json
 from pathlib import Path
@@ -477,7 +479,21 @@ def _write_best(rows: list[dict]) -> dict:
     return payload
 
 
-def main() -> None:
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Write CSV/JSON summaries and skip the Matplotlib objective panel.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
     rows = _discover_qi_results()
     if not rows:
         raise FileNotFoundError(
@@ -486,10 +502,12 @@ def main() -> None:
             "with the current objective policy before rendering."
         )
     _write_summaries(rows)
-    _plot_objective_panel(rows)
+    if not args.summary_only:
+        _plot_objective_panel(rows)
     best = _write_best(rows)
     print(f"Wrote {SUMMARY_CSV}")
-    print(f"Wrote {OBJECTIVE_PNG}")
+    if not args.summary_only:
+        print(f"Wrote {OBJECTIVE_PNG}")
     print(
         "Best QI: "
         f"{best['backend']} {best['policy']} qp_preseed={best['qi_qp_preseed']} "
@@ -497,7 +515,8 @@ def main() -> None:
         f"J={best.get('objective_final')} QI={best.get('qi_legacy_total', best.get('qi_raw_total'))} "
         f"mirror={best.get('qi_mirror_ratio_max')} elong={best.get('qi_max_elongation')}"
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
