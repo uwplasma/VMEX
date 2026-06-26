@@ -27920,3 +27920,94 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+
+---
+## 236. Replaced Nonproductive Direct Row With Chunked Verbose 5,28 Profile
+
+### Steps taken
+
+- Fast-forwarded ``office`` to commit ``730169f``.
+- Stopped the old direct ``MPOL=6, NTOR=23`` full-sampler row and its waiting
+  ``7,28`` launcher.
+- Left the active VMEC2000 ``MPOL=5, NTOR=28`` generated-``mgrid`` row running.
+- Launched a replacement direct-coil profile matching the VMEC2000 geometry:
+  - ``MPOL=5, NTOR=28, NZETA=64``;
+  - ``NS_ARRAY=9,13,17``;
+  - ``NITER_ARRAY=4000,8000,12000``;
+  - ``FTOL_ARRAY=1e-8,1e-10,1e-12``;
+  - ``DELT=0.02``, ``NVACSKIP=1``, ``NSTEP=1``;
+  - first-order square-axis weights;
+  - ``--coil-chunk-size 512``;
+  - ``--verbose-solver``;
+  - ``--return-best-scored-state`` and ``--freeb-anderson-pressure``.
+
+### Results obtained
+
+- New direct profile directory:
+  ``results/square_coil_freeb_backend_profile_direct_chunked_verbose_ns9_13_17_mpol5_ntor28_nzeta64_niter12k``.
+- The replacement direct row prints VMEC-style rows in ``launcher.log``.
+- The direct row initially had ``INITIAL JACOBIAN CHANGED SIGN`` and repaired
+  the magnetic-axis guess, then entered force iterations.
+- Direct residuals decreased from roughly
+  ``FSQR=5.57e-3, FSQZ=1.14e-3, FSQL=3.77e-3`` at iteration ``1`` to roughly
+  ``FSQR=7.53e-4, FSQZ=1.73e-4, FSQL=3.88e-4`` by iteration ``79``.
+- Direct free-boundary vacuum pressure turned on at iteration ``79``.
+- GPU utilization remains near zero for this direct row, so the current direct
+  path is still CPU-bound for this configuration despite a visible JAX GPU
+  backend. The chunked verbose row is useful for convergence diagnostics, not
+  yet a performance win.
+- The active VMEC2000 row improved to iteration ``1311`` with live
+  ``final_max_component`` about ``4.67e-5`` and
+  ``vacuum_grid_exceeded_count = 0``. It remains in the coarse ``FTOL=1e-8``
+  phase, so it is not a strict ``1e-12`` result yet.
+
+### How it was tested
+
+```bash
+ssh office "cd ~/local/vmec_mirror && git pull --ff-only"
+ssh office "kill -TERM 504339 504330 505531"
+ssh office "cd ~/local/vmec_mirror && results/square_coil_freeb_backend_profile_direct_chunked_verbose_ns9_13_17_mpol5_ntor28_nzeta64_niter12k/launcher.sh"
+ssh office "cd ~/local/vmec_mirror && tail -120 results/square_coil_freeb_backend_profile_direct_chunked_verbose_ns9_13_17_mpol5_ntor28_nzeta64_niter12k/launcher.log"
+ssh office "cd ~/local/vmec_mirror && python3 tools/diagnostics/summarize_square_coil_profiles.py results/square_coil_freeb_backend_profile_vmec2000_ns9_13_17_mpol5_ntor28_nzeta64_mgrid88x64x64_niter24k_firstorder_nstep1 results/square_coil_freeb_backend_profile_direct_chunked_verbose_ns9_13_17_mpol5_ntor28_nzeta64_niter12k --markdown"
+```
+
+The launcher command was run under ``nohup`` in practice so it can continue on
+``office`` after this session.
+
+### File structure and best-practice notes
+
+- All new runtime artifacts are under ignored ``results/`` paths.
+- No figures, WOUTs, ``mgrid`` files, or raw profile JSON were committed.
+- The direct and VMEC2000 rows now share the same ``5,28,64`` first-order target,
+  which makes the eventual residual/runtime comparison cleaner than the old
+  mixed ``6,23`` versus ``5,28`` setup.
+
+### Best next steps
+
+1. Let the chunked verbose direct row continue until completion or a clear
+   residual floor.
+2. Let the VMEC2000 ``5,28`` row continue into the final strict stage.
+3. Compare direct versus VMEC2000 only after both have either completed or
+   produced reproducible residual floors.
+4. If both paths stall above ``1e-12``, move to solver-native spline/control
+   variables instead of increasing Fourier modes again.
+5. If direct remains CPU-bound, profile the direct-field provider/JAX sampler
+   separately before spending more strict-solve time on GPU direct rows.
+
+### Completion percentages after M236
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``85%``.
+- VMEC2000 robustness/reference lane: ``91%``.
+- Direct-coil GPU/JIT parity lane: ``73%`` chunked verbose row running.
+- Direct-provider profiling/instrumentation lane: ``100%`` for current
+  profiling controls.
+- Square-axis spline-smoothed Fourier closure lane: ``96%``.
+- True spline/control-basis hybrid lane: ``35%`` bridge corrected, solver-native update still open.
+- Documentation and diagnostics for active profiling: ``100%``.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``94%``
+  pending strict ``5,28`` convergence evidence.
+
+### User input needed
+
+No user input is needed.
