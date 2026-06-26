@@ -346,6 +346,56 @@ def _project_freeb_edge_control_state(
     )
 
 
+def _freeb_edge_control_state_residual_metrics(state: VMECState, projection: dict[str, Any]) -> dict[str, Any]:
+    """Measure how far the LCFS edge row sits outside reduced controls."""
+
+    if not bool(projection.get("enabled", False)):
+        return {"enabled": False, "status": "disabled"}
+    k = int(projection["mode_count"])
+    scale = np.asarray(projection["mode_scale_np"], dtype=float)
+    initial = {name: np.asarray(value, dtype=float) for name, value in projection["initial_np"].items()}
+    jacobian = np.asarray(projection["jacobian_np"], dtype=float)
+    pinv = np.asarray(projection["pinv_np"], dtype=float)
+    target = np.concatenate(
+        [
+            np.asarray(state.Rcos, dtype=float)[-1] * scale - initial["R_cos"],
+            np.asarray(state.Rsin, dtype=float)[-1] * scale - initial["R_sin"],
+            np.asarray(state.Zcos, dtype=float)[-1] * scale - initial["Z_cos"],
+            np.asarray(state.Zsin, dtype=float)[-1] * scale - initial["Z_sin"],
+        ],
+        axis=0,
+    )
+    control_delta = pinv @ target
+    projected = jacobian @ control_delta
+    residual = target - projected
+    finite = residual[np.isfinite(residual)]
+    target_l2 = float(np.linalg.norm(target))
+    projected_l2 = float(np.linalg.norm(projected))
+    residual_l2 = float(np.linalg.norm(finite)) if finite.size else 0.0
+    residual_linf = float(np.max(np.abs(finite))) if finite.size else 0.0
+    residual_rms = float(np.sqrt(np.mean(finite * finite))) if finite.size else 0.0
+    residual_rel = None if target_l2 <= np.finfo(float).tiny else float(residual_l2 / target_l2)
+    labels = list(dict(projection.get("info", {})).get("labels", []))
+    return {
+        "enabled": True,
+        "status": "measured",
+        "mode": "edge_delta_least_squares",
+        "mode_count": int(k),
+        "control_count": int(jacobian.shape[1]),
+        "target_l2": target_l2,
+        "projected_l2": projected_l2,
+        "residual_l2": residual_l2,
+        "residual_linf": residual_linf,
+        "residual_rms": residual_rms,
+        "residual_rel": residual_rel,
+        "control_delta_l2": float(np.linalg.norm(control_delta)),
+        "control_delta_linf": float(np.max(np.abs(control_delta))) if control_delta.size else 0.0,
+        "control_delta_by_label": {
+            str(label): float(value) for label, value in zip(labels, control_delta, strict=False)
+        },
+    }
+
+
 def _zero_freeb_edge_control_velocity_blocks(
     blocks: Any,
     projection: dict[str, Any],

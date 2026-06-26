@@ -5738,6 +5738,139 @@ Visual validation:
 
 No user input is needed.
 
+## M307. Reduced-control LCFS residual diagnostics for strict square-coil runs
+
+### Steps taken
+
+- Added a solver diagnostic that measures the final free-boundary LCFS edge row
+  against the active reduced spline-control projection.
+- Threaded that diagnostic into the existing
+  `free_boundary.edge_control_projection` result block, so long runs report
+  whether the accepted edge state stayed inside the square/stellarator control
+  subspace.
+- Exposed the metric in the square-coil profile summarizer with compact table
+  fields:
+  - `freeb_edge_control_projection_state_residual_status`;
+  - `freeb_edge_control_projection_state_residual_linf`;
+  - `freeb_edge_control_projection_state_residual_rms`;
+  - `freeb_edge_control_projection_state_residual_rel`.
+- Rechecked the active `office` strict rows without interrupting them.
+
+### Results obtained
+
+- The reduced-control metric now separates two failure modes:
+  - a representation/control-subspace leak in the LCFS edge row;
+  - a nonlinear free-boundary force-balance stall after the LCFS has been kept
+    inside the reduced spline-control subspace.
+- Current live evidence still points to nonlinear strict convergence as the
+  open issue:
+  - direct JAX hot restart is running near iteration `5962/8000` with final
+    max component about `1.82e-11`, classified as `flat_above_stage_ftol`;
+  - VMEC2000/generated-`mgrid` has progressed into the `FTOL=1e-10` stage but
+    remains around `4.67e-5` max component early in that stage, so it has not
+    yet shown better strict robustness.
+- The square-axis resolution matrix still classifies
+  `MPOL=5, NTOR=28, NZETA=64` as the first production-ready strict deck among
+  the tested rows; edited lower `NZETA` decks remain diagnostic-only or are
+  auto-bumped before production runs.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py \
+  tests/test_free_boundary_wp0.py::test_free_boundary_edge_control_zeroes_only_lcfs_geometry_velocity_rows \
+  tests/test_toroidal_hybrid.py::test_square_axis_free_boundary_edge_control_projection_payload \
+  tests/test_toroidal_hybrid.py::test_square_axis_control_fourier_map_status_reports_conditioning
+```
+
+Result: `58 passed`, with one pre-existing JAX deprecation warning.
+
+```bash
+venv/bin/python tools/diagnostics/source_health.py --top 20 \
+  --max-root-helper-prefix-files 2 \
+  --max-function-lines-at vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2440 \
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=420
+```
+
+Result: source-health stayed within the current ratchets
+(`solve_fixed_boundary_residual_iter=2439`, `run_fixed_boundary=420`,
+helper-prefix file count `2`).
+
+```bash
+venv/bin/python tools/diagnostics/square_coil_resolution_matrix.py \
+  --decks 5:20:48,5:28:48,5:28:64,6:32:72,7:28:auto,8:32:auto \
+  --format markdown --include-control-map --target-error 5e-12 \
+  --ns-array 9,13,17 --niter-array 4000,8000,24000 \
+  --ftol-array 1e-8,1e-10,1e-12
+```
+
+Result: `5:28:64`, `6:32:72`, `7:28:auto`, and `8:32:auto` are
+`production_ready`; the square reduced-control map has condition number `1`,
+and the five-control stellarator map has condition number about `1.81`.
+
+Additional checks:
+
+```bash
+ruff check vmec_jax/solvers/free_boundary/control.py \
+  vmec_jax/solvers/fixed_boundary/residual/finalize.py \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+venv/bin/python -m py_compile \
+  vmec_jax/solvers/free_boundary/control.py \
+  vmec_jax/solvers/fixed_boundary/residual/finalize.py \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py
+git diff --check
+```
+
+Result: all passed.
+
+### File structure and best-practice adherence
+
+- The new numerical helper lives in
+  `vmec_jax/solvers/free_boundary/control.py`, next to the existing projection
+  and velocity-memory helpers.
+- Solver result assembly only adds a defensive diagnostic wrapper in
+  `vmec_jax/solvers/fixed_boundary/residual/finalize.py`; the large residual
+  iteration loop was not expanded.
+- User-facing strict-run reporting remains in
+  `tools/diagnostics/summarize_square_coil_profiles.py`.
+- Tests stay focused on the helper behavior and the profile summary schema.
+- No generated WOUT files, mgrid files, figures, or result directories were
+  tracked.
+
+### Best next steps
+
+1. Commit and push the reduced-control residual diagnostics.
+2. Sync waiting `office` scratch checkouts only; do not update active solver
+   checkouts.
+3. When current strict rows finish, use the new residual metric to decide
+   whether to continue Fourier/spline bridge polish or start the solver-native
+   reduced spline-control LCFS state.
+4. If the residual metric is small while force components remain flat above
+   `1e-12`, prioritize nonlinear controller/preconditioner changes over adding
+   more Fourier modes.
+
+### Completion percentages after M307
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row is flat around `2e-11`.
+- VMEC2000 robustness/reference lane: `99%`, active row has not reached strict
+  stages.
+- Resolution/edit robustness lane: `100%`.
+- True spline/control-basis hybrid lane: `88%`, edge-state leakage is now
+  measurable; solver-native reduced state remains open.
+- DELT/stage-budget polish lane: `78%`, queues are repaired and waiting.
+- Finite-beta virtual-casing validation lane: `87%`.
+- CI/API health lane: `99%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M306. Strict-FTOL robustness assessment, NZETA guard, and queue repair
 
 ### Steps taken

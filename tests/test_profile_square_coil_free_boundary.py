@@ -360,6 +360,7 @@ def test_square_coil_profile_boundary_motion_payload_measures_edge_displacement(
 
 def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes():
     from vmec_jax.solve import (
+        _freeb_edge_control_state_residual_metrics,
         _prepare_freeb_edge_control_projection,
         _project_freeb_edge_control_state,
     )
@@ -432,10 +433,17 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
     )
 
     projected = _project_freeb_edge_control_state(trial, projection, host_update=True)
+    raw_metrics = _freeb_edge_control_state_residual_metrics(trial, projection)
+    projected_metrics = _freeb_edge_control_state_residual_metrics(projected, projection)
 
     assert np.asarray(projected.Rcos)[-1, 0] == pytest.approx(3.2)
     assert np.asarray(projected.Rcos)[-1, 1] == pytest.approx(0.0)
     assert np.asarray(projected.Zsin)[-1, 1] == pytest.approx(0.0)
+    assert raw_metrics["status"] == "measured"
+    assert raw_metrics["residual_linf"] > 0.1
+    assert raw_metrics["control_delta_by_label"]["R00"] == pytest.approx(0.2)
+    assert projected_metrics["residual_linf"] == pytest.approx(0.0, abs=1.0e-12)
+    assert projected_metrics["residual_rms"] == pytest.approx(0.0, abs=1.0e-12)
 
 
 def test_square_coil_profile_hot_restart_solver_state_filters_freeb_resume_keys():

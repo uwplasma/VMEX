@@ -8,6 +8,7 @@ import time
 import numpy as np
 
 from ..diagnostics.io import _pack_resume_state_record
+from ...free_boundary.control import _freeb_edge_control_state_residual_metrics
 from .runtime import (
     _build_residual_iter_timing_report,
     _build_resume_state_base,
@@ -82,6 +83,20 @@ def attach_residual_iter_timing_diagnostics(
         except Exception:
             pass
     return diagnostics
+
+
+def _edge_control_state_residual_payload(ns: Mapping[str, Any]) -> dict[str, Any]:
+    """Return reduced-edge projection residuals without risking finalization."""
+
+    try:
+        projection = ns.get("freeb_edge_control_projection", {"enabled": False})
+        return _freeb_edge_control_state_residual_metrics(ns["state"], projection)
+    except Exception as exc:
+        return {
+            "enabled": bool(ns.get("freeb_edge_control_projection_enabled", False)),
+            "status": "failed",
+            "error": repr(exc),
+        }
 
 
 def build_residual_iter_resume_state_payload(
@@ -402,6 +417,7 @@ def finalize_residual_iter_from_namespace(
                 **dict(ns.get("freeb_edge_control_projection_info", {"enabled": False, "reason": "not_requested"})),
                 "apply_count": int(ns.get("freeb_edge_control_projection_apply_count", 0)),
                 "zero_velocity_count": int(ns.get("freeb_edge_control_projection_zero_velocity_count", 0)),
+                "state_residual": _edge_control_state_residual_payload(ns),
             },
         },
     }
