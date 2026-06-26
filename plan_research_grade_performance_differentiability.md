@@ -6654,6 +6654,8 @@ Steps taken:
   ``vmec_lbfgs``, ``vmec_gn``, and ``vmec2000_iter``.
 - Preserved the public driver behavior while creating another small named seam
   around fixed-boundary setup.
+- Lowered the GitHub Actions and local release-gate source-health baseline for
+  ``vmec_jax/driver.py:run_fixed_boundary`` from ``512`` to ``504``.
 
 Results obtained:
 
@@ -6668,7 +6670,7 @@ Results obtained:
 - ``python tools/diagnostics/source_health.py --top 25 --top-functions 80
   --max-root-helper-prefix-files 2 --max-function-lines-at
   vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2508
-  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=512`` passed.
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=504`` passed.
 - ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
   --max-file-mib 2`` passed; tracked size is ``28.43 MiB``.
 - ``git diff --check`` passed.
