@@ -690,6 +690,47 @@ def test_square_coil_profile_provider_parity_payload_reports_field_and_bnormal_e
     assert payload["vacuum_channels"]["bnormal"]["diff_rms"] == pytest.approx(0.5)
 
 
+def test_square_coil_profile_vmec_scale_payload_compares_phiedge_to_external_r_bphi(monkeypatch):
+    monkeypatch.setattr(profile, "build_coil_field_geometry", lambda _params: "geometry")
+
+    captured = {}
+
+    def fake_sample(provider_kind, provider_static, provider_params, R, Z, phi):
+        captured["provider_kind"] = provider_kind
+        captured["provider_static"] = provider_static
+        captured["shape"] = np.asarray(R).shape
+        return np.zeros_like(R), 2.0 * np.ones_like(R), np.zeros_like(R)
+
+    monkeypatch.setattr(profile, "sample_external_field_cylindrical", fake_sample)
+    config = profile.ExampleConfig(
+        mpol=3,
+        ntor=4,
+        ns=5,
+        ns_array=(5,),
+        niter_array=(2,),
+        ftol_array=(1.0e-8,),
+        max_iter=2,
+        ntheta=32,
+        nzeta=32,
+        max_boundary_projection_error=None,
+        coil_segments=8,
+    )
+    indata = profile.make_free_boundary_indata(config, beta_percent=0.0)
+    payload = profile._vmec_free_boundary_scale_payload(
+        indata=indata,
+        coil_params=SimpleNamespace(regularization_epsilon=1.0e-6, chunk_size=None),
+        config=config,
+    )
+
+    assert captured["provider_kind"] == "direct_coils"
+    assert captured["provider_static"]["coil_geometry"] == "geometry"
+    assert captured["shape"] == (32, 32)
+    assert payload["status"] in {"scale_mismatch", "severe_scale_mismatch", "scale_reasonable"}
+    assert payload["external_r_bphi_rms"] > 0.0
+    assert payload["phiedge_over_r1_z1_abs"] > 0.0
+    assert payload["suggested_phiedge_for_external_r_bphi_rms"] < 0.0
+
+
 def test_square_coil_profile_rejects_mgrid_nphi_not_multiple_of_nzeta(tmp_path: Path):
     with pytest.raises(ValueError, match="mgrid-nphi=.*incompatible.*nzeta"):
         profile.main(
@@ -794,6 +835,7 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert deck["ntheta_underrecommended"] is False
     assert deck["projection_meets_gate"] is True
     assert deck["mgrid_nphi_multiple_of_nzeta"] is True
+    assert data["vmec_free_boundary_scale"]["status"] == "skipped_all_backends_disabled"
 
 
 def test_square_coil_profile_resolution_diagnostics_only_reports_incompatible_mgrid(tmp_path: Path):

@@ -32,7 +32,7 @@ from examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary impo
 )
 from vmec_jax.boundary import BoundaryCoeffs, boundary_from_indata
 from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
-from vmec_jax.external_fields import build_coil_field_geometry, write_mgrid_from_coils
+from vmec_jax.external_fields import build_coil_field_geometry, sample_external_field_cylindrical, write_mgrid_from_coils
 from vmec_jax.fourier import eval_fourier
 from vmec_jax.free_boundary import _sample_external_boundary_arrays
 from vmec_jax.solvers.free_boundary.validation import (
@@ -1375,6 +1375,107 @@ def _mgrid_bounds(indata: Any, *, padding_fraction: float, min_padding: float) -
     }
 
 
+def _finite_rms(values: Any) -> float | None:
+    arr = np.asarray(values, dtype=float).reshape(-1)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return None
+    return float(np.sqrt(np.mean(arr * arr)))
+
+
+def _finite_median_positive(values: Any) -> float | None:
+    arr = np.asarray(values, dtype=float).reshape(-1)
+    arr = arr[np.isfinite(arr) & (arr > 0.0)]
+    if arr.size == 0:
+        return None
+    return float(np.median(arr))
+
+
+def _vmec_free_boundary_scale_payload(
+    *,
+    indata: Any,
+    coil_params: Any,
+    config: ExampleConfig,
+) -> dict[str, Any]:
+    """Compare VMEC's PHIEDGE scale proxy with the sampled external field."""
+
+    ntheta = min(max(32, int(config.ntheta)), 128)
+    nzeta = min(max(32, int(config.nzeta)), 128)
+    try:
+        samples = evaluate_toroidal_hybrid_indata_boundary(indata, ntheta=ntheta, nzeta=nzeta)
+        nfp = max(1, int(indata.get_int("NFP", config.nfp)))
+        phi = samples.zeta[None, :] / float(nfp)
+        provider_static = {
+            "coil_geometry": build_coil_field_geometry(coil_params),
+            "regularization_epsilon": float(getattr(coil_params, "regularization_epsilon", 0.0)),
+            "chunk_size": getattr(coil_params, "chunk_size", None),
+        }
+        br, bphi, bz = sample_external_field_cylindrical(
+            "direct_coils",
+            provider_static,
+            coil_params,
+            samples.R,
+            samples.Z,
+            phi,
+        )
+        br = np.asarray(br, dtype=float)
+        bphi = np.asarray(bphi, dtype=float)
+        bz = np.asarray(bz, dtype=float)
+        bmag = np.sqrt(br * br + bphi * bphi + bz * bz)
+        r_half_width = 0.5 * np.ptp(np.asarray(samples.R, dtype=float), axis=0)
+        z_half_width = 0.5 * np.ptp(np.asarray(samples.Z, dtype=float), axis=0)
+        r1 = _finite_median_positive(r_half_width)
+        z1 = _finite_median_positive(z_half_width)
+        if r1 is None or z1 is None:
+            return {"status": "failed_boundary_half_width"}
+        area_proxy = float(r1 * z1)
+        phiedge = float(indata.get_float("PHIEDGE", config.phiedge))
+        phiedge_rbtor_proxy = float(abs(phiedge) / max(area_proxy, TINY))
+        external_r_bphi = np.asarray(samples.R, dtype=float) * bphi
+        external_r_bphi_rms = _finite_rms(external_r_bphi)
+        external_b_rms = _finite_rms(bmag)
+        if external_r_bphi_rms is None:
+            return {"status": "failed_external_r_bphi"}
+        ratio = float(phiedge_rbtor_proxy / max(float(external_r_bphi_rms), TINY))
+        sign = -1.0 if phiedge < 0.0 else 1.0
+        suggested_phiedge = float(sign * float(external_r_bphi_rms) * area_proxy)
+        if ratio < 0.1 or ratio > 10.0:
+            status = "severe_scale_mismatch"
+        elif ratio < 0.3 or ratio > 3.0:
+            status = "scale_mismatch"
+        else:
+            status = "scale_reasonable"
+        return {
+            "status": status,
+            "source": "VMEC funct3d free-boundary RBTOR scale comment",
+            "ntheta": int(ntheta),
+            "nzeta": int(nzeta),
+            "phiedge": phiedge,
+            "r1_median_half_width": float(r1),
+            "z1_median_half_width": float(z1),
+            "r1_z1_area_proxy": area_proxy,
+            "phiedge_over_r1_z1_abs": phiedge_rbtor_proxy,
+            "external_r_bphi_rms": float(external_r_bphi_rms),
+            "external_b_rms": None if external_b_rms is None else float(external_b_rms),
+            "phiedge_proxy_over_external_r_bphi_rms": ratio,
+            "suggested_phiedge_for_external_r_bphi_rms": suggested_phiedge,
+            "suggested_phiedge_over_current": None
+            if abs(phiedge) <= TINY
+            else float(suggested_phiedge / phiedge),
+            "interpretation": (
+                "VMEC source notes that free-boundary R*Btor at the plasma edge should approximately match "
+                "the vacuum value; this diagnostic uses median boundary half-widths for R1 and Z1."
+            ),
+        }
+    except Exception as exc:
+        return {
+            "status": f"failed:{type(exc).__name__}",
+            "error": repr(exc),
+            "ntheta": int(ntheta),
+            "nzeta": int(nzeta),
+        }
+
+
 def _bool_env(value: bool) -> str:
     return "1" if bool(value) else "0"
 
@@ -2625,6 +2726,7 @@ def main(argv: list[str] | None = None) -> int:
             "strict_schedule": strict_schedule,
             "strict_convergence_assessment": strict_convergence_assessment,
             "resolution_deck": resolution_deck,
+            "vmec_free_boundary_scale": {"status": "skipped_resolution_diagnostics_only"},
             "provider_parity": None,
             "backends": {},
         }
@@ -2686,21 +2788,36 @@ def main(argv: list[str] | None = None) -> int:
     else:
         _log_step("skipping generated mgrid path")
 
+    run_scale_diagnostic = not (
+        bool(args.skip_direct)
+        and bool(args.skip_mgrid)
+        and bool(args.skip_provider_parity)
+        and not bool(args.run_vmec2000)
+    )
+    scale_payload = (
+        _vmec_free_boundary_scale_payload(
+            indata=base_indata,
+            coil_params=coils.params,
+            config=config,
+        )
+        if run_scale_diagnostic
+        else {"status": "skipped_all_backends_disabled"}
+    )
     payload: dict[str, Any] = {
-            "schema": "square_coil_free_boundary_backend_profile",
-            "configuration": {
-                "beta_percent": float(args.beta_percent),
-                "mpol": int(args.mpol),
-                "ntor": int(args.ntor),
-                "ns": int(ns_array[-1]),
-                "ntheta": resolved_ntheta,
-                "requested_ntheta": None if args.ntheta is None else int(args.ntheta),
-                "ntheta_auto": bool(ntheta_auto),
-                "ntheta_auto_bumped_to_recommended": bool(ntheta_auto_bumped),
-                "recommended_ntheta": int(recommended_ntheta),
-                "ntheta_underrecommended": bool(resolved_ntheta < int(recommended_ntheta)),
-                "nzeta": resolved_nzeta,
-                "nzeta_auto": bool(nzeta_auto),
+        "schema": "square_coil_free_boundary_backend_profile",
+        "configuration": {
+            "beta_percent": float(args.beta_percent),
+            "mpol": int(args.mpol),
+            "ntor": int(args.ntor),
+            "ns": int(ns_array[-1]),
+            "ntheta": resolved_ntheta,
+            "requested_ntheta": None if args.ntheta is None else int(args.ntheta),
+            "ntheta_auto": bool(ntheta_auto),
+            "ntheta_auto_bumped_to_recommended": bool(ntheta_auto_bumped),
+            "recommended_ntheta": int(recommended_ntheta),
+            "ntheta_underrecommended": bool(resolved_ntheta < int(recommended_ntheta)),
+            "nzeta": resolved_nzeta,
+            "nzeta_auto": bool(nzeta_auto),
             "nzeta_auto_bumped_to_recommended": bool(nzeta_auto_bumped),
             "auto_bump_nzeta_to_recommended": bool(args.auto_bump_nzeta_to_recommended),
             "recommended_nzeta": int(recommended_nzeta),
@@ -2780,6 +2897,7 @@ def main(argv: list[str] | None = None) -> int:
         "strict_schedule": strict_schedule,
         "strict_convergence_assessment": strict_convergence_assessment,
         "resolution_deck": resolution_deck,
+        "vmec_free_boundary_scale": scale_payload,
         "provider_parity": None,
         "backends": {},
     }

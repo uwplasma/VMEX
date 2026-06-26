@@ -5738,6 +5738,104 @@ Visual validation:
 
 No user input is needed.
 
+## M301 - VMEC Free-Boundary Scale Diagnostic For `PHIEDGE`
+
+### Steps taken
+
+- Added a profiler-only diagnostic that samples the initial square-coil LCFS
+  and compares:
+  - VMEC's source-code free-boundary scale proxy `|PHIEDGE|/(R1*Z1)`;
+  - the direct-coil external-field RMS of `R*B_phi` on that LCFS.
+- Kept the diagnostic out of the differentiable solver path; it only informs
+  profile reports and PHIEDGE scan choices.
+- Added skipped status markers for resolution-only and all-backend-disabled
+  profile reports so lightweight tests and metadata-only commands stay cheap.
+- Ran the diagnostic locally for the current production-like square-coil deck
+  with `MPOL=5`, `NTOR=28`, `NTHETA=64`, `NZETA=64`, and coil segments `64`.
+
+### Results obtained
+
+- Current deck scale diagnostic:
+  - `PHIEDGE=-0.04`;
+  - median `R1*Z1` area proxy `1.031e-3`;
+  - `|PHIEDGE|/(R1*Z1)=38.78`;
+  - external-coil `R*B_phi` RMS `2.432`;
+  - ratio `15.95`, classified as `severe_scale_mismatch`;
+  - scale-matched PHIEDGE proxy `-0.00251`, about `6.27%` of the current
+    magnitude.
+- This matches the VMEC source warning that free-boundary `R*BTOR` at the edge
+  should be close to the vacuum value, and gives a concrete next PHIEDGE scan
+  rather than another blind long iteration run.
+
+### How it was tested
+
+```bash
+./venv/bin/python -m pytest -q \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_provider_parity_payload_reports_field_and_bnormal_error \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_vmec_scale_payload_compares_phiedge_to_external_r_bphi \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_records_boundary_projection_payload \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_defaults_nzeta_to_square_axis_recommendation
+```
+
+Result: `4 passed, 1 warning`.
+
+```bash
+ruff check tools/diagnostics/profile_square_coil_free_boundary.py \
+  tests/test_profile_square_coil_free_boundary.py
+./venv/bin/python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py
+git diff --check
+```
+
+Result: all passed.
+
+```bash
+./venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py \
+  --outdir /tmp/vmec_mirror_scale_smoke --mpol 3 --ntor 4 --ns 5 \
+  --ntheta 32 --nzeta 16 --max-iter 2 \
+  --max-boundary-projection-error none --skip-direct --skip-mgrid \
+  --skip-provider-parity
+```
+
+Result: wrote a valid profile JSON with
+`vmec_free_boundary_scale.status=skipped_all_backends_disabled`.
+
+### File structure and best-practice adherence
+
+- The scale check lives in `tools/diagnostics/profile_square_coil_free_boundary.py`
+  because it is a profiling/preflight diagnostic, not solver physics.
+- The helper reuses existing boundary-evaluation and direct-coil sampling APIs.
+- No generated WOUTs, figures, or profile result files were committed.
+
+### Best next steps
+
+1. Commit and push the diagnostic.
+2. Queue a strict direct-coil PHIEDGE-scale profile on `office` using
+   `PHIEDGE≈-0.00251`, explicit `NTHETA=64`, `NZETA=64`, and the same
+   `MPOL/NTOR/NS_ARRAY/FTOL_ARRAY` as the current strict rows.
+3. Compare the scaled-PHIEDGE row against the active `PHIEDGE=-0.04` JAX row,
+   the explicit-`NTHETA=64` row, and VMEC2000 mgrid reference before deciding
+   whether to promote automatic PHIEDGE recommendations.
+
+### Completion percentages after M301
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row is closer but oscillatory.
+- VMEC2000 robustness/reference lane: `99%`, active but currently worse than
+  the best JAX residual floor for this deck.
+- PHIEDGE/RBTOR scale lane: `70%`, diagnostic implemented; scaled strict row
+  still needs to run.
+- True spline/control-basis hybrid lane: `85%`, solver-native spline state
+  remains open.
+- DELT/stage-budget polish lane: `75%`, queued behind existing lanes.
+- Finite-beta virtual-casing validation lane: `87%`, source-path hook ready but
+  no strict finite-beta promotion row yet.
+- CI/API health lane: `99%`, focused local checks pass.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M300 - Explicit Square-Axis `NTHETA` Policy For Strict Profiles
 
 ### Steps taken
