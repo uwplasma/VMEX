@@ -5739,6 +5739,73 @@ Visual validation:
 No user input is needed.
 
 ---
+## 223. VMEC2000 7,28 High-Mode Result
+
+### Steps taken
+
+- Fast-forwarded ``office`` to the latest profiling-summary tools.
+- Re-summarized the completed VMEC2000 generated-``mgrid`` high-mode run:
+  ``MPOL=7, NTOR=28, NZETA=64``, ``NS_ARRAY=9,13,17``,
+  ``NITER_ARRAY=4000,8000,24000``, ``FTOL_ARRAY=1e-8,1e-10,1e-12``.
+- Verified that the queued VMEC2000 ``MPOL=8, NTOR=32, NZETA=72`` run has
+  started and is writing a live ``_partial_vmec2000_payload.json`` sidecar.
+
+### Results obtained
+
+- VMEC2000 ``7,28`` completed with no vacuum-grid overflow:
+  - final iteration: ``24000``;
+  - final summed residual: ``1.541e-11``;
+  - final max component residual: ``6.36e-12``;
+  - strict per-component ``1e-12``: not met;
+  - wall time: about ``5238.49 s``.
+- The completed-row tail projection reports:
+  - per-iteration residual factor: about ``0.999939``;
+  - additional iterations to ``1e-12`` by current trend: about ``44711``.
+- This is better than the lower-mode VMEC2000 ``6,23`` row but still not a
+  production strict solve. The tail estimate argues against simply extending
+  the same ``7,28`` deck by a few thousand iterations.
+
+### How it was tested
+
+```bash
+python3 tools/diagnostics/summarize_square_coil_profiles.py \
+  results/square_coil_freeb_backend_profile_vmec2000_ns9_13_17_mpol7_ntor28_nzeta64_mgrid88x64x64_niter24k_fg \
+  results/square_coil_freeb_backend_profile_vmec2000_ns9_13_17_mpol8_ntor32_nzeta72_mgrid104x72x72_niter24k_fg \
+  --markdown
+```
+
+The summary parsed the completed final JSON for ``7,28`` and the active
+sidecar for ``8,32``.
+
+### File structure and best-practice notes
+
+- The run output remains under ignored ``results/`` on ``office``.
+- No source files changed in this log entry.
+- The summary table now gives the reviewer-facing evidence without needing to
+  inspect raw ``threed1`` output manually.
+
+### Best next steps
+
+1. Let the active VMEC2000 ``8,32`` run progress far enough to show whether the
+   higher-resolution deck improves the residual floor.
+2. Let the active direct Anderson ``6,23`` run finish; then the queued direct
+   ``7,28`` cached-JIT run can start.
+3. If ``8,32`` also stalls above ``1e-12``, start the true spline/control-basis
+   square-hybrid lane instead of extending Fourier iteration budgets.
+
+### Completion percentages after M223
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``78%``.
+- VMEC2000 robustness/reference lane: ``88%``.
+- Direct-coil GPU/JIT parity lane: ``70%``.
+- Square-axis spline-smoothed Fourier closure lane: ``87%``.
+- True spline/control-basis hybrid lane: ``18%`` planned, gated on ``8,32``.
+
+### User input needed
+
+No user input is needed.
+
+---
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
 This lane converted the successful M8u/M8v block-dense split into a scalable
