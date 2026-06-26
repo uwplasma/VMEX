@@ -334,6 +334,42 @@ mixed with shape-smoothing sweeps.
 For production backend sweeps, ``--max-boundary-projection-error`` can enforce
 the same kind of Fourier-closure gate used by the root example; omit it, or
 pass ``none``, for diagnostic underresolved profiles.
+The current strict profiling answer to whether VMEC2000 is more robust is:
+VMEC2000 remains the fastest and most useful generated-``mgrid`` robustness
+reference, but it has not yet proven the requested component-wise
+``FTOL=1e-12`` for the square-axis deck.  The active direct-GPU hot-restart row
+on ``MPOL=5, NTOR=28, NZETA=64`` was still running at iteration ``2811`` with a
+max component about ``5.61e-11`` and a monotone tail estimate of about another
+``1039`` iterations to ``1e-12``.  The active VMEC2000 row at
+``DELT=0.015`` was still in its first ``NS=9, FTOL=1e-8`` stage at iteration
+``2601`` with max component about ``5.73e-7`` and no vacuum-grid overflow.  It
+is therefore premature to replace the direct research lane by VMEC2000; use
+VMEC2000 as the mgrid reference while the direct lane tests projection,
+pressure-coupling, and JAX-NESTOR kernels.
+The follow-up command helper now exposes two finite strict-polish lanes for the
+direct research path:
+
+.. code-block:: console
+
+   python tools/diagnostics/square_coil_followup_commands.py \
+     --profile-kind direct-gpu-edge-polish \
+     --delt-values 0.015,0.02,0.025
+
+   python tools/diagnostics/square_coil_followup_commands.py \
+     --profile-kind direct-gpu-edge-jax-nestor-polish \
+     --delt-values 0.015,0.02,0.025
+
+Both commands use ``FTOL_ARRAY=1e-8,1e-10,1e-12`` by default, cached direct
+coil sampling, ``--return-best-scored-state``, pressure Anderson mixing,
+two final-grid hot restarts, and ``--freeb-edge-control-projection square``.
+The second command additionally enables the experimental JAX NESTOR operator.
+Use ``--freeb-edge-control-projection stellarator`` when testing the
+stellarator-corner control subspace.
+The summary table now reports the edge-control projection status, requested
+basis, control count, and pseudo-inverse cutoff.  Stalled direct rows that did
+not use the reduced edge projection recommend ``direct-gpu-edge-polish`` before
+additional kernel experiments; stalled rows that already used edge projection
+recommend the edge-projected JAX-NESTOR profile next.
 The public helper
 ``vmec_jax.recommend_square_axis_stellarator_mirror_hybrid_resolution`` scans a
 small finite ``MPOL``/``NTOR`` ladder for the current spline-smoothed target and

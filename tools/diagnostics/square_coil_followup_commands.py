@@ -57,6 +57,8 @@ def _parser() -> argparse.ArgumentParser:
             "full-backend",
             "direct-gpu",
             "direct-gpu-jax-nestor",
+            "direct-gpu-edge-polish",
+            "direct-gpu-edge-jax-nestor-polish",
         ),
         default="vmec2000",
         help=(
@@ -65,7 +67,10 @@ def _parser() -> argparse.ArgumentParser:
             "provider-parity runs JAX direct and generated-mgrid with initial and accepted-LCFS parity. "
             "full-backend adds VMEC2000 to that comparison. "
             "direct-gpu emits direct-only cached-JIT commands for GPU speed probes. "
-            "direct-gpu-jax-nestor adds the experimental JAX NESTOR operator to that probe."
+            "direct-gpu-jax-nestor adds the experimental JAX NESTOR operator to that probe. "
+            "direct-gpu-edge-polish constrains LCFS edge motion to the square-axis spline-control "
+            "basis, enables pressure mixing and hot restarts by default, and keeps the direct-coil "
+            "cached-JIT path. direct-gpu-edge-jax-nestor-polish adds the JAX NESTOR operator too."
         ),
     )
     p.add_argument(
@@ -115,6 +120,50 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help="Add an analytic-B-vector override for NESTOR operator profiling.",
     )
+    p.add_argument(
+        "--freeb-edge-control-projection",
+        choices=("none", "square", "stellarator"),
+        default=None,
+        help=(
+            "Add the vmec_jax reduced edge-control projection to JAX commands. "
+            "Polish profile kinds default to 'square'."
+        ),
+    )
+    p.add_argument(
+        "--freeb-edge-control-rcond",
+        type=float,
+        default=1.0e-12,
+        help="Pseudo-inverse cutoff for the reduced edge-control projection.",
+    )
+    p.add_argument(
+        "--jax-hot-restart-count",
+        type=int,
+        default=None,
+        help="Hot-restart count for JAX commands. Polish profile kinds default to 2.",
+    )
+    p.add_argument(
+        "--jax-hot-restart-iters",
+        type=int,
+        default=None,
+        help="Per-hot-restart iteration budget for JAX commands. Omit to use the final stage budget.",
+    )
+    p.add_argument(
+        "--jax-hot-restart-policy",
+        choices=("state", "freeb", "full"),
+        default="freeb",
+        help="State carried into JAX hot restarts.",
+    )
+    p.add_argument(
+        "--jax-hot-restart-always",
+        action="store_true",
+        help="Run all requested hot-restart passes even if strict convergence is reached early.",
+    )
+    p.add_argument(
+        "--jax-initial-restart-wout",
+        type=Path,
+        default=None,
+        help="Optional existing final-grid wout_*.nc used to seed the JAX command.",
+    )
     return p
 
 
@@ -148,6 +197,8 @@ def _iter_label(value: int) -> str:
 
 def _outdir_for(args: argparse.Namespace, *, delt: float, nzeta: int, mgrid_nphi: int) -> Path:
     kind = str(args.profile_kind).replace("-", "_")
+    edge = _edge_control_projection(args)
+    edge_label = "" if edge in {None, "none"} else f"_edge_{edge}"
     return Path(args.outdir_root) / (
         f"square_coil_freeb_backend_profile_{kind}"
         f"_ns{_list_label(args.ns_array)}"
@@ -156,13 +207,42 @@ def _outdir_for(args: argparse.Namespace, *, delt: float, nzeta: int, mgrid_nphi
         f"_delt{_float_label(float(delt))}"
         f"_niter{_iter_label(_last_int(args.niter_array))}"
         f"_{str(args.axis_kind)}"
+        f"{edge_label}"
     )
+
+
+def _is_direct_jax_kind(kind: str) -> bool:
+    return kind in {
+        "direct-gpu",
+        "direct-gpu-jax-nestor",
+        "direct-gpu-edge-polish",
+        "direct-gpu-edge-jax-nestor-polish",
+    }
+
+
+def _is_polish_kind(kind: str) -> bool:
+    return kind in {"direct-gpu-edge-polish", "direct-gpu-edge-jax-nestor-polish"}
+
+
+def _edge_control_projection(args: argparse.Namespace) -> str | None:
+    requested = args.freeb_edge_control_projection
+    if requested is not None:
+        return str(requested)
+    return "square" if _is_polish_kind(str(args.profile_kind)) else None
+
+
+def _hot_restart_count(args: argparse.Namespace) -> int:
+    if args.jax_hot_restart_count is not None:
+        return max(0, int(args.jax_hot_restart_count))
+    return 2 if _is_polish_kind(str(args.profile_kind)) else 0
 
 
 def _command_for(args: argparse.Namespace, *, delt: float) -> list[str]:
     nzeta = int(args.nzeta or max(64, recommended_square_axis_nzeta(int(args.ntor))))
     mgrid_nphi = int(args.mgrid_nphi or nzeta)
     max_iter = _last_int(args.niter_array)
+    kind = str(args.profile_kind)
+    edge_projection = _edge_control_projection(args)
     command = [
         str(args.python),
         str(args.profile_script),
@@ -223,11 +303,37 @@ def _command_for(args: argparse.Namespace, *, delt: float) -> list[str]:
         "--solver-mode",
         "parity",
     ]
-    kind = str(args.profile_kind)
-    jax_kind = kind in {"provider-parity", "full-backend", "direct-gpu", "direct-gpu-jax-nestor"}
-    if bool(args.freeb_anderson_pressure) and jax_kind:
+    jax_kind = kind in {"provider-parity", "full-backend"} or _is_direct_jax_kind(kind)
+    if jax_kind and edge_projection not in {None, "none"}:
+        command.extend(
+            [
+                "--freeb-edge-control-projection",
+                str(edge_projection),
+                "--freeb-edge-control-rcond",
+                f"{float(args.freeb_edge_control_rcond):.16g}",
+            ]
+        )
+    if (bool(args.freeb_anderson_pressure) or _is_polish_kind(kind)) and jax_kind:
         command.append("--freeb-anderson-pressure")
-    use_jax_nestor = bool(args.freeb_jax_nestor_operator) or kind == "direct-gpu-jax-nestor"
+    hot_restart_count = _hot_restart_count(args) if jax_kind else 0
+    if hot_restart_count > 0:
+        command.extend(["--jax-hot-restart-count", str(int(hot_restart_count))])
+        command.extend(
+            [
+                "--jax-hot-restart-iters",
+                str(int(args.jax_hot_restart_iters or max_iter)),
+                "--jax-hot-restart-policy",
+                str(args.jax_hot_restart_policy),
+            ]
+        )
+        if bool(args.jax_hot_restart_always):
+            command.append("--jax-hot-restart-always")
+    if jax_kind and args.jax_initial_restart_wout is not None:
+        command.extend(["--jax-initial-restart-wout", str(args.jax_initial_restart_wout)])
+    use_jax_nestor = bool(args.freeb_jax_nestor_operator) or kind in {
+        "direct-gpu-jax-nestor",
+        "direct-gpu-edge-jax-nestor-polish",
+    }
     if jax_kind and use_jax_nestor:
         command.append("--freeb-jax-nestor-operator")
         if bool(args.freeb_jax_nestor_jit_operator):
@@ -251,7 +357,7 @@ def _command_for(args: argparse.Namespace, *, delt: float) -> list[str]:
     if kind == "resolution-preflight":
         command.append("--resolution-diagnostics-only")
         return command
-    if kind in {"direct-gpu", "direct-gpu-jax-nestor"}:
+    if _is_direct_jax_kind(kind):
         command.extend(
             [
                 "--skip-mgrid",
@@ -301,6 +407,9 @@ def _command_for(args: argparse.Namespace, *, delt: float) -> list[str]:
 def build_commands(args: argparse.Namespace) -> list[list[str]]:
     """Return one VMEC2000 profile command per requested ``DELT`` value."""
 
+    edge_projection = _edge_control_projection(args)
+    if edge_projection not in {None, "none"} and str(args.axis_kind) != "control_spline":
+        raise ValueError("--freeb-edge-control-projection requires --axis-kind control_spline")
     return [_command_for(args, delt=delt) for delt in _parse_float_list(args.delt_values)]
 
 

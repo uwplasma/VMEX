@@ -33350,3 +33350,136 @@ Result: summary rows produced the component-limited fields listed above.
 ### User input needed
 
 No user input is needed.
+
+## M294 - Strict Edge-Polish Follow-Up Lane
+
+### Steps taken
+
+- Re-established the branch and active run state:
+  - local branch `codex/mirror-geometry` was clean at draft PR head
+    `a246cbba`;
+  - `office` still had one direct-GPU hot-restart row and one VMEC2000
+    generated-`mgrid` row active;
+  - the projected edge-control direct row was still queued and correctly
+    waiting on machine load.
+- Re-parsed the active live logs/sidecars instead of launching duplicate heavy
+  runs:
+  - the direct-GPU hot-restart row at `MPOL=5, NTOR=28, NZETA=64` was still
+    running at iteration `2811`, with max component about `5.61e-11`, strict
+    gap about `56.1`, monotone tail, and an estimated `~1039` more iterations
+    to `1e-12`;
+  - the VMEC2000 `DELT=0.015` generated-`mgrid` row was still in its first
+    loose `NS=9, FTOL=1e-8` stage at iteration `2601`, with max component
+    about `5.73e-7`, monotone tail, and no vacuum-grid overflow.
+- Added explicit strict-polish follow-up profile kinds:
+  - `direct-gpu-edge-polish`;
+  - `direct-gpu-edge-jax-nestor-polish`.
+- Extended `tools/diagnostics/square_coil_followup_commands.py` so these
+  commands emit the current best direct-research strict lane:
+  - cached direct-coil JIT sampling;
+  - `FTOL_ARRAY=1e-8,1e-10,1e-12`;
+  - `--return-best-scored-state`;
+  - pressure Anderson mixing;
+  - two final-grid hot restarts by default;
+  - `--freeb-edge-control-projection square` by default, with a
+    `stellarator` override available.
+- Extended `tools/diagnostics/summarize_square_coil_profiles.py` so summary
+  rows expose the edge-control projection status, requested basis, basis
+  symmetry, control count, and pseudo-inverse cutoff.
+- Updated follow-up recommendations:
+  - stalled direct rows without edge projection now recommend
+    `direct-gpu-edge-polish`;
+  - stalled direct rows that already used edge projection but not the JAX
+    NESTOR operator recommend `direct-gpu-edge-jax-nestor-polish`.
+- Updated `docs/mirror/direct_coil_free_boundary_convergence.rst` with the
+  latest VMEC2000/direct assessment and the new strict-polish command lane.
+
+### Results obtained
+
+- VMEC2000 remains the fastest and most useful generated-`mgrid` robustness
+  reference, but it has not yet proven the requested component-wise
+  `FTOL=1e-12` for the square-axis deck.
+- The direct-GPU row is closer to strict tolerance than before and currently
+  monotone, but it is still not strict evidence.
+- The current near-term answer to the spline question is now executable:
+  use the existing `control_spline` Fourier-projection bridge plus the opt-in
+  reduced edge-control projection for A/B strict-polish runs.  This is still
+  not a solver-native spline-coordinate VMEC state, but it constrains the LCFS
+  update to the square-axis spline-control subspace and is the least invasive
+  path before a larger state/Jacobian rewrite.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_square_coil_followup_commands.py \
+  tests/test_summarize_square_coil_profiles.py
+```
+
+Result: `33 passed`.
+
+```bash
+venv/bin/python -m py_compile \
+  tools/diagnostics/square_coil_followup_commands.py \
+  tools/diagnostics/summarize_square_coil_profiles.py
+```
+
+Result: passed.
+
+```bash
+python3 -m ruff check \
+  tools/diagnostics/square_coil_followup_commands.py \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_square_coil_followup_commands.py \
+  tests/test_summarize_square_coil_profiles.py
+```
+
+Result: passed.
+
+```bash
+git diff --check
+```
+
+Result: passed.
+
+### File structure and best-practice adherence
+
+- No generated WOUTs, raw solver output, or figures were added to git.
+- The command-generation change stays in the existing follow-up helper.
+- The evidence/recommendation change stays in the existing summary tool.
+- The solver behavior remains opt-in; default VMEC/JAX and VMEC2000 parity
+  paths are unchanged.
+- The spline-control work remains explicit as a projection bridge rather than
+  being mislabeled as a native spline-coordinate solve.
+
+### Best next steps
+
+1. Commit and push this strict edge-polish command tranche.
+2. Let the active direct-GPU and VMEC2000 rows finish; do not launch duplicate
+   heavy rows while they are active.
+3. When machine load drops, let the queued projected-control direct row run and
+   summarize it with the new edge-control columns.
+4. If the current direct row fails above `1e-12`, run the new
+   `direct-gpu-edge-polish` command, seeded from the best final-grid WOUT when
+   available.
+5. If edge-polish stalls, run `direct-gpu-edge-jax-nestor-polish` and compare
+   the tail floor to the VMEC2000 generated-`mgrid` reference.
+6. If both edge-projected direct rows and VMEC2000 remain above `1e-12`, move
+   from projection-bridge splines to the larger solver-native spline-control
+   state/Jacobian lane.
+
+### Completion percentages after M294
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row is closer but not strict.
+- VMEC2000 robustness/reference lane: `99%`, active row is still in loose
+  stage and monotone decreasing.
+- Resolution/edit robustness lane: `100%`.
+- True spline/control-basis hybrid lane: `82%`, edge-polish commands and
+  summary evidence are now wired; native spline-coordinate state remains open.
+- Strict convergence diagnostics lane: `100%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.

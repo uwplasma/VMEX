@@ -186,6 +186,72 @@ def test_square_coil_followup_commands_emit_direct_gpu_jax_nestor_probe(tmp_path
     assert "direct_gpu_jax_nestor" in outdir.name
 
 
+def test_square_coil_followup_commands_emit_direct_gpu_edge_polish(tmp_path: Path):
+    seed = tmp_path / "seed_wout.nc"
+    args = followup._parser().parse_args(
+        [
+            "--outdir-root",
+            str(tmp_path),
+            "--delt-values",
+            "0.015",
+            "--profile-kind",
+            "direct-gpu-edge-polish",
+            "--jax-initial-restart-wout",
+            str(seed),
+        ]
+    )
+
+    command = followup.build_commands(args)[0]
+
+    assert "--skip-mgrid" in command
+    assert "--skip-provider-parity" in command
+    assert "--jit-forces" in command
+    assert "--jit-direct-sampler" in command
+    assert "--return-best-scored-state" in command
+    assert "--freeb-anderson-pressure" in command
+    assert command[command.index("--freeb-edge-control-projection") + 1] == "square"
+    assert command[command.index("--freeb-edge-control-rcond") + 1] == "1e-12"
+    assert command[command.index("--jax-hot-restart-count") + 1] == "2"
+    assert command[command.index("--jax-hot-restart-iters") + 1] == "32000"
+    assert command[command.index("--jax-hot-restart-policy") + 1] == "freeb"
+    assert command[command.index("--jax-initial-restart-wout") + 1] == str(seed)
+    assert "--freeb-jax-nestor-operator" not in command
+    outdir = Path(command[command.index("--outdir") + 1])
+    assert "direct_gpu_edge_polish" in outdir.name
+    assert "edge_square" in outdir.name
+
+
+def test_square_coil_followup_commands_emit_direct_gpu_edge_jax_nestor_polish(tmp_path: Path):
+    args = followup._parser().parse_args(
+        [
+            "--outdir-root",
+            str(tmp_path),
+            "--delt-values",
+            "0.015",
+            "--profile-kind",
+            "direct-gpu-edge-jax-nestor-polish",
+            "--freeb-edge-control-projection",
+            "stellarator",
+            "--jax-hot-restart-count",
+            "1",
+            "--jax-hot-restart-iters",
+            "1234",
+            "--jax-hot-restart-always",
+        ]
+    )
+
+    command = followup.build_commands(args)[0]
+
+    assert command[command.index("--freeb-edge-control-projection") + 1] == "stellarator"
+    assert "--freeb-jax-nestor-operator" in command
+    assert command[command.index("--jax-hot-restart-count") + 1] == "1"
+    assert command[command.index("--jax-hot-restart-iters") + 1] == "1234"
+    assert "--jax-hot-restart-always" in command
+    outdir = Path(command[command.index("--outdir") + 1])
+    assert "direct_gpu_edge_jax_nestor_polish" in outdir.name
+    assert "edge_stellarator" in outdir.name
+
+
 def test_square_coil_followup_commands_default_nzeta_tracks_ntor(tmp_path: Path):
     ntor = 31
     args = followup._parser().parse_args(

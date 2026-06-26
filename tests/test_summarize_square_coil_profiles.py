@@ -533,8 +533,61 @@ def test_square_coil_profile_summary_recommends_direct_gpu_for_stalled_direct(
     row = summary.rows_from_profile(report)[0]
 
     assert row["next_action"] == "scan_delt_stage_budget_or_pressure_acceleration"
-    assert row["recommended_followup_profile_kind"] == "direct-gpu-jax-nestor"
+    assert row["recommended_followup_profile_kind"] == "direct-gpu-edge-polish"
     assert row["recommended_followup_reason"] == "scan_delt_stage_budget_or_pressure_acceleration"
+    assert row["freeb_edge_control_projection_status"] == "disabled"
+
+
+def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge_direct(
+    tmp_path: Path,
+):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_stalled_edge_direct"
+    case_dir.mkdir()
+    report = case_dir / "square_coil_free_boundary_backend_profile.json"
+    report.write_text(
+        json.dumps(
+            {
+                "configuration": {"mpol": 5, "ntor": 28, "ns": 17, "nzeta": 64, "ftol": 1e-12},
+                "resolution_deck": {
+                    "status": "production_ready",
+                    "reasons": [],
+                    "mgrid_nphi_multiple_of_nzeta": True,
+                },
+                "backends": {
+                    "vmec_jax_direct": {
+                        "status": "completed",
+                        "n_iter": 1000,
+                        "final_fsqr": 2.0e-9,
+                        "final_fsqz": 3.0e-9,
+                        "final_fsql": 4.0e-10,
+                        "tail_plateau": {"status": "oscillatory"},
+                        "accepted_provider_parity": {"status": "completed"},
+                        "final_residual_recomputed_on_accepted_state": True,
+                        "free_boundary_solver_overrides": {
+                            "freeb_edge_control_projection": {
+                                "requested": "square",
+                                "enabled": True,
+                                "status": "enabled",
+                                "basis_symmetry": "square",
+                                "control_count": 2,
+                                "rcond": 1.0e-12,
+                            },
+                        },
+                    }
+                },
+            }
+        )
+    )
+
+    row = summary.rows_from_profile(report)[0]
+
+    assert row["recommended_followup_profile_kind"] == "direct-gpu-edge-jax-nestor-polish"
+    assert row["recommended_followup_reason"] == "scan_delt_stage_budget_or_pressure_acceleration"
+    assert row["freeb_edge_control_projection_status"] == "enabled"
+    assert row["freeb_edge_control_projection_requested"] == "square"
+    assert row["freeb_edge_control_projection_basis"] == "square"
+    assert row["freeb_edge_control_projection_control_count"] == 2
+    assert row["freeb_edge_control_projection_rcond"] == pytest.approx(1.0e-12)
 
 
 def test_square_coil_profile_summary_recommends_direct_gpu_after_jax_nestor_probe(
@@ -565,6 +618,14 @@ def test_square_coil_profile_summary_recommends_direct_gpu_after_jax_nestor_prob
                         "free_boundary_solver_overrides": {
                             "freeb_jax_nestor_operator": True,
                             "freeb_jax_nestor_jit_operator": False,
+                            "freeb_edge_control_projection": {
+                                "requested": "square",
+                                "enabled": True,
+                                "status": "enabled",
+                                "basis_symmetry": "square",
+                                "control_count": 2,
+                                "rcond": 1.0e-12,
+                            },
                             "jax_hot_restart_count": 2,
                             "jax_hot_restart_iters": 4000,
                             "jax_hot_restart_policy": "freeb",

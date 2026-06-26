@@ -472,6 +472,10 @@ def _solver_overrides_payload(backend: dict[str, Any]) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _edge_projection_enabled_from_requested(value: Any) -> bool:
+    return str(value or "").strip().lower() not in {"", "none", "off", "false", "no", "0"}
+
+
 def _promotion_payload(
     *,
     backend_name: str,
@@ -606,6 +610,7 @@ def _recommended_followup_payload(
     strict_evidence_status: Any,
     accepted_provider_parity_status: Any,
     freeb_jax_nestor_operator: Any,
+    freeb_edge_control_projection: dict[str, Any],
     vacuum_grid_exceeded_count: Any,
 ) -> dict[str, str]:
     """Return the next profile kind that best matches the summary evidence."""
@@ -621,6 +626,7 @@ def _recommended_followup_payload(
         grid_exceeded = int(vacuum_grid_exceeded_count or 0)
     except Exception:
         grid_exceeded = 0
+    edge_enabled = bool(freeb_edge_control_projection.get("enabled"))
 
     if evidence == "strict_production_evidence":
         return {
@@ -648,7 +654,12 @@ def _recommended_followup_payload(
         "let_current_run_finish_then_scan_delt_or_stage_budget",
     }:
         if "direct" in backend:
-            kind = "direct-gpu" if bool(freeb_jax_nestor_operator) else "direct-gpu-jax-nestor"
+            if not edge_enabled:
+                kind = "direct-gpu-edge-polish"
+            elif bool(freeb_jax_nestor_operator):
+                kind = "direct-gpu"
+            else:
+                kind = "direct-gpu-edge-jax-nestor-polish"
         elif backend == "vmec2000_mgrid":
             kind = "vmec2000"
         else:
@@ -1052,6 +1063,15 @@ def _summary_row(
     freeb_jax_nestor_jit_operator = solver_overrides.get(
         "freeb_jax_nestor_jit_operator", cfg.get("freeb_jax_nestor_jit_operator")
     )
+    freeb_edge_control_projection = solver_overrides.get("freeb_edge_control_projection")
+    if not isinstance(freeb_edge_control_projection, dict):
+        requested = cfg.get("freeb_edge_control_projection")
+        edge_enabled = _edge_projection_enabled_from_requested(requested)
+        freeb_edge_control_projection = {
+            "requested": requested,
+            "enabled": edge_enabled,
+            "status": "enabled" if edge_enabled else "disabled",
+        }
     hot_restart = backend.get("hot_restart")
     hot_restart = hot_restart if isinstance(hot_restart, dict) else {}
     hot_restart_stages = hot_restart.get("stages")
@@ -1128,6 +1148,7 @@ def _summary_row(
         strict_evidence_status=strict_evidence.get("strict_evidence_status"),
         accepted_provider_parity_status=accepted_parity.get("status"),
         freeb_jax_nestor_operator=freeb_jax_nestor_operator,
+        freeb_edge_control_projection=freeb_edge_control_projection,
         vacuum_grid_exceeded_count=vacuum_grid_exceeded_count,
     )
     return {
@@ -1175,6 +1196,13 @@ def _summary_row(
         ),
         "freeb_jax_nestor_operator": freeb_jax_nestor_operator,
         "freeb_jax_nestor_jit_operator": freeb_jax_nestor_jit_operator,
+        "freeb_edge_control_projection_status": freeb_edge_control_projection.get("status"),
+        "freeb_edge_control_projection_requested": freeb_edge_control_projection.get("requested"),
+        "freeb_edge_control_projection_basis": freeb_edge_control_projection.get("basis_symmetry"),
+        "freeb_edge_control_projection_control_count": freeb_edge_control_projection.get("control_count"),
+        "freeb_edge_control_projection_rcond": _finite_float(
+            freeb_edge_control_projection.get("rcond")
+        ),
         "free_boundary_jax_nestor_operator_applied": backend.get(
             "free_boundary_jax_nestor_operator_applied"
         ),
@@ -1559,6 +1587,11 @@ def main(argv: list[str] | None = None) -> int:
         "jax_hot_restart_last_component_max",
         "freeb_jax_nestor_operator",
         "freeb_jax_nestor_jit_operator",
+        "freeb_edge_control_projection_status",
+        "freeb_edge_control_projection_requested",
+        "freeb_edge_control_projection_basis",
+        "freeb_edge_control_projection_control_count",
+        "freeb_edge_control_projection_rcond",
         "free_boundary_jax_nestor_operator_applied",
         "free_boundary_jax_nestor_operator_reason",
         "free_boundary_jax_nestor_operator_jitted",
