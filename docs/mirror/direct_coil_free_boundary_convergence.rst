@@ -372,15 +372,23 @@ row on ``MPOL=5, NTOR=28, NZETA=64`` reached final-grid iteration ``3631`` with
 max component about ``3.36e-12`` and a flat 12-row tail above the strict target;
 it was stopped so the reduced coordinate edge-control row could use the same
 GPU.  The concurrent VMEC2000 generated-``mgrid`` row at ``DELT=0.015`` was
-still running at final-grid iteration ``4531`` with max component about
-``5.03e-11``; its tail projection remained above the strict component target,
+still running at final-grid iteration ``6001`` with max component about
+``3.54e-11``; its tail projection remained above the strict component target,
 although it was still slowly trending downward and had no vacuum-grid overflow.
 This evidence does not support replacing the direct research lane by VMEC2000.
 Use VMEC2000 as the mgrid reference while the direct lane tests projection,
 pressure-coupling, JAX-NESTOR kernels, and reduced spline/control edge updates.
-The active strict follow-up is now the direct-GPU
-``--freeb-edge-control-projection square`` row with
-``--freeb-edge-control-update-mode coordinate``.
+The first 30-iteration direct-GPU coordinate-control smoke on the same
+``MPOL=5, NTOR=28, NZETA=64`` hot-restart state preserved the LCFS in the
+two-control square subspace to about ``3e-15`` relative reconstruction residual
+and reduced the printed force components from about ``7.37e-8, 6.27e-8,
+3.44e-11`` to about ``6.48e-10, 5.54e-10, 3.44e-11`` with constant
+``DELT=0.02``.  It still did not satisfy the strict component gate, but it is
+the first reduced-control row with a fast monotone tail from the full-Fourier
+hot-restart scale.  The active strict follow-up is the matching direct-GPU
+``--freeb-edge-control-projection square`` /
+``--freeb-edge-control-update-mode coordinate`` run with ``NITER=8000``,
+``FTOL=1e-12``, and two optional final-grid hot restarts.
 The follow-up command helper now exposes two finite strict-polish lanes for the
 direct research path:
 
