@@ -182,6 +182,8 @@ def _prepare_freeb_edge_control_projection(
         info.update({"reason": "mode_scale_shape_mismatch"})
         return {"enabled": False, "info": info}
 
+    update_mode = str(payload.get("update_mode", payload.get("edge_update_mode", ""))).strip().lower()
+    coordinate_mode = update_mode in {"coordinate", "coordinates", "reduced", "reduced_coordinate", "reduced-coordinate"}
     initial_source = "state0_edge"
     try:
         initial_payload = payload.get("initial_boundary")
@@ -193,7 +195,7 @@ def _prepare_freeb_edge_control_projection(
                 "Z_sin": np.asarray(initial_payload["Z_sin"], dtype=float).reshape(-1),
             }
             initial_source = "payload"
-        elif indata is not None:
+        elif indata is not None and not coordinate_mode:
             boundary = boundary_from_indata(indata, static.modes)
             initial = {
                 "R_cos": np.asarray(boundary.R_cos, dtype=float).reshape(-1),
@@ -260,6 +262,7 @@ def _prepare_freeb_edge_control_projection(
             "singular_values": [float(value) for value in singular_values],
             "condition_number": condition_number,
             "initial_boundary_source": initial_source,
+            "coordinate_mode_anchors_state0": bool(coordinate_mode and initial_source == "state0_edge"),
         }
     )
     return {

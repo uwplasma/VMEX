@@ -467,6 +467,39 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
 
     assert projection["enabled"] is True
     assert projection["info"]["control_count"] == 1
+    assert projection["info"]["initial_boundary_source"] == "indata"
+
+    anchor_rcos = zeros.copy()
+    anchor_rcos[-1, 0] = 4.0
+    anchor_state = VMECState(
+        layout=layout,
+        Rcos=anchor_rcos,
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+    coordinate_projection = _prepare_freeb_edge_control_projection(
+        {
+            "enabled": True,
+            "basis_symmetry": "test",
+            "labels": ["R00"],
+            "control_jacobian": jacobian,
+            "update_mode": "coordinate",
+        },
+        indata=indata,
+        static=static,
+        state0=anchor_state,
+        free_boundary_enabled=True,
+    )
+
+    assert coordinate_projection["enabled"] is True
+    assert coordinate_projection["info"]["initial_boundary_source"] == "state0_edge"
+    assert coordinate_projection["info"]["coordinate_mode_anchors_state0"] is True
+    np.testing.assert_allclose(coordinate_projection["initial_np"]["R_cos"][0], 4.0)
+    coordinate_anchor = _project_freeb_edge_control_state(anchor_state, coordinate_projection, host_update=True)
+    np.testing.assert_allclose(coordinate_anchor.Rcos, anchor_state.Rcos)
 
     rcos = zeros.copy()
     zsin = zeros.copy()
