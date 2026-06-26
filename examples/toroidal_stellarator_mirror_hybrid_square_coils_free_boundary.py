@@ -97,6 +97,7 @@ NITER_ARRAY = (4000, 8000, 24000)
 FTOL_ARRAY = (1.0e-8, 1.0e-10, 1.0e-12)
 USE_MULTIGRID_SCHEDULE = True
 ENFORCE_RECOMMENDED_NZETA = True
+AUTO_BUMP_NZETA_TO_RECOMMENDED = True
 MAX_BOUNDARY_PROJECTION_ERROR: float | None = 5.0e-12
 NSTEP = 1
 NVACSKIP = 1
@@ -164,6 +165,7 @@ class ExampleConfig:
     ftol_array: tuple[float, ...] = FTOL_ARRAY
     use_multigrid_schedule: bool = USE_MULTIGRID_SCHEDULE
     enforce_recommended_nzeta: bool = ENFORCE_RECOMMENDED_NZETA
+    auto_bump_nzeta_to_recommended: bool = AUTO_BUMP_NZETA_TO_RECOMMENDED
     max_boundary_projection_error: float | None = MAX_BOUNDARY_PROJECTION_ERROR
     nstep: int = NSTEP
     nvacskip: int = NVACSKIP
@@ -441,9 +443,35 @@ def _boundary_fit_grid(config: ExampleConfig) -> dict[str, int]:
 def _resolved_nzeta(config: ExampleConfig) -> int:
     """Return the VMEC toroidal grid count for the current mode deck."""
 
+    recommended = int(recommended_square_axis_nzeta(int(config.ntor)))
+    default_nzeta = int(max(64, recommended))
     if config.nzeta is None:
-        return int(max(64, recommended_square_axis_nzeta(int(config.ntor))))
-    return int(config.nzeta)
+        return default_nzeta
+    requested = int(config.nzeta)
+    if requested <= 0:
+        return default_nzeta
+    if bool(config.enforce_recommended_nzeta) and bool(config.auto_bump_nzeta_to_recommended):
+        return int(max(requested, recommended))
+    return requested
+
+
+def _nzeta_resolution_payload(config: ExampleConfig) -> dict[str, Any]:
+    """Summarize requested and effective toroidal-grid resolution."""
+
+    requested = None if config.nzeta is None else int(config.nzeta)
+    recommended = int(recommended_square_axis_nzeta(int(config.ntor)))
+    effective = _resolved_nzeta(config)
+    return {
+        "requested_nzeta": requested,
+        "effective_nzeta": int(effective),
+        "recommended_nzeta": int(recommended),
+        "auto_defaulted": bool(requested is None or (requested is not None and requested <= 0)),
+        "auto_bumped_to_recommended": bool(
+            requested is not None and requested > 0 and int(effective) > int(requested)
+        ),
+        "enforce_recommended_nzeta": bool(config.enforce_recommended_nzeta),
+        "auto_bump_nzeta_to_recommended": bool(config.auto_bump_nzeta_to_recommended),
+    }
 
 
 def _run_budget(config: ExampleConfig, *, restart_state: Any | None) -> int:
@@ -475,7 +503,8 @@ def _validate_example_config(config: ExampleConfig) -> None:
         if nzeta < recommended:
             raise ValueError(
                 f"NZETA={nzeta} is underresolved for NTOR={int(config.ntor)}; "
-                f"use at least {recommended} or set enforce_recommended_nzeta=False for a diagnostic-only run"
+                f"use at least {recommended}, keep auto_bump_nzeta_to_recommended=True, or set "
+                "enforce_recommended_nzeta=False for a diagnostic-only run"
             )
     if config.max_boundary_projection_error is not None:
         limit = float(config.max_boundary_projection_error)
@@ -713,6 +742,7 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
             ),
         },
         "strict_schedule": schedule,
+        "nzeta_resolution": _nzeta_resolution_payload(config),
         "boundary_projection": projection,
         "resolution_deck": resolution_deck,
         "control_fourier_map": _control_fourier_map_payload(config),
@@ -1448,6 +1478,8 @@ def _metrics_payload(
         "ntor": int(config.ntor),
         "recommended_nzeta": int(recommended_square_axis_nzeta(int(config.ntor))),
         "nzeta": _resolved_nzeta(config),
+        "requested_nzeta": None if config.nzeta is None else int(config.nzeta),
+        "nzeta_resolution": _nzeta_resolution_payload(config),
         "nzeta_underrecommended": bool(
             _resolved_nzeta(config) < recommended_square_axis_nzeta(int(config.ntor))
         ),
@@ -1457,6 +1489,7 @@ def _metrics_payload(
         "ftol_array": [float(value) for value in config.ftol_array],
         "use_multigrid_schedule": bool(config.use_multigrid_schedule),
         "enforce_recommended_nzeta": bool(config.enforce_recommended_nzeta),
+        "auto_bump_nzeta_to_recommended": bool(config.auto_bump_nzeta_to_recommended),
         "max_boundary_projection_error": (
             None if config.max_boundary_projection_error is None else float(config.max_boundary_projection_error)
         ),

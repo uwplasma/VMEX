@@ -228,13 +228,17 @@ while the same generated-``mgrid`` deck with ``NZETA=32`` completes and reaches
 total residual about ``6.58e-6`` after 1000 iterations. The branch now exposes
 ``vmec_jax.recommended_square_axis_nzeta`` and the square-coil example leaves
 ``NZETA=None`` by default, resolving the VMEC zeta grid from the edited
-``NTOR`` at runtime. The backend profiler also resolves omitted ``--nzeta`` or
-``--nzeta auto`` to this recommendation for the selected ``NTOR``.
-Production-style example runs fail early if ``NZETA`` is below the
-recommendation; diagnostic profiling can still run underresolved grids and
-records ``nzeta_auto`` and ``nzeta_underrecommended`` in the JSON report.
-The example metrics JSON now also carries a ``resolution_deck`` block with the
-same projection/``NZETA`` gate used by the profiler.
+``NTOR`` at runtime. The self-contained example also has
+``AUTO_BUMP_NZETA_TO_RECOMMENDED=True`` by default: if a top-level edit sets an
+explicit ``NZETA`` below the recommendation while strict enforcement is on, the
+example lifts it to the recommended value and records both the requested and
+effective values in ``nzeta_resolution``. Set
+``ENFORCE_RECOMMENDED_NZETA=False`` for intentionally underresolved diagnostic
+examples. The backend profiler keeps stricter benchmark semantics: omitted
+``--nzeta`` or ``--nzeta auto`` resolves to this recommendation, while explicit
+underresolved production decks are rejected or labelled diagnostic. The example
+metrics JSON also carries a ``resolution_deck`` block with the same
+projection/``NZETA`` gate used by the profiler.
 The repo-root square-coil example also writes
 ``square_coil_hybrid_preflight.json`` before starting heavy solves. That
 preflight records the requested component-wise ``FTOL=1e-12`` target, the full

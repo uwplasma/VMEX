@@ -32628,3 +32628,171 @@ Key solve flags:
 ### User input needed
 
 No user input is needed.
+
+---
+## M289 - Strict `FTOL=1e-12` Profiling Reprioritized To VMEC2000 And Example NZETA Robustness
+
+### Steps taken
+
+- Rechecked the active local draft-PR worktree:
+  - branch: `codex/mirror-geometry`;
+  - draft PR: `https://github.com/uwplasma/vmec_jax/pull/21`;
+  - previous pushed head before this tranche: `80803e05`.
+- Polled `office` and found:
+  - the experimental JAX-NESTOR row was still active but slow and CPU-bound;
+  - the VMEC2000 `DELT` scan was still blocked behind that row;
+  - two seeded direct-coil hot-restart rows were active and providing more
+    relevant final-grid evidence.
+- Terminated only the stale experimental JAX-NESTOR row and its old VMEC2000
+  waiter, then launched an immediate serial VMEC2000 generated-`mgrid` scan
+  from the current PR branch.
+- Started the immediate VMEC2000 scan on `office` with master PID `550723`:
+
+```text
+/home/rjorge/local/vmec_mirror_vmec2000_scan/results/
+  square_coil_vmec2000_delt_scan_ns9_13_17_mpol5_ntor28_nzeta64_
+  mgrid88x64x64_niter32k_control_spline_immediate
+```
+
+- The immediate VMEC2000 scan uses:
+  - `DELT = 0.015, 0.02, 0.025`;
+  - `NS_ARRAY = 9,13,17`;
+  - `NITER_ARRAY = 8000,16000,32000`;
+  - `FTOL_ARRAY = 1e-8,1e-10,1e-12`;
+  - `MPOL=5`, `NTOR=28`, `NZETA=64`;
+  - generated `mgrid` resolution `88 x 64 x 64`.
+- Ran the square-coil resolution matrix locally for representative edited
+  decks, including `MPOL=5,NTOR=31,NZETA=auto`.
+- Added a root-example robustness improvement:
+  `AUTO_BUMP_NZETA_TO_RECOMMENDED = True`. In the self-contained square-coil
+  example, an explicitly low top-level `NZETA` is now lifted to the square-axis
+  recommendation when strict enforcement is enabled, and the requested/effective
+  values are recorded in `nzeta_resolution`.
+
+### Results obtained
+
+- The currently accepted production decks from the preflight matrix are:
+  - `MPOL=5, NTOR=28, NZETA=64`;
+  - `MPOL=6, NTOR=32, NZETA=72`;
+  - `MPOL=5, NTOR=31, NZETA=72`;
+  - `MPOL=7, NTOR=28, NZETA=64`;
+  - `MPOL=8, NTOR=32, NZETA=72`.
+- The matrix also confirms the likely cause of non-robust edited runs:
+  - `MPOL=5, NTOR=20, NZETA=48` fails the strict projection gate
+    (`projection_error_exceeds_gate`);
+  - `MPOL=5, NTOR=28, NZETA=48` fits the boundary but fails the `NZETA`
+    recommendation.
+- Current seeded direct-coil hot-restart evidence:
+  - `DELT=0.02` hot restart is around final max component `3.3e-10` at
+    iteration `619`, still above `1e-12` and mildly oscillatory;
+  - `DELT=0.005` seeded probe is around final max component `4.11e-10` at
+    iteration `478`, flatter above strict tolerance.
+- Interpretation:
+  - reducing `DELT` alone does not remove the `~1e-10` to `~4e-10` direct-coil
+    floor;
+  - previous VMEC2000 generated-`mgrid` evidence remains better than the direct
+    row by roughly one to two orders of magnitude, but it has not yet proven
+    component-wise `1e-12`;
+  - the immediate VMEC2000 `DELT` scan is now the priority reference for the
+    question "would VMEC2000 be more robust?".
+- Spline/control-basis conclusion is unchanged but sharpened:
+  the current `control_spline` path is a low-bandwidth real-space target
+  projected into VMEC Fourier coefficients. It helps representation and
+  preflight robustness, but the active nonlinear solve still updates Fourier
+  boundary coefficients. A true spline/control-basis solve requires an
+  opt-in nonlinear boundary-update projection/reparameterization, not just the
+  existing input bridge.
+
+### How it was tested
+
+- Local tests:
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_square_coil_resolution_matrix.py \
+  tests/test_square_coil_followup_commands.py \
+  tests/test_summarize_square_coil_profiles.py
+```
+
+Result: `110 passed, 2 warnings`.
+
+- Local lint/compile/hygiene:
+
+```bash
+ruff check examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/square_coil_resolution_matrix.py \
+  tools/diagnostics/square_coil_followup_commands.py \
+  tests/test_toroidal_hybrid.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_square_coil_resolution_matrix.py \
+  tests/test_square_coil_followup_commands.py \
+  tests/test_summarize_square_coil_profiles.py
+
+venv/bin/python -m py_compile \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/square_coil_resolution_matrix.py \
+  tools/diagnostics/square_coil_followup_commands.py \
+  tools/diagnostics/summarize_square_coil_profiles.py
+
+git diff --check
+```
+
+Results: all passed.
+
+- Remote verification:
+  - confirmed VMEC2000 immediate scan PID `550723` started and is launching
+    `DELT=0.015`;
+  - confirmed active hot-restart rows are still running;
+  - summarized the live hot-restart launcher logs with
+    `tools/diagnostics/summarize_square_coil_profiles.py`.
+
+### File structure and best-practice adherence
+
+- Kept solver/profile code separation intact:
+  - the root example in `examples/` gets user-facing `NZETA` auto-repair and
+    metrics;
+  - backend profiler strict semantics remain in `tools/diagnostics/`;
+  - source-level square-axis representation helpers remain in
+    `vmec_jax/toroidal_hybrid.py`.
+- Kept the repository light:
+  - no remote result files or generated figures were added to git;
+  - only source, tests, docs, and this plan were changed.
+- Kept the current "not solver-native yet" status explicit in docs and metrics.
+
+### Best next steps
+
+1. Let the immediate VMEC2000 generated-`mgrid` scan produce at least the
+   `DELT=0.015` final JSON, then compare final max component and tail plateau
+   against the previous `~1.1e-11` VMEC2000 floor.
+2. When the `DELT=0.005` seeded direct probe finishes, decide whether to stop
+   the longer `DELT=0.02` hot restart or let it finish for its best-scored
+   state.
+3. If VMEC2000 also remains above `1e-12`, prototype the solver-native
+   reduced spline/control-basis update as an opt-in research lane:
+   project free-boundary LCFS coefficient updates through
+   `SquareAxisControlFourierMatrix` and test whether the lower-dimensional
+   boundary motion reduces the strict residual floor.
+4. Run one strict VMEC2000 comparison at `MPOL=5,NTOR=31,NZETA=72` if the
+   current `NTOR=28` deck stalls; the preflight matrix says this is a valid
+   production deck and it is a reasonable check that the residual floor is not
+   a remaining toroidal truncation artifact.
+
+### Completion percentages after M289
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict floor not solved.
+- Seeded hot-restart lane: `99%`, active rows running but still above strict.
+- VMEC2000 robustness/reference lane: `99%`, immediate strict `DELT` scan
+  launched and now highest priority.
+- Resolution/edit robustness lane: `100%` for preflight and example `NZETA`
+  handling.
+- True spline/control-basis hybrid lane: `68%`, planned and source bridges are
+  present, but solver-native projection is not implemented yet.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.

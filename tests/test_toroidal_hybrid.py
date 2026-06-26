@@ -453,6 +453,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
         betas_percent=(0.0,),
         ntor=12,
         nzeta=16,
+        auto_bump_nzeta_to_recommended=False,
         write_plots=False,
         beta_continuation_restart=False,
     )
@@ -466,6 +467,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().niter_array == (4000, 8000, 24000)
     assert module.ExampleConfig().coil_chunk_size == 512
     assert module.ExampleConfig().max_boundary_projection_error == pytest.approx(5.0e-12)
+    assert module.ExampleConfig().auto_bump_nzeta_to_recommended is True
     assert module.ExampleConfig().side_power == pytest.approx(1.0)
     assert module.ExampleConfig().corner_power == pytest.approx(1.0)
     assert module.ExampleConfig().nstep == 1
@@ -485,6 +487,13 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     higher_ntor = module.ExampleConfig(ntor=40, max_boundary_projection_error=None)
     higher_ntor_indata = module.make_free_boundary_indata(higher_ntor, beta_percent=0.0)
     assert higher_ntor_indata.get_int("NZETA") == max(64, recommended_square_axis_nzeta(40))
+    explicit_low_nzeta = module.ExampleConfig(ntor=28, nzeta=48, max_boundary_projection_error=None)
+    explicit_low_indata = module.make_free_boundary_indata(explicit_low_nzeta, beta_percent=0.0)
+    assert explicit_low_indata.get_int("NZETA") == recommended_square_axis_nzeta(28)
+    low_payload = module._preflight_payload(explicit_low_nzeta)["nzeta_resolution"]
+    assert low_payload["requested_nzeta"] == 48
+    assert low_payload["effective_nzeta"] == recommended_square_axis_nzeta(28)
+    assert low_payload["auto_bumped_to_recommended"] is True
     deck = module._resolution_deck_payload(module.ExampleConfig())
     assert deck["status"] == "production_ready"
     assert deck["nzeta"] == max(64, recommended_square_axis_nzeta(module.ExampleConfig().ntor))
@@ -493,6 +502,8 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["production_ready_for_strict_profile"] is True
     assert preflight["strict_schedule"]["requested_final_ftol"] == pytest.approx(1.0e-12)
     assert preflight["strict_schedule"]["requested_final_ftol_meets_target"] is True
+    assert preflight["nzeta_resolution"]["auto_defaulted"] is True
+    assert preflight["nzeta_resolution"]["auto_bump_nzeta_to_recommended"] is True
     assert preflight["resolution_deck"]["status"] == "production_ready"
     assert preflight["control_fourier_map"]["square"]["control_count"] == 2
     assert preflight["control_fourier_map"]["stellarator"]["control_count"] == 5
@@ -953,6 +964,7 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
             ftol_array=(1.0e-6,),
             use_multigrid_schedule=False,
             enforce_recommended_nzeta=False,
+            auto_bump_nzeta_to_recommended=False,
             max_boundary_projection_error=None,
             field_line_count=1,
             field_line_steps=20,
