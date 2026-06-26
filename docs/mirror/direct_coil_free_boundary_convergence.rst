@@ -518,6 +518,9 @@ Completed JAX backend rows add the complementary postsolve diagnostic
 ``boundary_reduced_control_projection``. It projects the actual accepted LCFS
 coefficient displacement onto the same ``control_fourier_map`` and reports the
 least-squares side/corner update, relative residual, and captured fraction.
+The nested ``candidate_bases`` block also compares the two-control square basis
+with the five-control stellarator-symmetric basis, so a low square capture can
+be diagnosed as a basis-size issue before changing the nonlinear algorithm.
 Use this after real solves to tell whether the observed free-boundary motion is
 representable by the compact spline controls before moving the nonlinear
 iteration into that reduced basis.

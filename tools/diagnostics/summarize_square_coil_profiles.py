@@ -315,6 +315,14 @@ def _control_projection_delta_text(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _control_projection_candidate(payload: dict[str, Any], symmetry: str) -> dict[str, Any]:
+    candidates = payload.get("candidate_bases")
+    if not isinstance(candidates, dict):
+        return {}
+    candidate = candidates.get(symmetry)
+    return candidate if isinstance(candidate, dict) else {}
+
+
 def _vmec2000_tail_projection(rows: list[Any], *, length: int = 12) -> dict[str, Any]:
     """Estimate residual decay per VMEC2000 iteration from the current stage tail."""
 
@@ -642,6 +650,7 @@ def _summary_row(
     control_projection = backend.get("boundary_reduced_control_projection")
     if not isinstance(control_projection, dict):
         control_projection = {}
+    stellarator_projection = _control_projection_candidate(control_projection, "stellarator")
     iters_to_target = _tail_projection(backend_for_projection, "", target=1.0e-12)
     max_iter = cfg.get("max_iter")
     if max_iter is None:
@@ -710,6 +719,13 @@ def _summary_row(
             control_projection.get("captured_fraction")
         ),
         "boundary_control_projection_radius_delta": _control_projection_delta_text(control_projection),
+        "boundary_control_projection_stellarator_residual_rel": _finite_float(
+            stellarator_projection.get("residual_rel")
+        ),
+        "boundary_control_projection_stellarator_captured_fraction": _finite_float(
+            stellarator_projection.get("captured_fraction")
+        ),
+        "boundary_control_projection_stellarator_control_count": stellarator_projection.get("control_count"),
         "final_iter": final_iter,
         "final_total": final_total,
         "final_max_component": final_max_component,
@@ -1006,6 +1022,9 @@ def main(argv: list[str] | None = None) -> int:
         "boundary_control_projection_residual_rel",
         "boundary_control_projection_captured_fraction",
         "boundary_control_projection_radius_delta",
+        "boundary_control_projection_stellarator_residual_rel",
+        "boundary_control_projection_stellarator_captured_fraction",
+        "boundary_control_projection_stellarator_control_count",
         "final_iter",
         "final_total",
         "final_max_component",

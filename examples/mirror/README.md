@@ -319,7 +319,9 @@ which projects the actual solved LCFS coefficient motion onto that same
 side/corner map. The summary table prints the projection status, relative
 residual, captured fraction, and fitted side/corner radius deltas, so a real
 solve can be checked before replacing Fourier boundary updates with reduced
-spline-control updates.
+spline-control updates. The nested candidate-basis comparison also reports the
+five-control stellarator-symmetric capture, which is the next basis to try if
+the two-control square capture is poor.
 The latest control-spline square-axis preflight matrix is:
 
 | deck | status | reason |

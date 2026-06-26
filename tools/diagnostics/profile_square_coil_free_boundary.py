@@ -526,23 +526,17 @@ def _internal_to_physical_mode_scale(static: Any) -> np.ndarray:
     return np.where(m == 0.0, 1.0, sqrt2) * np.where(np.abs(n) == 0.0, 1.0, sqrt2)
 
 
-def _boundary_reduced_control_projection_payload(
+def _boundary_control_projection_for_symmetry(
     *,
-    config: ExampleConfig | None,
+    config: ExampleConfig,
     deltas: dict[str, np.ndarray],
+    symmetry: str,
 ) -> dict[str, Any] | None:
-    """Project a solved boundary move onto the square side/corner controls."""
+    """Project a solved boundary move onto one reduced-control symmetry basis."""
 
-    if config is None:
-        return None
     axis_kind = str(config.plasma_axis_kind).strip().lower()
-    if not _square_axis_uses_spline_controls(config):
-        return {
-            "status": "not_applicable_for_axis_kind",
-            "axis_kind": axis_kind,
-        }
     try:
-        basis, matrix = _square_control_fourier_matrix(config)
+        basis, matrix = _square_control_fourier_matrix(config, symmetry=symmetry)
         jacobian = matrix.stacked_jacobian()
         target_size = int(sum(np.asarray(value, dtype=float).size for value in deltas.values()))
         if jacobian.shape[0] != target_size:
@@ -551,6 +545,7 @@ def _boundary_reduced_control_projection_payload(
                 "axis_kind": axis_kind,
                 "basis_symmetry": basis.symmetry,
                 "labels": list(basis.labels),
+                "control_count": int(matrix.control_count),
                 "jacobian_shape": [int(value) for value in jacobian.shape],
                 "target_size": target_size,
             }
@@ -559,6 +554,7 @@ def _boundary_reduced_control_projection_payload(
                 "status": "empty_control_basis",
                 "axis_kind": axis_kind,
                 "basis_symmetry": basis.symmetry,
+                "control_count": int(matrix.control_count),
                 "jacobian_shape": [int(value) for value in jacobian.shape],
                 "target_size": target_size,
             }
@@ -575,6 +571,7 @@ def _boundary_reduced_control_projection_payload(
             "axis_kind": axis_kind,
             "basis_symmetry": basis.symmetry,
             "labels": list(projection.labels),
+            "control_count": int(matrix.control_count),
             "radius_delta": [float(value) for value in projection.radius_delta],
             "radius_delta_by_label": projection.radius_delta_by_label,
             "rank": int(projection.rank),
@@ -593,8 +590,42 @@ def _boundary_reduced_control_projection_payload(
         return {
             "status": f"failed:{type(exc).__name__}",
             "axis_kind": axis_kind,
+            "basis_symmetry": str(symmetry),
             "error": repr(exc),
         }
+
+
+def _boundary_reduced_control_projection_payload(
+    *,
+    config: ExampleConfig | None,
+    deltas: dict[str, np.ndarray],
+) -> dict[str, Any] | None:
+    """Project a solved boundary move onto the square side/corner controls."""
+
+    if config is None:
+        return None
+    axis_kind = str(config.plasma_axis_kind).strip().lower()
+    if not _square_axis_uses_spline_controls(config):
+        return {
+            "status": "not_applicable_for_axis_kind",
+            "axis_kind": axis_kind,
+        }
+    primary = _boundary_control_projection_for_symmetry(
+        config=config,
+        deltas=deltas,
+        symmetry="square",
+    )
+    if primary is None:
+        return None
+    primary["candidate_bases"] = {
+        symmetry: _boundary_control_projection_for_symmetry(
+            config=config,
+            deltas=deltas,
+            symmetry=symmetry,
+        )
+        for symmetry in ("square", "stellarator")
+    }
+    return primary
 
 
 def _boundary_motion_payload(run: Any, *, config: ExampleConfig | None = None) -> dict[str, Any] | None:
@@ -1222,11 +1253,11 @@ def _square_axis_controls(config: ExampleConfig) -> SquareAxisSplineControls:
     ).validate()
 
 
-def _square_control_fourier_matrix(config: ExampleConfig) -> tuple[Any, Any]:
-    """Build the square-symmetric spline-control to Fourier map."""
+def _square_control_fourier_matrix(config: ExampleConfig, *, symmetry: str = "square") -> tuple[Any, Any]:
+    """Build a symmetry-reduced spline-control to Fourier map."""
 
     controls = _square_axis_controls(config)
-    basis = square_axis_spline_symmetric_control_basis(controls, symmetry="square")
+    basis = square_axis_spline_symmetric_control_basis(controls, symmetry=symmetry)
     sample_kwargs = {
         key: value
         for key, value in _square_axis_sample_kwargs(config).items()

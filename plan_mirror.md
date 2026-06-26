@@ -5796,6 +5796,69 @@ No user input is needed.
 
 No user input is needed.
 
+---
+
+## 267. Added Two-Control Versus Five-Control Projection Capture Comparison
+
+### Steps taken
+
+- Generalized the profile-side control map builder to accept a symmetry basis.
+- Added a postsolve `candidate_bases` block under
+  `boundary_reduced_control_projection`.
+- The block compares:
+  - the two-control square basis;
+  - the five-control stellarator-symmetric basis.
+- Added compact summary columns for the five-control residual, captured
+  fraction, and control count.
+- Updated docs and tests for the comparison.
+
+### Results obtained
+
+- Completed JAX profile rows will now show whether poor reduced-control capture
+  is caused by the very compact two-parameter square basis or remains poor even
+  after expanding to the five-parameter stellarator-symmetric basis.
+- This keeps the next solver-native spline/control-basis decision evidence-led
+  instead of guessing a control dimension.
+
+### How it was tested
+
+- Focused tests cover the new nested candidate-basis payload.
+- The broader profile/toroidal-hybrid subset is run before commit.
+
+### File structure and best-practice notes
+
+- The actual projection math remains in `vmec_jax/toroidal_hybrid.py`.
+- `tools/diagnostics/profile_square_coil_free_boundary.py` only selects bases
+  and formats JSON.
+- Summary columns stay compact; full projection details remain in the profile
+  JSON.
+- No generated outputs were tracked.
+
+### Best next steps
+
+1. Let active strict rows finish and relaunch a short updated JAX row to collect
+   square and stellarator-symmetric capture metrics.
+2. If the five-control capture is materially better, use the stellarator basis
+   for the first opt-in reduced-control solver update.
+3. If both captures are poor, revisit the spline basis itself before adding a
+   nonlinear reduced-control update.
+
+### Completion percentages after M267
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `97%`.
+- VMEC2000 robustness/reference lane: `97%`, active row still running.
+- Direct-coil finite-beta diagnostic lane: `90%`.
+- Direct-coil GPU/JIT parity lane: `80%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `78%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- Strict production deck gating lane: `100%`.
+- True spline/control-basis hybrid lane: `72%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
+
 ## 265. Project Accepted Square-Coil LCFS Motion Onto Reduced Controls
 
 ### Steps taken

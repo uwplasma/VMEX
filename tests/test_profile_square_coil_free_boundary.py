@@ -225,7 +225,7 @@ def test_square_coil_profile_boundary_reduced_control_projection_payload(monkeyp
     monkeypatch.setattr(
         profile,
         "_square_control_fourier_matrix",
-        lambda _config: (basis, matrix),
+        lambda _config, *, symmetry="square": (basis, matrix),
     )
     config = SimpleNamespace(plasma_axis_kind="control_spline")
     payload = profile._boundary_reduced_control_projection_payload(
@@ -246,6 +246,8 @@ def test_square_coil_profile_boundary_reduced_control_projection_payload(monkeyp
     assert payload["radius_delta_by_label"]["corner"] == pytest.approx(2.0)
     assert payload["residual_rel"] == pytest.approx(0.0, abs=1.0e-14)
     assert payload["captured_fraction"] == pytest.approx(1.0)
+    assert payload["candidate_bases"]["square"]["captured_fraction"] == pytest.approx(1.0)
+    assert payload["candidate_bases"]["stellarator"]["captured_fraction"] == pytest.approx(1.0)
 
 
 def test_square_coil_profile_partial_vmec2000_payload_reads_timeout_rows(tmp_path: Path):
