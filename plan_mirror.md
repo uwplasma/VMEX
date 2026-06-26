@@ -31888,3 +31888,80 @@ No user input is needed.
 ### User input needed
 
 No user input is needed.
+
+---
+## M280 - Completed VMEC2000 Row Follow-up Classification
+
+### Steps taken
+
+- Confirmed the active VMEC2000 process finished and wrote final profile JSON.
+- Summarized that completed VMEC2000 row locally with the patched summary
+  helper.
+- Fixed the summary recommendation order so completed VMEC2000 flat-tail rows
+  recommend the VMEC2000 `DELT`/stage-budget follow-up instead of being masked
+  by missing accepted-LCFS provider parity.
+- Added a regression for a failed VMEC2000 row with a flat tail and remaining
+  final-stage budget.
+
+### Results obtained
+
+- Completed VMEC2000 row:
+  - `status=failed`;
+  - final force iteration `11957`;
+  - `final_total=2.313e-11`;
+  - `final_max_component=1.12e-11`;
+  - strict gap `11.2`;
+  - `strict_components_met=false`;
+  - no vacuum-grid overflow.
+- The row still had about `12043` final-stage iterations remaining from the
+  `24000` final-stage budget, so this is best treated as a timeout/flat-tail
+  reference result, not as evidence that the full final-stage budget was
+  exhausted.
+- The patched summary now reports:
+  - `next_action=scan_delt_or_stage_budget`;
+  - `recommended_followup_profile_kind=vmec2000`;
+  - `recommended_followup_reason=scan_delt_or_stage_budget`.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_summarize_square_coil_profiles.py \
+  -k 'vmec2000_for_failed_flat_tail or recommends_provider_parity_when_missing or recommends_direct_gpu_for_stalled_direct or recommends_direct_gpu_after_jax_nestor_probe or recommends_vmec2000_when_grid_exceeded'
+
+venv/bin/python -m py_compile tools/diagnostics/summarize_square_coil_profiles.py
+
+ruff check \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_summarize_square_coil_profiles.py
+
+git diff --check
+```
+
+Results: `5 passed, 16 deselected`; py-compile, ruff, and whitespace checks
+passed.
+
+Additional local summary of the copied final VMEC2000 JSON confirmed the
+recommended follow-up is now `vmec2000`.
+
+### Best next steps
+
+1. Keep the active direct-GPU rows running while they continue improving.
+2. Generate and launch the narrow VMEC2000 `DELT`/stage-budget follow-up row
+   after choosing the next timeout budget, using the existing
+   `square_coil_followup_commands.py --profile-kind vmec2000` path.
+3. Launch the `direct-gpu-jax-nestor` A/B row only after the current direct rows
+   finish or plateau.
+
+### Completion percentages after M280
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `98%`.
+- VMEC2000 robustness/reference lane: `98%`, first strict row finished but did
+  not converge.
+- Direct-coil GPU/JIT parity lane: `89%`, active rows still running.
+- Experimental JAX NESTOR operator profiling lane: `76%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.

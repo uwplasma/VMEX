@@ -413,6 +413,52 @@ def test_square_coil_profile_summary_recommends_vmec2000_when_grid_exceeded(
     assert row["recommended_followup_reason"] == "widen_mgrid_before_backend_comparison"
 
 
+def test_square_coil_profile_summary_recommends_vmec2000_for_failed_flat_tail(
+    tmp_path: Path,
+):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_vmec2000_timeout_flat"
+    case_dir.mkdir()
+    report = case_dir / "square_coil_free_boundary_backend_profile.json"
+    report.write_text(
+        json.dumps(
+            {
+                "configuration": {
+                    "mpol": 5,
+                    "ntor": 28,
+                    "ns": 17,
+                    "nzeta": 64,
+                    "ftol": 1e-12,
+                    "max_iter": 24000,
+                },
+                "backends": {
+                    "vmec2000_mgrid": {
+                        "status": "failed",
+                        "last_row": {
+                            "it": 11957,
+                            "fsqr": 1.12e-11,
+                            "fsqz": 8.12e-12,
+                            "fsql": 3.81e-12,
+                            "total": 2.313e-11,
+                            "max_component": 1.12e-11,
+                        },
+                        "tail_plateau": {"status": "flat_above_stage_ftol"},
+                        "vacuum_grid_exceeded_count": 0,
+                    }
+                },
+            }
+        )
+    )
+
+    row = summary.rows_from_profile(report)[0]
+
+    assert row["status"] == "failed"
+    assert row["strict_gap"] == pytest.approx(11.2)
+    assert row["remaining_iterations"] == 12043
+    assert row["next_action"] == "scan_delt_or_stage_budget"
+    assert row["recommended_followup_profile_kind"] == "vmec2000"
+    assert row["recommended_followup_reason"] == "scan_delt_or_stage_budget"
+
+
 def test_square_coil_profile_summary_recommends_direct_gpu_for_stalled_direct(
     tmp_path: Path,
 ):

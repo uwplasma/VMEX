@@ -460,6 +460,21 @@ def _recommended_followup_payload(
             "recommended_followup_profile_kind": "resolution-preflight",
             "recommended_followup_reason": "fix_projection_nzeta_or_mgrid_gate_first",
         }
+    if next_action_text in {
+        "scan_delt_stage_budget_or_pressure_acceleration",
+        "scan_delt_or_stage_budget",
+        "let_current_run_finish_then_scan_delt_or_stage_budget",
+    }:
+        if "direct" in backend:
+            kind = "direct-gpu" if bool(freeb_jax_nestor_operator) else "direct-gpu-jax-nestor"
+        elif backend == "vmec2000_mgrid":
+            kind = "vmec2000"
+        else:
+            kind = "provider-parity"
+        return {
+            "recommended_followup_profile_kind": kind,
+            "recommended_followup_reason": next_action_text,
+        }
     if accepted_status not in {"completed", "not_applicable"} and backend in {
         "vmec_jax_direct",
         "vmec_jax_mgrid",
@@ -470,19 +485,6 @@ def _recommended_followup_payload(
         return {
             "recommended_followup_profile_kind": "provider-parity",
             "recommended_followup_reason": "accepted_lcfs_provider_parity_missing",
-        }
-    if next_action_text in {
-        "scan_delt_stage_budget_or_pressure_acceleration",
-        "scan_delt_or_stage_budget",
-        "let_current_run_finish_then_scan_delt_or_stage_budget",
-    }:
-        if "direct" in backend:
-            kind = "direct-gpu" if bool(freeb_jax_nestor_operator) else "direct-gpu-jax-nestor"
-        else:
-            kind = "provider-parity"
-        return {
-            "recommended_followup_profile_kind": kind,
-            "recommended_followup_reason": next_action_text,
         }
     if backend == "vmec2000_mgrid":
         return {

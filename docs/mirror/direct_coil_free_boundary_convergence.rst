@@ -466,6 +466,12 @@ folder name. Completed stalled direct rows that have not already used
 ``freeb_jax_nestor_operator`` now recommend ``direct-gpu-jax-nestor`` as the
 next profile kind; rows that already used it fall back to the ordinary
 direct-GPU ``DELT``/stage-budget lane.
+Completed VMEC2000 rows with a flat tail above ``FTOL`` recommend another
+``vmec2000`` follow-up row for the ``DELT``/stage-budget scan rather than
+detouring through accepted-LCFS provider parity first. That keeps the reference
+solver lane focused on whether the generated-``mgrid`` VMEC2000 problem can
+reach the strict component gate before comparing direct and generated-field
+providers on an accepted LCFS.
 Completed JAX backend profiles also expose
 ``free_boundary_jax_nestor_operator_applied``,
 ``free_boundary_jax_nestor_operator_reason``,
