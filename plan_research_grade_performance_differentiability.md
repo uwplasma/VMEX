@@ -7949,6 +7949,88 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.75%.
 
+### 2026-06-26: Move residual index/state setup into domain module
+
+Steps taken:
+
+- Moved the residual mode-transform and initial-state setup record/builder from
+  ``solvers/fixed_boundary/residual/iteration.py`` into
+  ``solvers/fixed_boundary/residual/state_setup.py``.
+- Kept dependencies explicit at the call site so ``state_setup.py`` remains a
+  small, testable setup module instead of importing solver-loop globals.
+- Tightened the source-health baseline for
+  ``solve_fixed_boundary_residual_iter`` from 2441 to 2440 source lines.
+- Left numerical code paths unchanged: this is a setup ownership/refactor
+  tranche, not a force-kernel, preconditioner, scan, or WOUT change.
+
+Results obtained:
+
+- ``iteration.py`` dropped from 3265 to 3121 source-health lines while the
+  setup helper moved to its domain module.
+- ``solve_fixed_boundary_residual_iter`` is now 2440 source lines by
+  ``inspect``.
+- ``python -m ruff check
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  vmec_jax/solvers/fixed_boundary/residual/state_setup.py
+  tools/diagnostics/local_ci_gate.py tests/test_local_ci_gate.py`` passed.
+- ``python -m compileall -q
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  vmec_jax/solvers/fixed_boundary/residual/state_setup.py`` passed.
+- ``python tools/diagnostics/source_health.py --top 20
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2440
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=420`` passed.
+- ``python tools/diagnostics/local_ci_gate.py --dry-run --only
+  source-health`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_local_ci_gate.py tests/test_solve_residual_iter_setup_helpers.py
+  tests/test_solve_residual_iter_mode_transform_helpers.py
+  tests/test_solve_performance_instrumentation.py -q`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_solve_residual_iter_setup_helpers.py
+  tests/test_solve_residual_iter_mode_transform_helpers.py
+  tests/test_solve_residual_iter_update_helpers.py
+  tests/test_solve_performance_instrumentation.py -q`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_driver_api.py tests/test_driver_fast_reconstruction.py
+  tests/test_driver_api_finish_more_coverage.py tests/test_driver_policy_helpers.py
+  tests/test_driver_policy_coverage_extra.py -q`` passed with existing
+  optimized-controller numerical warnings.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_residue_getfsq_parity.py
+  tests/test_wout_profiles_currents_bundled_parity.py
+  tests/test_physics_parity_helper_gates.py
+  tests/test_vmec_parity_physics_fast_gates.py
+  tests/test_converged_wout_matrix_parity.py
+  tests/test_parity_sweep_manifest_thresholds.py -q`` passed with the existing
+  expected xfail.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size is 27.12 MiB.
+
+Best next steps:
+
+1. Commit and push this domain-module setup extraction.
+2. Let CI validate the tightened ``2440`` source-health baseline.
+3. Treat the remaining very large free-boundary validation test split as an
+   explicit follow-up refactor, not as a blocker for the current readiness
+   tranche unless CI or review asks for it.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.5%.
+- Free-boundary production differentiability: 97.7%.
+- Single-stage coil optimization: 94.2%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 84.0%.
+- VMEC2000/VMEC++ parity and physics gates: 99.4%.
+- Docs/release hygiene: 100%.
+- Overall: 99.8%.
+
 ### 2026-06-26: Extract residual free-boundary and boundary setup objects
 
 Steps taken:
