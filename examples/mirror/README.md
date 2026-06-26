@@ -196,6 +196,12 @@ projected-control status, update mode, coordinate-update count, native-update
 count, and reduced force/update norms to the preflight JSON and summary CSV.
 Set that top-level option to ``"none"`` for an unconstrained full-Fourier
 comparison.
+For strict ``FTOL=1e-12`` runs, the example also enables opt-in free-boundary
+best-state drift restarts by default through
+``FREE_BOUNDARY_DRIFT_RESTART = True``. The solver rolls back to the best fresh
+free-boundary state only after the component residual has drifted above the
+configured factor for the configured streak; the summary CSV and metrics JSON
+record both the requested policy and the observed restart counters.
 Use ``vmec_jax.square_axis_spline_radius_matrix`` to inspect the linear map
 from those few control radii to sampled square-axis radius values. The helper
 does not replace VMEC's Fourier state yet, but it makes the low-dimensional

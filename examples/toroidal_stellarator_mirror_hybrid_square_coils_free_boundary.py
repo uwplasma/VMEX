@@ -120,6 +120,11 @@ FREE_BOUNDARY_EDGE_CONTROL_TRUST_RADIUS: float | None = None
 FREE_BOUNDARY_EDGE_CONTROL_UPDATE_MODE = "native_coordinate"
 SOLVER_MODE = "parity"
 RETURN_BEST_SCORED_STATE = True
+FREE_BOUNDARY_DRIFT_RESTART = True
+FREE_BOUNDARY_DRIFT_RESTART_FACTOR = 2.0
+FREE_BOUNDARY_DRIFT_RESTART_MIN_ITER_SINCE_BEST = 20
+FREE_BOUNDARY_DRIFT_RESTART_STREAK = 5
+FREE_BOUNDARY_DRIFT_RESTART_MAX_RESTARTS = 4
 LIMIT_UPDATE_RMS = False
 BACKTRACKING = False
 USE_DIRECT_FALLBACK = False
@@ -197,6 +202,11 @@ class ExampleConfig:
     free_boundary_edge_control_update_mode: str = FREE_BOUNDARY_EDGE_CONTROL_UPDATE_MODE
     solver_mode: str | None = SOLVER_MODE
     return_best_scored_state: bool = RETURN_BEST_SCORED_STATE
+    free_boundary_drift_restart: bool = FREE_BOUNDARY_DRIFT_RESTART
+    free_boundary_drift_restart_factor: float = FREE_BOUNDARY_DRIFT_RESTART_FACTOR
+    free_boundary_drift_restart_min_iter_since_best: int = FREE_BOUNDARY_DRIFT_RESTART_MIN_ITER_SINCE_BEST
+    free_boundary_drift_restart_streak: int = FREE_BOUNDARY_DRIFT_RESTART_STREAK
+    free_boundary_drift_restart_max_restarts: int = FREE_BOUNDARY_DRIFT_RESTART_MAX_RESTARTS
     limit_update_rms: bool = LIMIT_UPDATE_RMS
     backtracking: bool = BACKTRACKING
     use_direct_fallback: bool = USE_DIRECT_FALLBACK
@@ -425,6 +435,27 @@ def _compact_json_or_none(value: Any) -> str | None:
     if isinstance(value, (list, tuple)) and not value:
         return None
     return json.dumps(_json_sanitize(value), sort_keys=True, separators=(",", ":"))
+
+
+def _bool_env(value: Any) -> str:
+    return "1" if bool(value) else "0"
+
+
+def _solver_env_overrides(config: ExampleConfig) -> dict[str, str]:
+    """Return solver environment flags used by this strict free-boundary example."""
+
+    return {
+        "VMEC_JAX_RETURN_BEST_SCORED_STATE": _bool_env(config.return_best_scored_state),
+        "VMEC_JAX_FREEB_DRIFT_RESTART": _bool_env(config.free_boundary_drift_restart),
+        "VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR": f"{float(config.free_boundary_drift_restart_factor):.17g}",
+        "VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST": str(
+            max(0, int(config.free_boundary_drift_restart_min_iter_since_best))
+        ),
+        "VMEC_JAX_FREEB_DRIFT_RESTART_STREAK": str(max(1, int(config.free_boundary_drift_restart_streak))),
+        "VMEC_JAX_FREEB_DRIFT_RESTART_MAX_RESTARTS": str(
+            max(0, int(config.free_boundary_drift_restart_max_restarts))
+        ),
+    }
 
 
 def _edge_control_row_metrics(edge_projection: dict[str, Any]) -> dict[str, Any]:
@@ -964,6 +995,16 @@ def _validate_example_config(config: ExampleConfig) -> None:
         solver_mode = str(config.solver_mode).strip().lower()
         if solver_mode not in {"default", "parity", "accelerated"}:
             raise ValueError("solver_mode must be one of: default, parity, accelerated, or None")
+    if not np.isfinite(float(config.free_boundary_drift_restart_factor)) or float(
+        config.free_boundary_drift_restart_factor
+    ) < 1.0:
+        raise ValueError("free_boundary_drift_restart_factor must be finite and at least 1")
+    if int(config.free_boundary_drift_restart_min_iter_since_best) < 0:
+        raise ValueError("free_boundary_drift_restart_min_iter_since_best must be nonnegative")
+    if int(config.free_boundary_drift_restart_streak) < 1:
+        raise ValueError("free_boundary_drift_restart_streak must be positive")
+    if int(config.free_boundary_drift_restart_max_restarts) < 0:
+        raise ValueError("free_boundary_drift_restart_max_restarts must be nonnegative")
     if int(config.nvacskip) < 1:
         raise ValueError("nvacskip must be at least 1")
     if config.plasma_axis_reduced_radii is not None and str(config.plasma_axis_kind).strip().lower() != "control_spline":
@@ -1340,6 +1381,16 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
                 if solve_config.max_boundary_projection_error is None
                 else float(solve_config.max_boundary_projection_error)
             ),
+            "return_best_scored_state": bool(solve_config.return_best_scored_state),
+            "free_boundary_drift_restart": bool(solve_config.free_boundary_drift_restart),
+            "free_boundary_drift_restart_factor": float(solve_config.free_boundary_drift_restart_factor),
+            "free_boundary_drift_restart_min_iter_since_best": int(
+                solve_config.free_boundary_drift_restart_min_iter_since_best
+            ),
+            "free_boundary_drift_restart_streak": int(solve_config.free_boundary_drift_restart_streak),
+            "free_boundary_drift_restart_max_restarts": int(
+                solve_config.free_boundary_drift_restart_max_restarts
+            ),
         },
         "effective_mode_deck": mode_deck.to_dict(),
         "strict_schedule": schedule,
@@ -1496,8 +1547,9 @@ def _run_one_beta(
     run_budget = _run_budget(config, restart_state=restart_state)
     use_multigrid = bool(config.use_multigrid_schedule and restart_state is None)
     edge_control_projection = _edge_control_projection_payload(solve_config)
-    previous_return_best = os.environ.get("VMEC_JAX_RETURN_BEST_SCORED_STATE")
-    os.environ["VMEC_JAX_RETURN_BEST_SCORED_STATE"] = "1" if bool(config.return_best_scored_state) else "0"
+    env_overrides = _solver_env_overrides(solve_config)
+    previous_env = {name: os.environ.get(name) for name in env_overrides}
+    os.environ.update(env_overrides)
     try:
         run = run_free_boundary(
             input_path,
@@ -1519,10 +1571,11 @@ def _run_one_beta(
             use_initial_guess=False,
         )
     finally:
-        if previous_return_best is None:
-            os.environ.pop("VMEC_JAX_RETURN_BEST_SCORED_STATE", None)
-        else:
-            os.environ["VMEC_JAX_RETURN_BEST_SCORED_STATE"] = previous_return_best
+        for name, previous in previous_env.items():
+            if previous is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = previous
     wall_s = time.perf_counter() - t0
     write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
     theta, zeta, R, Z, Bmag, Bmag_near_axis, Bxyz, bsupu, bsupv = _solved_surface_and_field(run, solve_config)
@@ -1586,6 +1639,13 @@ def _run_one_beta(
         "use_scan": diag.get("use_scan") if isinstance(diag, dict) else None,
         "nvacskip": int(config.nvacskip),
         "return_best_scored_state_requested": bool(config.return_best_scored_state),
+        "free_boundary_drift_restart_requested": bool(config.free_boundary_drift_restart),
+        "free_boundary_drift_restart_factor": float(config.free_boundary_drift_restart_factor),
+        "free_boundary_drift_restart_min_iter_since_best": int(
+            config.free_boundary_drift_restart_min_iter_since_best
+        ),
+        "free_boundary_drift_restart_streak": int(config.free_boundary_drift_restart_streak),
+        "free_boundary_drift_restart_max_restarts": int(config.free_boundary_drift_restart_max_restarts),
         "free_boundary_edge_control_projection_requested": str(config.free_boundary_edge_control_projection),
         "free_boundary_edge_control_update_mode": str(config.free_boundary_edge_control_update_mode),
         "free_boundary_edge_control_ridge": float(config.free_boundary_edge_control_ridge),
@@ -1645,6 +1705,16 @@ def _run_one_beta(
         ),
         "best_scored_fresh_boundary_count": (
             diag.get("best_scored_fresh_boundary_count") if isinstance(diag, dict) else None
+        ),
+        "best_scored_drift_restart_count": (
+            diag.get("best_scored_drift_restart_count") if isinstance(diag, dict) else None
+        ),
+        "best_scored_drift_streak": diag.get("best_scored_drift_streak") if isinstance(diag, dict) else None,
+        "best_scored_drift_last_restart_iter": (
+            diag.get("best_scored_drift_last_restart_iter") if isinstance(diag, dict) else None
+        ),
+        "best_scored_drift_last_ratio": (
+            diag.get("best_scored_drift_last_ratio") if isinstance(diag, dict) else None
         ),
         "free_boundary_convergence_blocked_count": (
             diag.get("free_boundary_convergence_blocked_count") if isinstance(diag, dict) else None
@@ -1771,6 +1841,11 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "use_scan",
         "nvacskip",
         "return_best_scored_state_requested",
+        "free_boundary_drift_restart_requested",
+        "free_boundary_drift_restart_factor",
+        "free_boundary_drift_restart_min_iter_since_best",
+        "free_boundary_drift_restart_streak",
+        "free_boundary_drift_restart_max_restarts",
         "free_boundary_edge_control_projection_requested",
         "free_boundary_edge_control_update_mode",
         "free_boundary_edge_control_ridge",
@@ -1852,6 +1927,10 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "best_scored_component_max",
         "best_scored_full_boundary_count",
         "best_scored_fresh_boundary_count",
+        "best_scored_drift_restart_count",
+        "best_scored_drift_streak",
+        "best_scored_drift_last_restart_iter",
+        "best_scored_drift_last_ratio",
         "free_boundary_convergence_blocked_count",
         "free_boundary_fresh_convergence_gate",
         "free_boundary_fresh_convergence_recheck_count",
@@ -2297,6 +2376,13 @@ def _metrics_payload(
         ),
         "nvacskip": int(solve_config.nvacskip),
         "return_best_scored_state": bool(solve_config.return_best_scored_state),
+        "free_boundary_drift_restart": bool(solve_config.free_boundary_drift_restart),
+        "free_boundary_drift_restart_factor": float(solve_config.free_boundary_drift_restart_factor),
+        "free_boundary_drift_restart_min_iter_since_best": int(
+            solve_config.free_boundary_drift_restart_min_iter_since_best
+        ),
+        "free_boundary_drift_restart_streak": int(solve_config.free_boundary_drift_restart_streak),
+        "free_boundary_drift_restart_max_restarts": int(solve_config.free_boundary_drift_restart_max_restarts),
         "free_boundary_activate_fsq": (
             None
             if solve_config.free_boundary_activate_fsq is None

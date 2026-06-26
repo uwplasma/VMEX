@@ -337,6 +337,27 @@ def test_root_stellarator_hybrid_boundary_example_runs_without_plots(tmp_path):
     assert metrics["figures"] == {}
 
 
+def test_square_coil_hybrid_example_exposes_strict_drift_restart_env():
+    module = _load_root_example("toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py")
+    config = module["ExampleConfig"](
+        return_best_scored_state=False,
+        free_boundary_drift_restart=True,
+        free_boundary_drift_restart_factor=2.5,
+        free_boundary_drift_restart_min_iter_since_best=12,
+        free_boundary_drift_restart_streak=4,
+        free_boundary_drift_restart_max_restarts=3,
+    )
+
+    env = module["_solver_env_overrides"](config)
+
+    assert env["VMEC_JAX_RETURN_BEST_SCORED_STATE"] == "0"
+    assert env["VMEC_JAX_FREEB_DRIFT_RESTART"] == "1"
+    assert env["VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR"] == "2.5"
+    assert env["VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST"] == "12"
+    assert env["VMEC_JAX_FREEB_DRIFT_RESTART_STREAK"] == "4"
+    assert env["VMEC_JAX_FREEB_DRIFT_RESTART_MAX_RESTARTS"] == "3"
+
+
 def test_root_free_boundary_circular_coils_example_runs_without_plots(tmp_path):
     completed = subprocess.run(
         [

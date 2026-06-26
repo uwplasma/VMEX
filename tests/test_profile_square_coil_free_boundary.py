@@ -1214,6 +1214,11 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     data = json.loads(report.read_text())
     assert data["configuration"]["max_boundary_projection_error"] == pytest.approx(1.0)
     assert data["configuration"]["nstep"] == 3
+    assert data["configuration"]["freeb_drift_restart"] is False
+    assert data["configuration"]["freeb_drift_restart_factor"] == pytest.approx(3.0)
+    assert data["configuration"]["freeb_drift_restart_min_iter_since_best"] == 20
+    assert data["configuration"]["freeb_drift_restart_streak"] == 10
+    assert data["configuration"]["freeb_drift_restart_max_restarts"] == 4
     assert data["configuration"]["ntheta"] == profile.recommended_square_axis_ntheta(3)
     assert data["configuration"]["recommended_ntheta"] == profile.recommended_square_axis_ntheta(3)
     assert data["configuration"]["ntheta_auto"] is True

@@ -22,6 +22,12 @@ scored equilibrium-like state instead of the last unscored update when
 ``max_iter`` is exhausted. The behavior is controlled by
 ``RETURN_BEST_SCORED_STATE`` in the example and by
 ``--return-best-scored-state`` in the backend profiler.
+The square-coil example now also exposes the same strict-run drift controls as
+top-level parameters. ``FREE_BOUNDARY_DRIFT_RESTART = True`` is enabled by
+default for this hard example, while the global solver remains opt-in. Metrics
+and CSV rows record the requested drift policy and the observed
+``best_scored_drift_*`` counters so a plotted best state can be tied to the
+restart path that produced it.
 
 The latest strict fresh residual evidence at the coarse review resolution
 ``NS=9, MPOL=5, NTOR=12`` reaches active free-boundary convergence through
