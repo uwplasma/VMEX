@@ -668,6 +668,9 @@ error, mode count, and recommended ``NZETA`` for the selected
 ``MPOL``/``NTOR``/fit-grid combination; the profile summarizer exposes this as
 ``boundary_mode_count``, ``boundary_recommended_nzeta``,
 ``boundary_proj_max``, and ``boundary_proj_rel``.
+The companion ``resolution_deck`` block records the recommended-``NZETA`` rule,
+signed ``nzeta_margin``, signed ``mgrid_nphi_margin``, Fourier boundary channel
+count, and points per retained toroidal mode.
 These metrics should be reviewed whenever changing ``MPOL``, ``NTOR``, or
 ``NZETA``: they diagnose input-boundary underfitting before the free-boundary
 nonlinear solve is interpreted.
@@ -706,7 +709,10 @@ uses VMEC Fourier boundary coefficients. With edge-control projection enabled,
 the VMEC state remains Fourier-based but the free-boundary LCFS edge updates
 are least-squares projected back to the reduced square-axis spline-control
 subspace before vacuum-pressure sampling. It is still not a solver-native
-spline/control-basis equilibrium.
+spline/control-basis equilibrium; that next tranche needs a reduced LCFS state,
+a Fourier lift for force evaluation, a pullback of edge residual/update
+directions, and a reduced preconditioned step rather than only an edge-row
+projection.
 The reusable source hook is
 ``SquareAxisControlFourierMatrix.project_boundary_delta(...)``. It returns a
 ``SquareAxisControlProjection`` with the fitted control update, reconstructed

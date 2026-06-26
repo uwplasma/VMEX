@@ -5738,6 +5738,71 @@ Visual validation:
 
 No user input is needed.
 
+## M318. Native spline/control interface boundary and docs refresh
+
+### Steps taken
+
+- Inspected the current reduced free-boundary edge-control implementation in
+  `vmec_jax/solvers/free_boundary/control.py`.
+- Confirmed the active path projects only the LCFS edge row into the reduced
+  square-axis spline-control subspace and scrubs edge velocity memory, while
+  interior geometry and lambda continue to use the standard VMEC Fourier state
+  and VMEC-style preconditioner.
+- Updated the mirror README and Sphinx mirror docs to mention:
+  - square-coil example schema `0.5`;
+  - `best_scored_component_max`;
+  - signed `nzeta_margin` and `mgrid_nphi_margin`;
+  - Fourier boundary channel count and points per retained toroidal mode;
+  - the fact that reduced edge projection is not yet a solver-native
+    spline/control-basis equilibrium.
+- Made the native spline/control next tranche explicit in the docs: it needs a
+  reduced LCFS state, a Fourier lift for force evaluation, a pullback of edge
+  residual/update directions, and a reduced preconditioned step.
+
+### Results obtained
+
+- Documentation now matches the latest square-coil preflight and CSV outputs.
+- The plan distinguishes the current reduced edge projection from the true
+  solver-native spline/control implementation, avoiding overclaiming.
+- No solver behavior changed in this tranche.
+
+### How it was tested
+
+```bash
+python -m py_compile vmec_jax/solvers/free_boundary/control.py
+```
+
+Result: passed.
+
+The documentation changes are text-only and were checked with `git diff --check`.
+
+### File structure and best-practice adherence
+
+- User-facing square-coil instructions remain in `examples/mirror/README.md`.
+- Higher-level status and convergence guidance remain in
+  `docs/mirror/overview.rst` and
+  `docs/mirror/direct_coil_free_boundary_convergence.rst`.
+- The plan remains the single running log in `plan_mirror.md`.
+
+### Best next steps
+
+1. Commit and push the docs refresh.
+2. Let the queued updated strict rows run.
+3. If the updated rows plateau above `1e-12`, start the native reduced
+   spline/control state implementation as a separate source tranche.
+
+### Completion percentages after M318
+
+- Documentation/readiness lane: `97%`, current square-coil outputs and
+  representation limits are documented.
+- True spline/control-basis hybrid lane: `92%`, interface boundary is clear;
+  native reduced state remains open.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M317. Square-axis resolution margins and mgrid comparator queue
 
 ### Steps taken

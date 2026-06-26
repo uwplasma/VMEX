@@ -236,7 +236,10 @@ low-bandwidth rounded ``axis_kind="control_spline"`` square-axis option to reduc
 ``NTOR`` sensitivity before VMEC Fourier projection. The source helper and
 profiler now record ``boundary_projection`` truncation errors for the selected
 ``MPOL``/``NTOR`` grid, mode count, and recommended ``NZETA``, so mode changes
-can be separated from nonlinear free-boundary convergence. The source helper
+can be separated from nonlinear free-boundary convergence. The corresponding
+``resolution_deck`` also reports signed ``nzeta_margin``,
+``mgrid_nphi_margin``, Fourier boundary channel count, and points per retained
+toroidal mode. The source helper
 ``recommend_square_axis_stellarator_mirror_hybrid_resolution`` gives a finite
 Fourier closure suggestion for the current control-spline-smoothed target before a long
 solve is launched, and the profiler treats omitted ``--nzeta`` as the
@@ -255,7 +258,8 @@ LCFS edge motion to the two-control side/corner spline subspace unless the
 top-level example option is set to ``"none"``.
 Direct-coil convergence
 candidates are gated by a fresh residual recompute using the current
-plasma-current normalization, and the square-coil example records near-axis
+plasma-current normalization, and the square-coil example schema ``0.5`` records
+``best_scored_component_max`` for component-wise strict triage. It also records near-axis
 ``|B|`` and mirror-ratio response plots for comparison with the expected
 finite-beta diamagnetic field-depression and effective mirror-ratio increase in
 linear mirror traps.

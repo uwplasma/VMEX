@@ -216,7 +216,11 @@ JSON. With ``ENFORCE_RECOMMENDED_NZETA = True`` and
 ``ENFORCE_RECOMMENDED_NZETA = False`` for intentionally underresolved
 diagnostic examples. The backend
 profiler also treats omitted ``--nzeta`` or ``--nzeta auto`` as that
-recommendation. Underresolved production-style example runs
+recommendation. The ``resolution_deck`` block also records the
+recommended-``NZETA`` rule, signed ``nzeta_margin``, signed
+``mgrid_nphi_margin``, Fourier boundary channel count, and points per retained
+toroidal mode, so edited ``MPOL``/``NTOR``/``NZETA`` decks can be triaged before
+a long solve starts. Underresolved production-style example runs
 raise before solving because ``NTOR=12, NZETA=16`` was observed to fail while
 ``NZETA=32`` completed the same VMEC2000 generated-``mgrid`` case. The top-level
 ``MAX_BOUNDARY_PROJECTION_ERROR`` gate also rejects low-mode decks whose
@@ -242,8 +246,9 @@ and field-line traces, top-view solved boundaries, side/corner cross sections,
 solved-boundary ``|B|``, and residual/iota diagnostics. The metrics JSON records
 convergence status, force components, free-boundary ``B.n`` diagnostics, WOUT
 paths, beta scan rows, solver objective-history extrema, bad-Jacobian/reset
-counts, best fresh free-boundary residuals, accepted-LCFS motion relative to
-the input boundary, and a stall classification. Current
+counts, best fresh free-boundary residuals including
+``best_scored_component_max`` in schema version ``0.5``, accepted-LCFS motion
+relative to the input boundary, and a stall classification. Current
 direct-coil square-hybrid runs are therefore treated as explicit convergence
 diagnostics: if the final recomputed force components miss the requested
 ``FTOL``, the run is labelled as ``not_converged_or_max_iter`` rather than being
