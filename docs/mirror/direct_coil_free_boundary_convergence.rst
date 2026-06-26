@@ -396,7 +396,12 @@ undamped reduced-coordinate step or a deeper free-boundary residual issue.  The
 follow-up command helper carries these values into generated strict-polish
 commands, gives non-default damped rows distinct output-directory labels, and
 the summary table reports the configured ridge, trust radius, and measured
-trust scale for the accepted edge update.
+trust scale for the accepted edge update.  The solver result also reports
+``force_direction`` and ``reduced_force_direction`` inside
+``free_boundary_edge_control_projection``.  These are the preconditioned edge
+force directions before VMEC momentum-memory mixing, and are the preferred
+diagnostics for deciding whether the next step should be native reduced
+spline/control unknowns rather than post-update projection.
 The first 30-iteration direct-GPU coordinate-control smoke on the same
 ``MPOL=5, NTOR=28, NZETA=64`` hot-restart state preserved the LCFS in the
 two-control square subspace to about ``3e-15`` relative reconstruction residual

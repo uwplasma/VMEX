@@ -138,7 +138,12 @@ def _edge_control_reduced_unknown_payload(ns: Mapping[str, Any]) -> dict[str, An
 
 
 def _edge_control_update_direction_payload(ns: Mapping[str, Any]) -> dict[str, Any]:
-    """Return reduced-edge projection residuals for the final update direction."""
+    """Return reduced-edge projection residuals for the final force direction.
+
+    The source is ``update_force_blocks`` after VMEC preconditioning and before
+    momentum-memory mixing.  The historical JSON key is ``update_direction``;
+    new callers should prefer the clearer ``force_direction`` alias.
+    """
 
     try:
         projection = ns.get("freeb_edge_control_projection", {"enabled": False})
@@ -165,7 +170,13 @@ def _edge_control_update_direction_payload(ns: Mapping[str, Any]) -> dict[str, A
 
 
 def _edge_control_reduced_update_direction_payload(ns: Mapping[str, Any]) -> dict[str, Any]:
-    """Return the reduced edge-control update vector for the final direction."""
+    """Return reduced edge-control coordinates for the final force direction.
+
+    The source is ``update_force_blocks`` after VMEC preconditioning and before
+    momentum-memory mixing.  The historical JSON key is
+    ``reduced_update_direction``; new callers should prefer the clearer
+    ``reduced_force_direction`` alias.
+    """
 
     try:
         projection = ns.get("freeb_edge_control_projection", {"enabled": False})
@@ -602,6 +613,8 @@ def finalize_residual_iter_from_namespace(
                 "state_residual": _edge_control_state_residual_payload(ns),
                 "state_coordinates": _edge_control_state_coordinates_payload(ns),
                 "reduced_unknown_vector": _edge_control_reduced_unknown_payload(ns),
+                "force_direction": _edge_control_update_direction_payload(ns),
+                "reduced_force_direction": _edge_control_reduced_update_direction_payload(ns),
                 "update_direction": _edge_control_update_direction_payload(ns),
                 "reduced_update_direction": _edge_control_reduced_update_direction_payload(ns),
             },

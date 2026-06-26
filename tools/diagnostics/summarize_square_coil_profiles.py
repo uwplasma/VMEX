@@ -1409,9 +1409,23 @@ def _summary_row(
     freeb_edge_control_reduced_unknown = freeb_edge_control_runtime.get("reduced_unknown_vector")
     if not isinstance(freeb_edge_control_reduced_unknown, dict):
         freeb_edge_control_reduced_unknown = {}
+    freeb_edge_control_force_direction = freeb_edge_control_runtime.get("force_direction")
+    if not isinstance(freeb_edge_control_force_direction, dict):
+        freeb_edge_control_force_direction = freeb_edge_control_runtime.get("update_direction")
+    if not isinstance(freeb_edge_control_force_direction, dict):
+        freeb_edge_control_force_direction = {}
     freeb_edge_control_update_direction = freeb_edge_control_runtime.get("update_direction")
     if not isinstance(freeb_edge_control_update_direction, dict):
         freeb_edge_control_update_direction = {}
+    freeb_edge_control_reduced_force_direction = freeb_edge_control_runtime.get(
+        "reduced_force_direction"
+    )
+    if not isinstance(freeb_edge_control_reduced_force_direction, dict):
+        freeb_edge_control_reduced_force_direction = freeb_edge_control_runtime.get(
+            "reduced_update_direction"
+        )
+    if not isinstance(freeb_edge_control_reduced_force_direction, dict):
+        freeb_edge_control_reduced_force_direction = {}
     freeb_edge_control_reduced_update_direction = freeb_edge_control_runtime.get("reduced_update_direction")
     if not isinstance(freeb_edge_control_reduced_update_direction, dict):
         freeb_edge_control_reduced_update_direction = {}
@@ -1696,6 +1710,24 @@ def _summary_row(
         "freeb_edge_control_projection_update_direction_trust_scale": _finite_float(
             freeb_edge_control_update_direction.get("trust_scale")
         ),
+        "freeb_edge_control_projection_force_direction_status": freeb_edge_control_force_direction.get(
+            "status"
+        ),
+        "freeb_edge_control_projection_force_direction_linf": _finite_float(
+            freeb_edge_control_force_direction.get("residual_linf")
+        ),
+        "freeb_edge_control_projection_force_direction_rms": _finite_float(
+            freeb_edge_control_force_direction.get("residual_rms")
+        ),
+        "freeb_edge_control_projection_force_direction_rel": _finite_float(
+            freeb_edge_control_force_direction.get("residual_rel")
+        ),
+        "freeb_edge_control_projection_force_direction_captured_fraction": _finite_float(
+            freeb_edge_control_force_direction.get("captured_fraction")
+        ),
+        "freeb_edge_control_projection_force_direction_trust_scale": _finite_float(
+            freeb_edge_control_force_direction.get("trust_scale")
+        ),
         "freeb_edge_control_projection_reduced_update_status": freeb_edge_control_reduced_update_direction.get(
             "status"
         ),
@@ -1716,6 +1748,24 @@ def _summary_row(
         ),
         "freeb_edge_control_projection_reduced_update_captured_fraction": _finite_float(
             freeb_edge_control_reduced_update_direction.get("captured_fraction")
+        ),
+        "freeb_edge_control_projection_reduced_force_status": freeb_edge_control_reduced_force_direction.get(
+            "status"
+        ),
+        "freeb_edge_control_projection_reduced_force_size": freeb_edge_control_reduced_force_direction.get(
+            "reduced_update_size"
+        ),
+        "freeb_edge_control_projection_reduced_force_linf": _finite_float(
+            freeb_edge_control_reduced_force_direction.get("update_linf")
+        ),
+        "freeb_edge_control_projection_reduced_force_decoded_residual_linf": _finite_float(
+            freeb_edge_control_reduced_force_direction.get("decoded_residual_linf")
+        ),
+        "freeb_edge_control_projection_reduced_force_decoded_residual_rel": _finite_float(
+            freeb_edge_control_reduced_force_direction.get("decoded_residual_rel")
+        ),
+        "freeb_edge_control_projection_reduced_force_captured_fraction": _finite_float(
+            freeb_edge_control_reduced_force_direction.get("captured_fraction")
         ),
         "free_boundary_jax_nestor_operator_applied": backend.get(
             "free_boundary_jax_nestor_operator_applied"
@@ -2225,6 +2275,12 @@ def main(argv: list[str] | None = None) -> int:
         "freeb_edge_control_projection_update_direction_rel",
         "freeb_edge_control_projection_update_direction_captured_fraction",
         "freeb_edge_control_projection_update_direction_trust_scale",
+        "freeb_edge_control_projection_force_direction_status",
+        "freeb_edge_control_projection_force_direction_linf",
+        "freeb_edge_control_projection_force_direction_rms",
+        "freeb_edge_control_projection_force_direction_rel",
+        "freeb_edge_control_projection_force_direction_captured_fraction",
+        "freeb_edge_control_projection_force_direction_trust_scale",
         "freeb_edge_control_projection_reduced_update_status",
         "freeb_edge_control_projection_reduced_update_size",
         "freeb_edge_control_projection_full_update_size",
@@ -2232,6 +2288,12 @@ def main(argv: list[str] | None = None) -> int:
         "freeb_edge_control_projection_reduced_update_decoded_residual_linf",
         "freeb_edge_control_projection_reduced_update_decoded_residual_rel",
         "freeb_edge_control_projection_reduced_update_captured_fraction",
+        "freeb_edge_control_projection_reduced_force_status",
+        "freeb_edge_control_projection_reduced_force_size",
+        "freeb_edge_control_projection_reduced_force_linf",
+        "freeb_edge_control_projection_reduced_force_decoded_residual_linf",
+        "freeb_edge_control_projection_reduced_force_decoded_residual_rel",
+        "freeb_edge_control_projection_reduced_force_captured_fraction",
         "free_boundary_jax_nestor_operator_applied",
         "free_boundary_jax_nestor_operator_reason",
         "free_boundary_jax_nestor_operator_jitted",

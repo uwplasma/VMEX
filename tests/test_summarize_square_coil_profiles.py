@@ -698,6 +698,15 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
                                 "residual_rms": 9.0e-12,
                                 "residual_rel": 0.25,
                                 "captured_fraction": 0.9682458365518543,
+                                "trust_scale": 1.0,
+                            },
+                            "force_direction": {
+                                "status": "measured",
+                                "residual_linf": 2.0e-11,
+                                "residual_rms": 8.0e-12,
+                                "residual_rel": 0.2,
+                                "captured_fraction": 0.9797958971132712,
+                                "trust_scale": 0.5,
                             },
                             "reduced_update_direction": {
                                 "status": "measured",
@@ -707,6 +716,15 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
                                 "decoded_residual_linf": 3.0e-11,
                                 "decoded_residual_rel": 0.25,
                                 "captured_fraction": 0.9682458365518543,
+                            },
+                            "reduced_force_direction": {
+                                "status": "measured",
+                                "reduced_update_size": 2,
+                                "full_update_size": 128,
+                                "update_linf": 1.0e-5,
+                                "decoded_residual_linf": 2.0e-11,
+                                "decoded_residual_rel": 0.2,
+                                "captured_fraction": 0.9797958971132712,
                             },
                         },
                         "free_boundary_solver_overrides": {
@@ -752,6 +770,15 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
     assert row["freeb_edge_control_projection_update_direction_captured_fraction"] == pytest.approx(
         0.9682458365518543
     )
+    assert row["freeb_edge_control_projection_update_direction_trust_scale"] == pytest.approx(1.0)
+    assert row["freeb_edge_control_projection_force_direction_status"] == "measured"
+    assert row["freeb_edge_control_projection_force_direction_linf"] == pytest.approx(2.0e-11)
+    assert row["freeb_edge_control_projection_force_direction_rms"] == pytest.approx(8.0e-12)
+    assert row["freeb_edge_control_projection_force_direction_rel"] == pytest.approx(0.2)
+    assert row["freeb_edge_control_projection_force_direction_captured_fraction"] == pytest.approx(
+        0.9797958971132712
+    )
+    assert row["freeb_edge_control_projection_force_direction_trust_scale"] == pytest.approx(0.5)
     assert row["freeb_edge_control_projection_reduced_update_status"] == "measured"
     assert row["freeb_edge_control_projection_reduced_update_size"] == 2
     assert row["freeb_edge_control_projection_full_update_size"] == 128
@@ -762,6 +789,16 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
     assert row["freeb_edge_control_projection_reduced_update_decoded_residual_rel"] == pytest.approx(0.25)
     assert row["freeb_edge_control_projection_reduced_update_captured_fraction"] == pytest.approx(
         0.9682458365518543
+    )
+    assert row["freeb_edge_control_projection_reduced_force_status"] == "measured"
+    assert row["freeb_edge_control_projection_reduced_force_size"] == 2
+    assert row["freeb_edge_control_projection_reduced_force_linf"] == pytest.approx(1.0e-5)
+    assert row["freeb_edge_control_projection_reduced_force_decoded_residual_linf"] == pytest.approx(
+        2.0e-11
+    )
+    assert row["freeb_edge_control_projection_reduced_force_decoded_residual_rel"] == pytest.approx(0.2)
+    assert row["freeb_edge_control_projection_reduced_force_captured_fraction"] == pytest.approx(
+        0.9797958971132712
     )
     assert row["update_delta_rms"] == pytest.approx(2.0e-5)
     assert row["update_delta_to_velocity_rms_ratio"] == pytest.approx(0.4)
