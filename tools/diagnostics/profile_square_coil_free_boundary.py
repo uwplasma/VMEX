@@ -55,6 +55,8 @@ from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1, find_vmec2000_exec, 
 
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "square_coil_freeb_backend_profile"
 TINY = 1.0e-300
+STRICT_COMPONENT_FTOL = 1.0e-12
+LOOSE_COMPONENT_FTOL = 1.0e-8
 
 
 def _json_ready(value: Any) -> Any:
@@ -384,6 +386,7 @@ def _partial_vmec2000_payload(workdir: Path) -> dict[str, Any]:
     totals = [float(row.fsqr) + float(row.fsqz) + float(row.fsql) for row in rows]
     last = rows[-1] if rows else None
     final_ftol = float(stages[-1].ftolv) if stages else None
+    tail_plateau = _vmec2000_tail_plateau_payload(rows, stage_ftol=final_ftol)
     progress_phase = (
         "waiting_for_threed1"
         if threed1 is None
@@ -404,7 +407,19 @@ def _partial_vmec2000_payload(workdir: Path) -> dict[str, Any]:
         "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
         "final_max_component": None if last is None else _vmec2000_max_component(last),
         "strict_components_met": None if last is None else _vmec2000_strict_components_met(last, final_ftol),
-        "tail_plateau": _vmec2000_tail_plateau_payload(rows, stage_ftol=final_ftol),
+        "strict_convergence": _strict_convergence_verdict(
+            components=(
+                None if last is None else float(last.fsqr),
+                None if last is None else float(last.fsqz),
+                None if last is None else float(last.fsql),
+            ),
+            requested_ftol=final_ftol,
+            free_boundary_active=True if rows else None,
+            final_residual_recomputed=True if rows else None,
+            tail_plateau_status=tail_plateau.get("status"),
+            fresh_residual_required=False,
+        ),
+        "tail_plateau": tail_plateau,
         "vacuum_grid_exceeded_count": _vacuum_grid_exceeded_count(threed1),
     }
 
@@ -502,6 +517,116 @@ def _history_stats(values: Any, *, dtype: type = float) -> dict[str, Any]:
         }
     )
     return out
+
+
+def _finite_float_or_none(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    return out if np.isfinite(out) else None
+
+
+def _strict_convergence_verdict(
+    *,
+    components: tuple[Any, Any, Any],
+    requested_ftol: Any,
+    free_boundary_active: bool | None,
+    final_residual_recomputed: Any = None,
+    bad_resets: Any = None,
+    n_iter: Any = None,
+    tail_plateau_status: Any = None,
+    fresh_residual_required: bool = True,
+) -> dict[str, Any]:
+    """Classify a backend row against the strict component-wise force target."""
+
+    values = [_finite_float_or_none(value) for value in components]
+    finite_values = [value for value in values if value is not None]
+    requested = _finite_float_or_none(requested_ftol)
+    if not finite_values:
+        return {
+            "status": "no_force_rows",
+            "strict_component_target": STRICT_COMPONENT_FTOL,
+            "loose_component_target": LOOSE_COMPONENT_FTOL,
+            "requested_ftol": requested,
+            "component_max": None,
+            "component_sum": None,
+            "component_max_over_strict_target": None,
+            "component_max_over_requested_ftol": None,
+            "strict_components_met": None,
+            "requested_components_met": None,
+            "loose_components_met": None,
+            "blockers": ["missing_force_components"],
+        }
+
+    component_max = float(max(finite_values))
+    component_sum = float(sum(finite_values))
+    requested_den = STRICT_COMPONENT_FTOL if requested is None else max(float(requested), TINY)
+    strict_met = bool(component_max <= STRICT_COMPONENT_FTOL)
+    requested_met = bool(component_max <= requested_den)
+    loose_met = bool(component_max <= LOOSE_COMPONENT_FTOL)
+    blockers: list[str] = []
+    if requested is None:
+        blockers.append("requested_ftol_unknown")
+    elif requested > STRICT_COMPONENT_FTOL * (1.0 + 1.0e-10):
+        blockers.append("requested_ftol_above_1e-12")
+    if free_boundary_active is False:
+        blockers.append("free_boundary_not_active")
+    if fresh_residual_required and final_residual_recomputed is False:
+        blockers.append("final_residual_not_recomputed_on_accepted_state")
+    if not strict_met:
+        blockers.append("component_max_above_1e-12")
+    if requested is not None and not requested_met:
+        blockers.append("component_max_above_requested_ftol")
+    bad_reset_count = _finite_float_or_none(bad_resets)
+    iter_count = _finite_float_or_none(n_iter)
+    if (
+        bad_reset_count is not None
+        and iter_count is not None
+        and iter_count > 0.0
+        and bad_reset_count >= max(5.0, 0.5 * iter_count)
+    ):
+        blockers.append("bad_jacobian_or_restart_limited")
+    tail_status = "" if tail_plateau_status is None else str(tail_plateau_status)
+    if tail_status == "flat_above_stage_ftol":
+        blockers.append("flat_tail_above_stage_ftol")
+
+    strict_gap = float(component_max / STRICT_COMPONENT_FTOL)
+    if requested is not None and requested > STRICT_COMPONENT_FTOL * (1.0 + 1.0e-10):
+        status = "non_strict_ftol"
+    elif free_boundary_active is False:
+        status = "free_boundary_not_active"
+    elif strict_met and not blockers:
+        status = "strict_components_met"
+    elif tail_status == "flat_above_stage_ftol":
+        status = "stalled_above_strict_ftol"
+    elif "bad_jacobian_or_restart_limited" in blockers:
+        status = "bad_jacobian_or_restart_limited"
+    elif strict_gap <= 100.0:
+        status = "near_strict_not_met"
+    elif loose_met:
+        status = "loose_only_above_strict"
+    else:
+        status = "underconverged"
+
+    return {
+        "status": status,
+        "strict_component_target": STRICT_COMPONENT_FTOL,
+        "loose_component_target": LOOSE_COMPONENT_FTOL,
+        "requested_ftol": requested,
+        "component_max": component_max,
+        "component_sum": component_sum,
+        "component_max_over_strict_target": strict_gap,
+        "component_max_over_requested_ftol": float(component_max / requested_den),
+        "strict_components_met": strict_met,
+        "requested_components_met": requested_met if requested is not None else None,
+        "loose_components_met": loose_met,
+        "free_boundary_active": free_boundary_active,
+        "fresh_residual_required": bool(fresh_residual_required),
+        "final_residual_recomputed_on_accepted_state": final_residual_recomputed,
+        "tail_plateau_status": tail_status or None,
+        "blockers": list(dict.fromkeys(blockers)),
+    }
 
 
 def _tail_decay_projection(
@@ -969,6 +1094,15 @@ def _final_residuals(run: Any, *, config: ExampleConfig | None = None) -> dict[s
         "free_boundary_last_nestor_sample_time_s": _last_finite(diag.get("freeb_nestor_sample_time_history")),
         "history": _jax_history_payload(run, diag),
     }
+    out["strict_convergence"] = _strict_convergence_verdict(
+        components=(fsqr, fsqz, fsql),
+        requested_ftol=diag.get("requested_ftol"),
+        free_boundary_active=bool(model.strip() and model != "none"),
+        final_residual_recomputed=diag.get("final_residual_recomputed_on_accepted_state"),
+        bad_resets=diag.get("bad_resets"),
+        n_iter=None if run.result is None else int(getattr(run.result, "n_iter", -1)),
+        fresh_residual_required=True,
+    )
     boundary_motion = _boundary_motion_payload(run, config=config)
     if boundary_motion is not None:
         out.update(boundary_motion)
@@ -2233,6 +2367,7 @@ def main(argv: list[str] | None = None) -> int:
                 strict_components_met = (
                     None if last is None else _vmec2000_strict_components_met(last, float(config.ftol))
                 )
+                tail_plateau = _vmec2000_tail_plateau_payload(rows, stage_ftol=stage_ftol)
                 payload["backends"]["vmec2000_mgrid"] = {
                     "status": "completed" if run.returncode == 0 else "nonzero_exit",
                     "returncode": int(run.returncode),
@@ -2252,6 +2387,18 @@ def main(argv: list[str] | None = None) -> int:
                     "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
                     "final_max_component": final_max_component,
                     "strict_components_met": strict_components_met,
+                    "strict_convergence": _strict_convergence_verdict(
+                        components=(
+                            None if last is None else float(last.fsqr),
+                            None if last is None else float(last.fsqz),
+                            None if last is None else float(last.fsql),
+                        ),
+                        requested_ftol=float(config.ftol),
+                        free_boundary_active=True if rows else None,
+                        final_residual_recomputed=True if rows else None,
+                        tail_plateau_status=tail_plateau.get("status"),
+                        fresh_residual_required=False,
+                    ),
                     "free_boundary_promotion": free_boundary_promotion_status(
                         beta_percent=float(args.beta_percent),
                         strict_components_met=strict_components_met,
@@ -2259,7 +2406,7 @@ def main(argv: list[str] | None = None) -> int:
                         direct_coil_backend=False,
                         require_fresh_residual=False,
                     ),
-                    "tail_plateau": _vmec2000_tail_plateau_payload(rows, stage_ftol=stage_ftol),
+                    "tail_plateau": tail_plateau,
                 }
             except Exception as exc:
                 payload["backends"]["vmec2000_mgrid"] = {

@@ -516,6 +516,14 @@ For active VMEC2000 rows, the profiler and summary table now also report
 recent relative span is small while the last residual remains above the current
 stage tolerance; those rows should be treated as stalled until a
 ``DELT``/stage-budget scan moves the floor.
+Raw backend payloads also include a compact ``strict_convergence`` block.  It
+reports the component-wise force maximum, summed residual, gap to the strict
+``1e-12`` target, gap to the requested ``FTOL``, loose ``1e-8`` status, and
+explicit blockers such as ``non_strict_ftol``,
+``component_max_above_1e-12``, missing fresh accepted-state recomputation, or a
+flat tail above the current stage tolerance.  This block is intentionally
+backend-local: it makes a completed JAX, direct-coil, or VMEC2000 JSON report
+self-describing before a larger profile-summary CSV is generated.
 The summary table also carries an explicit strict-evidence classifier:
 ``backend_role``, ``strict_evidence_status``, ``strict_evidence_blockers``,
 ``resolution_deck_status``, and ``resolution_deck_reasons``. A row is strict

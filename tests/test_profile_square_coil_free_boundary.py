@@ -166,6 +166,17 @@ def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tail
     assert payload["history"]["update_rms_stats"]["max"] == pytest.approx(1.0e-2)
     assert payload["history"]["freeb_ivac_tail"] == [1, 2, 3]
     assert payload["history"]["include_edge_tail"] == [0, 1, 1]
+    strict = payload["strict_convergence"]
+    assert strict["status"] == "underconverged"
+    assert strict["strict_component_target"] == pytest.approx(1.0e-12)
+    assert strict["loose_component_target"] == pytest.approx(1.0e-8)
+    assert strict["component_max"] == pytest.approx(2.0e-5)
+    assert strict["component_sum"] == pytest.approx(3.3e-5)
+    assert strict["component_max_over_strict_target"] == pytest.approx(2.0e7)
+    assert strict["strict_components_met"] is False
+    assert strict["requested_components_met"] is False
+    assert "component_max_above_1e-12" in strict["blockers"]
+    assert "component_max_above_requested_ftol" in strict["blockers"]
 
 
 def test_square_coil_profile_tail_decay_projection_estimates_remaining_iterations():
@@ -371,6 +382,11 @@ def test_square_coil_profile_partial_vmec2000_payload_reads_timeout_rows(tmp_pat
     assert payload["min_total"] == pytest.approx(7.0e-6)
     assert payload["final_max_component"] == pytest.approx(4.0e-6)
     assert payload["strict_components_met"] is False
+    assert payload["strict_convergence"]["status"] == "non_strict_ftol"
+    assert payload["strict_convergence"]["component_max"] == pytest.approx(4.0e-6)
+    assert payload["strict_convergence"]["component_max_over_strict_target"] == pytest.approx(4.0e6)
+    assert payload["strict_convergence"]["fresh_residual_required"] is False
+    assert "requested_ftol_above_1e-12" in payload["strict_convergence"]["blockers"]
     assert payload["tail_plateau"]["status"] == "insufficient_tail"
     assert payload["stage_summaries"][0]["strict_components_met"] is False
     assert payload["vacuum_grid_exceeded_count"] == 1
@@ -400,6 +416,8 @@ def test_square_coil_profile_writes_partial_vmec2000_sidecar(tmp_path: Path):
     assert data["updated_unix_s"] > 0.0
     assert data["final_max_component"] == pytest.approx(4.0e-11)
     assert data["strict_components_met"] is False
+    assert data["strict_convergence"]["status"] == "near_strict_not_met"
+    assert data["strict_convergence"]["component_max_over_strict_target"] == pytest.approx(40.0)
     assert data["tail_plateau"]["stage_ftol"] == pytest.approx(1.0e-12)
 
 

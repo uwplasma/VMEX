@@ -32335,3 +32335,93 @@ No user input is needed.
 ### User input needed
 
 No user input is needed.
+
+---
+## M286 - Backend Strict-Convergence Verdict In Raw Profile JSON
+
+### Steps taken
+
+- Rechecked the clean draft-PR branch and active `office` jobs.
+- Kept the active direct-GPU baseline and Anderson rows running; no additional
+  heavy solve was launched on top of them.
+- Added a raw backend `strict_convergence` payload to
+  `tools/diagnostics/profile_square_coil_free_boundary.py`.
+- Threaded the payload through completed JAX backend profiles, completed
+  VMEC2000 profiles, and live/partial VMEC2000 sidecar reports.
+- Added tests that pin `underconverged`, `non_strict_ftol`, and
+  `near_strict_not_met` classifications.
+- Updated the convergence notes to document the new raw JSON field.
+
+### Results obtained
+
+- Each backend profile JSON now reports:
+  - component-wise force maximum and component sum;
+  - strict target `1e-12` and loose diagnostic target `1e-8`;
+  - gap to the strict target and to the requested `FTOL`;
+  - whether the requested tolerance is non-strict;
+  - whether all components meet the requested and strict tolerances;
+  - blockers such as `component_max_above_1e-12`,
+    `component_max_above_requested_ftol`, `requested_ftol_above_1e-12`,
+    missing fresh accepted-state recomputation, bad-Jacobian restart limits, or
+    a flat tail above stage tolerance.
+- This makes completed JAX, direct-coil, and VMEC2000 raw reports
+  self-describing before running the larger summary CSV tool.
+- Current active direct-GPU rows are still running and remain above strict
+  target:
+  - baseline near iteration `6240`: about
+    `fsqr=1.79e-9`, `fsqz=1.54e-9`, `fsql=9.9e-11`;
+  - Anderson near iteration `6237`: about
+    `fsqr=1.56e-9`, `fsqz=1.36e-9`, `fsql=1.0e-10`;
+  - both keep `B.n` around `9.09e-5`, so neither is yet strict `1e-12`
+    evidence.
+
+### How it was tested
+
+- Ran:
+  `venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py`.
+- Result: `23 passed`, with the existing JAX deprecation warning only.
+- Ran:
+  `venv/bin/python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py`.
+- Ran:
+  `ruff check tools/diagnostics/profile_square_coil_free_boundary.py tests/test_profile_square_coil_free_boundary.py`.
+- Ran:
+  `git diff --check`.
+
+### File structure and best-practice notes
+
+- The change stays inside the existing profiler instead of adding a new
+  diagnostic script.
+- The summary-table code remains unchanged; it still owns cross-profile
+  recommendations, while the profiler now owns per-backend raw verdicts.
+- The helper is small and explicit, with no dependency on generated result
+  files or remote logs.
+- The repository remains light: no figures, WOUTs, mgrid files, or launcher
+  logs were added.
+
+### Best next steps
+
+1. Let the active direct-GPU rows finish and classify their final JSON with the
+   new `strict_convergence` block.
+2. Let the queued direct-GPU JAX-NESTOR operator row run after the direct rows
+   finish; compare whether it lowers the current `~1e-9` floor.
+3. Let the queued VMEC2000 `DELT=0.015/0.02/0.025` scan run after that and use
+   its raw `strict_convergence`, `tail_plateau`, and partial sidecar fields to
+   decide whether VMEC2000 is the more robust reference for this deck.
+4. If all production-ready Fourier decks remain stalled above `1e-12`, begin
+   the solver-native reduced spline/control-basis nonlinear-update prototype
+   rather than only increasing `MPOL`/`NTOR`.
+
+### Completion percentages after M286
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `98%`.
+- VMEC2000 robustness/reference lane: `99%`, strict `DELT` scan queued.
+- Direct-coil GPU/JIT parity lane: `93%`, active rows still running.
+- Experimental JAX NESTOR operator profiling lane: `79%`, queued.
+- Raw backend strict-verdict lane: `100%`.
+- True spline/control-basis hybrid lane: `66%`, still waiting on strict-stall
+  evidence before implementation.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
