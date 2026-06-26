@@ -50,6 +50,7 @@ from vmec_jax.toroidal_hybrid import (
     square_axis_resolution_deck_status,
     square_axis_spline_control_fourier_map_status,
     square_axis_spline_symmetric_control_basis,
+    square_axis_strict_schedule_status,
     square_axis_stellarator_mirror_hybrid_indata,
     square_axis_stellarator_mirror_hybrid_projection_error,
 )
@@ -515,6 +516,14 @@ def _validate_example_config(config: ExampleConfig) -> None:
         limit = float(config.max_boundary_projection_error)
         if not np.isfinite(limit) or limit <= 0.0:
             raise ValueError("max_boundary_projection_error must be positive, finite, or None")
+        schedule = _strict_schedule_payload(config)
+        if not bool(schedule["requested_final_ftol_meets_target"]):
+            raise ValueError(
+                "square-hybrid production solves require a final component-wise FTOL of 1e-12 or tighter: "
+                f"requested_final_ftol={schedule['requested_final_ftol']!r}. "
+                "Use FTOL_ARRAY ending at 1e-12, or set max_boundary_projection_error=None for a "
+                "diagnostic-only run."
+            )
         projection = _boundary_projection_payload(config)
         observed = float(projection["max_abs_component_error"])
         if observed > limit:
@@ -625,18 +634,14 @@ def _strict_schedule_payload(config: ExampleConfig) -> dict[str, Any]:
     """Summarize whether the requested schedule is strict enough for claims."""
 
     ns_values, niter_values, ftol_values = _stage_values(config)
-    ftol_list = ftol_values if isinstance(ftol_values, list) else [float(ftol_values)]
-    niter_list = niter_values if isinstance(niter_values, list) else [int(niter_values)]
-    ns_list = ns_values if isinstance(ns_values, list) else [int(ns_values)]
-    final_ftol = float(ftol_list[-1])
+    status = square_axis_strict_schedule_status(
+        ns_array=ns_values,
+        niter_array=niter_values,
+        ftol_array=ftol_values,
+        target_ftol=STRICT_COMPONENT_FTOL_TARGET,
+    )
     return {
-        "componentwise_target_ftol": STRICT_COMPONENT_FTOL_TARGET,
-        "requested_final_ftol": final_ftol,
-        "requested_final_ftol_meets_target": bool(final_ftol <= STRICT_COMPONENT_FTOL_TARGET),
-        "ns_array": [int(value) for value in ns_list],
-        "niter_array": [int(value) for value in niter_list],
-        "ftol_array": [float(value) for value in ftol_list],
-        "total_iteration_budget": int(sum(int(value) for value in niter_list)),
+        **status,
         "claim_requires_converged_strict": True,
         "claim_requires_fresh_final_residual": True,
         "claim_requires_virtual_casing_for_finite_beta": bool(any(float(beta) != 0.0 for beta in config.betas_percent)),

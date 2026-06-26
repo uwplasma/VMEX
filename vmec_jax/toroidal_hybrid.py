@@ -1296,6 +1296,78 @@ def square_axis_resolution_deck_status(
     }
 
 
+def _as_int_schedule(value: int | list[int] | tuple[int, ...] | None) -> list[int]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [int(item) for item in value]
+    return [int(value)]
+
+
+def _as_float_schedule(value: float | list[float] | tuple[float, ...] | None) -> list[float]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [float(item) for item in value]
+    return [float(value)]
+
+
+def square_axis_strict_schedule_status(
+    *,
+    ns_array: int | list[int] | tuple[int, ...] | None = None,
+    niter_array: int | list[int] | tuple[int, ...] | None = None,
+    ftol_array: float | list[float] | tuple[float, ...] | None = None,
+    target_ftol: float = 1.0e-12,
+) -> dict[str, Any]:
+    """Classify whether a square-axis solve schedule can support strict claims.
+
+    This is a cheap schedule gate.  It checks the requested final force
+    tolerance and simple stage-array validity before a long free-boundary run.
+    It does not claim nonlinear convergence; it only says whether convergence
+    to the strict component target was requested.
+    """
+
+    ns_values = _as_int_schedule(ns_array)
+    niter_values = _as_int_schedule(niter_array)
+    ftol_values = _as_float_schedule(ftol_array)
+    target = float(target_ftol)
+    if not np.isfinite(target) or target <= 0.0:
+        raise ValueError("target_ftol must be positive and finite")
+
+    reasons: list[str] = []
+    if not ftol_values:
+        reasons.append("missing_ftol_array")
+        final_ftol = None
+    else:
+        final_ftol = float(ftol_values[-1])
+        if not np.isfinite(final_ftol) or final_ftol <= 0.0:
+            reasons.append("invalid_final_ftol")
+        elif final_ftol > target * (1.0 + 1.0e-10):
+            reasons.append("final_ftol_above_strict_target")
+    if any(value < 3 for value in ns_values):
+        reasons.append("invalid_ns_array")
+    if any(value <= 0 for value in niter_values):
+        reasons.append("invalid_niter_array")
+    if any((not np.isfinite(value)) or value <= 0.0 for value in ftol_values):
+        reasons.append("invalid_ftol_array")
+    nonempty_lengths = [len(values) for values in (ns_values, niter_values, ftol_values) if values]
+    if nonempty_lengths and len(set(nonempty_lengths)) != 1:
+        reasons.append("stage_array_length_mismatch")
+
+    requested_final_ftol_meets_target = bool(final_ftol is not None and np.isfinite(final_ftol) and final_ftol <= target)
+    return {
+        "status": "strict_ready" if not reasons else "diagnostic_schedule",
+        "reasons": list(dict.fromkeys(reasons)),
+        "componentwise_target_ftol": target,
+        "requested_final_ftol": final_ftol,
+        "requested_final_ftol_meets_target": requested_final_ftol_meets_target,
+        "ns_array": [int(value) for value in ns_values],
+        "niter_array": [int(value) for value in niter_values],
+        "ftol_array": [float(value) for value in ftol_values],
+        "total_iteration_budget": int(sum(niter_values)),
+    }
+
+
 def toroidal_stellarator_mirror_hybrid_metrics(samples: ToroidalHybridBoundarySamples) -> dict[str, float]:
     """Return lightweight geometry checks for a sampled hybrid boundary."""
     theta_reflect = (-np.arange(samples.theta.size)) % samples.theta.size

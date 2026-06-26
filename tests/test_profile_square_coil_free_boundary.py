@@ -220,6 +220,23 @@ def test_square_coil_profile_tail_decay_projection_estimates_remaining_iteration
     assert projection["estimated_additional_iterations_to_target"]["1e-12"] == 9
 
 
+def test_square_coil_profile_rejects_loose_production_schedule():
+    schedule = {
+        "requested_final_ftol": 1.0e-8,
+        "requested_final_ftol_meets_target": False,
+        "reasons": ["final_ftol_above_strict_target"],
+    }
+
+    with pytest.raises(ValueError, match="production profiles require a final component-wise FTOL"):
+        profile._enforce_strict_schedule_gate(schedule=schedule, limit=5.0e-12)
+
+    profile._enforce_strict_schedule_gate(schedule=schedule, limit=None)
+    profile._enforce_strict_schedule_gate(
+        schedule={"requested_final_ftol": 1.0e-12, "requested_final_ftol_meets_target": True},
+        limit=5.0e-12,
+    )
+
+
 def test_square_coil_profile_provider_parity_stats_reports_compact_thresholds():
     config = SimpleNamespace(nzeta=4)
     bounds = {"rmin": 0.0, "rmax": 4.0, "zmin": -1.0, "zmax": 1.0}

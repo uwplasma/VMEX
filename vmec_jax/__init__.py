@@ -277,6 +277,7 @@ _LAZY_ATTRS = {
     "square_axis_spline_radius": ".toroidal_hybrid",
     "square_axis_spline_radius_matrix": ".toroidal_hybrid",
     "square_axis_spline_symmetric_control_basis": ".toroidal_hybrid",
+    "square_axis_strict_schedule_status": ".toroidal_hybrid",
     "square_axis_stellarator_mirror_hybrid_indata": ".toroidal_hybrid",
     "square_axis_stellarator_mirror_hybrid_projection_error": ".toroidal_hybrid",
     "toroidal_hybrid_cross_section_anisotropy": ".toroidal_hybrid",

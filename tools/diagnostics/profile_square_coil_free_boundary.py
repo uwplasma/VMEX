@@ -50,6 +50,7 @@ from vmec_jax.toroidal_hybrid import (
     square_axis_spline_control_fourier_map_status,
     square_axis_spline_control_fourier_matrix,
     square_axis_spline_symmetric_control_basis,
+    square_axis_strict_schedule_status,
 )
 from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1, find_vmec2000_exec, run_xvmec2000
 
@@ -2275,6 +2276,22 @@ def _enforce_boundary_projection_gate(
     )
 
 
+def _enforce_strict_schedule_gate(*, schedule: dict[str, Any], limit: float | None) -> None:
+    """Reject production-gated square-coil profiles that request loose FTOL."""
+
+    if limit is None:
+        return
+    if bool(schedule.get("requested_final_ftol_meets_target")):
+        return
+    raise ValueError(
+        "square-hybrid production profiles require a final component-wise FTOL of 1e-12 or tighter: "
+        f"requested_final_ftol={schedule.get('requested_final_ftol')!r}, "
+        f"reasons={','.join(str(item) for item in schedule.get('reasons', []))}. "
+        "Use --ftol-array ending at 1e-12, or pass --max-boundary-projection-error none for a "
+        "diagnostic-only run."
+    )
+
+
 def _vmec2000_row_payload(row: Any) -> dict[str, Any]:
     total = float(row.fsqr) + float(row.fsqz) + float(row.fsql)
     max_component = _vmec2000_max_component(row)
@@ -2436,6 +2453,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     solver_mode = None if str(args.solver_mode).strip().lower() == "auto" else str(args.solver_mode)
     ns_values, niter_values, ftol_values = _stage_values(config)
+    strict_schedule = square_axis_strict_schedule_status(
+        ns_array=ns_values,
+        niter_array=niter_values,
+        ftol_array=ftol_values,
+        target_ftol=STRICT_COMPONENT_FTOL,
+    )
     _log_step(
         "building square-coil configuration "
         f"beta={float(args.beta_percent):g}%, mpol={int(args.mpol)}, ntor={int(args.ntor)}, "
@@ -2522,6 +2545,7 @@ def main(argv: list[str] | None = None) -> int:
             "control_basis": control_basis,
             "control_fourier_map": control_fourier_map,
             "spline_bridge": spline_bridge,
+            "strict_schedule": strict_schedule,
             "resolution_deck": resolution_deck,
             "provider_parity": None,
             "backends": {},
@@ -2535,6 +2559,10 @@ def main(argv: list[str] | None = None) -> int:
         config=config,
         projection=boundary_projection,
         resolution_deck=resolution_deck,
+        limit=args.max_boundary_projection_error,
+    )
+    _enforce_strict_schedule_gate(
+        schedule=strict_schedule,
         limit=args.max_boundary_projection_error,
     )
     coils = build_square_coils(config)
@@ -2663,6 +2691,7 @@ def main(argv: list[str] | None = None) -> int:
         "control_basis": control_basis,
         "control_fourier_map": control_fourier_map,
         "spline_bridge": spline_bridge,
+        "strict_schedule": strict_schedule,
         "resolution_deck": resolution_deck,
         "provider_parity": None,
         "backends": {},

@@ -5738,6 +5738,85 @@ Visual validation:
 
 No user input is needed.
 
+## M300 - Strict FTOL Production Gate For Square-Coil Profiles
+
+### Steps taken
+
+- Added `vmec_jax.toroidal_hybrid.square_axis_strict_schedule_status`, a cheap
+  schedule classifier for square-axis hybrid runs.
+- Wired the shared classifier into the root square-coil example preflight and
+  into `tools/diagnostics/profile_square_coil_free_boundary.py`.
+- Added a production gate: if `max_boundary_projection_error` is finite, a real
+  square-coil run must request a final component-wise `FTOL <= 1e-12`.
+- Kept loose `FTOL=1e-8` rows available for diagnostic-only work by allowing
+  them when the projection gate is disabled or when
+  `--resolution-diagnostics-only` is used.
+- Exported the new schedule helper through `vmec_jax.api` and lazy
+  `vmec_jax`.
+- Documented the rule in the direct-coil free-boundary convergence plan.
+
+### Results obtained
+
+- The example and profiler now fail before expensive coil, mgrid, VMEC2000, or
+  direct-coil solve work if a production-gated run accidentally uses a loose
+  final tolerance.
+- Preflight JSON now carries a `strict_schedule` block next to
+  `resolution_deck`, so edited `MPOL`/`NTOR`/`NZETA` decks report both
+  representation readiness and strict-solve schedule readiness.
+- This directly addresses the `FTOL=1e-8` ambiguity: `1e-8` is diagnostic
+  evidence only, not production strict convergence evidence.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py::test_square_axis_toroidal_hybrid_boundary_and_indata_are_public \
+  tests/test_toroidal_hybrid.py::test_square_axis_recommended_nzeta_and_example_guard \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_rejects_loose_production_schedule
+```
+
+Result: `3 passed, 1 warning`.
+
+### File structure and best-practice adherence
+
+- The schedule gate lives in `vmec_jax/toroidal_hybrid.py` beside the existing
+  square-axis resolution gate, so notebooks, examples, and CLI diagnostics use
+  one source of truth.
+- The example keeps its user-editable top block and only delegates schedule
+  interpretation to source code.
+- The profiler remains a diagnostic wrapper; it now records the same schedule
+  status in both resolution-only and full backend reports.
+- No generated solver outputs, WOUT files, figures, or remote scratch artifacts
+  were added to the repository.
+
+### Best next steps
+
+1. Run the full targeted test/ruff/compile gate and commit this tranche.
+2. Re-run cheap resolution-only profiles with edited `MPOL`/`NTOR`/`NZETA`
+   decks to verify the user-facing error messages.
+3. Continue monitoring the active direct-GPU and VMEC2000 strict rows without
+   interrupting them.
+4. If the active/profiled Fourier-projected lanes remain above `1e-12`, start
+   the solver-native reduced spline-control state tranche.
+
+### Completion percentages after M300
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row is closer but oscillatory.
+- VMEC2000 robustness/reference lane: `99%`, active row has not reached the
+  strict stage yet.
+- Strict preflight and edited-resolution robustness lane: `98%`, production
+  tolerance and grid gates are now shared and tested.
+- True spline/control-basis hybrid lane: `84%`, projected-control path exists;
+  solver-native spline state remains open.
+- Finite-beta virtual-casing validation lane: `87%`, source-path hook ready but
+  no strict finite-beta promotion row yet.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M293 - Source-health CI repair after edge-control wiring
 
 ### Steps taken

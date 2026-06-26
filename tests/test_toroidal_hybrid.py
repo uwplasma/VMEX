@@ -31,6 +31,7 @@ from vmec_jax.toroidal_hybrid import (
     square_axis_spline_radius,
     square_axis_spline_radius_matrix,
     square_axis_spline_symmetric_control_basis,
+    square_axis_strict_schedule_status,
     square_axis_stellarator_mirror_hybrid_indata,
     square_axis_stellarator_mirror_hybrid_projection_error,
     toroidal_hybrid_cross_section_anisotropy,
@@ -131,6 +132,7 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert public_api.square_axis_spline_radius is square_axis_spline_radius
     assert public_api.square_axis_spline_radius_matrix is square_axis_spline_radius_matrix
     assert public_api.square_axis_spline_symmetric_control_basis is square_axis_spline_symmetric_control_basis
+    assert public_api.square_axis_strict_schedule_status is square_axis_strict_schedule_status
     assert (
         public_api.square_axis_free_boundary_edge_control_projection_payload
         is square_axis_free_boundary_edge_control_projection_payload
@@ -492,6 +494,22 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert recommended_square_axis_nzeta(23) == 56
     with pytest.raises(ValueError, match="ntor must be nonnegative"):
         recommended_square_axis_nzeta(-1)
+    strict = square_axis_strict_schedule_status(
+        ns_array=(9, 13, 17),
+        niter_array=(1000, 2000, 8000),
+        ftol_array=(1.0e-8, 1.0e-10, 1.0e-12),
+    )
+    assert strict["status"] == "strict_ready"
+    assert strict["requested_final_ftol_meets_target"] is True
+    assert strict["total_iteration_budget"] == 11000
+    loose = square_axis_strict_schedule_status(
+        ns_array=(9, 13),
+        niter_array=(1000, 2000),
+        ftol_array=(1.0e-8, 1.0e-8),
+    )
+    assert loose["status"] == "diagnostic_schedule"
+    assert loose["requested_final_ftol_meets_target"] is False
+    assert "final_ftol_above_strict_target" in loose["reasons"]
 
     module = import_module("examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary")
     config = module.ExampleConfig(
@@ -617,6 +635,18 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
                 outdir=tmp_path / "invalid_solver",
                 betas_percent=(),
                 solver_mode="not-a-mode",
+            )
+        )
+    with pytest.raises(ValueError, match="production solves require a final component-wise FTOL"):
+        module.run_example(
+            module.ExampleConfig(
+                outdir=tmp_path / "loose_ftol",
+                betas_percent=(),
+                ftol_array=(1.0e-8,),
+                niter_array=(10,),
+                ns_array=(9,),
+                ftol=1.0e-8,
+                write_plots=False,
             )
         )
 

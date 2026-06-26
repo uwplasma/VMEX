@@ -676,7 +676,18 @@ writes the ``boundary_projection`` and ``resolution_deck`` JSON blocks, then
 exits before coil, mgrid, or equilibrium work. Use it as the first check after
 changing mode counts or ``mgrid_nphi``; it records projection-gate status,
 recommended ``NZETA``, and whether the generated mgrid toroidal plane count is
-compatible with the VMEC ``NZETA`` grid. The same report includes
+compatible with the VMEC ``NZETA`` grid. Production-gated square-coil rows must
+also request a strict final force tolerance. The shared
+``vmec_jax.square_axis_strict_schedule_status`` helper classifies the
+``NS_ARRAY``/``NITER_ARRAY``/``FTOL_ARRAY`` schedule, and both the root example
+and ``tools/diagnostics/profile_square_coil_free_boundary.py`` reject real
+production-gated solves whose final ``FTOL`` is looser than ``1e-12``. Loose
+``1e-8`` rows remain useful for provider parity, preflight, and speed
+diagnostics, but they must be run with the projection gate disabled, for example
+``--max-boundary-projection-error none``, or with
+``--resolution-diagnostics-only``. This keeps VMEC2000, generated-mgrid, and
+direct-coil comparisons from being mistaken for strict convergence evidence.
+The same report includes
 ``control_basis`` metadata for ``spline`` and ``control_spline`` axes: the full
 spline-control radii plus the square and stellarator-symmetric reduced bases.
 This makes it clear whether a strict run is testing the intended compact spline

@@ -39,6 +39,7 @@ from .toroidal_hybrid import (
     square_axis_spline_radius,
     square_axis_spline_radius_matrix,
     square_axis_spline_symmetric_control_basis,
+    square_axis_strict_schedule_status,
     square_axis_stellarator_mirror_hybrid_indata,
     square_axis_stellarator_mirror_hybrid_projection_error,
     toroidal_hybrid_cross_section_anisotropy,
