@@ -24,6 +24,7 @@ from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1
 DEFAULT_GLOB = "results/square_coil_freeb_backend_profile_*/square_coil_free_boundary_backend_profile.json"
 FINAL_REPORT_NAME = "square_coil_free_boundary_backend_profile.json"
 PARTIAL_VMEC2000_NAME = "_partial_vmec2000_payload.json"
+LAUNCHER_LOG_NAME = "launcher.log"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -56,6 +57,10 @@ def _profile_paths(paths: list[Path]) -> list[Path]:
             threed1_matches = sorted((path / "vmec2000_mgrid").glob("threed1*"))
             if threed1_matches:
                 out.append(threed1_matches[0])
+                continue
+            launcher_log = path / LAUNCHER_LOG_NAME
+            if launcher_log.exists():
+                out.append(launcher_log)
                 continue
             out.extend(sorted(path.glob(f"**/{FINAL_REPORT_NAME}")))
         elif path.exists():
@@ -242,6 +247,116 @@ def _vmec2000_tail_projection(rows: list[Any], *, length: int = 12) -> dict[str,
     return out
 
 
+_VMEC_STYLE_STAGE_RE = re.compile(
+    r"^\s*NS\s*=\s*(?P<ns>\d+)\s+NO\.\s+FOURIER\s+MODES\s*=\s*(?P<modes>\d+)"
+    r"\s+FTOLV\s*=\s*(?P<ftolv>[+\-0-9.Ee]+)\s+NITER\s*=\s*(?P<niter>\d+)"
+)
+_VMEC_STYLE_ROW_RE = re.compile(
+    r"^\s*(?P<it>\d+)\s+"
+    r"(?P<fsqr>[+\-0-9.Ee]+)\s+"
+    r"(?P<fsqz>[+\-0-9.Ee]+)\s+"
+    r"(?P<fsql>[+\-0-9.Ee]+)\s+"
+    r"(?P<raxis>[+\-0-9.Ee]+)\s+"
+    r"(?P<delt>[+\-0-9.Ee]+)\s+"
+    r"(?P<wmhd>[+\-0-9.Ee]+)"
+)
+
+
+def _vmec_style_row_payload(match: re.Match[str], *, stage_index: int | None) -> dict[str, Any]:
+    fsqr = float(match.group("fsqr"))
+    fsqz = float(match.group("fsqz"))
+    fsql = float(match.group("fsql"))
+    return {
+        "it": int(match.group("it")),
+        "stage_index": stage_index,
+        "fsqr": fsqr,
+        "fsqz": fsqz,
+        "fsql": fsql,
+        "total": float(fsqr + fsqz + fsql),
+        "max_component": float(max(fsqr, fsqz, fsql)),
+        "raxis": float(match.group("raxis")),
+        "delt": float(match.group("delt")),
+        "wmhd": float(match.group("wmhd")),
+    }
+
+
+def _vmec_style_log_payload(path: Path) -> dict[str, Any]:
+    """Parse live vmec_jax verbose-solver rows from a launcher log."""
+
+    stages: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
+    vacuum_turn_on_iter: int | None = None
+    saw_axis_repair = False
+    current_stage_index: int | None = None
+    for line in path.read_text(errors="replace").splitlines():
+        stage_match = _VMEC_STYLE_STAGE_RE.match(line)
+        if stage_match is not None:
+            current_stage_index = len(stages)
+            stages.append(
+                {
+                    "ns": int(stage_match.group("ns")),
+                    "mode_count": int(stage_match.group("modes")),
+                    "ftolv": float(stage_match.group("ftolv")),
+                    "niter": int(stage_match.group("niter")),
+                    "iteration_row_count": 0,
+                    "last_row": None,
+                    "min_total": None,
+                }
+            )
+            continue
+        if "INITIAL JACOBIAN CHANGED SIGN" in line:
+            saw_axis_repair = True
+        turn_on_match = re.search(r"VACUUM PRESSURE TURNED ON AT\s+(\d+)\s+ITERATIONS", line)
+        if turn_on_match is not None:
+            vacuum_turn_on_iter = int(turn_on_match.group(1))
+        row_match = _VMEC_STYLE_ROW_RE.match(line)
+        if row_match is None:
+            continue
+        row = _vmec_style_row_payload(row_match, stage_index=current_stage_index)
+        rows.append(row)
+        if current_stage_index is not None and 0 <= current_stage_index < len(stages):
+            stage = stages[current_stage_index]
+            stage["iteration_row_count"] = int(stage["iteration_row_count"]) + 1
+            stage["last_row"] = row
+            min_total = _finite_float(stage.get("min_total"))
+            stage["min_total"] = row["total"] if min_total is None else min(min_total, row["total"])
+
+    last = rows[-1] if rows else None
+    totals = [float(row["total"]) for row in rows]
+    progress_phase = (
+        "force_iterations"
+        if rows
+        else "axis_repair_or_pre_iteration_output"
+        if saw_axis_repair
+        else "startup_or_pre_iteration_output"
+    )
+    payload: dict[str, Any] = {
+        "launcher_log": path,
+        **_file_status_payload(path, prefix="launcher_log"),
+        "status": "running_partial",
+        "progress_phase": progress_phase,
+        "force_rows_started": bool(rows),
+        "stage_summaries": stages,
+        "iteration_row_count": len(rows),
+        "tail_rows": rows[-12:],
+        "last_row": last,
+        "min_total": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
+        "history": {
+            "fsq_component_sum_tail_projection": _vmec2000_tail_projection(rows),
+        },
+        "initial_jacobian_changed_sign": bool(saw_axis_repair),
+        "vacuum_pressure_turn_on_iter": vacuum_turn_on_iter,
+        "n_iter": None if last is None else int(last["it"]),
+        "final_fsqr": None if last is None else float(last["fsqr"]),
+        "final_fsqz": None if last is None else float(last["fsqz"]),
+        "final_fsql": None if last is None else float(last["fsql"]),
+        "final_fsq_component_sum": None if last is None else float(last["total"]),
+        "best_scored_fsq": None if not totals else float(np.nanmin(np.asarray(totals, dtype=float))),
+        "final_max_component": None if last is None else float(last["max_component"]),
+    }
+    return payload
+
+
 def _summary_row(
     *,
     path: Path,
@@ -286,8 +401,12 @@ def _summary_row(
         "status": status if status is not None else backend.get("status"),
         "progress_phase": backend.get("progress_phase"),
         "force_rows_started": backend.get("force_rows_started"),
+        "launcher_log_size_bytes": backend.get("launcher_log_size_bytes"),
+        "launcher_log_mtime_unix_s": _finite_float(backend.get("launcher_log_mtime_unix_s")),
         "threed1_size_bytes": backend.get("threed1_size_bytes"),
         "threed1_mtime_unix_s": _finite_float(backend.get("threed1_mtime_unix_s")),
+        "initial_jacobian_changed_sign": backend.get("initial_jacobian_changed_sign"),
+        "vacuum_pressure_turn_on_iter": backend.get("vacuum_pressure_turn_on_iter"),
         "mpol": cfg.get("mpol"),
         "ntor": cfg.get("ntor"),
         "ns": cfg.get("ns"),
@@ -481,12 +600,28 @@ def rows_from_vmec2000_partial(path: Path) -> list[dict[str, Any]]:
     ]
 
 
+def rows_from_launcher_log(path: Path) -> list[dict[str, Any]]:
+    backend = _vmec_style_log_payload(path)
+    return [
+        _summary_row(
+            path=path,
+            backend_name="vmec_jax_direct_live",
+            backend=backend,
+            cfg={},
+            projection={},
+            status="running_partial",
+        )
+    ]
+
+
 def rows_from_source(path: Path) -> list[dict[str, Any]]:
     path = Path(path)
     if path.name == FINAL_REPORT_NAME:
         return rows_from_profile(path)
     if path.name == PARTIAL_VMEC2000_NAME or path.name.startswith("threed1"):
         return rows_from_vmec2000_partial(path)
+    if path.name == LAUNCHER_LOG_NAME:
+        return rows_from_launcher_log(path)
     return []
 
 
@@ -529,8 +664,12 @@ def main(argv: list[str] | None = None) -> int:
         "status",
         "progress_phase",
         "force_rows_started",
+        "launcher_log_size_bytes",
+        "launcher_log_mtime_unix_s",
         "threed1_size_bytes",
         "threed1_mtime_unix_s",
+        "initial_jacobian_changed_sign",
+        "vacuum_pressure_turn_on_iter",
         "mpol",
         "ntor",
         "ns",

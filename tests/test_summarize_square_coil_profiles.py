@@ -352,3 +352,76 @@ def test_square_coil_profile_summary_script_uses_repo_local_vmec_parser(tmp_path
 
     assert "vmec2000_ns17_mpol7_ntor28_nzeta64_niter24k" in proc.stdout
     assert "4e-11" in proc.stdout
+
+
+def test_square_coil_profile_summary_parses_live_direct_launcher_log(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_direct_chunked_verbose_ns9_13_17_mpol5_ntor28_nzeta64_niter12k"
+    case_dir.mkdir()
+    launcher_log = case_dir / "launcher.log"
+    launcher_log.write_text(
+        "\n".join(
+            [
+                "[square-coil-profile] running vmec_jax direct-coil backend",
+                "  NS =    9 NO. FOURIER MODES =  257 FTOLV =  1.000E-08 NITER =   4000",
+                "  ITER    FSQR      FSQZ      FSQL    RAX(v=0)    DELT       WMHD",
+                " INITIAL JACOBIAN CHANGED SIGN!",
+                "    1  5.57E-03  1.14E-03  3.77E-03  1.500E+00  2.00E-02  2.5837E+00",
+                "    2  4.00E-03  9.00E-04  2.00E-03  1.500E+00  2.00E-02  2.5836E+00",
+                "    3  2.00E-03  5.00E-04  1.00E-03  1.500E+00  2.00E-02  2.5835E+00",
+                "  VACUUM PRESSURE TURNED ON AT    3 ITERATIONS",
+            ]
+        )
+    )
+
+    assert summary._profile_paths([case_dir]) == [launcher_log]
+    rows = summary.rows_from_source(launcher_log)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["case"] == "direct_chunked_verbose_ns9_13_17_mpol5_ntor28_nzeta64_niter12k"
+    assert row["backend"] == "vmec_jax_direct_live"
+    assert row["status"] == "running_partial"
+    assert row["progress_phase"] == "force_iterations"
+    assert row["force_rows_started"] is True
+    assert row["launcher_log_size_bytes"] > 0
+    assert row["launcher_log_mtime_unix_s"] > 0.0
+    assert row["initial_jacobian_changed_sign"] is True
+    assert row["vacuum_pressure_turn_on_iter"] == 3
+    assert row["mpol"] == 5
+    assert row["ntor"] == 28
+    assert row["ns"] == 17
+    assert row["nzeta"] == 64
+    assert row["max_iter"] == 12000
+    assert row["requested_ftol"] == pytest.approx(1.0e-8)
+    assert row["final_iter"] == 3
+    assert row["final_total"] == pytest.approx(3.5e-3)
+    assert row["final_max_component"] == pytest.approx(2.0e-3)
+    assert row["best_total"] == pytest.approx(3.5e-3)
+    assert row["strict_components_met"] is False
+    assert row["tail_decay_factor"] is not None
+    assert row["iters_to_1e-12_est"] is not None
+
+
+def test_square_coil_profile_summary_marks_live_direct_log_before_force_rows(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_direct_mpol6_ntor23"
+    case_dir.mkdir()
+    launcher_log = case_dir / "launcher.log"
+    launcher_log.write_text(
+        "\n".join(
+            [
+                "[square-coil-profile] running vmec_jax direct-coil backend",
+                "  NS =    9 NO. FOURIER MODES =  257 FTOLV =  1.000E-08 NITER =   4000",
+                " INITIAL JACOBIAN CHANGED SIGN!",
+                " TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS",
+            ]
+        )
+    )
+
+    row = summary.rows_from_source(launcher_log)[0]
+
+    assert row["status"] == "running_partial"
+    assert row["progress_phase"] == "axis_repair_or_pre_iteration_output"
+    assert row["force_rows_started"] is False
+    assert row["initial_jacobian_changed_sign"] is True
+    assert row["final_iter"] is None
+    assert row["final_total"] is None

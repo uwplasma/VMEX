@@ -282,6 +282,10 @@ iteration windows.
 For long ``vmec_jax`` direct-coil rows, add ``--verbose-solver`` so VMEC-style
 iteration rows are written to the launcher log instead of waiting until the
 backend exits before any residual evidence appears.
+The summary helper also parses those live direct launcher logs, so
+``python tools/diagnostics/summarize_square_coil_profiles.py <profile-dir> --markdown``
+reports running direct residuals, axis-repair status, and the vacuum-pressure
+turn-on iteration before the final JSON exists.
 Use larger ``--nvacskip`` only as a speed experiment; for convergence review,
 ``--nvacskip 1`` avoids stale free-boundary residuals on this square-hybrid
 Fourier deck. For ``NS`` ladders above the initial surface, use a widened mgrid
