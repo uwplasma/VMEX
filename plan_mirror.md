@@ -5738,6 +5738,77 @@ Visual validation:
 
 No user input is needed.
 
+## M313. Queued five-control stellarator edge-projection strict profile
+
+### Steps taken
+
+- Created a separate `office` checkout:
+  `/home/rjorge/local/vmec_mirror_stellarator_control`.
+- Checked it out at PR branch commit `70edee09`.
+- Created a queued strict-profile script at:
+  `results/square_coil_direct_gpu_projected_edge_stellarator_ns17_mpol5_ntor28_nzeta64_niter8k_control_spline/run_when_idle_stellarator.sh`.
+- The script is copied from the existing projected-control queue and changes
+  only the checkout/output paths and:
+  `--freeb-edge-control-projection stellarator`.
+- Started the queue as PID `565580`.
+- It uses the same `/tmp/vmec_mirror_freeb_queue.lock` and waits until active
+  `profile_square_coil_free_boundary.py`/`xvmec` work is clear.
+
+### Results obtained
+
+- The new waiting lane will test the five-control stellarator reduced basis:
+  side/corner symmetry plus additional stellarator-like corner flexibility.
+- This complements the existing two-control square-projection row and helps
+  decide whether strict convergence is limited by an overly restrictive reduced
+  edge basis or by the deeper Fourier/free-boundary solve itself.
+
+### How it was tested
+
+```bash
+ssh office 'sed -n "1,80p" \
+  /home/rjorge/local/vmec_mirror_stellarator_control/results/square_coil_direct_gpu_projected_edge_stellarator_ns17_mpol5_ntor28_nzeta64_niter8k_control_spline/run_when_idle_stellarator.sh'
+```
+
+Result: verified the script points to the new checkout/output directory and
+uses `--freeb-edge-control-projection stellarator`.
+
+```bash
+ssh office 'pgrep -af "run_when_idle_stellarator"'
+```
+
+Result: queue started as PID `565580`.
+
+### File structure and best-practice adherence
+
+- The new long-run lane is in remote scratch space, not committed output.
+- It reuses the existing queue lock instead of competing for GPU/CPU resources.
+- No generated WOUT, mgrid, figure, or profile result files are committed.
+
+### Best next steps
+
+1. Let the current direct hot restart and VMEC2000 reference rows finish.
+2. Let the square two-control projected row run first.
+3. Let the new five-control stellarator projected row run after the existing
+   queues.
+4. Compare strict residuals, captured fractions, and operator readiness for the
+   two-control and five-control reduced bases.
+
+### Completion percentages after M313
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row remains flat above `1e-12`.
+- VMEC2000 robustness/reference lane: `99%`, still running and not yet strict.
+- True spline/control-basis hybrid lane: `90%`, both two-control and
+  five-control reduced-edge strict rows are queued.
+- DELT/stage-budget polish lane: `75%`, still queued.
+- Finite-beta virtual-casing validation lane: `87%`, unchanged in this tranche.
+- CI/API health lane: `99%`, local checks from M312 pass.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M312. Reduced-control operator readiness for native spline-control promotion
 
 ### Steps taken
