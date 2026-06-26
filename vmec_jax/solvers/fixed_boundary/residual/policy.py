@@ -828,6 +828,9 @@ def resolve_residual_iter_startup_policy(
         jit_precompile=jit_precompile,
         use_scan=use_scan,
     )
+    backtracking_env = str(env.get("VMEC_JAX_STRICT_BACKTRACKING", "")).strip().lower()
+    env_backtracking = backtracking_env not in ("", "0", "false", "no", "off")
+    backtracking_resolved = bool(opts.backtracking) or (bool(env_backtracking) and not bool(opts.use_scan))
     allow_host_update_on_accelerator = str(env.get("VMEC_JAX_HOST_UPDATE_ON_ACCELERATOR", "")).strip().lower() in (
         "1",
         "true",
@@ -947,7 +950,7 @@ def resolve_residual_iter_startup_policy(
         differentiating_scan=bool(chunked_scan_config.differentiating_scan),
         limit_dt_from_force=bool(opts.limit_dt_from_force),
         limit_update_rms=bool(opts.limit_update_rms),
-        backtracking=bool(opts.backtracking),
+        backtracking=bool(backtracking_resolved),
         strict_update=bool(opts.strict_update),
         dumps_enabled=bool(dump_history_config.dumps_enabled),
         dump_any=bool(dump_history_config.dump_any),

@@ -259,6 +259,14 @@ def _parser() -> argparse.ArgumentParser:
         help="Return the lowest fresh free-boundary residual state if max_iter is exhausted.",
     )
     p.add_argument(
+        "--strict-backtracking",
+        action="store_true",
+        help=(
+            "Enable strict-loop trial-step backtracking in vmec_jax backends. "
+            "This is slower, but useful when profiling 1e-12 convergence robustness."
+        ),
+    )
+    p.add_argument(
         "--freeb-drift-restart",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -1846,6 +1854,7 @@ def _run_jax_backend(
     direct_params: Any | None,
     solver_mode: str | None,
     return_best_scored_state: bool,
+    strict_backtracking: bool = False,
     freeb_drift_restart: bool = False,
     freeb_drift_restart_factor: float = 3.0,
     freeb_drift_restart_step_factor: float = 0.5,
@@ -1924,6 +1933,7 @@ def _run_jax_backend(
     t0 = time.perf_counter()
     env_overrides: dict[str, str | None] = {
         "VMEC_JAX_RETURN_BEST_SCORED_STATE": _bool_env(return_best_scored_state),
+        "VMEC_JAX_STRICT_BACKTRACKING": _bool_env(strict_backtracking),
         "VMEC_JAX_FREEB_DRIFT_RESTART": _bool_env(freeb_drift_restart),
         "VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR": f"{float(freeb_drift_restart_factor):.17g}",
         "VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR": f"{float(freeb_drift_restart_step_factor):.17g}",
@@ -2066,6 +2076,7 @@ def _run_jax_backend(
         **residuals,
         "free_boundary_solver_overrides": {
             "return_best_scored_state": bool(return_best_scored_state),
+            "strict_backtracking": bool(strict_backtracking),
             "freeb_drift_restart": bool(freeb_drift_restart),
             "freeb_drift_restart_factor": float(freeb_drift_restart_factor),
             "freeb_drift_restart_step_factor": float(freeb_drift_restart_step_factor),
@@ -3504,6 +3515,7 @@ def main(argv: list[str] | None = None) -> int:
             "nstep": int(config.nstep),
             "solver_mode": None if solver_mode is None else str(solver_mode),
             "return_best_scored_state": bool(args.return_best_scored_state),
+            "strict_backtracking": bool(args.strict_backtracking),
             "freeb_drift_restart": bool(args.freeb_drift_restart),
             "freeb_drift_restart_factor": float(args.freeb_drift_restart_factor),
             "freeb_drift_restart_step_factor": float(args.freeb_drift_restart_step_factor),
@@ -3611,6 +3623,7 @@ def main(argv: list[str] | None = None) -> int:
             direct_params=coils.params,
             solver_mode=solver_mode,
             return_best_scored_state=bool(args.return_best_scored_state),
+            strict_backtracking=bool(args.strict_backtracking),
             freeb_drift_restart=bool(args.freeb_drift_restart),
             freeb_drift_restart_factor=float(args.freeb_drift_restart_factor),
             freeb_drift_restart_step_factor=float(args.freeb_drift_restart_step_factor),
@@ -3659,6 +3672,7 @@ def main(argv: list[str] | None = None) -> int:
             direct_params=None,
             solver_mode=solver_mode,
             return_best_scored_state=bool(args.return_best_scored_state),
+            strict_backtracking=bool(args.strict_backtracking),
             freeb_drift_restart=bool(args.freeb_drift_restart),
             freeb_drift_restart_factor=float(args.freeb_drift_restart_factor),
             freeb_drift_restart_step_factor=float(args.freeb_drift_restart_step_factor),

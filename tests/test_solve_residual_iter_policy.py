@@ -650,6 +650,24 @@ def test_residual_iter_startup_policy_preserves_scan_branch_safety_rules():
     assert policy.stage_prev_fsq is None
 
 
+def test_residual_iter_startup_policy_strict_backtracking_env_keeps_scan_safe():
+    enabled = _startup_policy_for_test(env={"VMEC_JAX_STRICT_BACKTRACKING": "1"})
+    assert enabled.backtracking
+
+    explicit = _startup_policy_for_test(
+        backtracking=True,
+        env={"VMEC_JAX_STRICT_BACKTRACKING": "0"},
+    )
+    assert explicit.backtracking
+
+    scan = _startup_policy_for_test(
+        use_scan=True,
+        env={"VMEC_JAX_STRICT_BACKTRACKING": "1"},
+    )
+    assert scan.use_scan
+    assert not scan.backtracking
+
+
 def test_residual_iter_startup_policy_normalizes_objective_and_restart_defaults():
     policy = _startup_policy_for_test(
         fsq_total_target=-1.0,

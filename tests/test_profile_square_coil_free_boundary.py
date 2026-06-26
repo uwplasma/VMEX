@@ -1844,6 +1844,7 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
             "--no-direct-static-cache",
             "--jit-direct-sampler",
             "--no-direct-trial-bsqvac-resample",
+            "--strict-backtracking",
             "--virtual-casing-diagnostics",
             "--virtual-casing-quad-factor",
             "4",
@@ -1873,6 +1874,7 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
     assert data["configuration"]["direct_static_cache"] is False
     assert data["configuration"]["jit_direct_sampler"] is True
     assert data["configuration"]["direct_trial_bsqvac_resample"] is False
+    assert data["configuration"]["strict_backtracking"] is True
     assert data["configuration"]["virtual_casing_diagnostics"] is True
     assert data["configuration"]["virtual_casing_quad_factor"] == 4
     assert data["configuration"]["virtual_casing_chunk_size"] == 64
@@ -1889,6 +1891,7 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
     assert captured[0]["direct_static_cache"] is False
     assert captured[0]["jit_direct_sampler"] is True
     assert captured[0]["direct_trial_bsqvac_resample"] is False
+    assert captured[0]["strict_backtracking"] is True
     assert captured[0]["virtual_casing_diagnostics"] is True
     assert captured[0]["virtual_casing_quad_factor"] == 4
     assert captured[0]["virtual_casing_chunk_size"] == 64
@@ -1976,6 +1979,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
     monkeypatch.setattr(profile, "write_wout_from_fixed_boundary_run", lambda *args, **kwargs: None)
     env_names = [
         "VMEC_JAX_RETURN_BEST_SCORED_STATE",
+        "VMEC_JAX_STRICT_BACKTRACKING",
         "VMEC_JAX_FREEB_DRIFT_RESTART",
         "VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR",
         "VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR",
@@ -2029,6 +2033,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
         direct_params=direct_params,
         solver_mode="parity",
         return_best_scored_state=False,
+        strict_backtracking=True,
         freeb_drift_restart=True,
         freeb_drift_restart_factor=2.5,
         freeb_drift_restart_step_factor=0.25,
@@ -2049,6 +2054,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
 
     assert out["status"] == "completed"
     assert out["free_boundary_solver_overrides"]["return_best_scored_state"] is False
+    assert out["free_boundary_solver_overrides"]["strict_backtracking"] is True
     assert out["free_boundary_solver_overrides"]["freeb_drift_restart"] is True
     assert out["free_boundary_solver_overrides"]["freeb_drift_restart_factor"] == pytest.approx(2.5)
     assert out["free_boundary_solver_overrides"]["freeb_drift_restart_step_factor"] == pytest.approx(0.25)
@@ -2076,6 +2082,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
     assert static["jit_sampler"] is True
     assert static["resample_trial_bsqvac"] is False
     assert captured["env"]["VMEC_JAX_RETURN_BEST_SCORED_STATE"] == "0"
+    assert captured["env"]["VMEC_JAX_STRICT_BACKTRACKING"] == "1"
     assert captured["env"]["VMEC_JAX_FREEB_DRIFT_RESTART"] == "1"
     assert captured["env"]["VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR"] == "2.5"
     assert captured["env"]["VMEC_JAX_FREEB_DRIFT_RESTART_STEP_FACTOR"] == "0.25"
