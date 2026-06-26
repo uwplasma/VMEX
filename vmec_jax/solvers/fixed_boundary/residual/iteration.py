@@ -710,6 +710,85 @@ class _ResidualFreeBoundarySetup(NamedTuple):
     attach_diag: Any
 
 
+class _AxisResetFromBoundaryCallback:
+    """Lazy boundary-axis reset callback used by VMEC-style bad-Jacobian recovery."""
+
+    def __init__(
+        self,
+        *,
+        static: Any,
+        indata: Any,
+        signgs: int,
+        trig: Any,
+        zero_precond_diag: tuple[Any, Any],
+        zero_tcon: Any,
+        constraint_active_false: Any,
+        compute_forces_iter_func: Any,
+        apply_vmec_lambda_axis_rules_func: Any,
+        boundary_from_indata_func: Any,
+        initial_guess_from_boundary_func: Any,
+        read_axis_coeffs_func: Any,
+        recompute_axis_from_state_vmec_func: Any,
+        recompute_axis_from_boundary_func: Any,
+    ) -> None:
+        self.static = static
+        self.indata = indata
+        self.signgs = int(signgs)
+        self.trig = trig
+        self.zero_precond_diag = zero_precond_diag
+        self.zero_tcon = zero_tcon
+        self.constraint_active_false = constraint_active_false
+        self.compute_forces_iter_func = compute_forces_iter_func
+        self.apply_vmec_lambda_axis_rules_func = apply_vmec_lambda_axis_rules_func
+        self.boundary_from_indata_func = boundary_from_indata_func
+        self.initial_guess_from_boundary_func = initial_guess_from_boundary_func
+        self.read_axis_coeffs_func = read_axis_coeffs_func
+        self.recompute_axis_from_state_vmec_func = recompute_axis_from_state_vmec_func
+        self.recompute_axis_from_boundary_func = recompute_axis_from_boundary_func
+        self.boundary_for_axis = None
+        self.axis_reset_coeffs = None
+
+    def __call__(
+        self,
+        st: VMECState,
+        *,
+        k_guess=None,
+        full_reset: bool = False,
+        refine_axis_guess: bool = True,
+    ) -> VMECState:
+        if self.boundary_for_axis is None and self.indata is not None:
+            self.boundary_for_axis = self.boundary_from_indata_func(
+                self.indata, self.static.modes, apply_m1_constraint=True
+            )
+        st_out, coeffs = _reset_axis_from_boundary_impl(
+            st,
+            boundary_for_axis=self.boundary_for_axis,
+            static=self.static,
+            indata=self.indata,
+            signgs=self.signgs,
+            trig=self.trig,
+            k_guess=k_guess,
+            full_reset=full_reset,
+            refine_axis_guess=refine_axis_guess,
+            zero_precond_diag=self.zero_precond_diag,
+            zero_tcon=self.zero_tcon,
+            constraint_active_false=self.constraint_active_false,
+            compute_forces_iter_func=self.compute_forces_iter_func,
+            apply_vmec_lambda_axis_rules_func=self.apply_vmec_lambda_axis_rules_func,
+            initial_guess_from_boundary_func=self.initial_guess_from_boundary_func,
+            read_axis_coeffs_func=self.read_axis_coeffs_func,
+            recompute_axis_from_state_vmec_func=self.recompute_axis_from_state_vmec_func,
+            recompute_axis_from_boundary_func=self.recompute_axis_from_boundary_func,
+            axis_dump_dir=os.environ.get("VMEC_JAX_DUMP_AXIS_DIR", "").strip(),
+        )
+        if coeffs is not None:
+            self.axis_reset_coeffs = coeffs
+        return st_out
+
+    def coeffs(self):
+        return self.axis_reset_coeffs
+
+
 class _FreeBoundaryEdgeControlProjector:
     """Apply optional reduced-control projection to free-boundary edge states."""
 
@@ -1169,10 +1248,6 @@ def solve_fixed_boundary_residual_iter(
     zero_tcon = boundary_setup.zero_tcon
     constraint_active_false = boundary_setup.constraint_active_false
 
-    # Boundary coefficients for VMEC-style bad-Jacobian reset are needed only
-    # when a reset is actually applied.  Build them lazily so ordinary cold
-    # solves do not pay a duplicate boundary conversion during setup.
-    boundary_for_axis = None
     axis_reset_done = boundary_setup.axis_reset_done
     lmove_axis = boundary_setup.lmove_axis
     force_axis_reset = boundary_setup.force_axis_reset
@@ -1187,43 +1262,6 @@ def solve_fixed_boundary_residual_iter(
         host_update_assembly=host_update_assembly,
         idx00=idx00,
     )
-
-    axis_reset_coeffs = None
-
-    def _reset_axis_from_boundary(
-        st: VMECState,
-        *,
-        k_guess=None,
-        full_reset: bool = False,
-        refine_axis_guess: bool = True,
-    ) -> VMECState:
-        nonlocal axis_reset_coeffs, boundary_for_axis
-        if boundary_for_axis is None and indata is not None:
-            boundary_for_axis = boundary_from_indata(indata, static.modes, apply_m1_constraint=True)
-        st_out, coeffs = _reset_axis_from_boundary_impl(
-            st,
-            boundary_for_axis=boundary_for_axis,
-            static=static,
-            indata=indata,
-            signgs=int(signgs),
-            trig=trig,
-            k_guess=k_guess,
-            full_reset=full_reset,
-            refine_axis_guess=refine_axis_guess,
-            zero_precond_diag=zero_precond_diag,
-            zero_tcon=zero_tcon,
-            constraint_active_false=constraint_active_false,
-            compute_forces_iter_func=_compute_forces_iter,
-            apply_vmec_lambda_axis_rules_func=_apply_vmec_lambda_axis_rules,
-            initial_guess_from_boundary_func=initial_guess_from_boundary,
-            read_axis_coeffs_func=_read_axis_coeffs,
-            recompute_axis_from_state_vmec_func=_recompute_axis_from_state_vmec,
-            recompute_axis_from_boundary_func=_recompute_axis_from_boundary,
-            axis_dump_dir=os.environ.get("VMEC_JAX_DUMP_AXIS_DIR", "").strip(),
-        )
-        if coeffs is not None:
-            axis_reset_coeffs = coeffs
-        return st_out
 
     host_profile_setup = _resolve_host_profile_setup(
         backend_name=_scan_backend_name(),
@@ -1481,6 +1519,23 @@ def solve_fixed_boundary_residual_iter(
         compute_forces=_compute_forces,
         compute_forces_np=_compute_forces_np,
         warmup_iters=warmup_iters,
+    )
+    # Build bad-Jacobian axis-reset coefficients lazily.
+    _reset_axis_from_boundary = _AxisResetFromBoundaryCallback(
+        static=static,
+        indata=indata,
+        signgs=int(signgs),
+        trig=trig,
+        zero_precond_diag=zero_precond_diag,
+        zero_tcon=zero_tcon,
+        constraint_active_false=constraint_active_false,
+        compute_forces_iter_func=_compute_forces_iter,
+        apply_vmec_lambda_axis_rules_func=_apply_vmec_lambda_axis_rules,
+        boundary_from_indata_func=boundary_from_indata,
+        initial_guess_from_boundary_func=initial_guess_from_boundary,
+        read_axis_coeffs_func=_read_axis_coeffs,
+        recompute_axis_from_state_vmec_func=_recompute_axis_from_state_vmec,
+        recompute_axis_from_boundary_func=_recompute_axis_from_boundary,
     )
 
     _t_setup_index_constants = _setup_timer_start()
@@ -1814,7 +1869,7 @@ def solve_fixed_boundary_residual_iter(
         velocity_blocks = _zero_primary_velocity_blocks_like(velocity_blocks)
     axis_reset_runtime_callbacks = _InitialAxisResetRuntimeCallbacks(
         _reset_axis_from_boundary, _host_axis_reset_update, _apply_controller_update, _controller_after_axis_reset,
-        _zero_primary_velocity_blocks, lambda: axis_reset_coeffs, _print_scan_axis_guess,
+        _zero_primary_velocity_blocks, _reset_axis_from_boundary.coeffs, _print_scan_axis_guess,
     )
 
     def _apply_strict_step_branch(branch_result, *, after_catastrophic_restart: bool = False):
@@ -1892,7 +1947,7 @@ def solve_fixed_boundary_residual_iter(
         ptau_minmax_from_k_host_func=_ptau_minmax_from_k_host,
         vmec_half_mesh_jacobian_from_state_func=vmec_half_mesh_jacobian_from_state,
         print_axis_guess_func=_print_scan_axis_guess,
-        axis_reset_coeffs_func=lambda: axis_reset_coeffs,
+        axis_reset_coeffs_func=_reset_axis_from_boundary.coeffs,
         env_enabled_func=_runtime_env_enabled,
         getenv_func=os.getenv,
         perf_counter_func=time.perf_counter,

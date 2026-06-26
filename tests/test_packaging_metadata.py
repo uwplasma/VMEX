@@ -72,7 +72,7 @@ def test_package_data_includes_mirror_wham_fixture() -> None:
     data = tomllib.loads((ROOT / "pyproject.toml").read_text())
     package_data = data["tool"]["setuptools"]["package-data"]["vmec_jax"]
 
-    assert "data/input.nfp4_QH_warm_start" in package_data
+    assert "resources/input.nfp4_QH_warm_start" in package_data
     assert "mirror/validation/data/wham_coils.json" in package_data
 
 
