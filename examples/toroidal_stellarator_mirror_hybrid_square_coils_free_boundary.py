@@ -127,7 +127,7 @@ FIELD_LINE_TURNS = 1.25
 
 
 SCHEMA = "toroidal_stellarator_mirror_hybrid_square_coils_free_boundary_solve"
-SCHEMA_VERSION = "0.4"
+SCHEMA_VERSION = "0.5"
 STRICT_COMPONENT_FTOL_TARGET = 1.0e-12
 
 
@@ -1059,6 +1059,9 @@ def _run_one_beta(
         "best_scored_fsqr": _finite_float_or_none(diag.get("best_scored_fsqr") if isinstance(diag, dict) else None),
         "best_scored_fsqz": _finite_float_or_none(diag.get("best_scored_fsqz") if isinstance(diag, dict) else None),
         "best_scored_fsql": _finite_float_or_none(diag.get("best_scored_fsql") if isinstance(diag, dict) else None),
+        "best_scored_component_max": _finite_float_or_none(
+            diag.get("best_scored_component_max") if isinstance(diag, dict) else None
+        ),
         "best_scored_full_boundary_count": (
             diag.get("best_scored_full_boundary_count") if isinstance(diag, dict) else None
         ),
@@ -1205,6 +1208,7 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "best_scored_fsqr",
         "best_scored_fsqz",
         "best_scored_fsql",
+        "best_scored_component_max",
         "best_scored_full_boundary_count",
         "best_scored_fresh_boundary_count",
         "free_boundary_convergence_blocked_count",

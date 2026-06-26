@@ -795,6 +795,11 @@ def test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates
     assert ready["reasons"] == []
     assert ready["projection_meets_gate"] is True
     assert ready["recommended_nzeta"] == recommended_square_axis_nzeta(28)
+    assert ready["recommended_nzeta_rule"] == "ceil(max(16, 2*ntor + 8) / 8) * 8"
+    assert ready["nzeta_margin"] == 0
+    assert ready["mgrid_nphi_margin"] == 0
+    assert ready["fourier_boundary_channel_count"] == 12
+    assert ready["points_per_toroidal_mode"] == pytest.approx(64.0 / 28.0)
 
     underresolved = square_axis_resolution_deck_status(
         projection=projection,
@@ -806,6 +811,8 @@ def test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates
         target_max_component_error=5.0e-12,
     )
     assert underresolved["status"] == "diagnostic_underresolved"
+    assert underresolved["nzeta_margin"] == -16
+    assert underresolved["mgrid_nphi_margin"] == 32
     assert "nzeta_below_square_axis_recommendation" in underresolved["reasons"]
     assert "mgrid_nphi_not_multiple_of_nzeta" in underresolved["reasons"]
 
@@ -1123,7 +1130,7 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     metrics = json.loads(metrics_path.read_text())
     rows = metrics["rows"]
     assert metrics["metrics_schema"] == "toroidal_stellarator_mirror_hybrid_square_coils_free_boundary_solve"
-    assert metrics["metrics_schema_version"] == "0.4"
+    assert metrics["metrics_schema_version"] == "0.5"
     assert metrics["workflow_status"] == "actual_vmec_jax_free_boundary_beta_scan"
     assert metrics["actual_free_boundary_solve"] is True
     assert metrics["production_free_boundary_claim"] is False
@@ -1159,6 +1166,9 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert np.isfinite(float(rows[0]["final_fsqr"]))
     assert np.isfinite(float(rows[0]["final_fsqz"]))
     assert np.isfinite(float(rows[0]["final_fsql"]))
+    assert "best_scored_component_max" in rows[0]
+    if rows[0]["best_scored_component_max"] is not None:
+        assert np.isfinite(float(rows[0]["best_scored_component_max"]))
     assert rows[0]["free_boundary_edge_control_projection_requested"] == "square"
     assert rows[0]["free_boundary_edge_control_projection_enabled"] is True
     assert int(rows[0]["free_boundary_edge_control_projection_control_count"]) == 2
@@ -1178,6 +1188,7 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert csv_rows[0]["boundary_condition_mode"] == "vacuum_coil_normal"
     assert csv_rows[0]["free_boundary_edge_control_projection_requested"] == "square"
     assert csv_rows[0]["free_boundary_edge_control_projection_enabled"] == "True"
+    assert "best_scored_component_max" in csv_rows[0]
     assert "virtual_casing_status" in csv_rows[0]
 
 

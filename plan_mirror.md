@@ -5738,6 +5738,116 @@ Visual validation:
 
 No user input is needed.
 
+## M317. Square-axis resolution margins and mgrid comparator queue
+
+### Steps taken
+
+- Rechecked the active strict rows on `office` after pushing M316.
+- Confirmed the old direct hot-restart row is still running from source commit
+  `80803e05`, so it remains useful as historical evidence but does not contain
+  the M316 best-scored-state implementation.
+- Confirmed that old direct row had improved to roughly
+  `FSQR=5.0e-11`, `FSQZ=4.6e-11`, `FSQL=6.7e-12` around hot-restart iteration
+  `636`, still above strict `1e-12`.
+- Confirmed the VMEC2000/generated-`mgrid` row is around iteration `3037` with
+  leading components roughly `1.5e-9`, `1.4e-9`, `3.9e-10`, so VMEC2000 is not
+  presently more robust for this square-axis Fourier representation.
+- Fast-forwarded the waiting `office` queues to `d4e0802d`.
+- Added a new queued JAX generated-`mgrid` strict comparator at
+  `/home/rjorge/local/vmec_mirror_mgrid_jax/results/square_coil_jax_mgrid_strict_ns9_13_17_mpol5_ntor28_nzeta64_mgrid88x64x64_d4e0802d/run_when_idle_mgrid_jax.sh`.
+  This row separates generated-`mgrid` field representation from VMEC2000 solver
+  behavior.
+- Added explicit square-axis resolution margins to
+  `square_axis_resolution_deck_status`: the recommended-`NZETA` rule, signed
+  `nzeta_margin`, signed `mgrid_nphi_margin`, Fourier boundary channel count,
+  and points per retained toroidal mode.
+- Carried `best_scored_component_max` into the root square-coil free-boundary
+  example row/CSV output and bumped that example schema to `0.5`.
+
+### Results obtained
+
+- Editing `MPOL`, `NTOR`, or `NZETA` now leaves clearer preflight evidence.  For
+  example:
+  - default `MPOL=5`, `NTOR=28`, `NZETA=None` resolves to `NZETA=64` with
+    `nzeta_margin=0`;
+  - forcing `NZETA=48` at `NTOR=28` reports `nzeta_margin=-16`;
+  - `NTOR=40` resolves to `NZETA=88`;
+  - the tiny diagnostic `MPOL=3`, `NTOR=4`, `NZETA=8` row is explicitly
+    underresolved and has projection error about `3.45e-3`.
+- The root example now reports the component-wise best score, matching the
+  backend profiler and avoiding total-residual-only interpretation.
+- The active VMEC2000 row continues to indicate that VMEC2000/mgrid is a
+  reference backend, not a cure for the Fourier representation stiffness.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py::test_square_axis_recommended_nzeta_and_example_guard \
+  tests/test_toroidal_hybrid.py::test_square_axis_resolution_deck_status_classifies_projection_and_grid_gates \
+  tests/test_toroidal_hybrid.py::test_square_coil_hybrid_free_boundary_example_runs_without_plots
+```
+
+Result: `3 passed, 2 warnings`.
+
+```bash
+venv/bin/python -m pytest -q tests/test_toroidal_hybrid.py
+```
+
+Result: `53 passed, 2 warnings`.
+
+```bash
+ruff check \
+  vmec_jax/toroidal_hybrid.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tests/test_toroidal_hybrid.py
+python -m py_compile \
+  vmec_jax/toroidal_hybrid.py \
+  examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py \
+  tests/test_toroidal_hybrid.py
+git diff --check
+```
+
+Result: passed.
+
+### File structure and best-practice adherence
+
+- Representation-grid diagnostics stay in `vmec_jax/toroidal_hybrid.py`, where
+  the square-axis Fourier deck is classified.
+- The root free-boundary example remains self-contained with top-level input
+  parameters and no parser.
+- The example schema bump is limited to the new best-component CSV field.
+- The new generated-`mgrid` comparator is queued on `office`; no generated
+  profiles, grids, or figures were added to the repository.
+
+### Best next steps
+
+1. Commit and push this diagnostic tranche.
+2. Let the active old direct/VMEC2000 rows and the updated queued rows run
+   without interrupting them.
+3. Compare direct-coil, JAX generated-`mgrid`, and VMEC2000 generated-`mgrid`
+   strict tails once the queued mgrid row completes.
+4. If the updated direct/mgrid rows still plateau above `1e-12`, promote the
+   solver-native spline/control state rather than further increasing Fourier
+   modes.
+
+### Completion percentages after M317
+
+- Direct-coil GPU/JIT parity lane: `97%`, best-state promotion is queued on
+  updated rows; strict closure remains open.
+- JAX generated-`mgrid` comparator lane: `70%`, strict row is queued and waiting
+  for active solver load.
+- VMEC2000 robustness/reference lane: `99%`, active row is not strict and is
+  currently worse than the direct JAX row.
+- True spline/control-basis hybrid lane: `92%`, bridge diagnostics are clearer;
+  solver-native spline state remains open.
+- CI/API health lane: `99%`, local touched gates pass.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M316. Best-scored residual state promotion for oscillatory strict rows
 
 ### Steps taken

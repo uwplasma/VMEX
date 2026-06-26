@@ -1302,6 +1302,9 @@ def square_axis_resolution_deck_status(
     rms_error = _finite_float(projection.get("rms_error"))
     nzeta_underrecommended = bool(nzeta_i < int(recommended_nzeta))
     mgrid_nphi_multiple = bool(mgrid_nphi_i % max(1, nzeta_i) == 0)
+    nzeta_margin = int(nzeta_i - int(recommended_nzeta))
+    mgrid_nphi_margin = int(mgrid_nphi_i - nzeta_i)
+    points_per_toroidal_mode = float(nzeta_i / max(1, ntor_i))
     projection_meets_gate = (
         None
         if target_max_component_error is None or max_component_error is None
@@ -1325,6 +1328,7 @@ def square_axis_resolution_deck_status(
     else:
         status = "diagnostic_underresolved"
 
+    mode_count = int(projection.get("mode_count", -1))
     return {
         "status": status,
         "reasons": reasons,
@@ -1333,10 +1337,15 @@ def square_axis_resolution_deck_status(
         "ns": None if ns is None else int(ns),
         "nzeta": nzeta_i,
         "recommended_nzeta": int(recommended_nzeta),
+        "recommended_nzeta_rule": "ceil(max(16, 2*ntor + 8) / 8) * 8",
+        "nzeta_margin": nzeta_margin,
         "nzeta_underrecommended": nzeta_underrecommended,
         "mgrid_nphi": mgrid_nphi_i,
+        "mgrid_nphi_margin": mgrid_nphi_margin,
         "mgrid_nphi_multiple_of_nzeta": mgrid_nphi_multiple,
-        "mode_count": int(projection.get("mode_count", -1)),
+        "mode_count": mode_count,
+        "fourier_boundary_channel_count": None if mode_count < 0 else 4 * mode_count,
+        "points_per_toroidal_mode": points_per_toroidal_mode,
         "projection_target_max_component_error": (
             None if target_max_component_error is None else float(target_max_component_error)
         ),
