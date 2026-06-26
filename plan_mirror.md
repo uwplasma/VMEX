@@ -31965,3 +31965,74 @@ recommended follow-up is now `vmec2000`.
 ### User input needed
 
 No user input is needed.
+
+---
+## M281 - Verbose Direct-GPU Follow-up Commands
+
+### Steps taken
+
+- Re-polled the active direct-GPU rows:
+  - baseline around iteration `2456`, with components about
+    `8.91e-09`, `7.65e-09`, `7.90e-10`;
+  - Anderson around iteration `2442`, with components about
+    `8.80e-09`, `7.58e-09`, `8.11e-10`.
+- Summarized fresh copied launcher logs; both direct rows are still running but
+  have `tail_plateau_status=flat_above_stage_ftol` and tail factors slightly
+  above `1.0`.
+- Updated `tools/diagnostics/square_coil_followup_commands.py` so direct-GPU
+  and direct-GPU JAX-NESTOR follow-up commands always include
+  `--verbose-solver`.
+- Generated the next direct-GPU JAX-NESTOR command locally and confirmed it
+  includes `--verbose-solver`, `--freeb-jax-nestor-operator`,
+  `--jit-forces`, `--jit-direct-sampler`, `--coil-chunk-size 0`, and
+  `--return-best-scored-state`.
+
+### Results obtained
+
+- The next heavy `direct-gpu-jax-nestor` A/B row is ready to launch when the
+  two active direct rows finish or plateau enough to stop using the same CPU
+  pool.
+- The generated command is stored in the current session at
+  `/tmp/square_direct_jax_nestor_followup_command.txt`.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_square_coil_followup_commands.py \
+  -k 'direct_gpu_speed_probe or direct_gpu_jax_nestor_probe'
+
+venv/bin/python -m py_compile tools/diagnostics/square_coil_followup_commands.py
+
+ruff check \
+  tools/diagnostics/square_coil_followup_commands.py \
+  tests/test_square_coil_followup_commands.py
+
+git diff --check
+```
+
+Results: `2 passed, 6 deselected`; py-compile, ruff, and whitespace checks
+passed.
+
+### Best next steps
+
+1. Continue to let the active direct rows run while they are near the
+   `1e-8` scale.
+2. If they remain flat or finish above strict tolerance, launch the generated
+   `direct-gpu-jax-nestor` command from an updated office worktree.
+3. Verify the resulting `free_boundary_jax_nestor_operator_applied` and
+   `free_boundary_jax_nestor_operator_reason` fields before interpreting
+   residuals.
+
+### Completion percentages after M281
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `98%`.
+- VMEC2000 robustness/reference lane: `98%`.
+- Direct-coil GPU/JIT parity lane: `90%`, active rows still running.
+- Experimental JAX NESTOR operator profiling lane: `78%`.
+- Follow-up command and summary reproducibility lane: `100%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.

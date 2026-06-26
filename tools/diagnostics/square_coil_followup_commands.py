@@ -260,6 +260,7 @@ def _command_for(args: argparse.Namespace, *, delt: float) -> list[str]:
                 "0",
                 "--jit-forces",
                 "--jit-direct-sampler",
+                "--verbose-solver",
                 "--return-best-scored-state",
             ]
         )

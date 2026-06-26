@@ -140,6 +140,7 @@ def test_square_coil_followup_commands_emit_direct_gpu_speed_probe(tmp_path: Pat
     assert "--skip-provider-parity" in command
     assert "--jit-forces" in command
     assert "--jit-direct-sampler" in command
+    assert "--verbose-solver" in command
     assert "--freeb-anderson-pressure" in command
     assert "--accepted-provider-parity" not in command
     assert "--run-vmec2000" not in command
@@ -173,6 +174,7 @@ def test_square_coil_followup_commands_emit_direct_gpu_jax_nestor_probe(tmp_path
     assert "--skip-provider-parity" in command
     assert "--jit-forces" in command
     assert "--jit-direct-sampler" in command
+    assert "--verbose-solver" in command
     assert "--freeb-jax-nestor-operator" in command
     assert "--no-freeb-jax-nestor-jit-operator" in command
     assert "--freeb-include-edge" in command

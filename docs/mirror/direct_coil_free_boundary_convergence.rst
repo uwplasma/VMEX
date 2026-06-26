@@ -759,7 +759,9 @@ The remaining work is deliberately narrow:
    profiler writes the selected values to ``configuration`` and each JAX
    backend's ``free_boundary_solver_overrides`` block, and it explicitly sets
    ``VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR=0`` unless the flag is requested so
-   ambient shell environment cannot contaminate a robustness comparison.
+   ambient shell environment cannot contaminate a robustness comparison. The
+   direct-GPU follow-up commands include ``--verbose-solver`` so active rows can
+   be summarized from ``launcher.log`` before final JSON is written.
 2. Re-run the square-coil beta ladder with per-beta checkpointing and the
    best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at
    ``1e-12``. Keep ``DELT=0.02``, ``NVACSKIP=1``,
