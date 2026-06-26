@@ -385,10 +385,15 @@ and reduced the printed force components from about ``7.37e-8, 6.27e-8,
 3.44e-11`` to about ``6.48e-10, 5.54e-10, 3.44e-11`` with constant
 ``DELT=0.02``.  It still did not satisfy the strict component gate, but it is
 the first reduced-control row with a fast monotone tail from the full-Fourier
-hot-restart scale.  The active strict follow-up is the matching direct-GPU
+hot-restart scale.  The matching direct-GPU
 ``--freeb-edge-control-projection square`` /
-``--freeb-edge-control-update-mode coordinate`` run with ``NITER=8000``,
-``FTOL=1e-12``, and two optional final-grid hot restarts.
+``--freeb-edge-control-update-mode coordinate`` run with ``NITER=8000`` was
+stopped early after iteration ``121`` because the tail flattened and then
+drifted upward around ``FSQR=4.6e-10``, ``FSQZ=3.8e-10``, and
+``FSQL=3.4e-11``.  The active direct-lane follow-up is now the
+``direct-gpu-edge-jax-nestor-polish`` A/B row: it keeps the same WOUT seed,
+coordinate edge-control bridge, ``FTOL=1e-12``, and ``DELT=0.02``, while
+enabling ``--freeb-jax-nestor-operator`` and ``--freeb-dense-solve-mode mode``.
 The follow-up command helper now exposes two finite strict-polish lanes for the
 direct research path:
 
