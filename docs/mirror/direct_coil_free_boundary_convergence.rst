@@ -405,6 +405,27 @@ recent relative span is small while the last residual remains above the current
 stage tolerance; those rows should be treated as stalled until a
 ``DELT``/stage-budget scan moves the floor.
 
+Finite-beta mirror validation should check the sign of the magnetic response,
+not only numerical convergence. Ideal MHD force balance gives the familiar
+magnetic-pressure relation ``p + B^2/(2 mu0) ~= constant`` when field-line
+tension is not the dominant transverse balance, so increasing plasma pressure
+should diamagnetically reduce ``|B|`` in the high-pressure region. Recent
+axisymmetric mirror modelling with Pleiades/RealTwin reports the same
+qualitative behavior: self-consistent high-beta mirror equilibria show outward
+flux-surface expansion and a central magnetic-field reduction from plasma
+diamagnetism. The square-coil beta scan should therefore report both residual
+convergence and a physical response check: higher beta should not merely move a
+prescribed boundary, it should produce a solved free-boundary equilibrium with
+the expected pressure-supported ``|B|`` depression and small external-normal
+field residuals. Useful references for this validation target are the
+Hammir/RealTwin mirror modelling paper
+`arXiv:2411.06644 <https://arxiv.org/html/2411.06644v1>`__, the BEAM mirror
+study in `Journal of Plasma Physics
+<https://www.cambridge.org/core/journals/journal-of-plasma-physics/article/prospects-for-a-highfield-compact-breakeven-axisymmetric-mirror-beam-and-applications/65480116EDB94296B25A52C7E5240EA8>`__,
+and standard MHD magnetic-pressure balance notes such as
+`Hutchinson/ANU chapter 6
+<https://people.physics.anu.edu.au/~jnh112/AIIM/c17/chap06.pdf>`__.
+
 The square-axis stellarator-mirror hybrid geometry now has a lower-bandwidth
 ``axis_kind="spline"`` option. It is still projected into VMEC Fourier boundary
 coefficients, but it replaces the sharp polar-square/superellipse content with

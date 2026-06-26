@@ -28754,3 +28754,64 @@ Targeted test result: `19 passed, 1 warning`.
 ### User input needed
 
 No user input is needed.
+---
+## 246. Baked Finite-Beta Mirror Literature Checks Into The Docs
+
+### Steps taken
+
+- Reviewed mirror and MHD references for the expected finite-beta magnetic
+  response:
+  - standard MHD magnetic-pressure balance;
+  - recent Hammir/RealTwin axisymmetric mirror modelling with Pleiades;
+  - the BEAM mirror study discussion of high-beta mirror-ratio enhancement.
+- Updated `docs/mirror/direct_coil_free_boundary_convergence.rst` with the
+  validation target for beta scans.
+- Added a short pointer in `examples/mirror/README.md` so plot reviewers know
+  to compare beta scans against diamagnetic field reduction and flux-surface
+  expansion, not only residual convergence.
+
+### Results obtained
+
+- The plan now has a physics validation criterion for the free-boundary beta
+  scan: increasing beta should produce a pressure-supported diamagnetic
+  `|B|` depression where plasma pressure is high, with associated
+  flux-surface expansion and small external-normal/pressure-balance residuals.
+- This reinforces why a pre-prescribed boundary motion is not enough for the
+  square-coil stellarator-mirror hybrid; the solved equilibrium and plots must
+  show the expected finite-beta magnetic response.
+
+### How it was tested
+
+```bash
+git diff --check
+```
+
+Documentation-only change.
+
+### File structure and best-practice notes
+
+- The detailed literature-backed statement lives in the convergence notes.
+- The examples README keeps only the review instruction and points to the
+  convergence notes to avoid duplicating reference-heavy text.
+
+### Best next steps
+
+1. When beta-scan solves are rerun, include plots/metrics for on-surface and
+   near-axis `|B|`, mirror ratio, boundary motion, and total-pressure balance.
+2. Treat any beta scan without diamagnetic field depression and pressure-balance
+   evidence as diagnostic, even if the residual history looks numerically good.
+
+### Completion percentages after M246
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `94%`.
+- VMEC2000 robustness/reference lane: `95%`.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `77%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `75%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- True spline/control-basis hybrid lane: `36%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.

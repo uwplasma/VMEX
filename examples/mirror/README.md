@@ -243,7 +243,8 @@ strict production equilibria. The plot bundle includes
 near-axis ``|B|`` and mirror-ratio trends so finite-beta scans can be compared
 against the expected diamagnetic field-reduction / mirror-ratio-increase trend
 from linear-trap mirror literature, instead of relying only on LCFS-averaged
-``|B|``.
+``|B|``. The convergence notes cite recent Pleiades/RealTwin and BEAM mirror
+modelling references for this validation target.
 
 For direct-provider versus mgrid/VMEC2000 profiling, use::
 
