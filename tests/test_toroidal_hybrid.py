@@ -21,6 +21,7 @@ from vmec_jax.toroidal_hybrid import (
     sample_square_axis_stellarator_mirror_hybrid_boundary,
     sample_toroidal_stellarator_mirror_hybrid_boundary,
     square_axis_spline_radius,
+    square_axis_spline_radius_matrix,
     square_axis_stellarator_mirror_hybrid_indata,
     square_axis_stellarator_mirror_hybrid_projection_error,
     toroidal_hybrid_cross_section_anisotropy,
@@ -94,6 +95,7 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert "ZBC" not in indata.indexed
     assert vj.SquareAxisSplineControls is SquareAxisSplineControls
     assert vj.square_axis_spline_radius is square_axis_spline_radius
+    assert vj.square_axis_spline_radius_matrix is square_axis_spline_radius_matrix
     assert vj.sample_square_axis_stellarator_mirror_hybrid_boundary is sample_square_axis_stellarator_mirror_hybrid_boundary
     assert vj.square_axis_stellarator_mirror_hybrid_indata is square_axis_stellarator_mirror_hybrid_indata
     assert (
@@ -103,6 +105,7 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert public_api.square_axis_stellarator_mirror_hybrid_indata is square_axis_stellarator_mirror_hybrid_indata
     assert public_api.SquareAxisSplineControls is SquareAxisSplineControls
     assert public_api.square_axis_spline_radius is square_axis_spline_radius
+    assert public_api.square_axis_spline_radius_matrix is square_axis_spline_radius_matrix
     assert (
         public_api.square_axis_stellarator_mirror_hybrid_projection_error
         is square_axis_stellarator_mirror_hybrid_projection_error
@@ -175,6 +178,27 @@ def test_square_axis_control_spline_samples_and_projects_to_vmec_boundary():
         corner_rotation=0.30,
     )
     assert projection["max_abs_component_error"] < 1.0e-10
+
+
+def test_square_axis_spline_radius_matrix_reconstructs_control_radius():
+    controls = SquareAxisSplineControls.rounded_square(axis_half_width=1.5, corner_radius_factor=1.14)
+    zeta = np.linspace(0.0, 2.0 * np.pi, 65, endpoint=False).reshape(5, 13)
+
+    matrix = square_axis_spline_radius_matrix(zeta, controls)
+    reconstructed = np.tensordot(matrix, controls.radius, axes=([-1], [0]))
+    direct = square_axis_spline_radius(zeta, controls)
+
+    assert matrix.shape == zeta.shape + (controls.radius.size,)
+    np.testing.assert_allclose(reconstructed, direct, rtol=0.0, atol=1.0e-14)
+    np.testing.assert_allclose(np.sum(matrix, axis=-1), np.ones_like(zeta), rtol=0.0, atol=1.0e-14)
+
+    perturb = 1.0e-3
+    changed = SquareAxisSplineControls(
+        zeta=controls.zeta,
+        radius=controls.radius + perturb * np.eye(controls.radius.size)[3],
+    )
+    delta = square_axis_spline_radius(zeta, changed) - direct
+    np.testing.assert_allclose(delta, perturb * matrix[..., 3], rtol=0.0, atol=1.0e-14)
 
 
 @pytest.mark.parametrize(

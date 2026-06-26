@@ -5739,107 +5739,6 @@ Visual validation:
 No user input is needed.
 
 ---
-## 256. Tightened Strict Square-Coil Production Deck Gating
-
-### Steps taken
-
-- Rechecked the local branch, active VMEC2000 strict run, and two live GPU
-  direct-coil runs on `office`.
-- Added a finite-gate check in
-  `tools/diagnostics/profile_square_coil_free_boundary.py` so production
-  profiles require the full `resolution_deck` to be `production_ready`.
-- Added regression tests proving that:
-  - `MPOL=5, NTOR=28, NZETA=32` is rejected when a finite
-    `--max-boundary-projection-error 5e-12` gate is active, even if a mocked
-    projection error itself passes;
-  - the same underrecommended deck can still be written as an explicit
-    diagnostic run with `--max-boundary-projection-error none`.
-- Updated `examples/mirror/README.md` and
-  `docs/mirror/direct_coil_free_boundary_convergence.rst` to say that a finite
-  production gate now checks projection error, recommended `NZETA`, and
-  `mgrid_nphi` compatibility together.
-
-### Results obtained
-
-- The production deck gate now prevents a user-edited `mpol`/`ntor`/`nzeta`
-  profile from silently entering a long strict solve when the deck is already
-  classified as underresolved.
-- The active VMEC2000 `MPOL=5, NTOR=28, NZETA=64, NS=9->13->17` row is still
-  running on `office` and remains the best strict-reference path:
-  - latest checked iteration tail around `7667`;
-  - final summed residual about `2.4e-11` to `2.5e-11`;
-  - largest component about `1.09e-11`;
-  - strict gap about `11`;
-  - no vacuum-grid overflow.
-- The two live GPU direct-coil rows are still in the first `FTOL=1e-8` stage.
-  Their live launcher summaries show force rows and vacuum-pressure activation,
-  but current largest components are still `O(1e-1)` to `O(1)`, so they are not
-  useful as strict `1e-12` evidence yet.
-- This reinforces the current interpretation: VMEC2000 generated-`mgrid` is
-  the more robust reference for this square-coil free-boundary deck, while the
-  direct-coil path still needs solver/preconditioner or timestep work before it
-  can be promoted.
-
-### How it was tested
-
-```bash
-venv/bin/python -m pytest -q \
-  tests/test_profile_square_coil_free_boundary.py \
-  tests/test_square_coil_followup_commands.py \
-  tests/test_summarize_square_coil_profiles.py
-```
-
-Targeted result: `37 passed, 1 warning`.
-
-Remote status checks used:
-
-```bash
-ssh office 'ps -p 514451,514698,530365,530366 -o pid,etimes,pcpu,pmem,comm,args'
-ssh office 'cd /home/rjorge/local/vmec_mirror && python3 tools/diagnostics/summarize_square_coil_profiles.py results/square_coil_freeb_backend_profile_vmec2000_ns9_13_17_mpol5_ntor28_nzeta64_mgrid88x64x64_niter24k_firstorder_nstep1 --markdown'
-ssh office 'cd /home/rjorge/local/vmec_mirror_direct_gpu && /home/rjorge/miniforge3/envs/qh-gpu/bin/python tools/diagnostics/summarize_square_coil_profiles.py results/square_coil_direct_gpu_ns9_13_17_mpol5_ntor28_nzeta64_niter8k_control_spline_baseline results/square_coil_direct_gpu_ns9_13_17_mpol5_ntor28_nzeta64_niter8k_control_spline_anderson --markdown'
-```
-
-### File structure and best-practice notes
-
-- The change stays in the existing backend profiler and tests; no result files,
-  WOUTs, figures, or solver artifacts are committed.
-- The profiler keeps one clear user-facing contract:
-  - finite `--max-boundary-projection-error`: production deck only;
-  - `--max-boundary-projection-error none`: diagnostic underresolved decks are
-    allowed and labelled.
-- Documentation updates live in the existing mirror README and convergence
-  notes instead of creating another plan document.
-
-### Best next steps
-
-1. Let the active VMEC2000 row finish or reach a clear final-stage plateau.
-2. If it exits above per-component `1e-12`, run the generated VMEC2000
-   `DELT=0.015,0.02,0.025` / `NITER_ARRAY=8000,16000,32000` follow-up scan on
-   the updated `control_spline` deck.
-3. Continue monitoring the direct GPU profiles, but do not treat them as
-   convergence evidence unless their first stage recovers by orders of
-   magnitude.
-4. If VMEC2000 stalls above `1e-12` after the follow-up scan, start the true
-   solver-native spline/control-basis free-boundary lane rather than spending
-   more time on arbitrary Fourier ladders.
-
-### Completion percentages after M256
-
-- Square-coil strict `FTOL=1e-12` profiling lane: `96%`.
-- VMEC2000 robustness/reference lane: `97%`, active row still running.
-- Direct-coil finite-beta diagnostic lane: `88%`.
-- Direct-coil GPU/JIT parity lane: `78%`.
-- `vmec_jax` generated-`mgrid` parity/performance lane: `76%`.
-- Square-axis spline-smoothed Fourier closure lane: `100%`.
-- Strict production deck gating lane: `100%`.
-- True spline/control-basis hybrid lane: `39%`.
-- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
-
-### User input needed
-
-No user input is needed.
-
----
 ## 251. Added Reproducible Next-Action Classification For Strict Profile Rows
 
 ### Steps taken
@@ -29626,6 +29525,186 @@ Targeted local test result after the docs update: `32 passed, 1 warning`.
 - `vmec_jax` generated-`mgrid` parity/performance lane: `76%`.
 - Square-axis spline-smoothed Fourier closure lane: `100%`.
 - True spline/control-basis hybrid lane: `38%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
+---
+## 256. Tightened Strict Square-Coil Production Deck Gating
+
+### Steps taken
+
+- Rechecked the local branch, active VMEC2000 strict run, and two live GPU
+  direct-coil runs on `office`.
+- Added a finite-gate check in
+  `tools/diagnostics/profile_square_coil_free_boundary.py` so production
+  profiles require the full `resolution_deck` to be `production_ready`.
+- Added regression tests proving that:
+  - `MPOL=5, NTOR=28, NZETA=32` is rejected when a finite
+    `--max-boundary-projection-error 5e-12` gate is active, even if a mocked
+    projection error itself passes;
+  - the same underrecommended deck can still be written as an explicit
+    diagnostic run with `--max-boundary-projection-error none`.
+- Updated `examples/mirror/README.md` and
+  `docs/mirror/direct_coil_free_boundary_convergence.rst` to say that a finite
+  production gate now checks projection error, recommended `NZETA`, and
+  `mgrid_nphi` compatibility together.
+
+### Results obtained
+
+- The production deck gate now prevents a user-edited `mpol`/`ntor`/`nzeta`
+  profile from silently entering a long strict solve when the deck is already
+  classified as underresolved.
+- The active VMEC2000 `MPOL=5, NTOR=28, NZETA=64, NS=9->13->17` row is still
+  running on `office` and remains the best strict-reference path:
+  - latest checked iteration tail around `7667`;
+  - final summed residual about `2.4e-11` to `2.5e-11`;
+  - largest component about `1.09e-11`;
+  - strict gap about `11`;
+  - no vacuum-grid overflow.
+- The two live GPU direct-coil rows are still in the first `FTOL=1e-8` stage.
+  Their live launcher summaries show force rows and vacuum-pressure activation,
+  but current largest components are still `O(1e-1)` to `O(1)`, so they are not
+  useful as strict `1e-12` evidence yet.
+- This reinforces the current interpretation: VMEC2000 generated-`mgrid` is
+  the more robust reference for this square-coil free-boundary deck, while the
+  direct-coil path still needs solver/preconditioner or timestep work before it
+  can be promoted.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_square_coil_followup_commands.py \
+  tests/test_summarize_square_coil_profiles.py
+```
+
+Targeted result: `37 passed, 1 warning`.
+
+Remote status checks used:
+
+```bash
+ssh office 'ps -p 514451,514698,530365,530366 -o pid,etimes,pcpu,pmem,comm,args'
+ssh office 'cd /home/rjorge/local/vmec_mirror && python3 tools/diagnostics/summarize_square_coil_profiles.py results/square_coil_freeb_backend_profile_vmec2000_ns9_13_17_mpol5_ntor28_nzeta64_mgrid88x64x64_niter24k_firstorder_nstep1 --markdown'
+ssh office 'cd /home/rjorge/local/vmec_mirror_direct_gpu && /home/rjorge/miniforge3/envs/qh-gpu/bin/python tools/diagnostics/summarize_square_coil_profiles.py results/square_coil_direct_gpu_ns9_13_17_mpol5_ntor28_nzeta64_niter8k_control_spline_baseline results/square_coil_direct_gpu_ns9_13_17_mpol5_ntor28_nzeta64_niter8k_control_spline_anderson --markdown'
+```
+
+### File structure and best-practice notes
+
+- The change stays in the existing backend profiler and tests; no result files,
+  WOUTs, figures, or solver artifacts are committed.
+- The profiler keeps one clear user-facing contract:
+  - finite `--max-boundary-projection-error`: production deck only;
+  - `--max-boundary-projection-error none`: diagnostic underresolved decks are
+    allowed and labelled.
+- Documentation updates live in the existing mirror README and convergence
+  notes instead of creating another plan document.
+
+### Best next steps
+
+1. Let the active VMEC2000 row finish or reach a clear final-stage plateau.
+2. If it exits above per-component `1e-12`, run the generated VMEC2000
+   `DELT=0.015,0.02,0.025` / `NITER_ARRAY=8000,16000,32000` follow-up scan on
+   the updated `control_spline` deck.
+3. Continue monitoring the direct GPU profiles, but do not treat them as
+   convergence evidence unless their first stage recovers by orders of
+   magnitude.
+4. If VMEC2000 stalls above `1e-12` after the follow-up scan, start the true
+   solver-native spline/control-basis free-boundary lane rather than spending
+   more time on arbitrary Fourier ladders.
+
+### Completion percentages after M256
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `96%`.
+- VMEC2000 robustness/reference lane: `97%`, active row still running.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `78%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `76%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- Strict production deck gating lane: `100%`.
+- True spline/control-basis hybrid lane: `39%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---
+## 257. Added A Square-Axis Spline Control Radius Map
+
+### Steps taken
+
+- Reviewed the mirror fixed-boundary reduced-coordinate/basis code and the
+  toroidal square-hybrid boundary path.
+- Confirmed the current toroidal square hybrid still uses a standard VMEC
+  Fourier boundary after sampling a smooth control-spline target.
+- Added `vmec_jax.toroidal_hybrid.square_axis_spline_radius_matrix`, a small
+  helper that returns the linear map from square-axis spline/control radii to
+  sampled axis radius values for fixed control locations.
+- Re-exported the helper through both `vmec_jax` and `vmec_jax.api`.
+- Documented the helper in the mirror README and convergence notes as the
+  immediate low-dimensional control bridge, distinct from a future
+  solver-native spline/control-basis state parameterization.
+
+### Results obtained
+
+- We now have a tested, explicit control-basis object for the square-axis
+  radius map:
+  - `radius_samples == matrix @ controls.radius`;
+  - matrix rows sum to one for constant-radius controls;
+  - a single control-radius perturbation produces the expected sampled
+    perturbation column.
+- This does not claim to solve the Fourier-closure limitation inside VMEC yet.
+  It gives the next implementation lane a concrete differentiable control map
+  while preserving VMEC/JAX and VMEC2000 parity on the current Fourier boundary
+  interface.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_square_coil_followup_commands.py \
+  tests/test_summarize_square_coil_profiles.py
+venv/bin/python -m py_compile \
+  vmec_jax/toroidal_hybrid.py \
+  vmec_jax/api.py \
+  vmec_jax/__init__.py
+```
+
+Focused result: `82 passed, 2 warnings`.
+
+### File structure and best-practice notes
+
+- The helper lives in `vmec_jax/toroidal_hybrid.py` beside the existing
+  square-axis spline controls and projection diagnostics.
+- No new solver path, output artifact, or bulky figure/result file is added.
+- Tests stay in `tests/test_toroidal_hybrid.py`, where the rest of the
+  square-hybrid geometry API is already covered.
+
+### Best next steps
+
+1. Keep the active VMEC2000 strict row running; it remains the main convergence
+   reference.
+2. Use the control-radius matrix in the next design step for a true
+   solver-native spline/control-basis free-boundary parameterization if the
+   Fourier-projected `5,28,64`/`6,32,72` rows plateau above `1e-12`.
+3. Add Jacobian/chain-rule diagnostics from control radii to Fourier
+   coefficients before changing the nonlinear solve state vector.
+
+### Completion percentages after M257
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `96%`.
+- VMEC2000 robustness/reference lane: `97%`, active row still running.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `78%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `76%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- Strict production deck gating lane: `100%`.
+- True spline/control-basis hybrid lane: `44%`.
 - Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
 
 ### User input needed

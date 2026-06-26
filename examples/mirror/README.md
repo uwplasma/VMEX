@@ -173,6 +173,11 @@ to ``NTOR`` than the sharper polar superellipse. It still projects to VMEC
 Fourier coefficients for the solve and for VMEC2000/mgrid parity, while keeping
 the intended square-axis control variables independent of ``MPOL`` and
 ``NTOR`` before projection.
+Use ``vmec_jax.square_axis_spline_radius_matrix`` to inspect the linear map
+from those few control radii to sampled square-axis radius values. The helper
+does not replace VMEC's Fourier state yet, but it makes the low-dimensional
+control basis explicit for differentiable studies and for deciding whether a
+future solver-native spline/control-basis path is justified.
 The default square-axis side/corner weights use
 ``SIDE_POWER = CORNER_POWER = 1.0``; this keeps the rounded-square target close
 to finite Fourier bandwidth. Sharper values such as ``1.4`` remain useful

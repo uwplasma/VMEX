@@ -451,7 +451,12 @@ still projected into VMEC Fourier boundary coefficients, but it replaces the
 sharp polar-square/superellipse content with a smooth rounded-square envelope
 before projection. This is the practical near-term way to reduce ``NTOR``
 sensitivity; a true spline basis inside the VMEC solve would be a larger
-solver reparameterization. The public helper
+solver reparameterization. The public
+``square_axis_spline_radius_matrix`` helper exposes the linear map from the
+few square-axis control radii to sampled radius values for fixed control
+locations. This gives differentiable studies a compact control vector today,
+while keeping the active VMEC/JAX and VMEC2000 comparison on the same Fourier
+boundary interface. The public helper
 ``square_axis_stellarator_mirror_hybrid_projection_error`` and the square-coil
 profiler's ``boundary_projection`` JSON block now report the Fourier truncation
 error, mode count, and recommended ``NZETA`` for the selected

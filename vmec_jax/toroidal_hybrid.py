@@ -175,6 +175,36 @@ def square_axis_spline_radius(zeta: Any, controls: SquareAxisSplineControls) -> 
     return _periodic_cubic_hermite_interpolate(validated.zeta, validated.radius, zeta)
 
 
+def square_axis_spline_radius_matrix(zeta: Any, controls: SquareAxisSplineControls) -> np.ndarray:
+    """Return the linear map from spline control radii to sampled axis radius.
+
+    The square-axis bridge is linear in the control radii for fixed control
+    locations.  Exposing that map makes the low-dimensional controls explicit:
+    ``square_axis_spline_radius(zeta, controls)`` is equivalent to
+    ``matrix @ controls.radius`` after flattening ``zeta``.  This is a small
+    building block for differentiable control studies without changing the
+    current VMEC/VMEC2000 Fourier boundary interface.
+    """
+
+    validated = controls.validate()
+    zeta_arr = np.asarray(zeta, dtype=float)
+    flat_zeta = zeta_arr.reshape(-1)
+    n_control = int(np.asarray(validated.radius).size)
+    baseline = SquareAxisSplineControls(
+        zeta=np.asarray(validated.zeta, dtype=float),
+        radius=np.ones(n_control, dtype=float),
+    )
+    baseline_values = square_axis_spline_radius(flat_zeta, baseline)
+    columns = []
+    for idx in range(n_control):
+        radius = np.ones(n_control, dtype=float)
+        radius[idx] += 1.0
+        perturbed = SquareAxisSplineControls(zeta=np.asarray(validated.zeta, dtype=float), radius=radius)
+        columns.append(square_axis_spline_radius(flat_zeta, perturbed) - baseline_values)
+    matrix = np.stack(columns, axis=-1)
+    return matrix.reshape(zeta_arr.shape + (n_control,))
+
+
 def recommended_square_axis_nzeta(ntor: int, *, margin: int = 8, block: int = 8) -> int:
     """Return a conservative toroidal grid size for square-axis hybrids.
 
