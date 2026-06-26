@@ -70,6 +70,22 @@ class VirtualCasingBoundaryDiagnostics:
         }
 
 
+@dataclass(frozen=True)
+class SolvedBoundaryFieldSample:
+    """Solved LCFS geometry and magnetic field on the VMEC angular grid."""
+
+    theta: np.ndarray
+    zeta: np.ndarray
+    R: np.ndarray
+    Z: np.ndarray
+    Bmag: np.ndarray
+    Bmag_near_axis: np.ndarray
+    Bxyz: np.ndarray
+    bsupu: np.ndarray
+    bsupv: np.ndarray
+    surface_xyz: np.ndarray
+
+
 def _as_wout(wout_or_path: Any) -> Any:
     if isinstance(wout_or_path, (str, Path)):
         return read_wout(wout_or_path)
@@ -107,6 +123,158 @@ def _load_virtual_casing_functional():
             "virtual_casing_jax is required for virtual-casing finite-beta boundary diagnostics"
         ) from exc
     return vc_functional
+
+
+def surface_xyz_from_rz(R: Any, Z: Any, zeta: Any, *, nfp: int = 1) -> np.ndarray:
+    """Return Cartesian surface coordinates from VMEC ``R,Z,zeta`` samples."""
+
+    R_arr = np.asarray(R, dtype=float)
+    Z_arr = np.asarray(Z, dtype=float)
+    zeta_arr = np.asarray(zeta, dtype=float)
+    if R_arr.shape != Z_arr.shape:
+        raise ValueError(f"R and Z shapes must match, got {R_arr.shape} and {Z_arr.shape}")
+    if R_arr.ndim != 2:
+        raise ValueError("R and Z must have shape (ntheta, nzeta)")
+    if zeta_arr.ndim != 1 or zeta_arr.shape[0] != R_arr.shape[1]:
+        raise ValueError("zeta must be a 1D array with length matching the second R/Z dimension")
+    phi = zeta_arr / float(max(1, int(nfp)))
+    return np.stack(
+        (R_arr * np.cos(phi)[None, :], R_arr * np.sin(phi)[None, :], Z_arr),
+        axis=0,
+    )
+
+
+def edge_pressure_from_indata(indata: Any) -> float:
+    """Return the VMEC power-series pressure evaluated on the LCFS."""
+
+    scalars = getattr(indata, "scalars", {}) if indata is not None else {}
+    am = np.asarray(scalars.get("AM", [0.0]), dtype=float).reshape(-1)
+    pres_scale = float(scalars.get("PRES_SCALE", 1.0) or 0.0)
+    if not am.size:
+        return 0.0
+    return float(pres_scale * np.sum(am))
+
+
+def edge_pressure_from_run(run: Any) -> float:
+    """Return the input edge pressure for a driver run object."""
+
+    return edge_pressure_from_indata(getattr(run, "indata", None))
+
+
+def sample_solved_boundary_field(run: Any, *, nfp: int | None = None) -> SolvedBoundaryFieldSample:
+    """Sample solved LCFS geometry, field strength, and Cartesian total field."""
+
+    from .field import b2_from_bsup, b_cartesian_from_bsup, bsup_from_geom, lamscale_from_phips
+    from .geom import eval_geom
+
+    nfp_eff = int(nfp if nfp is not None else getattr(getattr(run.static, "cfg", None), "nfp", 1))
+    geom = eval_geom(run.state, run.static)
+    lamscale = lamscale_from_phips(run.flux.phips, run.static.s)
+    bsupu, bsupv = bsup_from_geom(
+        geom,
+        phipf=run.flux.phipf,
+        chipf=run.flux.chipf,
+        nfp=nfp_eff,
+        signgs=int(run.signgs),
+        lamscale=lamscale,
+        flux_is_internal=True,
+    )
+    bmag = np.sqrt(np.asarray(b2_from_bsup(geom, bsupu, bsupv), dtype=float))
+    bxyz = np.asarray(
+        b_cartesian_from_bsup(geom, bsupu, bsupv, zeta=run.static.grid.zeta, nfp=nfp_eff),
+        dtype=float,
+    )
+    near_axis_idx = 1 if int(bmag.shape[0]) > 1 else 0
+    theta = np.asarray(run.static.grid.theta, dtype=float)
+    zeta = np.asarray(run.static.grid.zeta, dtype=float)
+    R = np.asarray(geom.R[-1], dtype=float)
+    Z = np.asarray(geom.Z[-1], dtype=float)
+    return SolvedBoundaryFieldSample(
+        theta=theta,
+        zeta=zeta,
+        R=R,
+        Z=Z,
+        Bmag=np.asarray(bmag[-1], dtype=float),
+        Bmag_near_axis=np.asarray(bmag[near_axis_idx], dtype=float),
+        Bxyz=np.moveaxis(bxyz[-1], -1, 0),
+        bsupu=np.asarray(bsupu[-1], dtype=float),
+        bsupv=np.asarray(bsupv[-1], dtype=float),
+        surface_xyz=surface_xyz_from_rz(R, Z, zeta, nfp=nfp_eff),
+    )
+
+
+def coil_external_b_on_surface(
+    surface_xyz: Any,
+    coil_params: Any,
+    *,
+    coil_geometry: Any | None = None,
+    regularization_epsilon: float | None = None,
+    chunk_size: int | None = None,
+) -> np.ndarray:
+    """Sample a direct-coil Cartesian field on a ``(3, ntheta, nzeta)`` surface."""
+
+    from .external_fields import build_coil_field_geometry, sample_coil_field_xyz_from_geometry
+
+    x = _as_vector_surface(surface_xyz, name="surface_xyz")
+    geometry = build_coil_field_geometry(coil_params) if coil_geometry is None else coil_geometry
+    eps = (
+        float(getattr(coil_params, "regularization_epsilon", 0.0))
+        if regularization_epsilon is None
+        else float(regularization_epsilon)
+    )
+    chunks = getattr(coil_params, "chunk_size", None) if chunk_size is None else chunk_size
+    points_xyz = np.moveaxis(x, 0, -1)
+    coil_xyz = np.asarray(
+        sample_coil_field_xyz_from_geometry(
+            geometry,
+            points_xyz,
+            regularization_epsilon=eps,
+            chunk_size=chunks,
+        ),
+        dtype=float,
+    )
+    return np.moveaxis(coil_xyz, -1, 0)
+
+
+def virtual_casing_diagnostics_from_run(
+    run: Any,
+    *,
+    coil_params: Any | None = None,
+    coil_geometry: Any | None = None,
+    target_external_b: Any | None = None,
+    pressure: Any | None = None,
+    nfp: int | None = None,
+    digits: int = 6,
+    quad_factor: int = 2,
+    chunk_size: int | str | None = "auto",
+    target_chunk_size: int | str | None = "auto",
+    vc_module: Any | None = None,
+) -> VirtualCasingBoundaryDiagnostics:
+    """Compute finite-beta virtual-casing boundary diagnostics for a solved run."""
+
+    nfp_eff = int(nfp if nfp is not None else getattr(getattr(run.static, "cfg", None), "nfp", 1))
+    sample = sample_solved_boundary_field(run, nfp=nfp_eff)
+    target_b = target_external_b
+    if target_b is None and coil_params is not None:
+        target_b = coil_external_b_on_surface(
+            sample.surface_xyz,
+            coil_params,
+            coil_geometry=coil_geometry,
+        )
+    pressure_eff = edge_pressure_from_run(run) if pressure is None else pressure
+    return virtual_casing_finite_beta_boundary_diagnostics(
+        sample.surface_xyz,
+        sample.Bxyz,
+        target_external_b=target_b,
+        pressure=pressure_eff,
+        nfp=nfp_eff,
+        digits=int(digits),
+        quad_nt=max(int(quad_factor) * int(sample.surface_xyz.shape[1]), int(sample.surface_xyz.shape[1])),
+        quad_np=max(int(quad_factor) * int(sample.surface_xyz.shape[2]), int(sample.surface_xyz.shape[2])),
+        chunk_size=chunk_size,
+        target_chunk_size=target_chunk_size,
+        vc_module=vc_module,
+    )
 
 
 def virtual_casing_finite_beta_boundary_diagnostics(

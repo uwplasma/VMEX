@@ -35,6 +35,7 @@ from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_ru
 from vmec_jax.external_fields import build_coil_field_geometry, write_mgrid_from_coils
 from vmec_jax.fourier import eval_fourier
 from vmec_jax.free_boundary import _sample_external_boundary_arrays
+from vmec_jax.free_boundary_validation import virtual_casing_diagnostics_from_run
 from vmec_jax.namelist import write_indata
 from vmec_jax.toroidal_hybrid import (
     evaluate_toroidal_hybrid_indata_boundary,
@@ -187,6 +188,11 @@ def _parser() -> argparse.ArgumentParser:
         "--verbose-solver",
         action="store_true",
         help="Print VMEC-style vmec_jax iteration progress for long direct/mgrid backend profiles.",
+    )
+    p.add_argument(
+        "--virtual-casing-diagnostics",
+        action="store_true",
+        help="Add optional finite-beta virtual-casing postsolve diagnostics for the direct-coil backend.",
     )
     return p
 
@@ -757,6 +763,62 @@ def _final_residuals(run: Any) -> dict[str, Any]:
     return out
 
 
+def _vector_surface_rms(values: Any) -> float | None:
+    try:
+        arr = np.asarray(values, dtype=float)
+    except Exception:
+        return None
+    if arr.ndim != 3 or arr.shape[0] != 3:
+        return None
+    mag2 = np.sum(arr * arr, axis=0)
+    finite = mag2[np.isfinite(mag2)]
+    if finite.size == 0:
+        return None
+    return float(np.sqrt(np.mean(finite)))
+
+
+def _virtual_casing_profile_payload(
+    *,
+    run: Any,
+    direct_params: Any | None,
+    coil_geometry: Any | None = None,
+) -> dict[str, Any]:
+    """Return optional DESC-style finite-beta postsolve boundary diagnostics."""
+
+    if direct_params is None:
+        return {"status": "skipped_requires_direct_coils"}
+    try:
+        __import__("virtual_casing_jax.functional")
+    except ImportError:
+        return {"status": "skipped_missing_virtual_casing_jax"}
+
+    t0 = time.perf_counter()
+    try:
+        diagnostics = virtual_casing_diagnostics_from_run(
+            run,
+            coil_params=direct_params,
+            coil_geometry=coil_geometry,
+        )
+    except Exception as exc:
+        return {
+            "status": f"failed:{type(exc).__name__}",
+            "error": repr(exc),
+            "wall_s": float(time.perf_counter() - t0),
+        }
+    return {
+        "status": "computed",
+        "wall_s": float(time.perf_counter() - t0),
+        "external_bnormal_residual_rms": diagnostics.external_bnormal_residual_rms,
+        "external_bnormal_residual_max": diagnostics.external_bnormal_residual_max,
+        "pressure_balance_rms": diagnostics.pressure_balance_rms,
+        "pressure_balance_max": diagnostics.pressure_balance_max,
+        "required_external_b_rms": _vector_surface_rms(diagnostics.required_external_b),
+        "target_external_b_rms": _vector_surface_rms(diagnostics.target_external_b),
+        "ntheta": int(np.asarray(diagnostics.external_bnormal_residual).shape[0]),
+        "nzeta": int(np.asarray(diagnostics.external_bnormal_residual).shape[1]),
+    }
+
+
 def _mgrid_bounds(indata: Any, *, padding_fraction: float, min_padding: float) -> dict[str, float]:
     samples = evaluate_toroidal_hybrid_indata_boundary(indata, ntheta=96, nzeta=128)
     rmin = float(np.min(samples.R))
@@ -790,16 +852,19 @@ def _run_jax_backend(
     jit_direct_sampler: bool = False,
     direct_trial_bsqvac_resample: bool = True,
     verbose_solver: bool = False,
+    virtual_casing_diagnostics: bool = False,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
+    coil_geometry = None
     if direct_params is not None:
         kwargs = {
             "external_field_provider_kind": "direct_coils",
             "external_field_provider_params": direct_params,
         }
         if bool(direct_static_cache):
+            coil_geometry = build_coil_field_geometry(direct_params)
             kwargs["external_field_provider_static"] = {
-                "coil_geometry": build_coil_field_geometry(direct_params),
+                "coil_geometry": coil_geometry,
                 "regularization_epsilon": getattr(direct_params, "regularization_epsilon", 0.0),
                 "chunk_size": getattr(direct_params, "chunk_size", None),
                 "cache_scope": "square_coil_profile_direct_solve",
@@ -838,12 +903,20 @@ def _run_jax_backend(
                 os.environ["VMEC_JAX_FREEB_ANDERSON_PRESSURE"] = previous_anderson
     wall_s = time.perf_counter() - t0
     write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
+    residuals = _final_residuals(run)
     return {
         "status": "completed",
         "wall_s": float(wall_s),
         "input": input_path,
         "wout": wout_path,
-        **_final_residuals(run),
+        **residuals,
+        "virtual_casing": _virtual_casing_profile_payload(
+            run=run,
+            direct_params=direct_params,
+            coil_geometry=coil_geometry,
+        )
+        if bool(virtual_casing_diagnostics)
+        else {"status": "disabled"},
     }
 
 
@@ -1234,6 +1307,7 @@ def main(argv: list[str] | None = None) -> int:
             "jit_direct_sampler": bool(args.jit_direct_sampler),
             "direct_trial_bsqvac_resample": bool(args.direct_trial_bsqvac_resample),
             "verbose_solver": bool(args.verbose_solver),
+            "virtual_casing_diagnostics": bool(args.virtual_casing_diagnostics),
             "phiedge": float(config.phiedge),
             "delt": float(args.delt),
             "activate_fsq": float(args.activate_fsq),
@@ -1289,6 +1363,7 @@ def main(argv: list[str] | None = None) -> int:
             jit_direct_sampler=bool(args.jit_direct_sampler),
             direct_trial_bsqvac_resample=bool(args.direct_trial_bsqvac_resample),
             verbose_solver=bool(args.verbose_solver),
+            virtual_casing_diagnostics=bool(args.virtual_casing_diagnostics),
         )
     if not args.skip_mgrid:
         _log_step("running vmec_jax generated-mgrid backend")
@@ -1301,6 +1376,7 @@ def main(argv: list[str] | None = None) -> int:
             return_best_scored_state=bool(args.return_best_scored_state),
             freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
             verbose_solver=bool(args.verbose_solver),
+            virtual_casing_diagnostics=False,
         )
     if bool(args.run_vmec2000):
         exe = args.vmec2000_exec or find_vmec2000_exec()

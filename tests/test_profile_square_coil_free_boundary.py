@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -16,11 +18,19 @@ from vmec_jax.static import build_static
 
 def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: Path):
     args = profile._parser().parse_args(
-        ["--outdir", str(tmp_path), "--axis-kind", "control_spline", "--verbose-solver"]
+        [
+            "--outdir",
+            str(tmp_path),
+            "--axis-kind",
+            "control_spline",
+            "--verbose-solver",
+            "--virtual-casing-diagnostics",
+        ]
     )
 
     assert args.axis_kind == "control_spline"
     assert args.verbose_solver is True
+    assert args.virtual_casing_diagnostics is True
 
 
 def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tails():
@@ -577,6 +587,7 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
             "--no-direct-static-cache",
             "--jit-direct-sampler",
             "--no-direct-trial-bsqvac-resample",
+            "--virtual-casing-diagnostics",
             "--skip-mgrid",
             "--skip-provider-parity",
             "--max-boundary-projection-error",
@@ -590,11 +601,55 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
     assert data["configuration"]["direct_static_cache"] is False
     assert data["configuration"]["jit_direct_sampler"] is True
     assert data["configuration"]["direct_trial_bsqvac_resample"] is False
+    assert data["configuration"]["virtual_casing_diagnostics"] is True
     assert captured[0]["config"].side_power == pytest.approx(1.25)
     assert captured[0]["config"].corner_power == pytest.approx(1.5)
     assert captured[0]["direct_static_cache"] is False
     assert captured[0]["jit_direct_sampler"] is True
     assert captured[0]["direct_trial_bsqvac_resample"] is False
+    assert captured[0]["virtual_casing_diagnostics"] is True
+
+
+def test_square_coil_profile_virtual_casing_payload_uses_cached_geometry(monkeypatch):
+    monkeypatch.setitem(sys.modules, "virtual_casing_jax", types.ModuleType("virtual_casing_jax"))
+    monkeypatch.setitem(
+        sys.modules,
+        "virtual_casing_jax.functional",
+        types.ModuleType("virtual_casing_jax.functional"),
+    )
+    captured = {}
+
+    def fake_diagnostics_from_run(*args, **kwargs):
+        captured["run"] = args[0]
+        captured.update(kwargs)
+        return SimpleNamespace(
+            external_bnormal_residual_rms=1.0e-9,
+            external_bnormal_residual_max=2.0e-9,
+            pressure_balance_rms=3.0e-6,
+            pressure_balance_max=4.0e-6,
+            required_external_b=np.ones((3, 2, 3)),
+            target_external_b=2.0 * np.ones((3, 2, 3)),
+            external_bnormal_residual=np.zeros((2, 3)),
+        )
+
+    monkeypatch.setattr(profile, "virtual_casing_diagnostics_from_run", fake_diagnostics_from_run)
+    direct_params = SimpleNamespace()
+
+    payload = profile._virtual_casing_profile_payload(
+        run=object(),
+        direct_params=direct_params,
+        coil_geometry="cached-geometry",
+    )
+
+    assert payload["status"] == "computed"
+    assert payload["external_bnormal_residual_rms"] == pytest.approx(1.0e-9)
+    assert payload["pressure_balance_max"] == pytest.approx(4.0e-6)
+    assert payload["required_external_b_rms"] == pytest.approx(np.sqrt(3.0))
+    assert payload["target_external_b_rms"] == pytest.approx(np.sqrt(12.0))
+    assert payload["ntheta"] == 2
+    assert payload["nzeta"] == 3
+    assert captured["coil_params"] is direct_params
+    assert captured["coil_geometry"] == "cached-geometry"
 
 
 def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypatch, tmp_path: Path):
@@ -645,6 +700,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
     )
 
     assert out["status"] == "completed"
+    assert out["virtual_casing"]["status"] == "disabled"
     assert captured["external_field_provider_kind"] == "direct_coils"
     assert captured["external_field_provider_params"] is direct_params
     static = captured["external_field_provider_static"]

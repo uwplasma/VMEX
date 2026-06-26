@@ -326,6 +326,15 @@ field, then checks both normal-field and magnetic-pressure jump conditions. The
 cheaper ``VacuumBoundaryError`` is valid only when pressure and plasma current
 vanish. This matches the interpretation here: coil-only ``B.n`` is a vacuum
 diagnostic, not a finite-beta promotion criterion.
+The repository now exposes the same postsolve diagnostic through
+``vmec_jax.free_boundary_validation.virtual_casing_diagnostics_from_run``.
+It samples the solved LCFS, the total VMEC surface field, and the direct-coil
+external field, then reports the virtual-casing external normal-field residual
+and finite-beta pressure-balance residual. The square-coil backend profiler can
+write this block for direct-coil rows with ``--virtual-casing-diagnostics``.
+The flag is opt-in because the singular integral can be expensive and depends
+on the optional ``virtual_casing_jax`` package; when the package is missing the
+profile records a skipped status instead of failing the run.
 
 Mirror-physics checks should stay simple and explicit. A two-coil mirror has
 its on-axis field minimum near the midplane and maxima near the coils; this is
@@ -510,12 +519,12 @@ The remaining work is deliberately narrow:
    intended straight-side geometry while preserving a benchmarkable VMEC2000
    comparison.
 5. Keep the optional virtual-casing postsolve diagnostic
-   ``vmec_jax.free_boundary_validation.virtual_casing_finite_beta_boundary_diagnostics``
-   attached to the square-coil example outputs. The helper accepts a solved
-   surface, total surface field, and direct-coil field, then reports the
-   required external-field normal mismatch and finite-beta magnetic-pressure
-   jump. It is optional at import time and should be skipped when
-   ``virtual_casing_jax`` is not installed.
+   attached to the square-coil example outputs and enable
+   ``--virtual-casing-diagnostics`` on direct-coil backend profiles that will be
+   used as finite-beta evidence. The diagnostic accepts a solved run and
+   direct-coil parameters, then reports the required external-field normal
+   mismatch and finite-beta magnetic-pressure jump. It is optional at import
+   time and should be skipped when ``virtual_casing_jax`` is not installed.
 6. Promote only rows that pass the force-residual and postsolve boundary
    diagnostics. Keep unconverged rows in the example output as explicit stall
    evidence with ``production_free_boundary_claim = false``.

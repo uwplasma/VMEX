@@ -186,9 +186,12 @@ raise before solving because ``NTOR=12, NZETA=16`` was observed to fail while
 ``NZETA=32`` completed the same VMEC2000 generated-``mgrid`` case. The top-level
 ``MAX_BOUNDARY_PROJECTION_ERROR`` gate also rejects low-mode decks whose
 Fourier-projected square-axis boundary is too far from the sampled spline
-target. The default ``MPOL=6, NTOR=23, NZETA=64`` deck passes this gate; an
-``MPOL=5, NTOR=12`` first-order-weight deck now also passes the projection
-gate, while the older sharpened ``1.4`` diagnostic deck does not. Set
+target. The previous ``MPOL=6, NTOR=23, NZETA=64`` deck remains a useful
+reference, but ``MPOL=5, NTOR=28, NZETA=64`` is now the stricter default and
+reaches a projection-error scale compatible with ``FTOL=1e-12`` studies. Lower-mode
+decks such as ``MPOL=5, NTOR=12`` remain diagnostic-only unless the projection
+gate is explicitly disabled; the older sharpened ``1.4`` diagnostic deck also
+does not pass the strict gate. Set
 ``MAX_BOUNDARY_PROJECTION_ERROR = None`` only when deliberately profiling an
 underfit diagnostic input. Use
 ``vmec_jax.recommend_square_axis_stellarator_mirror_hybrid_resolution`` to get
@@ -208,7 +211,7 @@ diagnostics: if the final recomputed force components miss the requested
 presented as a production equilibrium. For finite-beta cases, coil-only
 ``B.n`` is not the physical free-boundary target because the plasma field also
 contributes at the interface. Use the final VMEC force residuals, total-pressure
-balance, and eventually a virtual-casing plasma-field diagnostic for promotion
+balance, and the optional virtual-casing plasma-field diagnostic for promotion
 claims; coil-only ``B.n`` is a vacuum check. Long beta scans checkpoint the
 summary CSV and metrics JSON after each beta by default, so a later
 high-beta stall or interrupted SSH session still leaves the completed lower-beta
@@ -247,11 +250,12 @@ For direct-provider versus mgrid/VMEC2000 profiling, use::
   python tools/diagnostics/profile_square_coil_free_boundary.py \
     --ftol 1e-12 --max-iter 12000 --phiedge -0.04 \
     --solver-mode parity --nvacskip 1 --nstep 1 --delt 0.02 \
-    --mpol 6 --ntor 23 --nzeta 64 --axis-kind spline \
-    --ns-array 9,13,17 --niter-array 4000,8000,12000 \
+    --mpol 5 --ntor 28 --nzeta 64 --axis-kind spline \
+    --ns-array 9,13,17 --niter-array 4000,8000,24000 \
     --ftol-array 1e-8,1e-10,1e-12 \
-    --mgrid-nr 72 --mgrid-nz 56 --mgrid-nphi 64 \
+    --mgrid-nr 88 --mgrid-nz 64 --mgrid-nphi 64 \
     --mgrid-padding-fraction 1.2 --mgrid-min-padding 0.5 \
+    --max-boundary-projection-error 5e-12 \
     --verbose-solver \
     --run-vmec2000
 
@@ -260,7 +264,7 @@ The production square-axis shape uses the first-order localization defaults
 ``1.4`` stress case, are useful for boundary-representation tests but require
 many more Fourier modes before strict ``FTOL=1e-12`` solver behavior is
 meaningful. For production sweeps, add a projection gate such as
-``--max-boundary-projection-error 5e-5`` so underresolved
+``--max-boundary-projection-error 5e-12`` so underresolved
 ``MPOL``/``NTOR``/``NZETA`` combinations fail before starting a long backend
 solve. Omit the flag, or pass ``none``, for diagnostic underresolved profiles.
 
@@ -272,6 +276,10 @@ VMEC-style ladder without editing the example, add for example
 Completed ``vmec_jax`` backend rows include ``boundary_coeff_delta_*`` and
 ``boundary_sample_displacement_*`` columns so the summary table shows whether
 the accepted LCFS moved from the initial prescribed boundary.
+For finite-beta direct-coil evidence, add ``--virtual-casing-diagnostics`` to
+write the optional virtual-casing external-normal and pressure-balance residual
+block. The profiler records a skipped status when ``virtual_casing_jax`` is not
+installed.
 Long VMEC2000 runs also refresh
 ``_partial_vmec2000_payload.json`` in the profile directory; use this sidecar
 to inspect the current stage, component residuals, and vacuum-grid warnings
