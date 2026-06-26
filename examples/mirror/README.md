@@ -289,7 +289,7 @@ The report stays under ignored ``results/`` paths and records ``vmec_jax``
 direct-coil, ``vmec_jax`` generated-mgrid, and optional raw VMEC2000
 generated-mgrid residuals for the same square-coil field. To profile a staged
 VMEC-style ladder without editing the example, add for example
-``--ns-array 9,13,17 --niter-array 4000,8000,12000 --ftol-array 1e-8,1e-10,1e-12``.
+``--ns-array 9,13,17 --niter-array 4000,8000,24000 --ftol-array 1e-8,1e-10,1e-12``.
 Completed ``vmec_jax`` backend rows include ``boundary_coeff_delta_*`` and
 ``boundary_sample_displacement_*`` columns so the summary table shows whether
 the accepted LCFS moved from the initial prescribed boundary.
