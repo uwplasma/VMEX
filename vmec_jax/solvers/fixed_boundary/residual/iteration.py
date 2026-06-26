@@ -672,6 +672,82 @@ def _finalize_residual_iter_result_from_namespace(
     )
 
 
+def _vmec2000_time_control_callbacks(
+    *,
+    apply_controller_sample,
+    apply_restart_branch_result,
+) -> _Vmec2000TimeControlCallbacks:
+    """Return callback wiring for VMEC2000 time-control restarts."""
+
+    return _Vmec2000TimeControlCallbacks(
+        time_control_decision=_vmec2000_time_control_decision,
+        dump_time_control_trace=_dump_time_control_trace_record,
+        maybe_dump_checkpoint=_maybe_dump_checkpoint_record,
+        maybe_dump_time_control=_maybe_dump_time_control_record,
+        apply_controller_sample=apply_controller_sample,
+        controller_sample=_controller_state_after_vmec2000_time_control_sample,
+        host_restart_update=_host_vmec2000_time_control_restart_update,
+        host_restart_branch_result=_host_vmec2000_time_control_restart_branch_result,
+        apply_restart_branch_result=apply_restart_branch_result,
+        controller_restart_update=_controller_state_after_vmec2000_time_control_restart_update,
+    )
+
+
+def _pre_restart_dump_xc_callback(maybe_dump_xc):
+    """Return the dump callback expected by pre-restart host diagnostics."""
+
+    return lambda *, state, velocities, static, iter_idx: _dump_xc_with_velocity_blocks(
+        dump_xc=maybe_dump_xc,
+        state=state,
+        velocities=velocities,
+        static=static,
+        iter_idx=iter_idx,
+    )
+
+
+def _pre_restart_trigger_callbacks(
+    *,
+    apply_restart_branch_result,
+    preconditioner_diag_floats,
+    maybe_dump_xc,
+) -> _PreRestartTriggerCallbacks:
+    """Return callback wiring for host pre-restart triggers."""
+
+    return _PreRestartTriggerCallbacks(
+        host_update=_host_pre_restart_trigger_update,
+        host_branch_result=_host_pre_restart_trigger_branch_result,
+        apply_restart_branch_result=apply_restart_branch_result,
+        controller_restart_update=_controller_state_after_pre_restart_update,
+        print_compact_update_status=_print_compact_residual_iteration_update_status,
+        preconditioner_diag_floats=preconditioner_diag_floats,
+        dump_xc_with_velocity_blocks=_pre_restart_dump_xc_callback(maybe_dump_xc),
+    )
+
+
+def _restart_branch_status_tuple(branch) -> tuple[str, str, str, str]:
+    """Return status strings shared by restart-branch side effects."""
+
+    return (
+        str(branch.step_status),
+        str(branch.restart_reason),
+        str(branch.restart_path),
+        str(branch.pre_restart_reason),
+    )
+
+
+def _append_restart_branch_zero_update_history(append_func, branch, *, time_step_value: float) -> None:
+    """Append the zero-update history row for a restart branch."""
+
+    step_status, restart_reason, restart_path, pre_restart_reason = _restart_branch_status_tuple(branch)
+    append_func(
+        restart_path=restart_path,
+        step_status=step_status,
+        restart_reason=restart_reason,
+        pre_restart_reason=pre_restart_reason,
+        time_step_value=float(time_step_value),
+    )
+
+
 _cached_or_current_f_norm1_jax = _precond_payload_facade._cached_or_current_f_norm1_jax
 
 _ptau_compute_jit = _precond_payload_facade._ptau_compute_jit
@@ -2125,6 +2201,27 @@ def solve_fixed_boundary_residual_iter(
     def _apply_controller_sample(sample_func, decision) -> None:
         _set_controller_state(sample_func(_current_controller_state(), decision, state_checkpoint=state))
 
+    def _apply_restart_branch_result(branch_result, controller_restart_update, *, time_step_value: float) -> None:
+        nonlocal state, step_status, restart_reason, restart_path, pre_restart_reason
+        nonlocal freeb_controls_cached, force_bcovar_update, skip_time_control
+
+        state = branch_result.state
+        _zero_all_velocity_blocks()
+        _apply_controller_update(controller_restart_update, branch_result.update)
+        _set_controller_state(_current_controller_state()._replace(prev_rz_fsq=float(branch_result.prev_rz_fsq)))
+        step_status, restart_reason, restart_path, pre_restart_reason = _restart_branch_status_tuple(branch_result)
+        if bool(branch_result.clear_freeb_controls):
+            freeb_controls_cached = None
+        if bool(branch_result.clear_preconditioner_cache):
+            precond_cache.clear()
+        if bool(branch_result.force_bcovar_update):
+            force_bcovar_update = True
+        _append_restart_branch_zero_update_history(_append_current_zero_update_history, branch_result, time_step_value=time_step_value)
+        if bool(branch_result.pop_iteration_history):
+            _pop_iteration_histories()
+        if bool(branch_result.skip_time_control):
+            skip_time_control = True
+
     _initial_velocity = _initial_residual_velocity_state(
         state=state,
         mpol=mpol,
@@ -3315,17 +3412,9 @@ def solve_fixed_boundary_residual_iter(
                     k_ndamp=int(k_ndamp),
                     state_checkpoint=state_checkpoint,
                     prev_rz_fsq_before=prev_rz_fsq_before,
-                    callbacks=_Vmec2000TimeControlCallbacks(
-                        time_control_decision=_vmec2000_time_control_decision,
-                        dump_time_control_trace=_dump_time_control_trace_record,
-                        maybe_dump_checkpoint=_maybe_dump_checkpoint_record,
-                        maybe_dump_time_control=_maybe_dump_time_control_record,
+                    callbacks=_vmec2000_time_control_callbacks(
                         apply_controller_sample=_apply_controller_sample,
-                        controller_sample=_controller_state_after_vmec2000_time_control_sample,
-                        host_restart_update=_host_vmec2000_time_control_restart_update,
-                        host_restart_branch_result=_host_vmec2000_time_control_restart_branch_result,
                         apply_restart_branch_result=_apply_restart_branch_result,
-                        controller_restart_update=_controller_state_after_vmec2000_time_control_restart_update,
                     ),
                 )
                 fsq = tc_runtime.fsq
@@ -3389,22 +3478,10 @@ def solve_fixed_boundary_residual_iter(
                     vmec2000_control=bool(vmec2000_control),
                     verbose=bool(verbose),
                     verbose_vmec2000_table=bool(verbose_vmec2000_table),
-                    callbacks=_PreRestartTriggerCallbacks(
-                        host_update=_host_pre_restart_trigger_update,
-                        host_branch_result=_host_pre_restart_trigger_branch_result,
+                    callbacks=_pre_restart_trigger_callbacks(
                         apply_restart_branch_result=_apply_restart_branch_result,
-                        controller_restart_update=_controller_state_after_pre_restart_update,
-                        print_compact_update_status=_print_compact_residual_iteration_update_status,
                         preconditioner_diag_floats=_precond_diag_floats,
-                        dump_xc_with_velocity_blocks=lambda *, state, velocities, static, iter_idx: (
-                            _dump_xc_with_velocity_blocks(
-                                dump_xc=_maybe_dump_xc,
-                                state=state,
-                                velocities=velocities,
-                                static=static,
-                                iter_idx=iter_idx,
-                            )
-                        ),
+                        maybe_dump_xc=_maybe_dump_xc,
                     ),
                 )
                 pre_restart_reason = pre_restart_runtime.pre_restart_reason

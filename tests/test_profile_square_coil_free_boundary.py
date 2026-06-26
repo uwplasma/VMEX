@@ -27,6 +27,8 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             str(tmp_path),
             "--axis-kind",
             "control_spline",
+            "--axis-spline-control-count",
+            "24",
             "--verbose-solver",
             "--virtual-casing-diagnostics",
             "--virtual-casing-quad-factor",
@@ -81,6 +83,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     )
 
     assert args.axis_kind == "control_spline"
+    assert args.axis_spline_control_count == 24
     assert args.ftol == pytest.approx(profile.ExampleConfig().ftol)
     assert args.delt == pytest.approx(profile.ExampleConfig().delt)
     assert args.verbose_solver is True
@@ -1252,29 +1255,32 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert np.isfinite(float(projection["max_abs_error"]))
     control_basis = data["control_basis"]
     assert control_basis["status"] == "available"
-    assert control_basis["control_count"] == 8
-    assert control_basis["bases"]["square"]["labels"] == ["side", "corner"]
-    assert control_basis["bases"]["square"]["reduced_count"] == 2
-    assert control_basis["bases"]["square"]["expansion_matrix_shape"] == [8, 2]
-    assert control_basis["bases"]["stellarator"]["reduced_count"] == 5
+    assert data["configuration"]["axis_spline_control_count"] == 16
+    assert control_basis["control_count"] == 16
+    assert control_basis["bases"]["square"]["labels"] == ["side", "square_orbit_1", "corner"]
+    assert control_basis["bases"]["square"]["reduced_count"] == 3
+    assert control_basis["bases"]["square"]["expansion_matrix_shape"] == [16, 3]
+    assert control_basis["bases"]["stellarator"]["reduced_count"] == 9
     control_map = data["control_fourier_map"]
     assert control_map["status"] == "available"
-    assert control_map["labels"] == ["side", "corner"]
-    assert control_map["control_count"] == 2
-    assert control_map["jacobian_shape"] == [4 * projection["mode_count"], 2]
-    assert len(control_map["singular_values"]) == 2
+    assert control_map["labels"] == ["side", "square_orbit_1", "corner"]
+    assert control_map["control_count"] == 3
+    assert control_map["jacobian_shape"] == [4 * projection["mode_count"], 3]
+    assert len(control_map["singular_values"]) == 3
     assert control_map["condition_number"] > 0.0
     candidate_maps = control_map["candidate_bases"]
-    assert candidate_maps["square"]["control_count"] == 2
+    assert candidate_maps["square"]["control_count"] == 3
     assert candidate_maps["stellarator"]["basis_symmetry"] == "stellarator"
-    assert candidate_maps["stellarator"]["control_count"] == 5
-    assert candidate_maps["stellarator"]["jacobian_shape"] == [4 * projection["mode_count"], 5]
+    assert candidate_maps["stellarator"]["control_count"] == 9
+    assert candidate_maps["stellarator"]["jacobian_shape"] == [4 * projection["mode_count"], 9]
+    edge_projection = data["edge_control_projection"]
+    assert edge_projection["status"] == "disabled"
     spline_bridge = data["spline_bridge"]
     assert spline_bridge["status"] == "spline_control_to_fourier_bridge"
     assert spline_bridge["solver_native_spline_controls"] is False
     assert spline_bridge["optional_solver_edge_control_projection"] is True
     assert spline_bridge["requires_fourier_projection"] is True
-    assert spline_bridge["reduced_square_control_count"] == 2
+    assert spline_bridge["reduced_square_control_count"] == 3
     assert spline_bridge["can_reduce_input_shape_dofs"] is True
     assert spline_bridge["can_project_free_boundary_edge_updates"] is True
     assert spline_bridge["can_reduce_free_boundary_edge_dofs"] is True
@@ -1367,11 +1373,16 @@ def test_square_coil_profile_native_spline_control_prototype_is_no_solve(tmp_pat
     assert data["configuration"]["native_spline_control_prototype"] is True
     assert data["mgrid"]["created"] is False
     assert data["backends"] == {}
+    edge_projection = data["edge_control_projection"]
+    assert edge_projection["control_count"] == 9
+    assert edge_projection["rank"] == 5
+    assert edge_projection["rank_deficient"] is True
+    assert edge_projection["native_reduced_solver_ready"] is False
     prototype = data["native_spline_control_prototype"]
     assert prototype["prototype_only"] is True
     assert prototype["equilibrium_solve_performed"] is False
     assert prototype["recommended_reduced_basis"] == "stellarator"
-    assert prototype["control_count"] == 5
+    assert prototype["control_count"] == 9
     assert prototype["full_fourier_edge_size"] == 4 * data["boundary_projection"]["mode_count"]
     assert prototype["next_action"] == "repair_preflight_before_native_spline_solver_work"
     assert "projection_gate_disabled" in prototype["blockers"]
@@ -1653,7 +1664,7 @@ def test_square_coil_profile_projection_gate_disabled_allows_diagnostic_underrec
     assert "nzeta_below_square_axis_recommendation" in deck["reasons"]
     assert data["configuration"]["ntheta"] == 16
     assert data["configuration"]["ntheta_underrecommended"] is True
-    assert data["control_basis"]["bases"]["square"]["reduced_count"] == 2
+    assert data["control_basis"]["bases"]["square"]["reduced_count"] == 3
 
 
 def test_square_coil_profile_defaults_nzeta_to_square_axis_recommendation(monkeypatch, tmp_path: Path):

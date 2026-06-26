@@ -163,8 +163,8 @@ iteration ladder is ``NS_ARRAY = 9, 13, 17``,
 for ``FTOL=1e-12`` studies; set the gate to ``None`` only for diagnostic
 underresolved runs. The default
 square axis uses the low-bandwidth ``axis_kind="control_spline"`` bridge before
-VMEC Fourier projection. The default controls are periodic side/corner radii,
-or an explicit
+VMEC Fourier projection. The default controls are 16 periodic rounded-square
+radii, or an explicit
 ``SquareAxisSplineControls`` object can be assigned to
 ``PLASMA_AXIS_SPLINE_CONTROLS``. Uniform controls use a low-bandwidth periodic
 interpolant, so the default ``control_spline`` projection error matches the
@@ -174,9 +174,10 @@ Fourier coefficients for the solve and for VMEC2000/mgrid parity, while keeping
 the intended square-axis control variables independent of ``MPOL`` and
 ``NTOR`` before projection. To edit only the reduced symmetry-preserving
 variables, set ``PLASMA_AXIS_REDUCED_RADII`` at the top of the example. With
-the default ``PLASMA_AXIS_CONTROL_SYMMETRY = "square"``, this is a two-value
-``(side_radius, corner_radius)`` tuple that expands to the full eight spline
-controls.
+the default ``PLASMA_AXIS_CONTROL_SYMMETRY = "square"``, this is a three-value
+``(side_radius, intermediate_radius, corner_radius)`` tuple that expands to the
+full 16 spline controls. Set ``PLASMA_AXIS_SPLINE_CONTROL_COUNT = 8`` to recover
+the older two-value side/corner control basis.
 Set ``PREFLIGHT_ONLY = True`` after editing ``MPOL``, ``NTOR``, ``NTHETA``, or
 ``NZETA`` to write the projection, effective-deck, strict-schedule, coil, and
 summary artifacts without launching the beta solves. This is the fastest way to
@@ -215,8 +216,9 @@ needs the chain-rule map from those same control radii to the projected VMEC
 boundary Fourier coefficients. For production square-hybrid updates, use
 ``vmec_jax.square_axis_spline_symmetric_control_basis`` first and pass that
 basis to ``square_axis_spline_control_fourier_matrix``. The default square
-basis reduces the eight side/corner spline controls to two symmetry-preserving
-parameters, which is the preferred path before increasing ``MPOL``/``NTOR``.
+basis reduces the 16 rounded-square spline controls to three
+symmetry-preserving parameters, which is the preferred path before increasing
+``MPOL``/``NTOR``.
 The returned control map also has ``project_boundary_delta(...)`` for fitting a
 solved Fourier boundary displacement back to those reduced controls. That fit
 uses the same shared reduced-control least-squares kernel as the
@@ -383,12 +385,12 @@ is launched.
 On the current spline-smoothed target, ``MPOL=5, NTOR=20, NZETA=48`` fails the
 strict projection gate with max component error about ``1.8e-9`` and
 recommends ``MPOL=5, NTOR=28, NZETA>=64``.
-It also writes ``control_fourier_map`` for the two reduced square-axis controls,
+It also writes ``control_fourier_map`` for the reduced square-axis controls,
 including the stacked coefficient-Jacobian shape, singular values, condition
 number, and column norms. Use that block to decide whether a deck is a good
 candidate for reduced spline-control updates before starting a long solve. The
-nested ``candidate_bases`` block compares this with the five-control
-stellarator-symmetric map.
+nested ``candidate_bases`` block compares this with the stellarator-symmetric
+map.
 To also check whether the requested ``PHIEDGE`` scale is consistent with the
 sampled square-coil toroidal field before a solve, add
 ``--scale-diagnostics-only``. That writes the same preflight report plus
@@ -409,8 +411,8 @@ side/corner map. The summary table prints the projection status, relative
 residual, captured fraction, and fitted side/corner radius deltas, so a real
 solve can be checked before replacing Fourier boundary updates with reduced
 spline-control updates. The nested candidate-basis comparison also reports the
-five-control stellarator-symmetric capture, which is the next basis to try if
-the two-control square capture is poor.
+nine-control stellarator-symmetric capture, which is the next basis to try if
+the three-control square capture is poor.
 Strict free-boundary profile summaries also print
 ``freeb_edge_control_projection_force_capture_status`` and
 ``freeb_edge_control_projection_force_capture_next_basis``. If the square
@@ -442,8 +444,8 @@ python tools/diagnostics/square_coil_resolution_matrix.py \
 Add `--print-scale-commands` when you want exact `--scale-diagnostics-only`
 commands for the same rows, and add `--print-vmec2000-commands` when you want
 generated-mgrid VMEC2000 reference commands. The `--include-control-map`
-columns show the conditioning of the square two-control and
-stellarator-symmetric five-control spline maps for the same Fourier deck.
+columns show the conditioning of the square and stellarator-symmetric spline
+maps for the same Fourier deck.
 
 The report stays under ignored ``results/`` paths and records ``vmec_jax``
 direct-coil, ``vmec_jax`` generated-mgrid, and optional raw VMEC2000
@@ -661,7 +663,8 @@ To print the current strict VMEC2000 follow-up scan after such a plateau, use::
   python tools/diagnostics/square_coil_followup_commands.py
 
 By default this emits serial commands for the projection-gated
-``MPOL=5, NTOR=28, NZETA>=64`` control-spline square-axis deck, with
+``MPOL=5, NTOR=28, NZETA>=64`` control-spline square-axis deck, with 16 spline
+axis controls,
 ``DELT=0.015, 0.02, 0.025`` and a staged
 ``NITER_ARRAY=8000,16000,32000`` / ``FTOL_ARRAY=1e-8,1e-10,1e-12`` schedule.
 The helper only prints commands; it does not launch VMEC2000.

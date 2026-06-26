@@ -52,21 +52,22 @@ class SquareAxisSplineControls:
         *,
         axis_half_width: float = 1.5,
         corner_radius_factor: float = np.sqrt(2.0),
+        control_count: int = 8,
     ) -> "SquareAxisSplineControls":
-        """Return eight side/corner controls for a rounded square axis."""
+        """Return uniformly spaced controls for a rounded square axis."""
 
         axis_half_width = float(axis_half_width)
         corner_radius_factor = float(corner_radius_factor)
+        control_count = int(control_count)
         if axis_half_width <= 0.0:
             raise ValueError("axis_half_width must be positive")
         if not np.isfinite(corner_radius_factor) or corner_radius_factor <= 1.0:
             raise ValueError("corner_radius_factor must be finite and greater than one")
-        zeta = np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False)
-        radius = axis_half_width * np.where(
-            np.arange(8, dtype=int) % 2 == 0,
-            1.0,
-            corner_radius_factor,
-        )
+        if control_count < 8 or control_count % 8 != 0:
+            raise ValueError("control_count must be a multiple of 8 and at least 8")
+        zeta = np.linspace(0.0, 2.0 * np.pi, control_count, endpoint=False)
+        corner_weight = np.sin(2.0 * zeta) ** 2
+        radius = axis_half_width * (1.0 + (corner_radius_factor - 1.0) * corner_weight)
         return cls(zeta=zeta, radius=np.asarray(radius, dtype=float))
 
     def validate(self) -> "SquareAxisSplineControls":
@@ -547,8 +548,9 @@ def square_axis_spline_symmetric_control_basis(
 
     ``symmetry="stellarator"`` enforces the usual even-radius condition
     ``r(zeta) = r(-zeta)``.  ``symmetry="square"`` additionally groups nodes
-    related by quarter-turn rotations, which reduces the default eight
-    side/corner controls to two parameters.  The returned basis is a dense
+    related by quarter-turn rotations; the eight-control low-level default
+    reduces to two parameters, while the root square-coil example's 16 controls
+    reduce to three.  The returned basis is a dense
     expansion matrix, so it can be used directly in chain-rule and optimization
     code without changing the current VMEC Fourier boundary interface.
     """

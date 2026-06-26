@@ -260,6 +260,20 @@ def test_square_axis_symmetric_control_basis_expands_default_side_corner_control
     assert stellsym.matrix.shape[1] == 5
     np.testing.assert_allclose(stellsym.expand_radius(stellsym.project_radius(controls.radius)), controls.radius)
 
+    refined = SquareAxisSplineControls.rounded_square(
+        axis_half_width=1.5,
+        corner_radius_factor=1.14,
+        control_count=16,
+    )
+    refined_square = square_axis_spline_symmetric_control_basis(refined, symmetry="square")
+    refined_stellsym = square_axis_spline_symmetric_control_basis(refined, symmetry="stellarator")
+    assert refined.radius.size == 16
+    assert refined_square.matrix.shape == (16, 3)
+    assert refined_square.labels == ("side", "square_orbit_1", "corner")
+    assert refined_stellsym.matrix.shape == (16, 9)
+    with pytest.raises(ValueError, match="control_count"):
+        SquareAxisSplineControls.rounded_square(control_count=12)
+
 
 def test_square_axis_spline_control_fourier_matrix_predicts_coefficients():
     controls = SquareAxisSplineControls.rounded_square(axis_half_width=1.5, corner_radius_factor=1.12)
@@ -629,6 +643,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().plasma_axis_kind == "control_spline"
     assert module.ExampleConfig().ntheta is None
     assert module.ExampleConfig().nzeta is None
+    assert module.ExampleConfig().plasma_axis_spline_control_count == 16
     assert module.ExampleConfig().plasma_axis_spline_controls is None
     assert module.ExampleConfig().plasma_axis_control_symmetry == "square"
     assert module.ExampleConfig().plasma_axis_reduced_radii is None
@@ -639,7 +654,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.build_square_coils(module.ExampleConfig()).params.chunk_size == 512
     assert module.build_square_coils(module.ExampleConfig(coil_chunk_size=None)).params.chunk_size is None
     default_kwargs = module._square_axis_sample_kwargs(module.ExampleConfig())
-    assert default_kwargs["axis_spline_controls"].radius.size == 8
+    assert default_kwargs["axis_spline_controls"].radius.size == 16
     indata = module.make_free_boundary_indata(module.ExampleConfig(nstep=3), beta_percent=0.0)
     assert indata.get_int("NVACSKIP") == 1
     assert indata.get_int("NSTEP") == 3
@@ -695,8 +710,9 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["nzeta_resolution"]["auto_defaulted"] is True
     assert preflight["nzeta_resolution"]["auto_bump_nzeta_to_recommended"] is True
     assert preflight["resolution_deck"]["status"] == "production_ready"
-    assert preflight["control_fourier_map"]["square"]["control_count"] == 2
-    assert preflight["control_fourier_map"]["stellarator"]["control_count"] == 5
+    assert preflight["configuration"]["axis_spline_control_count"] == 16
+    assert preflight["control_fourier_map"]["square"]["control_count"] == 3
+    assert preflight["control_fourier_map"]["stellarator"]["control_count"] == 9
     assert preflight["spline_bridge"]["solver_native_spline_controls"] is False
     assert preflight["spline_bridge"]["can_reduce_input_shape_dofs"] is True
     assert preflight["spline_bridge"]["solver_edge_control_projection_enabled"] is True
@@ -706,11 +722,11 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["spline_bridge"]["requires_native_spline_state_for_reduced_nonlinear_dofs"] is True
     assert preflight["edge_control_projection"]["enabled"] is True
     assert preflight["edge_control_projection"]["basis_symmetry"] == "square"
-    assert preflight["edge_control_projection"]["control_count"] == 2
+    assert preflight["edge_control_projection"]["control_count"] == 3
     assert preflight["edge_control_projection"]["update_mode"] == "native_coordinate"
     assert preflight["edge_control_projection"]["ridge"] == pytest.approx(0.0)
     assert preflight["edge_control_projection"]["trust_radius"] is None
-    assert preflight["edge_control_projection"]["rank"] == 2
+    assert preflight["edge_control_projection"]["rank"] == 3
     assert preflight["edge_control_projection"]["rank_deficient"] is False
     assert preflight["edge_control_projection"]["native_reduced_solver_ready"] is True
     controls = SquareAxisSplineControls.rounded_square(axis_half_width=1.5, corner_radius_factor=1.12)
@@ -724,11 +740,14 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     np.testing.assert_allclose(spline_kwargs["axis_spline_controls"].radius, controls.validate().radius)
     spline_indata = module.make_free_boundary_indata(spline_config, beta_percent=0.0)
     assert spline_indata.get_int("NSTEP") == 4
-    reduced_config = module.ExampleConfig(plasma_axis_reduced_radii=(1.42, 1.73))
+    reduced_config = module.ExampleConfig(plasma_axis_reduced_radii=(1.42, 1.55, 1.73))
     reduced_kwargs = module._square_axis_sample_kwargs(reduced_config)
     reduced_radius = reduced_kwargs["axis_spline_controls"].radius
-    np.testing.assert_allclose(reduced_radius[::2], np.full(4, 1.42))
-    np.testing.assert_allclose(reduced_radius[1::2], np.full(4, 1.73))
+    reduced_basis = square_axis_spline_symmetric_control_basis(
+        reduced_kwargs["axis_spline_controls"],
+        symmetry="square",
+    )
+    np.testing.assert_allclose(reduced_basis.project_radius(reduced_radius), [1.42, 1.55, 1.73])
     with pytest.raises(ValueError, match="requires plasma_axis_kind='control_spline'"):
         module._square_axis_sample_kwargs(
             module.ExampleConfig(plasma_axis_kind="spline", plasma_axis_reduced_radii=(1.42, 1.73))
@@ -1411,7 +1430,7 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert rows[0]["free_boundary_edge_control_projection_requested"] == "square"
     assert rows[0]["free_boundary_edge_control_update_mode"] == "native_coordinate"
     assert rows[0]["free_boundary_edge_control_projection_enabled"] is True
-    assert int(rows[0]["free_boundary_edge_control_projection_control_count"]) == 2
+    assert int(rows[0]["free_boundary_edge_control_projection_control_count"]) == 3
     assert "free_boundary_edge_control_projection_coordinate_update_count" in rows[0]
     assert "free_boundary_edge_control_projection_native_coordinate_update_count" in rows[0]
     assert "free_boundary_edge_control_projection_native_update_l2" in rows[0]

@@ -78,6 +78,7 @@ PLASMA_AXIS_HALF_WIDTH = 0.5 * COIL_SQUARE_SIDE_LENGTH
 PLASMA_AXIS_KIND = "control_spline"
 PLASMA_AXIS_SQUARE_POWER = 3.0
 PLASMA_AXIS_SPLINE_CORNER_RADIUS_FACTOR = 1.14
+PLASMA_AXIS_SPLINE_CONTROL_COUNT = 16
 PLASMA_AXIS_SPLINE_CONTROLS: SquareAxisSplineControls | None = None
 PLASMA_AXIS_CONTROL_SYMMETRY = "square"
 PLASMA_AXIS_REDUCED_RADII: tuple[float, ...] | None = None
@@ -162,6 +163,7 @@ class ExampleConfig:
     plasma_axis_kind: str = PLASMA_AXIS_KIND
     plasma_axis_square_power: float = PLASMA_AXIS_SQUARE_POWER
     plasma_axis_spline_corner_radius_factor: float = PLASMA_AXIS_SPLINE_CORNER_RADIUS_FACTOR
+    plasma_axis_spline_control_count: int = PLASMA_AXIS_SPLINE_CONTROL_COUNT
     plasma_axis_spline_controls: SquareAxisSplineControls | None = PLASMA_AXIS_SPLINE_CONTROLS
     plasma_axis_control_symmetry: str = PLASMA_AXIS_CONTROL_SYMMETRY
     plasma_axis_reduced_radii: tuple[float, ...] | None = PLASMA_AXIS_REDUCED_RADII
@@ -733,6 +735,7 @@ def _resolved_axis_spline_controls(config: ExampleConfig) -> SquareAxisSplineCon
         controls = SquareAxisSplineControls.rounded_square(
             axis_half_width=float(config.plasma_axis_half_width),
             corner_radius_factor=float(config.plasma_axis_spline_corner_radius_factor),
+            control_count=int(config.plasma_axis_spline_control_count),
         )
     else:
         return None
@@ -857,6 +860,7 @@ def _mode_deck_cache_key(config: ExampleConfig) -> tuple[Any, ...]:
         str(config.plasma_axis_kind),
         float(config.plasma_axis_square_power),
         float(config.plasma_axis_spline_corner_radius_factor),
+        int(config.plasma_axis_spline_control_count),
         None if config.plasma_axis_reduced_radii is None else tuple(float(value) for value in config.plasma_axis_reduced_radii),
         None
         if controls_payload is None
@@ -1381,6 +1385,7 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
             "requested_nzeta": resolution.requested_nzeta,
             "recommended_nzeta": resolution.recommended_nzeta,
             "axis_kind": str(solve_config.plasma_axis_kind),
+            "axis_spline_control_count": int(solve_config.plasma_axis_spline_control_count),
             "side_power": float(solve_config.side_power),
             "corner_power": float(solve_config.corner_power),
             "max_boundary_projection_error": (
@@ -2342,6 +2347,7 @@ def _metrics_payload(
         "plasma_axis_half_width": float(solve_config.plasma_axis_half_width),
         "plasma_axis_kind": str(solve_config.plasma_axis_kind),
         "plasma_axis_spline_corner_radius_factor": float(solve_config.plasma_axis_spline_corner_radius_factor),
+        "plasma_axis_spline_control_count": int(solve_config.plasma_axis_spline_control_count),
         "plasma_axis_control_symmetry": str(solve_config.plasma_axis_control_symmetry),
         "plasma_axis_reduced_radii": reduced_radii,
         "plasma_axis_spline_controls": _spline_controls_payload(resolved_controls),

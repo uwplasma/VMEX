@@ -155,6 +155,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--axis-corner-factor", type=float, default=1.14)
     p.add_argument(
+        "--axis-spline-control-count",
+        type=int,
+        default=ExampleConfig().plasma_axis_spline_control_count,
+        help=(
+            "Number of periodic rounded-square axis controls for --axis-kind control_spline. "
+            "Use 16 or 24 when the strict edge-force diagnostics show an underfit reduced basis."
+        ),
+    )
+    p.add_argument(
         "--side-power",
         type=float,
         default=ExampleConfig().side_power,
@@ -2400,6 +2409,7 @@ def _square_axis_controls(config: ExampleConfig) -> SquareAxisSplineControls:
         else SquareAxisSplineControls.rounded_square(
             axis_half_width=float(config.plasma_axis_half_width),
             corner_radius_factor=float(config.plasma_axis_spline_corner_radius_factor),
+            control_count=int(config.plasma_axis_spline_control_count),
         )
     ).validate()
 
@@ -2493,6 +2503,12 @@ def _freeb_edge_control_projection_summary(payload: dict[str, Any] | None, *, re
         "ridge": float(payload.get("ridge", 0.0)),
         "trust_radius": payload.get("trust_radius"),
         "update_mode": str(payload.get("update_mode", "projected_delta")),
+        "rank": payload.get("rank"),
+        "rank_deficient": payload.get("rank_deficient"),
+        "condition_number": payload.get("condition_number"),
+        "gram_condition_number": payload.get("gram_condition_number"),
+        "max_offdiag_column_correlation": payload.get("max_offdiag_column_correlation"),
+        "native_reduced_solver_ready": payload.get("native_reduced_solver_ready"),
     }
 
 
@@ -3140,6 +3156,7 @@ def main(argv: list[str] | None = None) -> int:
         coil_chunk_size=args.coil_chunk_size,
         plasma_axis_kind=str(args.axis_kind),
         plasma_axis_spline_corner_radius_factor=float(args.axis_corner_factor),
+        plasma_axis_spline_control_count=int(args.axis_spline_control_count),
         side_power=float(args.side_power),
         corner_power=float(args.corner_power),
         mpol=int(args.mpol),
@@ -3304,6 +3321,7 @@ def main(argv: list[str] | None = None) -> int:
                 "max_iter": int(niter_array[-1]),
                 "ftol": float(ftol_array[-1]),
                 "axis_kind": str(args.axis_kind),
+                "axis_spline_control_count": int(config.plasma_axis_spline_control_count),
                 "side_power": float(args.side_power),
                 "corner_power": float(args.corner_power),
                 "max_boundary_projection_error": None
@@ -3539,6 +3557,7 @@ def main(argv: list[str] | None = None) -> int:
             "nvacskip": int(config.nvacskip),
             "axis_kind": str(args.axis_kind),
             "axis_corner_factor": float(args.axis_corner_factor),
+            "axis_spline_control_count": int(config.plasma_axis_spline_control_count),
             "side_power": float(args.side_power),
             "corner_power": float(args.corner_power),
             "max_boundary_projection_error": None

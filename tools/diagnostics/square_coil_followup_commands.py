@@ -60,6 +60,12 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--mgrid-nz", type=int, default=64)
     p.add_argument("--mgrid-nphi", type=int, default=None)
     p.add_argument("--axis-kind", default=ExampleConfig().plasma_axis_kind)
+    p.add_argument(
+        "--axis-spline-control-count",
+        type=int,
+        default=ExampleConfig().plasma_axis_spline_control_count,
+        help="Number of rounded-square spline controls passed to profile_square_coil_free_boundary.py.",
+    )
     p.add_argument("--side-power", type=float, default=ExampleConfig().side_power)
     p.add_argument("--corner-power", type=float, default=ExampleConfig().corner_power)
     p.add_argument("--coil-segments", type=int, default=64)
@@ -274,6 +280,11 @@ def _outdir_for(args: argparse.Namespace, *, delt: float, nzeta: int, mgrid_nphi
         if math.isclose(float(args.phiedge), default_phiedge, rel_tol=0.0, abs_tol=1.0e-15)
         else f"_phiedge{_float_label(float(args.phiedge))}"
     )
+    control_count_label = (
+        ""
+        if int(args.axis_spline_control_count) == 8
+        else f"_axisctrl{int(args.axis_spline_control_count)}"
+    )
     return Path(args.outdir_root) / (
         f"square_coil_freeb_backend_profile_{kind}"
         f"_ns{_list_label(args.ns_array)}"
@@ -284,6 +295,7 @@ def _outdir_for(args: argparse.Namespace, *, delt: float, nzeta: int, mgrid_nphi
         f"_delt{_float_label(float(delt))}"
         f"_niter{_iter_label(_last_int(args.niter_array))}"
         f"_{str(args.axis_kind)}"
+        f"{control_count_label}"
         f"{edge_label}"
         f"{ridge_label}"
         f"{trust_label}"
@@ -407,6 +419,8 @@ def _command_for(args: argparse.Namespace, *, delt: float) -> list[str]:
         "1",
         "--axis-kind",
         str(args.axis_kind),
+        "--axis-spline-control-count",
+        str(int(args.axis_spline_control_count)),
         "--side-power",
         f"{float(args.side_power):.16g}",
         "--corner-power",

@@ -411,7 +411,7 @@ diagnostics for deciding whether the next step should be native reduced
 spline/control unknowns rather than post-update projection.
 The first 30-iteration direct-GPU coordinate-control smoke on the same
 ``MPOL=5, NTOR=28, NZETA=64`` hot-restart state preserved the LCFS in the
-two-control square subspace to about ``3e-15`` relative reconstruction residual
+then-default two-control square subspace to about ``3e-15`` relative reconstruction residual
 and reduced the printed force components from about ``7.37e-8, 6.27e-8,
 3.44e-11`` to about ``6.48e-10, 5.54e-10, 3.44e-11`` with constant
 ``DELT=0.02``.  It still did not satisfy the strict component gate, but it is
@@ -432,8 +432,8 @@ the non-JIT row was lower-memory but still did not advance.  This makes native
 or reduced-control operator work more useful than spending more strict-deck
 time on the current experimental JAX-NESTOR path.
 The follow-up command helper now exposes finite strict-polish lanes for the
-direct research path, including five-control stellarator-basis rows when the
-two-control square edge basis underfits the preconditioned force direction:
+direct research path, including stellarator-basis rows when the square edge
+basis underfits the preconditioned force direction:
 
 .. code-block:: console
 
@@ -479,9 +479,9 @@ reconstruction residuals, force-direction capture status, and the next
 recommended reduced basis. Stalled direct
 rows that did not use the reduced edge projection recommend
 ``direct-gpu-edge-polish`` before additional kernel experiments; stalled rows
-whose two-control square basis underfits the preconditioned force direction
-recommend ``direct-gpu-edge-stellarator-polish``; stalled rows that already use
-the five-control stellarator basis and still underfit recommend the
+whose square basis underfits the preconditioned force direction recommend
+``direct-gpu-edge-stellarator-polish``; stalled rows that already use the
+stellarator basis and still underfit recommend the
 ``direct-gpu-edge-stellarator-native-polish`` lane unless that native row has
 already been tried; otherwise edge-projected rows recommend the matching
 edge-projected JAX-NESTOR profile next.
@@ -507,7 +507,7 @@ Fourier boundary when building ``InData``. This is still a projection bridge,
 not a solver-native spline basis, but it makes the intended control variables
 explicit and testable before replacing the nonlinear solve representation.
 Uniformly spaced controls are evaluated with a periodic trigonometric
-interpolant so the default side/corner control set preserves the same
+interpolant so the default 16-control set preserves the same
 low-bandwidth projection behavior as the rounded ``axis_kind="spline"`` target;
 irregular controls fall back to a periodic cubic Hermite interpolation.
 A projection spot check on the first-order spline shape gives max component
@@ -866,11 +866,11 @@ boundary interface. The companion
 from those controls to projected VMEC boundary coefficients, which is the
 needed bridge before introducing a solver-native control-basis state vector.
 For square-coil production updates, pair it with
-``square_axis_spline_symmetric_control_basis``. The default square basis maps
-the eight side/corner control radii into two symmetry-preserving parameters,
-while the stellarator-symmetric basis keeps the usual ``r(zeta)=r(-zeta)``
-pairs. These reduced maps are the preferred diagnostic/optimization controls
-before increasing Fourier mode count further.
+``square_axis_spline_symmetric_control_basis``. The root square-coil example now
+uses 16 rounded-square controls, which reduce to three square-symmetric
+parameters or nine stellarator-symmetric parameters. These reduced maps are the
+preferred diagnostic/optimization controls before increasing Fourier mode count
+further.
 The public helper
 ``square_axis_stellarator_mirror_hybrid_projection_error`` and the square-coil
 profiler's ``boundary_projection`` JSON block now report the Fourier truncation
@@ -930,12 +930,11 @@ after the projection payload selects an effective mode deck, the profiler sizes
 high-mode square-axis boundary with an old low ``NZETA`` grid after a user edits
 ``MPOL``, ``NTOR``, or ``NZETA``.
 It also includes ``control_fourier_map`` for the square-reduced spline controls:
-side/corner labels, stacked ``4K x 2`` coefficient-Jacobian shape, singular
-values, condition number, and column norms. This is a preflight diagnostic for
-the solver-native reduced-control lane, not a nonlinear convergence claim.
-Its nested ``candidate_bases`` block records the same conditioning diagnostics
-for both the two-control square basis and the five-control
-stellarator-symmetric basis.
+labels, stacked coefficient-Jacobian shape, singular values, condition number,
+and column norms. This is a preflight diagnostic for the solver-native
+reduced-control lane, not a nonlinear convergence claim. Its nested
+``candidate_bases`` block records the same conditioning diagnostics for both
+the square and stellarator-symmetric bases.
 The adjacent ``spline_bridge`` block states the current representation status:
 ``axis_kind="control_spline"`` uses periodic spline controls for the
 real-space square-axis target, but the nonlinear free-boundary solve still
@@ -956,9 +955,9 @@ Completed JAX backend rows add the complementary postsolve diagnostic
 ``boundary_reduced_control_projection``. It projects the actual accepted LCFS
 coefficient displacement onto the same ``control_fourier_map`` and reports the
 least-squares side/corner update, relative residual, and captured fraction.
-The nested ``candidate_bases`` block also compares the two-control square basis
-with the five-control stellarator-symmetric basis, so a low square capture can
-be diagnosed as a basis-size issue before changing the nonlinear algorithm.
+The nested ``candidate_bases`` block also compares the square basis with the
+stellarator-symmetric basis, so a low square capture can be diagnosed as a
+basis-size issue before changing the nonlinear algorithm.
 Use this after real solves to tell whether the observed free-boundary motion is
 representable by the compact spline controls before moving the nonlinear
 iteration into that reduced basis.
@@ -1022,8 +1021,8 @@ gate before starting a strict ``FTOL=1e-12`` run. Add
 commands for PHIEDGE/current checks. Add ``--print-vmec2000-commands`` to emit
 generated-``mgrid`` VMEC2000 reference commands for only the rows you want to
 run. The optional
-``--include-control-map`` column set reports the square two-control and
-stellarator-symmetric five-control spline-map conditioning.  Use it to decide
+``--include-control-map`` column set reports the square and
+stellarator-symmetric spline-map conditioning.  Use it to decide
 whether a low-dimensional spline/control update is numerically credible before
 changing the nonlinear solver's boundary update path.
 After the strict-deck gate update, a finite
@@ -1182,7 +1181,7 @@ The remaining work is deliberately narrow:
    available. If the ``5,28`` and ``7,28``/``8,32`` VMEC/VMEC2000 ladders still
    stall above the strict ``1e-12`` component gate, move the square-axis hybrid
    into a solver-native spline-basis lane instead of only increasing Fourier
-   modes. The current code already supports explicit periodic side/corner spline
+   modes. The current code already supports explicit refinable periodic spline
    controls through ``SquareAxisSplineControls`` and a symmetry-reduced
    ``SquareAxisControlBasis``, but those controls are still projected to Fourier
    coefficients before the solve. The next lane should keep the same

@@ -257,7 +257,7 @@ so low-mode edits fail before spending a long ``FTOL=1e-12`` solve on an
 underfit Fourier deck.
 It also enables the reduced square-axis free-boundary edge-control projection
 by default, so the solve still stores VMEC Fourier coefficients but constrains
-LCFS edge motion to the two-control side/corner spline subspace unless the
+LCFS edge motion to the three-control square-symmetric spline subspace unless the
 top-level example option is set to ``"none"``.
 The example's default update mode is now ``"native_coordinate"``: the LCFS edge
 force is pulled back with the reduced-control Jacobian transpose, reduced edge

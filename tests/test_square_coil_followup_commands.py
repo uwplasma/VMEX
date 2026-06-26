@@ -30,6 +30,7 @@ def test_square_coil_followup_commands_emit_strict_vmec2000_scan(tmp_path: Path)
     assert first[first.index("--niter-array") + 1] == "8000,16000,32000"
     assert first[first.index("--max-iter") + 1] == "32000"
     assert first[first.index("--axis-kind") + 1] == "control_spline"
+    assert first[first.index("--axis-spline-control-count") + 1] == "16"
     assert first[first.index("--delt") + 1] == "0.015"
     assert first[first.index("--vmec2000-exec") + 1] == "/opt/xvmec"
     assert "--skip-direct" in first
@@ -45,6 +46,7 @@ def test_square_coil_followup_commands_emit_strict_vmec2000_scan(tmp_path: Path)
     assert "delt0p015" in outdir.name
     assert "niter32k" in outdir.name
     assert "control_spline" in outdir.name
+    assert "axisctrl16" in outdir.name
     assert "vmec2000" in outdir.name
 
 
@@ -325,6 +327,7 @@ def test_square_coil_followup_commands_emit_stellarator_edge_polish(tmp_path: Pa
 
     assert command[command.index("--freeb-edge-control-projection") + 1] == "stellarator"
     assert command[command.index("--freeb-edge-control-update-mode") + 1] == "coordinate"
+    assert command[command.index("--axis-spline-control-count") + 1] == "16"
     assert "--freeb-jax-nestor-operator" not in command
     assert "--freeb-anderson-pressure" in command
     assert "--skip-mgrid" in command
