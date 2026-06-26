@@ -912,6 +912,8 @@ def _boundary_control_projection_for_symmetry(
     config: ExampleConfig,
     deltas: dict[str, np.ndarray],
     symmetry: str,
+    initial_boundary: BoundaryCoeffs | None = None,
+    final_boundary: BoundaryCoeffs | None = None,
 ) -> dict[str, Any] | None:
     """Project a solved boundary move onto one reduced-control symmetry basis."""
 
@@ -938,6 +940,22 @@ def _boundary_control_projection_for_symmetry(
                 "control_count": int(matrix.control_count),
                 "jacobian_shape": [int(value) for value in jacobian.shape],
                 "target_size": target_size,
+            }
+        state_coordinates = None
+        if initial_boundary is not None and final_boundary is not None:
+            step = matrix.encode_boundary(
+                final_boundary,
+                initial_boundary=initial_boundary,
+            )
+            state_coordinates = {
+                "status": "measured",
+                "coordinate_l2": float(step.control_l2),
+                "coordinate_linf": float(step.control_linf),
+                "coordinate_by_label": step.control_delta_by_label,
+                "target_l2": float(step.target_l2),
+                "reconstruction_l2": float(step.predicted_l2),
+                "reconstruction_residual_l2": float(step.residual_l2),
+                "reconstruction_residual_rel": step.residual_rel,
             }
         projection = matrix.project_boundary_delta(
             BoundaryCoeffs(
@@ -966,6 +984,7 @@ def _boundary_control_projection_for_symmetry(
             "residual_rms": projection.residual_rms,
             "residual_rel": projection.residual_rel,
             "captured_fraction": projection.captured_fraction,
+            "state_coordinates": state_coordinates,
         }
     except Exception as exc:
         return {
@@ -980,6 +999,8 @@ def _boundary_reduced_control_projection_payload(
     *,
     config: ExampleConfig | None,
     deltas: dict[str, np.ndarray],
+    initial_boundary: BoundaryCoeffs | None = None,
+    final_boundary: BoundaryCoeffs | None = None,
 ) -> dict[str, Any] | None:
     """Project a solved boundary move onto the square side/corner controls."""
 
@@ -995,6 +1016,8 @@ def _boundary_reduced_control_projection_payload(
         config=config,
         deltas=deltas,
         symmetry="square",
+        initial_boundary=initial_boundary,
+        final_boundary=final_boundary,
     )
     if primary is None:
         return None
@@ -1003,6 +1026,8 @@ def _boundary_reduced_control_projection_payload(
             config=config,
             deltas=deltas,
             symmetry=symmetry,
+            initial_boundary=initial_boundary,
+            final_boundary=final_boundary,
         )
         for symmetry in ("square", "stellarator")
     }
@@ -1044,6 +1069,12 @@ def _boundary_motion_payload(run: Any, *, config: ExampleConfig | None = None) -
             coeff_ref_norm_sq += float(np.sum(initial_values * initial_values))
             if delta.size:
                 coeff_max = max(coeff_max, float(np.max(np.abs(delta))))
+        final_boundary = BoundaryCoeffs(
+            R_cos=np.asarray(final["R_cos"], dtype=float),
+            R_sin=np.asarray(final["R_sin"], dtype=float),
+            Z_cos=np.asarray(final["Z_cos"], dtype=float),
+            Z_sin=np.asarray(final["Z_sin"], dtype=float),
+        )
 
         R0 = np.asarray(eval_fourier(initial.R_cos, initial.R_sin, static.basis), dtype=float)
         Z0 = np.asarray(eval_fourier(initial.Z_cos, initial.Z_sin, static.basis), dtype=float)
@@ -1072,7 +1103,12 @@ def _boundary_motion_payload(run: Any, *, config: ExampleConfig | None = None) -
             "boundary_sample_displacement_max": max_abs,
             "boundary_sample_displacement_rel": float(rms / max(ref_rms, TINY)),
         }
-        projection = _boundary_reduced_control_projection_payload(config=config, deltas=deltas)
+        projection = _boundary_reduced_control_projection_payload(
+            config=config,
+            deltas=deltas,
+            initial_boundary=initial,
+            final_boundary=final_boundary,
+        )
         if projection is not None:
             payload["boundary_reduced_control_projection"] = projection
         return payload

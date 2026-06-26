@@ -605,6 +605,9 @@ The free-boundary edge-control bridge also has the inverse operation internally:
 explicit reduced edge-control coordinates can now be decoded back into the
 LCFS row of a ``VMECState`` in host or JAX-array mode. This keeps the bridge
 diagnostics aligned with the eventual differentiable reduced-state update.
+The square-coil profile summary exposes the affine boundary-state check as
+``boundary_control_projection_state_coordinate_linf`` and
+``boundary_control_projection_state_reconstruction_residual_rel``.
 For staged solves, the same table now exposes ``stage_count``,
 ``stage_ns_array``, ``stage_niter_array``, ``stage_ftol_array``,
 ``stage_budget_total``, ``stage_budget_final``, ``current_stage_index``,

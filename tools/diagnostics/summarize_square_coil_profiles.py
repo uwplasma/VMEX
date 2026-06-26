@@ -1288,6 +1288,12 @@ def _summary_row(
     if not isinstance(control_projection, dict):
         control_projection = {}
     stellarator_projection = _control_projection_candidate(control_projection, "stellarator")
+    control_projection_state = control_projection.get("state_coordinates")
+    if not isinstance(control_projection_state, dict):
+        control_projection_state = {}
+    stellarator_projection_state = stellarator_projection.get("state_coordinates")
+    if not isinstance(stellarator_projection_state, dict):
+        stellarator_projection_state = {}
     iters_to_target = _tail_projection(backend_for_projection, "", target=1.0e-12)
     component_values = _final_force_components(backend)
     limiting_component = _limiting_component(backend_for_projection, component_values)
@@ -1555,6 +1561,12 @@ def _summary_row(
             control_projection.get("captured_fraction")
         ),
         "boundary_control_projection_radius_delta": _control_projection_delta_text(control_projection),
+        "boundary_control_projection_state_coordinate_linf": _finite_float(
+            control_projection_state.get("coordinate_linf")
+        ),
+        "boundary_control_projection_state_reconstruction_residual_rel": _finite_float(
+            control_projection_state.get("reconstruction_residual_rel")
+        ),
         "boundary_control_projection_stellarator_residual_rel": _finite_float(
             stellarator_projection.get("residual_rel")
         ),
@@ -1562,6 +1574,9 @@ def _summary_row(
             stellarator_projection.get("captured_fraction")
         ),
         "boundary_control_projection_stellarator_control_count": stellarator_projection.get("control_count"),
+        "boundary_control_projection_stellarator_state_reconstruction_residual_rel": _finite_float(
+            stellarator_projection_state.get("reconstruction_residual_rel")
+        ),
         "final_iter": final_iter,
         "final_total": final_total,
         "final_max_component": final_max_component,
@@ -2008,9 +2023,12 @@ def main(argv: list[str] | None = None) -> int:
         "boundary_control_projection_residual_rel",
         "boundary_control_projection_captured_fraction",
         "boundary_control_projection_radius_delta",
+        "boundary_control_projection_state_coordinate_linf",
+        "boundary_control_projection_state_reconstruction_residual_rel",
         "boundary_control_projection_stellarator_residual_rel",
         "boundary_control_projection_stellarator_captured_fraction",
         "boundary_control_projection_stellarator_control_count",
+        "boundary_control_projection_stellarator_state_reconstruction_residual_rel",
         "final_iter",
         "final_total",
         "final_max_component",

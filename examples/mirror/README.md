@@ -573,6 +573,10 @@ controls into the nonlinear solve itself.
 The free-boundary edge-control bridge now mirrors this direction internally by
 decoding explicit reduced coordinates into a ``VMECState`` LCFS edge row in
 both host and JAX-array modes.
+The square-coil profile summary also reports
+``boundary_control_projection_state_coordinate_linf`` and
+``boundary_control_projection_state_reconstruction_residual_rel`` for this
+affine boundary-state check.
 Edge-projected free-boundary solves now also write
 ``free_boundary.edge_control_projection.state_coordinates`` in their solver
 diagnostics. That compact block reports the accepted LCFS edge in the same

@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from tools.diagnostics import profile_square_coil_free_boundary as profile
+from vmec_jax.boundary import BoundaryCoeffs
 from vmec_jax.config import VMECConfig
 from vmec_jax.solvers.free_boundary.types import NestorRuntimeState
 from vmec_jax.namelist import InData
@@ -686,6 +687,18 @@ def test_square_coil_profile_boundary_reduced_control_projection_payload(monkeyp
         lambda _config, *, symmetry="square": (basis, matrix),
     )
     config = SimpleNamespace(plasma_axis_kind="control_spline")
+    initial_boundary = BoundaryCoeffs(
+        R_cos=np.asarray([10.0]),
+        R_sin=np.asarray([20.0]),
+        Z_cos=np.asarray([30.0]),
+        Z_sin=np.asarray([40.0]),
+    )
+    final_boundary = BoundaryCoeffs(
+        R_cos=np.asarray([11.0]),
+        R_sin=np.asarray([24.0]),
+        Z_cos=np.asarray([30.0]),
+        Z_sin=np.asarray([43.0]),
+    )
     payload = profile._boundary_reduced_control_projection_payload(
         config=config,
         deltas={
@@ -694,6 +707,8 @@ def test_square_coil_profile_boundary_reduced_control_projection_payload(monkeyp
             "Z_cos": np.asarray([0.0]),
             "Z_sin": np.asarray([3.0]),
         },
+        initial_boundary=initial_boundary,
+        final_boundary=final_boundary,
     )
 
     assert payload is not None
@@ -704,8 +719,12 @@ def test_square_coil_profile_boundary_reduced_control_projection_payload(monkeyp
     assert payload["radius_delta_by_label"]["corner"] == pytest.approx(2.0)
     assert payload["residual_rel"] == pytest.approx(0.0, abs=1.0e-14)
     assert payload["captured_fraction"] == pytest.approx(1.0)
+    assert payload["state_coordinates"]["coordinate_by_label"]["side"] == pytest.approx(1.0)
+    assert payload["state_coordinates"]["coordinate_by_label"]["corner"] == pytest.approx(2.0)
+    assert payload["state_coordinates"]["reconstruction_residual_rel"] == pytest.approx(0.0, abs=1.0e-14)
     assert payload["candidate_bases"]["square"]["captured_fraction"] == pytest.approx(1.0)
     assert payload["candidate_bases"]["stellarator"]["captured_fraction"] == pytest.approx(1.0)
+    assert payload["candidate_bases"]["square"]["state_coordinates"]["coordinate_linf"] == pytest.approx(2.0)
 
 
 def test_square_coil_profile_partial_vmec2000_payload_reads_timeout_rows(tmp_path: Path):
