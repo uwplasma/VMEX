@@ -9,6 +9,7 @@ tolerance.
 from __future__ import annotations
 
 import argparse
+import math
 from pathlib import Path
 import shlex
 import sys
@@ -19,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary import ExampleConfig
-from vmec_jax.toroidal_hybrid import recommended_square_axis_nzeta
+from vmec_jax.toroidal_hybrid import recommended_square_axis_ntheta, recommended_square_axis_nzeta
 
 
 DEFAULT_VMEC2000_EXEC = "/home/rjorge/miniforge3/envs/qh-gpu/bin/xvmec"
@@ -38,8 +39,23 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--ftol-array", default="1e-8,1e-10,1e-12")
     p.add_argument("--mpol", type=int, default=ExampleConfig().mpol)
     p.add_argument("--ntor", type=int, default=ExampleConfig().ntor)
+    p.add_argument(
+        "--ntheta",
+        type=int,
+        default=None,
+        help=(
+            "Explicit VMEC NTHETA passed to the profile script. Omit to let "
+            "the profile choose its square-axis recommendation."
+        ),
+    )
     p.add_argument("--nzeta", type=int, default=None)
     p.add_argument("--ns", type=int, default=ExampleConfig().ns)
+    p.add_argument(
+        "--phiedge",
+        type=float,
+        default=ExampleConfig().phiedge,
+        help="VMEC PHIEDGE used by the generated follow-up profile commands.",
+    )
     p.add_argument("--mgrid-nr", type=int, default=88)
     p.add_argument("--mgrid-nz", type=int, default=64)
     p.add_argument("--mgrid-nphi", type=int, default=None)
@@ -199,11 +215,20 @@ def _outdir_for(args: argparse.Namespace, *, delt: float, nzeta: int, mgrid_nphi
     kind = str(args.profile_kind).replace("-", "_")
     edge = _edge_control_projection(args)
     edge_label = "" if edge in {None, "none"} else f"_edge_{edge}"
+    ntheta_label = "" if args.ntheta is None else f"_ntheta{int(args.ntheta)}"
+    default_phiedge = float(ExampleConfig().phiedge)
+    phiedge_label = (
+        ""
+        if math.isclose(float(args.phiedge), default_phiedge, rel_tol=0.0, abs_tol=1.0e-15)
+        else f"_phiedge{_float_label(float(args.phiedge))}"
+    )
     return Path(args.outdir_root) / (
         f"square_coil_freeb_backend_profile_{kind}"
         f"_ns{_list_label(args.ns_array)}"
         f"_mpol{int(args.mpol)}_ntor{int(args.ntor)}_nzeta{int(nzeta)}"
+        f"{ntheta_label}"
         f"_mgrid{int(args.mgrid_nr)}x{int(args.mgrid_nz)}x{int(mgrid_nphi)}"
+        f"{phiedge_label}"
         f"_delt{_float_label(float(delt))}"
         f"_niter{_iter_label(_last_int(args.niter_array))}"
         f"_{str(args.axis_kind)}"
@@ -239,10 +264,13 @@ def _hot_restart_count(args: argparse.Namespace) -> int:
 
 def _command_for(args: argparse.Namespace, *, delt: float) -> list[str]:
     nzeta = int(args.nzeta or max(64, recommended_square_axis_nzeta(int(args.ntor))))
+    if args.ntheta is not None and int(args.ntheta) < int(recommended_square_axis_ntheta(int(args.mpol))):
+        raise ValueError("--ntheta is below the square-axis recommendation for the requested --mpol")
     mgrid_nphi = int(args.mgrid_nphi or nzeta)
     max_iter = _last_int(args.niter_array)
     kind = str(args.profile_kind)
     edge_projection = _edge_control_projection(args)
+    ntheta_args = [] if args.ntheta is None else ["--ntheta", str(int(args.ntheta))]
     command = [
         str(args.python),
         str(args.profile_script),
@@ -254,6 +282,7 @@ def _command_for(args: argparse.Namespace, *, delt: float) -> list[str]:
         str(int(args.mpol)),
         "--ntor",
         str(int(args.ntor)),
+        *ntheta_args,
         "--ns",
         str(int(args.ns)),
         "--nzeta",
@@ -269,7 +298,7 @@ def _command_for(args: argparse.Namespace, *, delt: float) -> list[str]:
         "--ftol",
         f"{ExampleConfig().ftol:.0e}",
         "--phiedge",
-        f"{ExampleConfig().phiedge:.16g}",
+        f"{float(args.phiedge):.16g}",
         "--delt",
         f"{float(delt):.16g}",
         "--activate-fsq",

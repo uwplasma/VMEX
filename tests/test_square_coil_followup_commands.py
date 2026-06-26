@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tools.diagnostics import square_coil_followup_commands as followup
-from vmec_jax.toroidal_hybrid import recommended_square_axis_nzeta
+from vmec_jax.toroidal_hybrid import recommended_square_axis_ntheta, recommended_square_axis_nzeta
 
 
 def test_square_coil_followup_commands_emit_strict_vmec2000_scan(tmp_path: Path):
@@ -219,6 +221,77 @@ def test_square_coil_followup_commands_emit_direct_gpu_edge_polish(tmp_path: Pat
     outdir = Path(command[command.index("--outdir") + 1])
     assert "direct_gpu_edge_polish" in outdir.name
     assert "edge_square" in outdir.name
+
+
+def test_square_coil_followup_commands_emit_scaled_edge_polish_probe(tmp_path: Path):
+    args = followup._parser().parse_args(
+        [
+            "--outdir-root",
+            str(tmp_path),
+            "--delt-values",
+            "0.02",
+            "--profile-kind",
+            "direct-gpu-edge-polish",
+            "--mpol",
+            "5",
+            "--ntor",
+            "28",
+            "--ntheta",
+            "64",
+            "--nzeta",
+            "64",
+            "--phiedge",
+            "-0.0025078856391256765",
+            "--niter-array",
+            "1000,2000,8000",
+            "--jax-hot-restart-count",
+            "1",
+            "--jax-hot-restart-iters",
+            "8000",
+        ]
+    )
+
+    command = followup.build_commands(args)[0]
+
+    assert command[command.index("--mpol") + 1] == "5"
+    assert command[command.index("--ntor") + 1] == "28"
+    assert command[command.index("--ntheta") + 1] == "64"
+    assert command[command.index("--nzeta") + 1] == "64"
+    assert command[command.index("--phiedge") + 1] == "-0.002507885639125676"
+    assert command[command.index("--freeb-edge-control-projection") + 1] == "square"
+    assert command[command.index("--jax-hot-restart-count") + 1] == "1"
+    assert command[command.index("--jax-hot-restart-iters") + 1] == "8000"
+    assert "--freeb-anderson-pressure" in command
+    assert "--skip-mgrid" in command
+    assert "--run-vmec2000" not in command
+
+    outdir = Path(command[command.index("--outdir") + 1])
+    assert "direct_gpu_edge_polish" in outdir.name
+    assert "ntheta64" in outdir.name
+    assert "nzeta64" in outdir.name
+    assert "phiedgem0p00250789" in outdir.name
+    assert "edge_square" in outdir.name
+
+
+def test_square_coil_followup_commands_reject_underrecommended_ntheta(tmp_path: Path):
+    recommended = recommended_square_axis_ntheta(5)
+    args = followup._parser().parse_args(
+        [
+            "--outdir-root",
+            str(tmp_path),
+            "--delt-values",
+            "0.02",
+            "--profile-kind",
+            "direct-gpu-edge-polish",
+            "--mpol",
+            "5",
+            "--ntheta",
+            str(recommended - 8),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="below the square-axis recommendation"):
+        followup.build_commands(args)
 
 
 def test_square_coil_followup_commands_emit_direct_gpu_edge_jax_nestor_polish(tmp_path: Path):
