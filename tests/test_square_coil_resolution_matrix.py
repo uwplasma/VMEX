@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from tools.diagnostics import square_coil_resolution_matrix as matrix
-from vmec_jax.toroidal_hybrid import recommended_square_axis_nzeta
+from vmec_jax.toroidal_hybrid import recommended_square_axis_ntheta, recommended_square_axis_nzeta
 
 
 def test_square_coil_resolution_matrix_classifies_small_decks(tmp_path: Path):
@@ -24,6 +24,7 @@ def test_square_coil_resolution_matrix_classifies_small_decks(tmp_path: Path):
     assert len(rows) == 2
     assert rows[0]["mpol"] == 3
     assert rows[0]["ntor"] == 4
+    assert rows[0]["ntheta"] == recommended_square_axis_ntheta(3)
     assert rows[0]["nzeta"] == 16
     assert rows[0]["status"] == "diagnostic_gate_disabled"
     assert rows[0]["reasons"] == ["projection_gate_disabled"]
@@ -42,6 +43,7 @@ def test_square_coil_resolution_matrix_auto_nzeta_and_commands(tmp_path: Path):
             "--outdir-root",
             str(tmp_path),
             "--print-preflight-commands",
+            "--print-scale-commands",
             "--print-vmec2000-commands",
             "--include-control-map",
             "--vmec2000-exec",
@@ -52,6 +54,7 @@ def test_square_coil_resolution_matrix_auto_nzeta_and_commands(tmp_path: Path):
     rows = matrix.build_rows(args)
 
     assert rows[0]["nzeta"] == max(64, recommended_square_axis_nzeta(28))
+    assert rows[0]["ntheta"] == recommended_square_axis_ntheta(5)
     assert rows[0]["mgrid_nphi"] == rows[0]["nzeta"]
     assert rows[0]["status"] == "production_ready"
     assert rows[0]["control_map_status"] == "available"
@@ -60,6 +63,8 @@ def test_square_coil_resolution_matrix_auto_nzeta_and_commands(tmp_path: Path):
     assert rows[0]["control_map_stellarator_count"] == 5
     assert rows[0]["control_map_stellarator_condition"] is not None
     assert "--resolution-diagnostics-only" in rows[0]["preflight_command"]
+    assert "--scale-diagnostics-only" in rows[0]["scale_command"]
+    assert "--ntheta 64" in rows[0]["scale_command"]
     assert "--run-vmec2000" in rows[0]["vmec2000_command"]
     assert "--vmec2000-exec /opt/xvmec" in rows[0]["vmec2000_command"]
     assert "square_coil_resolution_mpol5_ntor28_nzeta64" in rows[0]["preflight_command"]

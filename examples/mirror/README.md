@@ -388,14 +388,16 @@ WOUT files, or figures, run:
 ```bash
 python tools/diagnostics/square_coil_resolution_matrix.py \
   --decks 5:20:48,5:28:48,5:28:64,6:32:72,7:28:auto,8:32:auto \
+  --print-scale-commands \
   --print-preflight-commands \
   --include-control-map
 ```
 
-Add `--print-vmec2000-commands` when you want exact generated-mgrid VMEC2000
-reference commands for selected rows. The `--include-control-map` columns show
-the conditioning of the square two-control and stellarator-symmetric
-five-control spline maps for the same Fourier deck.
+Add `--print-scale-commands` when you want exact `--scale-diagnostics-only`
+commands for the same rows, and add `--print-vmec2000-commands` when you want
+generated-mgrid VMEC2000 reference commands. The `--include-control-map`
+columns show the conditioning of the square two-control and
+stellarator-symmetric five-control spline maps for the same Fourier deck.
 
 The report stays under ignored ``results/`` paths and records ``vmec_jax``
 direct-coil, ``vmec_jax`` generated-mgrid, and optional raw VMEC2000

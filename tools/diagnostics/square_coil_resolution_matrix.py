@@ -21,6 +21,7 @@ from examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary impo
     _square_axis_sample_kwargs,
 )
 from vmec_jax.toroidal_hybrid import (
+    recommended_square_axis_ntheta,
     recommended_square_axis_nzeta,
     square_axis_resolution_deck_status,
     square_axis_spline_control_fourier_map_status,
@@ -44,6 +45,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--format", choices=("markdown", "tsv", "json"), default="markdown")
     p.add_argument("--target-error", default=f"{ExampleConfig().max_boundary_projection_error:.0e}")
+    p.add_argument(
+        "--ntheta",
+        default="auto",
+        help="VMEC NTHETA value for every row, or 'auto' for the square-axis recommendation from MPOL.",
+    )
     p.add_argument("--ns-array", default="9,13,17")
     p.add_argument("--niter-array", default="4000,8000,24000")
     p.add_argument("--ftol-array", default="1e-8,1e-10,1e-12")
@@ -64,6 +70,7 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--vmec2000-exec", default=DEFAULT_VMEC2000_EXEC)
     p.add_argument("--vmec2000-timeout", type=int, default=21600)
     p.add_argument("--print-preflight-commands", action="store_true")
+    p.add_argument("--print-scale-commands", action="store_true")
     p.add_argument("--print-vmec2000-commands", action="store_true")
     p.add_argument(
         "--include-control-map",
@@ -118,6 +125,18 @@ def _parse_decks(raw: str) -> list[dict[str, int | None]]:
     return decks
 
 
+def _parse_optional_int(raw: str | int | None) -> int | None:
+    if raw is None:
+        return None
+    key = str(raw).strip().lower()
+    if key in {"", "auto", "none", "null", "false", "no", "0"}:
+        return None
+    value = int(key)
+    if value <= 0:
+        raise ValueError("expected a positive integer or 'auto'")
+    return value
+
+
 def _case_label(row: dict[str, Any], args: argparse.Namespace) -> str:
     return (
         f"mpol{int(row['mpol'])}_ntor{int(row['ntor'])}_nzeta{int(row['nzeta'])}"
@@ -131,6 +150,7 @@ def _profile_command(
     *,
     resolution_only: bool,
     vmec2000: bool,
+    scale_only: bool = False,
 ) -> list[str]:
     ns_array = tuple(int(value) for value in row["ns_array"])
     niter_array = tuple(int(value) for value in row["niter_array"])
@@ -148,6 +168,8 @@ def _profile_command(
         str(int(row["ntor"])),
         "--ns",
         str(int(ns_array[-1])),
+        "--ntheta",
+        str(int(row["ntheta"])),
         "--nzeta",
         str(int(row["nzeta"])),
         "--ns-array",
@@ -201,6 +223,8 @@ def _profile_command(
     ]
     if resolution_only:
         command.append("--resolution-diagnostics-only")
+    if scale_only:
+        command.append("--scale-diagnostics-only")
     if vmec2000:
         command.extend(
             [
@@ -267,10 +291,12 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
     if not (len(ns_array) == len(niter_array) == len(ftol_array)):
         raise ValueError("ns-array, niter-array, and ftol-array must have matching lengths")
     target_error = _parse_optional_float(args.target_error)
+    requested_ntheta = _parse_optional_int(args.ntheta)
     rows: list[dict[str, Any]] = []
     for deck in _parse_decks(args.decks):
         mpol = int(deck["mpol"])
         ntor = int(deck["ntor"])
+        ntheta = int(requested_ntheta or recommended_square_axis_ntheta(mpol))
         nzeta = int(deck["nzeta"] or max(64, recommended_square_axis_nzeta(ntor)))
         mgrid_nphi = int(deck["mgrid_nphi"] or nzeta)
         config = ExampleConfig(
@@ -282,6 +308,7 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
             ftol_array=ftol_array,
             max_iter=int(niter_array[-1]),
             ftol=float(ftol_array[-1]),
+            ntheta=ntheta,
             nzeta=nzeta,
             plasma_axis_kind=str(args.axis_kind),
             plasma_axis_spline_corner_radius_factor=float(args.axis_corner_factor),
@@ -305,6 +332,7 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
             mpol=mpol,
             ntor=ntor,
             ns=int(ns_array[-1]),
+            ntheta=ntheta,
             nzeta=nzeta,
             mgrid_nphi=mgrid_nphi,
             target_max_component_error=target_error,
@@ -324,7 +352,13 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
         if bool(args.include_control_map):
             row.update(_control_map_rows(config))
         if bool(args.print_preflight_commands):
-            row["preflight_command"] = _shell_join(_profile_command(row, args, resolution_only=True, vmec2000=False))
+            row["preflight_command"] = _shell_join(
+                _profile_command(row, args, resolution_only=True, vmec2000=False)
+            )
+        if bool(args.print_scale_commands):
+            row["scale_command"] = _shell_join(
+                _profile_command(row, args, resolution_only=False, scale_only=True, vmec2000=False)
+            )
         if bool(args.print_vmec2000_commands):
             row["vmec2000_command"] = _shell_join(_profile_command(row, args, resolution_only=False, vmec2000=True))
         rows.append(row)
@@ -345,6 +379,8 @@ def _print_table(rows: list[dict[str, Any]], *, markdown: bool) -> None:
     keys = [
         "mpol",
         "ntor",
+        "ntheta",
+        "recommended_ntheta",
         "nzeta",
         "recommended_nzeta",
         "mgrid_nphi",
@@ -356,6 +392,8 @@ def _print_table(rows: list[dict[str, Any]], *, markdown: bool) -> None:
     ]
     if any("preflight_command" in row for row in rows):
         keys.append("preflight_command")
+    if any("scale_command" in row for row in rows):
+        keys.append("scale_command")
     if any("vmec2000_command" in row for row in rows):
         keys.append("vmec2000_command")
     if any("control_map_status" in row for row in rows):

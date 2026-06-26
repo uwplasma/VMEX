@@ -36507,3 +36507,91 @@ Result: not run; Sphinx is not installed in the local venv.
 ### User input needed
 
 No user input is needed.
+
+## M321 - Resolution Matrix Emits `NTHETA` And Scale Commands
+
+### Steps taken
+
+- Extended `tools/diagnostics/square_coil_resolution_matrix.py` so each
+  candidate deck carries the resolved `NTHETA`, recommended `NTHETA`, and the
+  explicit `--ntheta` value in generated profiler commands.
+- Added `--print-scale-commands`, which emits matching
+  `--scale-diagnostics-only` commands beside the existing resolution-preflight
+  and VMEC2000 command emitters.
+- Updated the square-coil README and convergence-plan docs so the matrix tool
+  is the single cheap entry point for projection, `NTHETA`/`NZETA`, mgrid-plane,
+  PHIEDGE/current scale, and control-map preflights.
+
+### Results obtained
+
+- Running the matrix on `5:28:auto` now reports
+  `ntheta=64`, `recommended_ntheta=64`, `nzeta=64`,
+  `recommended_nzeta=64`, and prints a complete scale-only command containing
+  `--ntheta 64` and `--scale-diagnostics-only`.
+- This makes user edits to `MPOL`, `NTOR`, `NTHETA`, `NZETA`, and `PHIEDGE`
+  reproducible from one command before any long strict solve starts.
+
+### How it was tested
+
+```bash
+./venv/bin/python -m pytest -q \
+  tests/test_square_coil_resolution_matrix.py \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_vmec_scale_payload_compares_phiedge_to_external_r_bphi \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_scale_diagnostics_only_writes_scale_payload \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_records_boundary_projection_payload \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_defaults_nzeta_to_square_axis_recommendation \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_projection_gate_disabled_allows_diagnostic_underrecommended_nzeta \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_production_gate_auto_bumps_underrecommended_nzeta \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_production_gate_rejects_underrecommended_nzeta_without_auto_bump \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_rejects_loose_production_schedule
+```
+
+Result: `11 passed, 1 warning`.
+
+```bash
+python3 -m ruff check \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/square_coil_resolution_matrix.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_square_coil_resolution_matrix.py
+```
+
+Result: passed.
+
+```bash
+./venv/bin/python tools/diagnostics/square_coil_resolution_matrix.py \
+  --decks 5:28:auto --target-error 5e-12 \
+  --print-preflight-commands --print-scale-commands --format tsv
+```
+
+Result: printed the expected `NTHETA` columns and scale-only command.
+
+### File structure and best-practice adherence
+
+- The change stays in the existing diagnostic matrix tool and its focused
+  tests; no solver code or generated outputs were added.
+- The docs now point users to the matrix command instead of scattering manual
+  shell edits across the plan.
+
+### Best next steps
+
+1. Let the queued explicit-`NTHETA` and scaled-`PHIEDGE` rows run after the
+   current office jobs release the shared queue.
+2. If the scaled-`PHIEDGE` row improves the residual floor, promote it to the
+   next VMEC2000/mgrid comparison; otherwise move directly to the solver-native
+   spline-control state tranche.
+
+### Completion percentages after M321
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- VMEC2000 robustness/reference lane: `99%`, current reference row still
+  running.
+- Resolution/edit robustness lane: `100%`, matrix and profiler now cover
+  `NTHETA`, `NZETA`, projection, mgrid planes, and `PHIEDGE` scale.
+- True spline/control-basis hybrid lane: `84%`, native spline state remains
+  open.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
