@@ -1321,6 +1321,7 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
                         "basis_symmetry": "square",
                         "control_count": 2,
                         "apply_count": 3,
+                        "zero_velocity_count": 4,
                     },
                 },
             },
@@ -1356,6 +1357,7 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
     assert summary["basis_symmetry"] == "square"
     assert summary["control_count"] == 2
     assert out["free_boundary_edge_control_projection"]["apply_count"] == 3
+    assert out["free_boundary_edge_control_projection"]["zero_velocity_count"] == 4
 
 
 def test_square_coil_profile_run_jax_backend_hot_restarts_from_freeb_state(

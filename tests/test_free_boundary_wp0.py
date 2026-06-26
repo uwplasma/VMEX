@@ -27,7 +27,11 @@ from vmec_jax.free_boundary import (
 )
 from vmec_jax.namelist import read_indata
 from vmec_jax.solvers.fixed_boundary.residual.runtime import resolve_free_boundary_coupling_runtime
-from vmec_jax.solvers.free_boundary.control import free_boundary_nestor_iteration_coupling
+from vmec_jax.solvers.fixed_boundary.residual.update import ResidualVelocityBlocks
+from vmec_jax.solvers.free_boundary.control import (
+    _zero_freeb_edge_control_velocity_blocks,
+    free_boundary_nestor_iteration_coupling,
+)
 from vmec_jax.solve import (
     _free_boundary_iter_controls_vmec,
     _free_boundary_prev_rz_fsq_next,
@@ -286,6 +290,24 @@ def test_free_boundary_nestor_iteration_coupling_promotes_turnon_and_records_dia
     np.testing.assert_allclose(histories["bnormal"], [1.0e-3])
     np.testing.assert_allclose(histories["gsource"], [2.0e-3])
     np.testing.assert_allclose(histories["bsqvac"], [3.0e-3])
+
+
+def test_free_boundary_edge_control_zeroes_only_lcfs_geometry_velocity_rows():
+    arrays = [np.arange(6, dtype=float).reshape(2, 3) + 10.0 * idx for idx in range(12)]
+    blocks = ResidualVelocityBlocks(*arrays)
+
+    out = _zero_freeb_edge_control_velocity_blocks(
+        blocks,
+        {"enabled": True},
+        host_update=True,
+    )
+
+    for name in ("rcc", "rss", "rsc", "rcs", "zsc", "zcs", "zcc", "zss"):
+        values = np.asarray(getattr(out, name))
+        np.testing.assert_allclose(values[0], np.asarray(getattr(blocks, name))[0])
+        np.testing.assert_allclose(values[-1], 0.0)
+    for name in ("lsc", "lcs", "lcc", "lss"):
+        np.testing.assert_allclose(getattr(out, name), getattr(blocks, name))
 
 
 def test_residual_runtime_free_boundary_coupling_binds_trial_resampler():

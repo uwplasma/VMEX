@@ -563,6 +563,10 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
                         "tail_plateau": {"status": "oscillatory"},
                         "accepted_provider_parity": {"status": "completed"},
                         "final_residual_recomputed_on_accepted_state": True,
+                        "free_boundary_edge_control_projection": {
+                            "apply_count": 7,
+                            "zero_velocity_count": 6,
+                        },
                         "free_boundary_solver_overrides": {
                             "freeb_edge_control_projection": {
                                 "requested": "square",
@@ -588,6 +592,8 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
     assert row["freeb_edge_control_projection_basis"] == "square"
     assert row["freeb_edge_control_projection_control_count"] == 2
     assert row["freeb_edge_control_projection_rcond"] == pytest.approx(1.0e-12)
+    assert row["freeb_edge_control_projection_apply_count"] == 7
+    assert row["freeb_edge_control_projection_zero_velocity_count"] == 6
 
 
 def test_square_coil_profile_summary_infers_resolution_deck_for_live_launcher_log(

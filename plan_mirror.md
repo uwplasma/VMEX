@@ -5738,6 +5738,105 @@ Visual validation:
 
 No user input is needed.
 
+## M303. Edge-control projection now clears stale LCFS geometry momentum
+
+### Steps taken
+
+- Inspected the residual update loop and confirmed that the existing
+  `freeb_edge_control_projection` path projected accepted/candidate LCFS
+  boundary states, but the VMEC momentum-memory blocks could still retain LCFS
+  geometry velocity components outside the reduced spline-control subspace.
+- Added `_zero_freeb_edge_control_velocity_blocks` in
+  `vmec_jax.solvers.free_boundary.control`.
+- Wired the existing edge-control projector to clear only LCFS geometry velocity
+  rows after accepted strict updates and after non-strict momentum updates.
+  Interior velocity rows and lambda velocity channels are preserved.
+- Added `zero_edge_velocity_memory=True` and `zero_velocity_count` diagnostics
+  to the free-boundary edge-control block.
+- Carried `zero_velocity_count` through profile and summary diagnostics.
+
+### Results obtained
+
+- This is a solver-control improvement for the projected spline-control bridge:
+  future `--freeb-edge-control-projection` profiles will no longer carry stale
+  uncontrolled LCFS Fourier momentum between iterations.
+- Standard fixed-boundary, ordinary free-boundary, and VMEC2000/generic
+  backends are unchanged unless an edge-control projection payload is enabled.
+- This is still not the final solver-native spline-coordinate VMEC solve; it is
+  the next finite step toward that lane while preserving the Fourier/VMEC2000
+  comparison surface.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_free_boundary_wp0.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+```
+
+Result: `87 passed, 1 skipped`; warnings are existing synthetic NESTOR/axis
+singularity warnings.
+
+```bash
+ruff check \
+  vmec_jax/solvers/free_boundary/control.py \
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py \
+  vmec_jax/solvers/fixed_boundary/residual/finalize.py \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_free_boundary_wp0.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+venv/bin/python -m py_compile \
+  vmec_jax/solvers/free_boundary/control.py \
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py \
+  vmec_jax/solvers/fixed_boundary/residual/finalize.py \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_free_boundary_wp0.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+git diff --check
+```
+
+Result: all passed.
+
+### File structure and best-practice adherence
+
+- The new numerical helper lives in the existing free-boundary control module,
+  next to the edge-control state projection it complements.
+- The residual iteration wrapper owns only wiring/counting, keeping the update
+  loop behavior explicit and auditable.
+- No new root-level modules or generated artifacts were added.
+
+### Best next steps
+
+1. Let active strict lanes finish or reach a queue transition.
+2. For the next projected-edge run, use a checkout containing M303 and compare
+   `zero_velocity_count`, strict force tail, and reduced-control capture against
+   the already queued/old projected row.
+3. If the edge-velocity scrub improves but does not close the `1e-12` gap,
+   run the JAX-NESTOR edge-polish profile next; if it does not improve, move to
+   the full solver-native spline-control state tranche.
+
+### Completion percentages after M303
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row still running near strict but
+  above target.
+- VMEC2000 robustness/reference lane: `99%`, active generated-`mgrid` row still
+  running and not yet at the strict stage.
+- True spline/control-basis hybrid lane: `88%`, edge projection now also scrubs
+  stale LCFS geometry momentum, but solver-native spline state remains open.
+- DELT/stage-budget polish lane: `75%`, queued.
+- Finite-beta virtual-casing validation lane: `87%`, source path ready.
+- CI/API health lane: `99%`, local affected tests pass; GitHub checks are not
+  being watched continuously.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M302. Live square-coil summaries now infer strict resolution gates
 
 ### Steps taken

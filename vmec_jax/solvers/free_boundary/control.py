@@ -346,6 +346,43 @@ def _project_freeb_edge_control_state(
     )
 
 
+def _zero_freeb_edge_control_velocity_blocks(
+    blocks: Any,
+    projection: dict[str, Any],
+    *,
+    host_update: bool,
+) -> Any:
+    """Clear LCFS geometry velocity memory for reduced edge-control solves.
+
+    The reduced edge-control projector constrains accepted boundary states to a
+    low-dimensional spline-control subspace.  VMEC's momentum memory is stored
+    in parity-channel velocity blocks, not directly in that reduced basis, so
+    carrying old LCFS geometry velocities can reintroduce uncontrolled Fourier
+    directions on the next iteration.  Clearing only the LCFS geometry rows is a
+    conservative first-order edge update while preserving interior and lambda
+    momentum memory.
+    """
+
+    if not bool(projection.get("enabled", False)):
+        return blocks
+    geometry_names = ("rcc", "rss", "rsc", "rcs", "zsc", "zcs", "zcc", "zss")
+
+    def _zero_edge_row(value: Any) -> Any:
+        if bool(host_update):
+            arr = np.array(value, dtype=float, copy=True)
+            if arr.ndim == 0:
+                return arr
+            arr[-1, ...] = 0.0
+            return arr
+        arr = jnp.asarray(value)
+        if arr.ndim == 0:
+            return arr
+        return arr.at[-1, ...].set(jnp.zeros_like(arr[-1, ...]))
+
+    updates = {name: _zero_edge_row(getattr(blocks, name)) for name in geometry_names}
+    return blocks._replace(**updates)
+
+
 class FreeBoundaryNestorIterationResult(NamedTuple):
     """External-vacuum coupling state for one residual-loop iteration."""
 

@@ -401,6 +401,7 @@ def finalize_residual_iter_from_namespace(
             "edge_control_projection": {
                 **dict(ns.get("freeb_edge_control_projection_info", {"enabled": False, "reason": "not_requested"})),
                 "apply_count": int(ns.get("freeb_edge_control_projection_apply_count", 0)),
+                "zero_velocity_count": int(ns.get("freeb_edge_control_projection_zero_velocity_count", 0)),
             },
         },
     }

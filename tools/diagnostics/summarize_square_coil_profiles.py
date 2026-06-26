@@ -1194,6 +1194,9 @@ def _summary_row(
             "enabled": edge_enabled,
             "status": "enabled" if edge_enabled else "disabled",
         }
+    freeb_edge_control_runtime = backend.get("free_boundary_edge_control_projection")
+    if not isinstance(freeb_edge_control_runtime, dict):
+        freeb_edge_control_runtime = {}
     hot_restart = backend.get("hot_restart")
     hot_restart = hot_restart if isinstance(hot_restart, dict) else {}
     hot_restart_stages = hot_restart.get("stages")
@@ -1324,6 +1327,10 @@ def _summary_row(
         "freeb_edge_control_projection_control_count": freeb_edge_control_projection.get("control_count"),
         "freeb_edge_control_projection_rcond": _finite_float(
             freeb_edge_control_projection.get("rcond")
+        ),
+        "freeb_edge_control_projection_apply_count": freeb_edge_control_runtime.get("apply_count"),
+        "freeb_edge_control_projection_zero_velocity_count": freeb_edge_control_runtime.get(
+            "zero_velocity_count"
         ),
         "free_boundary_jax_nestor_operator_applied": backend.get(
             "free_boundary_jax_nestor_operator_applied"
@@ -1715,6 +1722,8 @@ def main(argv: list[str] | None = None) -> int:
         "freeb_edge_control_projection_basis",
         "freeb_edge_control_projection_control_count",
         "freeb_edge_control_projection_rcond",
+        "freeb_edge_control_projection_apply_count",
+        "freeb_edge_control_projection_zero_velocity_count",
         "free_boundary_jax_nestor_operator_applied",
         "free_boundary_jax_nestor_operator_reason",
         "free_boundary_jax_nestor_operator_jitted",

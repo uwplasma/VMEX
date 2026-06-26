@@ -153,6 +153,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
 from vmec_jax.solvers.free_boundary.control import (
     _prepare_freeb_edge_control_projection,
     _project_freeb_edge_control_state,
+    _zero_freeb_edge_control_velocity_blocks,
 )
 from vmec_jax.field import TWOPI
 from vmec_jax.solvers.fixed_boundary.jit_cache import (
@@ -612,9 +613,11 @@ class _FreeBoundaryEdgeControlProjector:
         self.info = dict(self.projection.get("info", {"enabled": False, "reason": "not_requested"}))
         self.enabled = bool(self.projection.get("enabled", False))
         self.apply_count = 0
+        self.zero_velocity_count = 0
         self.use_scan = bool(use_scan)
         self.jit_strict_update_enabled = bool(jit_strict_update_enabled)
         if self.enabled:
+            self.info["zero_edge_velocity_memory"] = True
             self.jit_strict_update_enabled = False
             if self.use_scan:
                 self.use_scan = False
@@ -645,6 +648,16 @@ class _FreeBoundaryEdgeControlProjector:
             )
 
         return _candidate_from_delta_tuple_projected
+
+    def scrub_velocity(self, velocities, *, host_update: bool):
+        if not self.enabled:
+            return velocities
+        self.zero_velocity_count += 1
+        return _zero_freeb_edge_control_velocity_blocks(
+            velocities,
+            self.projection,
+            host_update=bool(host_update),
+        )
 
 
 def _prepare_residual_free_boundary_setup(
@@ -1603,6 +1616,13 @@ def solve_fixed_boundary_residual_iter(
         nonlocal velocity_blocks
         velocity_blocks = _zero_primary_velocity_blocks_like(velocity_blocks)
 
+    def _zero_freeb_edge_velocity_blocks() -> None:
+        nonlocal velocity_blocks
+        velocity_blocks = freeb_edge_control_projector.scrub_velocity(
+            velocity_blocks,
+            host_update=bool(host_update_assembly),
+        )
+
     axis_reset_runtime_callbacks = _InitialAxisResetRuntimeCallbacks(
         _reset_axis_from_boundary, _host_axis_reset_update, _apply_controller_update, _controller_after_axis_reset,
         _zero_primary_velocity_blocks, lambda: axis_reset_coeffs, _print_scan_axis_guess,
@@ -1633,6 +1653,8 @@ def solve_fixed_boundary_residual_iter(
             _zero_all_velocity_blocks()
         if side_effects.zero_primary_velocity_blocks:
             _zero_primary_velocity_blocks()
+        if bool(branch_result.accepted):
+            _zero_freeb_edge_velocity_blocks()
         if side_effects.clear_freeb_controls_cached:
             freeb_controls_cached = None
         if side_effects.clear_precond_cache:
@@ -3061,6 +3083,7 @@ def solve_fixed_boundary_residual_iter(
             )
             state = non_strict_update.state
             velocity_blocks = non_strict_update.velocities
+            _zero_freeb_edge_velocity_blocks()
             dt_eff = non_strict_update.dt_eff
             update_rms = non_strict_update.update_rms
             step_status = non_strict_update.step_status
@@ -3162,6 +3185,7 @@ def solve_fixed_boundary_residual_iter(
         _record_timing("iteration_post_update", t_iteration_post_update_start)
 
     freeb_edge_control_projection_apply_count = freeb_edge_control_projector.apply_count
+    freeb_edge_control_projection_zero_velocity_count = freeb_edge_control_projector.zero_velocity_count
     return _finalize_residual_iter_from_namespace(
         locals(),
         result_type=SolveVmecResidualResult,
