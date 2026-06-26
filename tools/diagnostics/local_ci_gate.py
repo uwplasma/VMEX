@@ -116,6 +116,9 @@ def _stages(cli_outdir: Path) -> tuple[Stage, ...]:
                     "20",
                     "--max-root-helper-prefix-files",
                     "2",
+                    "--require-public-docstrings",
+                    "--public-docstring-root",
+                    "vmec_jax",
                     "--max-function-lines-at",
                     (
                         "vmec_jax/solvers/fixed_boundary/residual/iteration.py:"
