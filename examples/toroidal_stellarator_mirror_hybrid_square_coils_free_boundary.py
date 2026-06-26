@@ -209,6 +209,80 @@ class SquareCoilSet:
 
 
 @dataclass(frozen=True)
+class EffectiveSquareAxisResolution:
+    """Requested, recommended, and effective grid sizes for a square-axis deck."""
+
+    requested_ntheta: int | None
+    effective_ntheta: int
+    recommended_ntheta: int
+    ntheta_auto_defaulted: bool
+    ntheta_auto_bumped_to_recommended: bool
+    requested_nzeta: int | None
+    effective_nzeta: int
+    recommended_nzeta: int
+    nzeta_auto_defaulted: bool
+    nzeta_auto_bumped_to_recommended: bool
+    enforce_recommended_nzeta: bool
+    auto_bump_nzeta_to_recommended: bool
+
+    @property
+    def ntheta_underrecommended(self) -> bool:
+        """Whether the effective VMEC theta grid is below the square-axis recommendation."""
+
+        return bool(self.effective_ntheta < self.recommended_ntheta)
+
+    @property
+    def nzeta_underrecommended(self) -> bool:
+        """Whether the effective VMEC zeta grid is below the square-axis recommendation."""
+
+        return bool(self.effective_nzeta < self.recommended_nzeta)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-friendly combined resolution summary."""
+
+        return {
+            "requested_ntheta": self.requested_ntheta,
+            "effective_ntheta": int(self.effective_ntheta),
+            "recommended_ntheta": int(self.recommended_ntheta),
+            "ntheta_auto_defaulted": bool(self.ntheta_auto_defaulted),
+            "ntheta_auto_bumped_to_recommended": bool(self.ntheta_auto_bumped_to_recommended),
+            "ntheta_underrecommended": self.ntheta_underrecommended,
+            "requested_nzeta": self.requested_nzeta,
+            "effective_nzeta": int(self.effective_nzeta),
+            "recommended_nzeta": int(self.recommended_nzeta),
+            "nzeta_auto_defaulted": bool(self.nzeta_auto_defaulted),
+            "nzeta_auto_bumped_to_recommended": bool(self.nzeta_auto_bumped_to_recommended),
+            "nzeta_underrecommended": self.nzeta_underrecommended,
+            "enforce_recommended_nzeta": bool(self.enforce_recommended_nzeta),
+            "auto_bump_nzeta_to_recommended": bool(self.auto_bump_nzeta_to_recommended),
+        }
+
+    def ntheta_payload(self) -> dict[str, Any]:
+        """Return the legacy per-grid theta payload used by existing outputs."""
+
+        return {
+            "requested_ntheta": self.requested_ntheta,
+            "effective_ntheta": int(self.effective_ntheta),
+            "recommended_ntheta": int(self.recommended_ntheta),
+            "auto_defaulted": bool(self.ntheta_auto_defaulted),
+            "auto_bumped_to_recommended": bool(self.ntheta_auto_bumped_to_recommended),
+        }
+
+    def nzeta_payload(self) -> dict[str, Any]:
+        """Return the legacy per-grid zeta payload used by existing outputs."""
+
+        return {
+            "requested_nzeta": self.requested_nzeta,
+            "effective_nzeta": int(self.effective_nzeta),
+            "recommended_nzeta": int(self.recommended_nzeta),
+            "auto_defaulted": bool(self.nzeta_auto_defaulted),
+            "auto_bumped_to_recommended": bool(self.nzeta_auto_bumped_to_recommended),
+            "enforce_recommended_nzeta": bool(self.enforce_recommended_nzeta),
+            "auto_bump_nzeta_to_recommended": bool(self.auto_bump_nzeta_to_recommended),
+        }
+
+
+@dataclass(frozen=True)
 class SolvedBetaCase:
     beta_percent: float
     input_path: Path
@@ -479,40 +553,45 @@ def _resolved_ntheta(config: ExampleConfig) -> int:
     return requested
 
 
+def _effective_square_axis_resolution(config: ExampleConfig) -> EffectiveSquareAxisResolution:
+    """Return the resolved VMEC grids and the reason for each automatic choice."""
+
+    requested_ntheta = None if config.ntheta is None else int(config.ntheta)
+    requested_nzeta = None if config.nzeta is None else int(config.nzeta)
+    recommended_ntheta = int(recommended_square_axis_ntheta(int(config.mpol)))
+    recommended_nzeta = int(recommended_square_axis_nzeta(int(config.ntor)))
+    effective_ntheta = int(_resolved_ntheta(config))
+    effective_nzeta = int(_resolved_nzeta(config))
+    return EffectiveSquareAxisResolution(
+        requested_ntheta=requested_ntheta,
+        effective_ntheta=effective_ntheta,
+        recommended_ntheta=recommended_ntheta,
+        ntheta_auto_defaulted=bool(requested_ntheta is None or requested_ntheta <= 0),
+        ntheta_auto_bumped_to_recommended=bool(
+            requested_ntheta is not None and requested_ntheta > 0 and effective_ntheta > requested_ntheta
+        ),
+        requested_nzeta=requested_nzeta,
+        effective_nzeta=effective_nzeta,
+        recommended_nzeta=recommended_nzeta,
+        nzeta_auto_defaulted=bool(requested_nzeta is None or requested_nzeta <= 0),
+        nzeta_auto_bumped_to_recommended=bool(
+            requested_nzeta is not None and requested_nzeta > 0 and effective_nzeta > requested_nzeta
+        ),
+        enforce_recommended_nzeta=bool(config.enforce_recommended_nzeta),
+        auto_bump_nzeta_to_recommended=bool(config.auto_bump_nzeta_to_recommended),
+    )
+
+
 def _nzeta_resolution_payload(config: ExampleConfig) -> dict[str, Any]:
     """Summarize requested and effective toroidal-grid resolution."""
 
-    requested = None if config.nzeta is None else int(config.nzeta)
-    recommended = int(recommended_square_axis_nzeta(int(config.ntor)))
-    effective = _resolved_nzeta(config)
-    return {
-        "requested_nzeta": requested,
-        "effective_nzeta": int(effective),
-        "recommended_nzeta": int(recommended),
-        "auto_defaulted": bool(requested is None or (requested is not None and requested <= 0)),
-        "auto_bumped_to_recommended": bool(
-            requested is not None and requested > 0 and int(effective) > int(requested)
-        ),
-        "enforce_recommended_nzeta": bool(config.enforce_recommended_nzeta),
-        "auto_bump_nzeta_to_recommended": bool(config.auto_bump_nzeta_to_recommended),
-    }
+    return _effective_square_axis_resolution(config).nzeta_payload()
 
 
 def _ntheta_resolution_payload(config: ExampleConfig) -> dict[str, Any]:
     """Summarize requested and effective poloidal-grid resolution."""
 
-    requested = None if config.ntheta is None else int(config.ntheta)
-    recommended = int(recommended_square_axis_ntheta(int(config.mpol)))
-    effective = _resolved_ntheta(config)
-    return {
-        "requested_ntheta": requested,
-        "effective_ntheta": int(effective),
-        "recommended_ntheta": int(recommended),
-        "auto_defaulted": bool(requested is None or (requested is not None and requested <= 0)),
-        "auto_bumped_to_recommended": bool(
-            requested is not None and requested > 0 and int(effective) > int(requested)
-        ),
-    }
+    return _effective_square_axis_resolution(config).ntheta_payload()
 
 
 def _run_budget(config: ExampleConfig, *, restart_state: Any | None) -> int:
@@ -596,6 +675,7 @@ def make_free_boundary_indata(config: ExampleConfig, *, beta_percent: float) -> 
     """Return the free-boundary input deck for one beta case."""
 
     ns_values, niter_values, ftol_values = _stage_values(config)
+    resolution = _effective_square_axis_resolution(config)
     indata = square_axis_stellarator_mirror_hybrid_indata(
         nfp=int(config.nfp),
         mpol=int(config.mpol),
@@ -618,8 +698,8 @@ def make_free_boundary_indata(config: ExampleConfig, *, beta_percent: float) -> 
             "FTOL_ARRAY": ftol_values,
             "NITER": int(config.max_iter),
             "FTOL": float(config.ftol),
-            "NZETA": _resolved_nzeta(config),
-            "NTHETA": _resolved_ntheta(config),
+            "NZETA": resolution.effective_nzeta,
+            "NTHETA": resolution.effective_ntheta,
             "NSTEP": int(config.nstep),
             "NVACSKIP": max(1, int(config.nvacskip)),
             "PMASS_TYPE": "power_series",
@@ -658,13 +738,14 @@ def _boundary_projection_payload(config: ExampleConfig) -> dict[str, Any]:
 def _resolution_deck_payload(config: ExampleConfig) -> dict[str, Any]:
     """Return the cheap representation/grid gate for edited mode settings."""
 
+    resolution = _effective_square_axis_resolution(config)
     return square_axis_resolution_deck_status(
         projection=_boundary_projection_payload(config),
         mpol=int(config.mpol),
         ntor=int(config.ntor),
         ns=int(config.ns),
-        ntheta=_resolved_ntheta(config),
-        nzeta=_resolved_nzeta(config),
+        ntheta=resolution.effective_ntheta,
+        nzeta=resolution.effective_nzeta,
         target_max_component_error=config.max_boundary_projection_error,
     )
 
@@ -829,14 +910,15 @@ def _spline_bridge_payload(config: ExampleConfig, *, resolution_deck: dict[str, 
 def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
     """Return cheap checks that should pass before a long square-coil solve."""
 
+    resolution = _effective_square_axis_resolution(config)
     projection = _boundary_projection_payload(config)
     resolution_deck = square_axis_resolution_deck_status(
         projection=projection,
         mpol=int(config.mpol),
         ntor=int(config.ntor),
         ns=int(config.ns),
-        ntheta=_resolved_ntheta(config),
-        nzeta=_resolved_nzeta(config),
+        ntheta=resolution.effective_ntheta,
+        nzeta=resolution.effective_nzeta,
         target_max_component_error=config.max_boundary_projection_error,
     )
     schedule = _strict_schedule_payload(config)
@@ -861,11 +943,12 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
         "configuration": {
             "mpol": int(config.mpol),
             "ntor": int(config.ntor),
-            "ntheta": _resolved_ntheta(config),
-            "requested_ntheta": None if config.ntheta is None else int(config.ntheta),
-            "recommended_ntheta": int(recommended_square_axis_ntheta(int(config.mpol))),
-            "nzeta": _resolved_nzeta(config),
-            "recommended_nzeta": int(recommended_square_axis_nzeta(int(config.ntor))),
+            "ntheta": resolution.effective_ntheta,
+            "requested_ntheta": resolution.requested_ntheta,
+            "recommended_ntheta": resolution.recommended_ntheta,
+            "nzeta": resolution.effective_nzeta,
+            "requested_nzeta": resolution.requested_nzeta,
+            "recommended_nzeta": resolution.recommended_nzeta,
             "axis_kind": str(config.plasma_axis_kind),
             "side_power": float(config.side_power),
             "corner_power": float(config.corner_power),
@@ -875,8 +958,9 @@ def _preflight_payload(config: ExampleConfig) -> dict[str, Any]:
         },
         "strict_schedule": schedule,
         "strict_convergence_assessment": convergence_assessment,
-        "ntheta_resolution": _ntheta_resolution_payload(config),
-        "nzeta_resolution": _nzeta_resolution_payload(config),
+        "effective_resolution": resolution.to_dict(),
+        "ntheta_resolution": resolution.ntheta_payload(),
+        "nzeta_resolution": resolution.nzeta_payload(),
         "boundary_projection": projection,
         "resolution_deck": resolution_deck,
         "control_fourier_map": _control_fourier_map_payload(config),
@@ -1060,11 +1144,22 @@ def _run_one_beta(
         mean_iota = float(np.nanmean(np.asarray(iotas, dtype=float)))
     except Exception:
         mean_iota = None
+    resolution = _effective_square_axis_resolution(config)
     row = {
         "beta_percent": float(beta_percent),
         "input": str(input_path),
         "wout": str(wout_path),
         "wall_s": float(wall_s),
+        "mpol": int(config.mpol),
+        "ntor": int(config.ntor),
+        "ntheta": resolution.effective_ntheta,
+        "requested_ntheta": resolution.requested_ntheta,
+        "recommended_ntheta": resolution.recommended_ntheta,
+        "ntheta_auto_bumped_to_recommended": resolution.ntheta_auto_bumped_to_recommended,
+        "nzeta": resolution.effective_nzeta,
+        "requested_nzeta": resolution.requested_nzeta,
+        "recommended_nzeta": resolution.recommended_nzeta,
+        "nzeta_auto_bumped_to_recommended": resolution.nzeta_auto_bumped_to_recommended,
         "n_iter": None if run.result is None else int(getattr(run.result, "n_iter", -1)),
         "run_budget": int(run_budget),
         "used_multigrid_schedule": bool(use_multigrid),
@@ -1215,6 +1310,16 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "input",
         "wout",
         "wall_s",
+        "mpol",
+        "ntor",
+        "ntheta",
+        "requested_ntheta",
+        "recommended_ntheta",
+        "ntheta_auto_bumped_to_recommended",
+        "nzeta",
+        "requested_nzeta",
+        "recommended_nzeta",
+        "nzeta_auto_bumped_to_recommended",
         "n_iter",
         "run_budget",
         "used_multigrid_schedule",
@@ -1610,6 +1715,7 @@ def _metrics_payload(
     completed = [float(row.get("beta_percent")) for row in rows]
     remaining = [float(beta) for beta in config.betas_percent if float(beta) not in completed]
     resolved_controls = _resolved_axis_spline_controls(config)
+    resolution = _effective_square_axis_resolution(config)
     reduced_radii = (
         None
         if config.plasma_axis_reduced_radii is None
@@ -1649,20 +1755,17 @@ def _metrics_payload(
         "ns_array": [int(value) for value in config.ns_array],
         "mpol": int(config.mpol),
         "ntor": int(config.ntor),
-        "recommended_ntheta": int(recommended_square_axis_ntheta(int(config.mpol))),
-        "ntheta": _resolved_ntheta(config),
-        "requested_ntheta": None if config.ntheta is None else int(config.ntheta),
-        "ntheta_resolution": _ntheta_resolution_payload(config),
-        "ntheta_underrecommended": bool(
-            _resolved_ntheta(config) < recommended_square_axis_ntheta(int(config.mpol))
-        ),
-        "recommended_nzeta": int(recommended_square_axis_nzeta(int(config.ntor))),
-        "nzeta": _resolved_nzeta(config),
-        "requested_nzeta": None if config.nzeta is None else int(config.nzeta),
-        "nzeta_resolution": _nzeta_resolution_payload(config),
-        "nzeta_underrecommended": bool(
-            _resolved_nzeta(config) < recommended_square_axis_nzeta(int(config.ntor))
-        ),
+        "recommended_ntheta": resolution.recommended_ntheta,
+        "ntheta": resolution.effective_ntheta,
+        "requested_ntheta": resolution.requested_ntheta,
+        "effective_resolution": resolution.to_dict(),
+        "ntheta_resolution": resolution.ntheta_payload(),
+        "ntheta_underrecommended": resolution.ntheta_underrecommended,
+        "recommended_nzeta": resolution.recommended_nzeta,
+        "nzeta": resolution.effective_nzeta,
+        "requested_nzeta": resolution.requested_nzeta,
+        "nzeta_resolution": resolution.nzeta_payload(),
+        "nzeta_underrecommended": resolution.nzeta_underrecommended,
         "max_iter": int(config.max_iter),
         "ftol": float(config.ftol),
         "niter_array": [int(value) for value in config.niter_array],

@@ -605,6 +605,12 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["ntheta_resolution"]["effective_ntheta"] == recommended_square_axis_ntheta(
         module.ExampleConfig().mpol
     )
+    assert preflight["effective_resolution"]["effective_ntheta"] == recommended_square_axis_ntheta(
+        module.ExampleConfig().mpol
+    )
+    assert preflight["effective_resolution"]["effective_nzeta"] == max(
+        64, recommended_square_axis_nzeta(module.ExampleConfig().ntor)
+    )
     assert preflight["resolution_deck"]["ntheta"] == recommended_square_axis_ntheta(module.ExampleConfig().mpol)
     assert preflight["nzeta_resolution"]["auto_defaulted"] is True
     assert preflight["nzeta_resolution"]["auto_bump_nzeta_to_recommended"] is True
@@ -1172,6 +1178,8 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert metrics["n_coils_per_side"] == 1
     assert metrics["boundary_projection"]["mpol"] == 3
     assert metrics["boundary_projection"]["ntor"] == 4
+    assert metrics["effective_resolution"]["effective_ntheta"] == metrics["ntheta"]
+    assert metrics["effective_resolution"]["effective_nzeta"] == metrics["nzeta"]
     assert np.isfinite(float(metrics["boundary_projection"]["max_abs_error"]))
     assert metrics["plasma_axis_control_symmetry"] == "square"
     assert metrics["plasma_axis_reduced_radii"] is None
@@ -1196,6 +1204,10 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert len(rows) == 1
     assert Path(rows[0]["input"]).exists()
     assert Path(rows[0]["wout"]).exists()
+    assert rows[0]["mpol"] == 3
+    assert rows[0]["ntor"] == 4
+    assert rows[0]["ntheta"] == metrics["ntheta"]
+    assert rows[0]["nzeta"] == metrics["nzeta"]
     assert np.isfinite(float(rows[0]["final_fsqr"]))
     assert np.isfinite(float(rows[0]["final_fsqz"]))
     assert np.isfinite(float(rows[0]["final_fsql"]))
@@ -1219,6 +1231,10 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert len(csv_rows) == len(rows)
     assert csv_rows[0]["beta_percent"] == "0.0"
     assert csv_rows[0]["boundary_condition_mode"] == "vacuum_coil_normal"
+    assert csv_rows[0]["mpol"] == "3"
+    assert csv_rows[0]["ntor"] == "4"
+    assert csv_rows[0]["ntheta"] == str(metrics["ntheta"])
+    assert csv_rows[0]["nzeta"] == str(metrics["nzeta"])
     assert csv_rows[0]["free_boundary_edge_control_projection_requested"] == "square"
     assert csv_rows[0]["free_boundary_edge_control_projection_enabled"] == "True"
     assert "best_scored_component_max" in csv_rows[0]

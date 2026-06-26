@@ -18,6 +18,7 @@ from .fourier import build_helical_basis, eval_fourier, project_to_modes
 from .grids import AngleGrid
 from .modes import vmec_mode_table
 from .namelist import InData, minimal_fixed_boundary_indata
+from .solvers.free_boundary.reduced_controls import reduced_control_least_squares_step
 
 
 @dataclass(frozen=True)
@@ -228,45 +229,37 @@ class SquareAxisControlFourierMatrix:
         if jacobian.shape[1] == 0:
             raise ValueError("control map has no control columns")
 
-        radius_delta, _residuals, rank, singular_values = np.linalg.lstsq(jacobian, target, rcond=None)
-        predicted = self.boundary_delta(radius_delta)
+        labels = (
+            tuple(str(label) for label in self.control_basis.labels)
+            if self.control_basis is not None
+            else tuple(f"control_{idx}" for idx in range(self.control_count))
+        )
+        step = reduced_control_least_squares_step(jacobian, target, labels=labels)
+        predicted = self.boundary_delta(step.control_delta)
         residual = BoundaryCoeffs(
             R_cos=np.asarray(delta.R_cos, dtype=float) - np.asarray(predicted.R_cos, dtype=float),
             R_sin=np.asarray(delta.R_sin, dtype=float) - np.asarray(predicted.R_sin, dtype=float),
             Z_cos=np.asarray(delta.Z_cos, dtype=float) - np.asarray(predicted.Z_cos, dtype=float),
             Z_sin=np.asarray(delta.Z_sin, dtype=float) - np.asarray(predicted.Z_sin, dtype=float),
         )
-        predicted_stack = _stack_boundary_coeffs(predicted)
         residual_stack = _stack_boundary_coeffs(residual)
-        target_l2 = float(np.linalg.norm(target))
-        predicted_l2 = float(np.linalg.norm(predicted_stack))
-        residual_l2 = float(np.linalg.norm(residual_stack))
         residual_linf = float(np.max(np.abs(residual_stack))) if residual_stack.size else 0.0
         residual_rms = float(np.sqrt(np.mean(residual_stack * residual_stack))) if residual_stack.size else 0.0
-        residual_rel = None if target_l2 <= np.finfo(float).tiny else float(residual_l2 / target_l2)
-        captured_fraction = None if residual_rel is None else float(max(0.0, 1.0 - residual_rel))
-        min_sv = float(np.min(singular_values)) if singular_values.size else None
-        max_sv = float(np.max(singular_values)) if singular_values.size else None
-        condition = None if min_sv in (None, 0.0) or max_sv is None else float(max_sv / max(min_sv, np.finfo(float).tiny))
-        labels = (
-            tuple(str(label) for label in self.control_basis.labels)
-            if self.control_basis is not None
-            else tuple(f"control_{idx}" for idx in range(self.control_count))
-        )
+        captured_fraction = None if step.residual_rel is None else float(max(0.0, 1.0 - step.residual_rel))
         return SquareAxisControlProjection(
             labels=labels,
-            radius_delta=np.asarray(radius_delta, dtype=float),
+            radius_delta=np.asarray(step.control_delta, dtype=float),
             predicted=predicted,
             residual=residual,
-            rank=int(rank),
-            singular_values=np.asarray(singular_values, dtype=float),
-            condition_number=condition,
-            target_l2=target_l2,
-            predicted_l2=predicted_l2,
-            residual_l2=residual_l2,
+            rank=int(step.rank),
+            singular_values=np.asarray(step.singular_values, dtype=float),
+            condition_number=step.condition_number,
+            target_l2=step.target_l2,
+            predicted_l2=step.predicted_l2,
+            residual_l2=step.residual_l2,
             residual_linf=residual_linf,
             residual_rms=residual_rms,
-            residual_rel=residual_rel,
+            residual_rel=step.residual_rel,
             captured_fraction=captured_fraction,
         )
 
