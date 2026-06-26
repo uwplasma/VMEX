@@ -788,6 +788,9 @@ def _history_tail(values: Any, *, length: int = 12, dtype: type = float) -> list
         if dtype is int:
             out.append(int(value))
             continue
+        if dtype is str:
+            out.append(str(value))
+            continue
         value_f = float(value)
         out.append(value_f if np.isfinite(value_f) else None)
     return out
@@ -824,6 +827,24 @@ def _history_stats(values: Any, *, dtype: type = float) -> dict[str, Any]:
         }
     )
     return out
+
+
+def _history_value_counts(values: Any) -> dict[str, int]:
+    """Return stable counts for categorical solver histories."""
+
+    if values is None:
+        return {}
+    if isinstance(values, np.ndarray):
+        values = values.tolist()
+    if not isinstance(values, (list, tuple)):
+        values = [values]
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value)
+        if not key:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+    return {key: counts[key] for key in sorted(counts)}
 
 
 def _finite_float_or_none(value: Any) -> float | None:
@@ -1369,6 +1390,16 @@ def _jax_history_payload(run: Any, diag: dict[str, Any], *, length: int = 12) ->
         "bcovar_update_stats": _history_stats(diag.get("bcovar_update_history"), dtype=int),
         "bad_jacobian_tail": _history_tail(diag.get("bad_jacobian_history"), length=length, dtype=int),
         "bad_jacobian_stats": _history_stats(diag.get("bad_jacobian_history"), dtype=int),
+        "step_status_tail": _history_tail(diag.get("step_status_history"), length=length, dtype=str),
+        "step_status_counts": _history_value_counts(diag.get("step_status_history")),
+        "restart_path_tail": _history_tail(diag.get("restart_path_history"), length=length, dtype=str),
+        "restart_path_counts": _history_value_counts(diag.get("restart_path_history")),
+        "w_curr_tail": _history_tail(diag.get("w_curr_history"), length=length),
+        "w_curr_stats": _history_stats(diag.get("w_curr_history")),
+        "w_try_tail": _history_tail(diag.get("w_try_history"), length=length),
+        "w_try_stats": _history_stats(diag.get("w_try_history")),
+        "w_try_ratio_tail": _history_tail(diag.get("w_try_ratio_history"), length=length),
+        "w_try_ratio_stats": _history_stats(diag.get("w_try_ratio_history")),
         "time_step_tail": _history_tail(diag.get("time_step_history"), length=length),
         "time_step_stats": _history_stats(diag.get("time_step_history")),
         "dt_eff_tail": _history_tail(diag.get("dt_eff_history"), length=length),

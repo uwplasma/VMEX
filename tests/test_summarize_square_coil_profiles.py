@@ -117,6 +117,22 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                             "freeb_nestor_trial_failed_stats": {"sum": 2.0},
                             "freeb_nestor_trial_sample_time_stats": {"mean": 0.7, "max": 1.3},
                             "freeb_nestor_trial_solve_time_stats": {"mean": 0.09, "max": 0.2},
+                            "w_try_ratio_stats": {
+                                "last": 0.94,
+                                "min": 0.5,
+                                "max": 1.24,
+                                "mean": 0.91,
+                            },
+                            "step_status_counts": {
+                                "momentum": 990,
+                                "restart_bad_progress": 4,
+                                "restart_pending": 6,
+                            },
+                            "restart_path_counts": {
+                                "momentum_accept": 990,
+                                "trial_rejected": 6,
+                                "catastrophic_growth": 4,
+                            },
                             "include_edge_stats": {"sum": 50.0, "last": 0.0},
                             "freeb_anderson_pressure_applied_stats": {"sum": 12.0},
                             "bad_jacobian_stats": {"sum": 1.0},
@@ -142,6 +158,7 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                             "fsq_limiting_component": "fsql",
                         },
                         "wall_s": 3.5,
+                        "free_boundary_solver_overrides": {"strict_backtracking": True},
                     },
                     "vmec2000_mgrid": {
                         "status": "completed",
@@ -228,6 +245,7 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["fresh_convergence_failures"] == 1
     assert rows[1]["freeb_convergence_blocked_count"] == 4
     assert rows[1]["solver_mode"] == "parity"
+    assert rows[1]["strict_backtracking"] is True
     assert rows[1]["side_power"] == pytest.approx(1.25)
     assert rows[1]["corner_power"] == pytest.approx(1.5)
     assert rows[1]["nzeta_auto"] is True
@@ -267,6 +285,17 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["nestor_trial_sample_time_max"] == pytest.approx(1.3)
     assert rows[1]["nestor_trial_solve_time_mean"] == pytest.approx(0.09)
     assert rows[1]["nestor_trial_solve_time_max"] == pytest.approx(0.2)
+    assert rows[1]["trial_ratio_last"] == pytest.approx(0.94)
+    assert rows[1]["trial_ratio_min"] == pytest.approx(0.5)
+    assert rows[1]["trial_ratio_max"] == pytest.approx(1.24)
+    assert rows[1]["trial_ratio_mean"] == pytest.approx(0.91)
+    assert rows[1]["step_status_counts"] == "momentum:990,restart_bad_progress:4,restart_pending:6"
+    assert rows[1]["step_momentum_count"] == 990
+    assert rows[1]["step_rejected_count"] == 6
+    assert rows[1]["step_restart_count"] == 10
+    assert rows[1]["restart_path_counts"] == "catastrophic_growth:4,momentum_accept:990,trial_rejected:6"
+    assert rows[1]["restart_path_trial_rejected_count"] == 6
+    assert rows[1]["restart_path_momentum_accept_count"] == 990
     assert rows[1]["include_edge_count"] == pytest.approx(50.0)
     assert rows[1]["include_edge_last"] == pytest.approx(0.0)
     assert rows[1]["anderson_pressure_enabled"] is True

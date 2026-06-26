@@ -475,6 +475,13 @@ Add ``--strict-backtracking`` to the follow-up helper when the intended next
 row is a trial-residual/backtracking diagnostic rather than the default
 VMEC2000-parity strict update. Generated JAX commands carry the profiler flag
 and label the output directory with ``strictbt``.
+Completed JAX profile JSON now also stores compact trial-step diagnostics:
+``history.w_try_ratio_stats``, ``history.step_status_counts``, and
+``history.restart_path_counts``. The summary table exposes these as
+``strict_backtracking``, ``trial_ratio_*``, ``step_*_count``, and
+``restart_path_*`` columns, so a strict-backtracking row can be classified as
+accepted-step limited, trial-rejection limited, or restart limited without
+shipping full histories in the repository.
 The summary table now reports the edge-control projection status, requested
 basis, control count, pseudo-inverse cutoff, update mode, coordinate-update
 count, native-update count, reduced native force/velocity/update norms,

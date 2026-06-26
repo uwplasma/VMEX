@@ -429,6 +429,38 @@ def _stat(backend: dict[str, Any], history_key: str, stat_key: str) -> float | N
     return _finite_float(stats.get(stat_key))
 
 
+def _history_counts(backend: dict[str, Any], history_key: str) -> dict[str, int]:
+    history = backend.get("history")
+    if not isinstance(history, dict):
+        return {}
+    counts = history.get(history_key)
+    if not isinstance(counts, dict):
+        return {}
+    out: dict[str, int] = {}
+    for key, value in counts.items():
+        try:
+            out[str(key)] = int(value)
+        except Exception:
+            continue
+    return out
+
+
+def _counts_text(counts: dict[str, int]) -> str | None:
+    if not counts:
+        return None
+    return ",".join(f"{key}:{counts[key]}" for key in sorted(counts))
+
+
+def _count_sum(counts: dict[str, int], *keys: str, prefix: str | None = None) -> int | None:
+    if not counts:
+        return None
+    total = 0
+    for key, value in counts.items():
+        if key in keys or (prefix is not None and key.startswith(prefix)):
+            total += int(value)
+    return total
+
+
 def _tail_projection(backend: dict[str, Any], key: str, *, target: float | None = None) -> float | None:
     history = backend.get("history")
     if not isinstance(history, dict):
@@ -1458,6 +1490,8 @@ def _summary_row(
         final_max_component = _jax_final_max_component(backend)
     virtual_casing = _virtual_casing_payload(backend)
     solver_overrides = _solver_overrides_payload(backend)
+    step_status_counts = _history_counts(backend, "step_status_counts")
+    restart_path_counts = _history_counts(backend, "restart_path_counts")
     freeb_jax_nestor_operator = solver_overrides.get(
         "freeb_jax_nestor_operator", cfg.get("freeb_jax_nestor_operator")
     )
@@ -1660,6 +1694,7 @@ def _summary_row(
         "recommended_nzeta": cfg.get("recommended_nzeta"),
         "nvacskip": cfg.get("nvacskip"),
         "solver_mode": cfg.get("solver_mode"),
+        "strict_backtracking": solver_overrides.get("strict_backtracking", cfg.get("strict_backtracking")),
         "jax_hot_restart_requested_count": solver_overrides.get(
             "jax_hot_restart_count", cfg.get("jax_hot_restart_count")
         ),
@@ -2012,6 +2047,17 @@ def _summary_row(
         "update_delta_to_velocity_rms_ratio": _finite_float(
             backend.get("update_delta_to_velocity_rms_ratio")
         ),
+        "trial_ratio_last": _stat(backend, "w_try_ratio_stats", "last"),
+        "trial_ratio_min": _stat(backend, "w_try_ratio_stats", "min"),
+        "trial_ratio_max": _stat(backend, "w_try_ratio_stats", "max"),
+        "trial_ratio_mean": _stat(backend, "w_try_ratio_stats", "mean"),
+        "step_status_counts": _counts_text(step_status_counts),
+        "step_momentum_count": _count_sum(step_status_counts, "momentum"),
+        "step_rejected_count": _count_sum(step_status_counts, "rejected", "restart_pending"),
+        "step_restart_count": _count_sum(step_status_counts, prefix="restart_"),
+        "restart_path_counts": _counts_text(restart_path_counts),
+        "restart_path_trial_rejected_count": _count_sum(restart_path_counts, "trial_rejected"),
+        "restart_path_momentum_accept_count": _count_sum(restart_path_counts, "momentum_accept"),
         "dt_eff_last": _stat(backend, "dt_eff_stats", "last"),
         "dt_eff_min": _stat(backend, "dt_eff_stats", "min"),
         "time_step_last": _stat(backend, "time_step_stats", "last"),
