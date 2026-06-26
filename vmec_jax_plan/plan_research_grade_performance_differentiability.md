@@ -8140,6 +8140,48 @@ Current lane percentages after this tranche:
 - Repository layout/navigation cleanup: 93.0%.
 - Overall: 99.85%.
 
+## 2026-06-26 Package Directory README Completion
+
+Steps taken:
+
+- Audited non-cache directories under ``vmec_jax`` for missing local README
+  files after the layout and QI package refactors.
+- Added concise README files for the small package-data directory, fixed-boundary
+  optimizer package, fixed-boundary residual/scan/preconditioning/diagnostics/
+  update/adjoint subpackages, and free-boundary adjoint subpackage.
+
+Results obtained:
+
+- Every non-cache directory under ``vmec_jax`` now has a local README explaining
+  what belongs there and what should stay elsewhere.
+- The notes explicitly separate user-facing optimization workflows from
+  equilibrium-solver internals, and keep free-boundary derivative claims
+  branch-local/fingerprint-gated.
+
+Best next steps:
+
+1. Keep future refactors aligned with these domain names instead of adding new
+   ambiguous root files.
+2. The remaining simplification work should target large solver/test seams, not
+   directory navigation.
+
+User needs:
+
+- No input needed.
+
+Current lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.5%.
+- Free-boundary production differentiability: 97.7%.
+- Single-stage coil optimization: 94.2%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 92.0%.
+- VMEC2000/VMEC++ parity and physics gates: 99.4%.
+- Docs/release hygiene: 100%.
+- Repository layout/navigation cleanup: 96.0%.
+- Overall: 99.87%.
+
 ### 2026-06-26: Extract residual free-boundary and boundary setup objects
 
 Steps taken:
