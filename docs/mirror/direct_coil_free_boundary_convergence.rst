@@ -218,7 +218,9 @@ discrete VMEC zeta planes without toroidal interpolation.
 During long VMEC2000 runs the profiler writes
 ``_partial_vmec2000_payload.json`` beside the final profile report, so strict
 ``FTOL=1e-12`` ladders can be audited for live stage residuals and
-vacuum-grid overflow before ``xvmec`` exits.
+vacuum-grid overflow before ``xvmec`` exits. The summary tool also accepts an
+active VMEC2000 profile directory and will read that sidecar, or parse
+``vmec2000_mgrid/threed1*`` directly when the sidecar is not present.
 The rounded-square ``axis_kind="spline"`` option is now the default because it
 reduces low-mode projection error relative to the superellipse axis. It is
 still projected to VMEC Fourier coefficients, so large straight sections plus

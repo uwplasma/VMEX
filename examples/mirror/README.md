@@ -279,6 +279,11 @@ Summarize one or more reports with::
   python tools/diagnostics/summarize_square_coil_profiles.py \
     results/square_coil_freeb_backend_profile_* --markdown
 
+The summary command accepts completed profile JSON files, completed profile
+directories, and active VMEC2000 profile directories. For active VMEC2000
+folders it reads ``_partial_vmec2000_payload.json`` when present, otherwise it
+parses ``vmec2000_mgrid/threed1*`` directly and labels the row
+``running_partial``.
 The summary table reports both ``final_total`` and ``final_max_component``.
 Use ``final_max_component <= requested_ftol`` / ``strict_components_met`` for
 the production convergence gate; ``final_total`` is useful for trend

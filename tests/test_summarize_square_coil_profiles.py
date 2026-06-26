@@ -128,3 +128,60 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["tail_decay_factor"] == pytest.approx(0.98)
     assert rows[1]["iters_to_1e-12_est"] == pytest.approx(1234)
     assert rows[0]["vacuum_grid_exceeded_count"] == 2
+
+
+def test_square_coil_profile_summary_reads_active_vmec2000_threed1(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_live"
+    workdir = case_dir / "vmec2000_mgrid"
+    workdir.mkdir(parents=True)
+    threed1 = workdir / "threed1.square_beta_00p000_mgrid"
+    threed1.write_text(
+        "\n".join(
+            [
+                " NS =    17 NO. FOURIER MODES =  371 FTOLV =  1.000E-12 NITER =  24000",
+                " ITER    FSQR      FSQZ      FSQL      fsqr      fsqz      fsql      DELT",
+                "  200   4.00E-11  2.00E-11  1.00E-11  1.00E-12  2.00E-12  3.00E-12  2.00E-02",
+                "  400   3.00E-11  2.50E-11  8.00E-12  1.00E-12  2.00E-12  3.00E-12  2.00E-02",
+            ]
+        )
+        + "\n"
+    )
+
+    assert summary._profile_paths([case_dir]) == [threed1]
+    rows = summary.rows_from_source(threed1)
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["case"] == "live"
+    assert row["backend"] == "vmec2000_mgrid"
+    assert row["status"] == "running_partial"
+    assert row["requested_ftol"] == pytest.approx(1.0e-12)
+    assert row["final_iter"] == 400
+    assert row["final_total"] == pytest.approx(6.3e-11)
+    assert row["final_max_component"] == pytest.approx(3.0e-11)
+    assert row["strict_components_met"] is False
+
+
+def test_square_coil_profile_summary_prefers_active_partial_sidecar(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_live_sidecar"
+    case_dir.mkdir()
+    partial = case_dir / "_partial_vmec2000_payload.json"
+    partial.write_text(
+        json.dumps(
+            {
+                "stage_summaries": [{"ns": 17, "ftolv": 1.0e-12}],
+                "last_row": {"it": 600, "fsqr": 8.0e-13, "fsqz": 9.0e-13, "fsql": 7.0e-13},
+                "min_total": 2.4e-12,
+                "vacuum_grid_exceeded_count": 0,
+            }
+        )
+    )
+
+    assert summary._profile_paths([case_dir]) == [partial]
+    row = summary.rows_from_source(partial)[0]
+
+    assert row["case"] == "live_sidecar"
+    assert row["status"] == "running_partial"
+    assert row["requested_ftol"] == pytest.approx(1.0e-12)
+    assert row["final_max_component"] == pytest.approx(9.0e-13)
+    assert row["strict_components_met"] is True
