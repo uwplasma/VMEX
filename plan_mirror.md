@@ -5797,6 +5797,28 @@ git diff --check
 
 Result: all passed; source-health ratchets remained unchanged.
 
+```bash
+venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py \
+  --outdir /tmp/vmec_edge_update_diag_smoke_enabled \
+  --beta-percent 0 --mpol 3 --ntor 4 --ns 5 --nzeta 16 \
+  --ns-array 5 --niter-array 1 --ftol-array 1e-8 \
+  --max-iter 1 --ftol 1e-8 \
+  --phiedge -0.04 --delt 0.02 --activate-fsq 1e-3 \
+  --nvacskip 1 --nstep 1 --axis-kind control_spline \
+  --side-power 1.0 --corner-power 1.0 \
+  --n-coils-per-side 2 --coil-segments 16 --coil-chunk-size 128 \
+  --max-boundary-projection-error none \
+  --skip-mgrid --skip-provider-parity \
+  --solver-mode parity --return-best-scored-state \
+  --freeb-edge-control-projection square
+venv/bin/python tools/diagnostics/summarize_square_coil_profiles.py \
+  --markdown /tmp/vmec_edge_update_diag_smoke_enabled
+```
+
+Result: the real solver JSON and summary row reported
+`basis_symmetry=square`, `apply_count=2`, `zero_velocity_count=1`,
+`state_residual.status=measured`, and `update_direction.status=measured`.
+
 ### File structure and best-practice adherence
 
 - Projection math remains in `vmec_jax/solvers/free_boundary/control.py`.
