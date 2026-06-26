@@ -28527,3 +28527,98 @@ Targeted test result: `27 passed, 1 warning`.
 ### User input needed
 
 No user input is needed.
+---
+## 243. Added Square-Coil Resolution Preflight Diagnostics
+
+### Steps taken
+
+- Added `--resolution-diagnostics-only` to
+  `tools/diagnostics/profile_square_coil_free_boundary.py`.
+- Added a `resolution_deck` JSON block that records:
+  - selected `MPOL`, `NTOR`, `NS`, `NZETA`, and mode count;
+  - recommended square-axis `NZETA`;
+  - projection-gate target and observed max/rms projection error;
+  - whether `mgrid_nphi` is a multiple of `NZETA`;
+  - a compact status/reason list before any coil, mgrid, or equilibrium work.
+- Kept normal profile reports compatible by adding the same `resolution_deck`
+  block to full solve reports.
+- Added tests for the normal production-ready report and the
+  diagnostics-only path with an intentionally incompatible `mgrid_nphi`.
+- Updated the mirror README and convergence plan docs with the preflight
+  command to use before editing `mpol`, `ntor`, `nzeta`, or `mgrid_nphi`.
+
+### Results obtained
+
+- The cheap preflight confirms that the current production square-axis spline
+  deck `MPOL=5, NTOR=28, NZETA=64` passes the strict
+  `5e-12` projection gate:
+  - max component projection error `3.48e-12`;
+  - recommended `NZETA=64`;
+  - `mgrid_nphi=64` is compatible with `NZETA=64`.
+- The lower deck `MPOL=5, NTOR=20, NZETA=48` is diagnostic-only for this
+  target:
+  - max component projection error `1.76e-9`;
+  - it fails the strict `5e-12` projection gate;
+  - the automatic recommendation is `MPOL=5, NTOR=28, NZETA>=64`.
+- A deliberately mismatched `mgrid_nphi=96` with `NZETA=64` is now reported as
+  `mgrid_nphi_not_multiple_of_nzeta` in diagnostics-only mode instead of
+  failing before a report can be written.
+- The active VMEC2000 strict-reference run is still running on `office`. Latest
+  observed partial row had `9379` parsed force rows, best total residual
+  `7.70e-10`, latest total residual `8.09e-10`, latest max component
+  `3.67e-10`, and zero vacuum-grid excursions. This looks like a slow
+  plateau/oscillatory tail in the `FTOL=1e-10` stage, not yet evidence for
+  `FTOL=1e-12`.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py
+venv/bin/python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py tests/test_profile_square_coil_free_boundary.py
+venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py --outdir results/square_coil_resolution_diag_prod --mpol 5 --ntor 28 --ns 17 --nzeta 64 --ns-array 9,13,17 --niter-array 4000,8000,24000 --ftol-array 1e-8,1e-10,1e-12 --mgrid-nphi 64 --axis-kind spline --side-power 1.0 --corner-power 1.0 --max-boundary-projection-error 5e-12 --resolution-diagnostics-only
+venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py --outdir results/square_coil_resolution_diag_under --mpol 5 --ntor 20 --ns 17 --nzeta 48 --ns-array 9,13,17 --niter-array 4000,8000,24000 --ftol-array 1e-8,1e-10,1e-12 --mgrid-nphi 48 --axis-kind spline --side-power 1.0 --corner-power 1.0 --max-boundary-projection-error 5e-12 --resolution-diagnostics-only
+venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py --outdir results/square_coil_resolution_diag_bad_nphi --mpol 5 --ntor 28 --ns 17 --nzeta 64 --mgrid-nphi 96 --axis-kind spline --side-power 1.0 --corner-power 1.0 --max-boundary-projection-error none --resolution-diagnostics-only
+```
+
+Targeted test result: `18 passed, 1 warning`.
+
+### File structure and best-practice notes
+
+- No new top-level diagnostic file was added; the existing square-coil profiler
+  now has a cheap preflight mode and the full solve mode shares the same
+  configuration path.
+- The new `resolution_deck` block is small JSON metadata in ignored
+  `results/` reports and does not affect solver state, differentiability, or
+  committed outputs.
+- This keeps the spline-smoothed Fourier bridge explicit: splines reduce the
+  square-axis high-mode tail before VMEC projection, while true spline-native
+  plasma-boundary unknowns remain a separate solver-basis lane.
+
+### Best next steps
+
+1. Let the active VMEC2000 row finish or declare a plateau if it remains near
+   `1e-9` through the remaining budget.
+2. If it plateaus, launch a focused VMEC2000 `DELT`/stage-budget scan on the
+   same `5,28,64` production deck before another direct-JAX heavy run.
+3. Use `--resolution-diagnostics-only` as the required first step for any
+   edited `MPOL`/`NTOR`/`NZETA`/`mgrid_nphi` deck.
+4. Continue closing the `vmec_jax` free-boundary parity gap against VMEC2000;
+   VMEC2000 is currently the more robust strict-reference oracle for the
+   generated-`mgrid` square-coil case.
+
+### Completion percentages after M243
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `92%`.
+- VMEC2000 robustness/reference lane: `94%`, with the strict row still active
+  but likely plateauing above `1e-12`.
+- Direct-coil finite-beta diagnostic lane: `86%`.
+- Direct-coil GPU/JIT parity lane: `77%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `74%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%` for preflight
+  production-deck diagnostics.
+- True spline/control-basis hybrid lane: `36%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.

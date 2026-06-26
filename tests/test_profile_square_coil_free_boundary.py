@@ -25,12 +25,14 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "control_spline",
             "--verbose-solver",
             "--virtual-casing-diagnostics",
+            "--resolution-diagnostics-only",
         ]
     )
 
     assert args.axis_kind == "control_spline"
     assert args.verbose_solver is True
     assert args.virtual_casing_diagnostics is True
+    assert args.resolution_diagnostics_only is True
 
 
 def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tails():
@@ -366,6 +368,47 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert projection["recommended_nzeta"] == 16
     assert projection["mode_count"] > 0
     assert np.isfinite(float(projection["max_abs_error"]))
+    deck = data["resolution_deck"]
+    assert deck["status"] == "production_ready"
+    assert deck["projection_meets_gate"] is True
+    assert deck["mgrid_nphi_multiple_of_nzeta"] is True
+
+
+def test_square_coil_profile_resolution_diagnostics_only_reports_incompatible_mgrid(tmp_path: Path):
+    outdir = tmp_path / "profile_resolution_only"
+
+    assert (
+        profile.main(
+            [
+                "--outdir",
+                str(outdir),
+                "--mpol",
+                "3",
+                "--ntor",
+                "4",
+                "--ns",
+                "5",
+                "--nzeta",
+                "16",
+                "--mgrid-nphi",
+                "24",
+                "--max-boundary-projection-error",
+                "none",
+                "--resolution-diagnostics-only",
+            ]
+        )
+        == 0
+    )
+
+    data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    assert data["configuration"]["resolution_diagnostics_only"] is True
+    assert data["backends"] == {}
+    assert data["mgrid"]["created"] is False
+    deck = data["resolution_deck"]
+    assert deck["status"] == "diagnostic_underresolved"
+    assert deck["mgrid_nphi_multiple_of_nzeta"] is False
+    assert "mgrid_nphi_not_multiple_of_nzeta" in deck["reasons"]
+    assert "projection_gate_disabled" in deck["reasons"]
 
 
 def test_square_coil_profile_projection_gate_fails_before_backend_work(monkeypatch, tmp_path: Path):

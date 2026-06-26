@@ -194,6 +194,14 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Add optional finite-beta virtual-casing postsolve diagnostics for the direct-coil backend.",
     )
+    p.add_argument(
+        "--resolution-diagnostics-only",
+        action="store_true",
+        help=(
+            "Write Fourier projection, NZETA, and mgrid compatibility diagnostics, "
+            "then exit before coil/mgrid generation or equilibrium solves."
+        ),
+    )
     return p
 
 
@@ -1099,6 +1107,87 @@ def _boundary_projection_payload(config: ExampleConfig) -> dict[str, Any]:
     return _example_boundary_projection_payload(config)
 
 
+def _finite_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except Exception:
+        return None
+    return out if np.isfinite(out) else None
+
+
+def _resolution_deck_payload(
+    *,
+    config: ExampleConfig,
+    projection: dict[str, Any],
+    mgrid_nphi: int,
+    target_error: float | None,
+    include_recommendation: bool = False,
+) -> dict[str, Any]:
+    """Summarize cheap pre-solve checks for a square-hybrid Fourier deck."""
+
+    recommended_nzeta = recommended_square_axis_nzeta(int(config.ntor))
+    max_component_error = _finite_float(projection.get("max_abs_component_error"))
+    rms_error = _finite_float(projection.get("rms_error"))
+    nzeta_underrecommended = bool(int(config.nzeta) < int(recommended_nzeta))
+    mgrid_nphi_multiple = bool(int(mgrid_nphi) % max(1, int(config.nzeta)) == 0)
+    projection_meets_gate = (
+        None
+        if target_error is None or max_component_error is None
+        else bool(max_component_error <= float(target_error))
+    )
+
+    reasons: list[str] = []
+    if target_error is None:
+        reasons.append("projection_gate_disabled")
+    elif not bool(projection_meets_gate):
+        reasons.append("projection_error_exceeds_gate")
+    if nzeta_underrecommended:
+        reasons.append("nzeta_below_square_axis_recommendation")
+    if not mgrid_nphi_multiple:
+        reasons.append("mgrid_nphi_not_multiple_of_nzeta")
+
+    if not reasons:
+        status = "production_ready"
+    elif reasons == ["projection_gate_disabled"]:
+        status = "diagnostic_gate_disabled"
+    else:
+        status = "diagnostic_underresolved"
+
+    payload: dict[str, Any] = {
+        "status": status,
+        "reasons": reasons,
+        "mpol": int(config.mpol),
+        "ntor": int(config.ntor),
+        "ns": int(config.ns),
+        "nzeta": int(config.nzeta),
+        "recommended_nzeta": int(recommended_nzeta),
+        "nzeta_underrecommended": nzeta_underrecommended,
+        "mgrid_nphi": int(mgrid_nphi),
+        "mgrid_nphi_multiple_of_nzeta": mgrid_nphi_multiple,
+        "mode_count": int(projection.get("mode_count", -1)),
+        "projection_target_max_component_error": None if target_error is None else float(target_error),
+        "projection_max_abs_component_error": max_component_error,
+        "projection_rms_error": rms_error,
+        "projection_meets_gate": projection_meets_gate,
+    }
+    if include_recommendation and target_error is not None and projection_meets_gate is False:
+        recommendation = recommend_square_axis_stellarator_mirror_hybrid_resolution(
+            target_max_component_error=float(target_error),
+            mpol=int(config.mpol),
+            ntor=int(config.ntor),
+            max_mpol=max(8, int(config.mpol) + 2),
+            max_ntor=max(32, int(config.ntor) + 8),
+            nfp=int(config.nfp),
+            ns_array=[int(value) for value in config.ns_array],
+            niter_array=[int(value) for value in config.niter_array],
+            ftol_array=[float(value) for value in config.ftol_array],
+            phiedge=float(config.phiedge),
+            **_square_axis_sample_kwargs(config),
+        )
+        payload["recommended_deck"] = recommendation.get("recommended")
+    return payload
+
+
 def _enforce_boundary_projection_gate(
     *,
     config: ExampleConfig,
@@ -1191,7 +1280,7 @@ def main(argv: list[str] | None = None) -> int:
     recommended_nzeta = recommended_square_axis_nzeta(int(args.ntor))
     resolved_nzeta = int(recommended_nzeta if args.nzeta is None else args.nzeta)
     mgrid_nphi = int(resolved_nzeta if args.mgrid_nphi is None else args.mgrid_nphi)
-    if mgrid_nphi % max(1, resolved_nzeta) != 0:
+    if mgrid_nphi % max(1, resolved_nzeta) != 0 and not bool(args.resolution_diagnostics_only):
         raise ValueError(
             f"--mgrid-nphi={mgrid_nphi} is incompatible with --nzeta={resolved_nzeta} for VMEC-plane "
             "mgrid sampling; omit --mgrid-nphi or use a multiple of --nzeta."
@@ -1239,6 +1328,53 @@ def main(argv: list[str] | None = None) -> int:
         f"side_power={float(args.side_power):g}, corner_power={float(args.corner_power):g}"
     )
     boundary_projection = _boundary_projection_payload(config)
+    resolution_deck = _resolution_deck_payload(
+        config=config,
+        projection=boundary_projection,
+        mgrid_nphi=mgrid_nphi,
+        target_error=args.max_boundary_projection_error,
+        include_recommendation=bool(args.resolution_diagnostics_only),
+    )
+    if bool(args.resolution_diagnostics_only):
+        payload = {
+            "schema": "square_coil_free_boundary_backend_profile",
+            "configuration": {
+                "beta_percent": float(args.beta_percent),
+                "mpol": int(args.mpol),
+                "ntor": int(args.ntor),
+                "ns": int(ns_array[-1]),
+                "nzeta": resolved_nzeta,
+                "nzeta_auto": bool(args.nzeta is None),
+                "recommended_nzeta": int(recommended_nzeta),
+                "nzeta_underrecommended": bool(resolved_nzeta < int(recommended_nzeta)),
+                "max_iter": int(niter_array[-1]),
+                "ftol": float(ftol_array[-1]),
+                "axis_kind": str(args.axis_kind),
+                "side_power": float(args.side_power),
+                "corner_power": float(args.corner_power),
+                "max_boundary_projection_error": None
+                if args.max_boundary_projection_error is None
+                else float(args.max_boundary_projection_error),
+                "use_multigrid_schedule": bool(len(ns_array) > 1),
+                "ns_array": ns_values,
+                "niter_array": niter_values,
+                "ftol_array": ftol_values,
+                "resolution_diagnostics_only": True,
+            },
+            "mgrid": {
+                "created": False,
+                "nphi": int(mgrid_nphi),
+            },
+            "boundary_projection": boundary_projection,
+            "resolution_deck": resolution_deck,
+            "provider_parity": None,
+            "backends": {},
+        }
+        report = outdir / "square_coil_free_boundary_backend_profile.json"
+        _log_step(f"writing resolution diagnostics {report}")
+        report.write_text(json.dumps(_json_ready(payload), indent=2, sort_keys=True, allow_nan=False) + "\n")
+        print(report)
+        return 0
     _enforce_boundary_projection_gate(
         config=config,
         projection=boundary_projection,
@@ -1308,6 +1444,7 @@ def main(argv: list[str] | None = None) -> int:
             "direct_trial_bsqvac_resample": bool(args.direct_trial_bsqvac_resample),
             "verbose_solver": bool(args.verbose_solver),
             "virtual_casing_diagnostics": bool(args.virtual_casing_diagnostics),
+            "resolution_diagnostics_only": bool(args.resolution_diagnostics_only),
             "phiedge": float(config.phiedge),
             "delt": float(args.delt),
             "activate_fsq": float(args.activate_fsq),
@@ -1337,6 +1474,7 @@ def main(argv: list[str] | None = None) -> int:
             **bounds,
         },
         "boundary_projection": boundary_projection,
+        "resolution_deck": resolution_deck,
         "provider_parity": None,
         "backends": {},
     }

@@ -415,6 +415,12 @@ error, mode count, and recommended ``NZETA`` for the selected
 These metrics should be reviewed whenever changing ``MPOL``, ``NTOR``, or
 ``NZETA``: they diagnose input-boundary underfitting before the free-boundary
 nonlinear solve is interpreted.
+The profiler also has a cheap ``--resolution-diagnostics-only`` mode that
+writes the ``boundary_projection`` and ``resolution_deck`` JSON blocks, then
+exits before coil, mgrid, or equilibrium work. Use it as the first check after
+changing mode counts or ``mgrid_nphi``; it records projection-gate status,
+recommended ``NZETA``, and whether the generated mgrid toroidal plane count is
+compatible with the VMEC ``NZETA`` grid.
 The root square-coil example now enforces
 ``MAX_BOUNDARY_PROJECTION_ERROR = 5e-12`` by default and uses
 ``MPOL=5, NTOR=28, NZETA=64`` as the production-style deck. This is strict

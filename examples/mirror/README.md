@@ -267,6 +267,23 @@ meaningful. For production sweeps, add a projection gate such as
 ``--max-boundary-projection-error 5e-12`` so underresolved
 ``MPOL``/``NTOR``/``NZETA`` combinations fail before starting a long backend
 solve. Omit the flag, or pass ``none``, for diagnostic underresolved profiles.
+Before launching a long solve after changing ``MPOL``, ``NTOR``, ``NZETA``, or
+``--mgrid-nphi``, run the same profiler in preflight mode::
+
+  python tools/diagnostics/profile_square_coil_free_boundary.py \
+    --mpol 5 --ntor 28 --nzeta 64 --mgrid-nphi 64 \
+    --ns-array 9,13,17 --niter-array 4000,8000,24000 \
+    --ftol-array 1e-8,1e-10,1e-12 \
+    --axis-kind spline --side-power 1.0 --corner-power 1.0 \
+    --max-boundary-projection-error 5e-12 \
+    --resolution-diagnostics-only
+
+The JSON report exits before coil, mgrid, or equilibrium work and writes a
+``resolution_deck`` block with production-gate status, projection error,
+recommended ``NZETA``, and ``mgrid_nphi``/``NZETA`` compatibility. On the
+current spline-smoothed target, ``MPOL=5, NTOR=20, NZETA=48`` fails the strict
+projection gate with max component error about ``1.8e-9`` and recommends
+``MPOL=5, NTOR=28, NZETA>=64``.
 
 The report stays under ignored ``results/`` paths and records ``vmec_jax``
 direct-coil, ``vmec_jax`` generated-mgrid, and optional raw VMEC2000
