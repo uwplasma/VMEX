@@ -85,7 +85,7 @@ def _parser() -> argparse.ArgumentParser:
         help="VMEC zeta grid size. Omit, 0, or 'auto' to use the square-axis recommendation for NTOR.",
     )
     p.add_argument("--max-iter", type=int, default=200)
-    p.add_argument("--ftol", type=float, default=1.0e-8)
+    p.add_argument("--ftol", type=float, default=ExampleConfig().ftol)
     p.add_argument(
         "--solver-mode",
         default="parity",

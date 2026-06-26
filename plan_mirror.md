@@ -28699,3 +28699,58 @@ Targeted test result: `30 passed, 1 warning`.
 ### User input needed
 
 No user input is needed.
+---
+## 245. Tightened Profiler Default FTOL To The Strict Example Value
+
+### Steps taken
+
+- Changed the square-coil backend profiler's single-stage `--ftol` default from
+  `1e-8` to `ExampleConfig().ftol`, which is `1e-12`.
+- Added parser test coverage so this default cannot silently drift back to the
+  loose tolerance.
+
+### Results obtained
+
+- User-edited profiler commands that omit `--ftol` now inherit the same strict
+  tolerance as the root square-coil example.
+- Staged production commands remain controlled by explicit
+  `--ftol-array 1e-8,1e-10,1e-12`.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py
+venv/bin/python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py tests/test_profile_square_coil_free_boundary.py
+git diff --check
+```
+
+Targeted test result: `19 passed, 1 warning`.
+
+### File structure and best-practice notes
+
+- This is a CLI default change only; no solver algorithm or data schema changed.
+- The profiler still requires explicit iteration budgets or staged arrays for
+  serious strict solves, but it no longer advertises `1e-8` as the fallback
+  tolerance.
+
+### Best next steps
+
+1. Keep using explicit `--ftol-array 1e-8,1e-10,1e-12` for production staged
+   VMEC2000/JAX comparisons.
+2. Let the active VMEC2000 strict run finish or plateau before launching the
+   next `DELT`/stage-budget scan.
+
+### Completion percentages after M245
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `94%`.
+- VMEC2000 robustness/reference lane: `95%`.
+- Direct-coil finite-beta diagnostic lane: `86%`.
+- Direct-coil GPU/JIT parity lane: `77%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `75%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- True spline/control-basis hybrid lane: `36%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
