@@ -5739,6 +5739,100 @@ Visual validation:
 No user input is needed.
 
 ---
+## 248. Aligned The Square-Coil Hybrid Defaults With The Strict `FTOL=1e-12` Deck
+
+### Steps taken
+
+- Rechecked the active branch, recent PR commits, and the live VMEC2000
+  square-coil strict-reference run on `office`.
+- Ran a cheap local Fourier-projection sweep for the current first-order
+  rounded-spline square-axis target.
+- Updated the root square-coil hybrid example to use the same final-stage
+  iteration budget as the current strict VMEC2000 profile.
+- Added a regression test for the strict `MPOL=5, NTOR=28, NZETA=64`
+  spline-projection gate.
+- Updated the mirror README and direct-coil convergence notes so the public
+  instructions no longer advertise the older `12000`-iteration final stage.
+
+### Results obtained
+
+- The projection sweep confirms that the current spline target is representable
+  at strict tolerance by the finite Fourier deck:
+  - `MPOL=5, NTOR=12`: max component projection error `5.603270e-6`;
+  - `MPOL=5, NTOR=20`: `1.763382e-9`;
+  - `MPOL=5, NTOR=23`: `3.315160e-10`;
+  - `MPOL=5, NTOR=25`: `1.921577e-11`;
+  - `MPOL=5, NTOR=28`: `3.480549e-12`;
+  - `MPOL=7, NTOR=28`: `3.480549e-12`;
+  - `MPOL=8, NTOR=32`: `3.468115e-12`.
+- The finite Fourier recommendation for a `5e-12` projection gate is
+  `MPOL=5, NTOR=28, NZETA>=64` for the current first-order spline shape.
+- The active VMEC2000 `MPOL=5, NTOR=28, NZETA=64, NS=9->13->17` run remains
+  unconverged at the requested per-component `1e-12` gate. It initially
+  recovered in the final stage, then began cycling around `1e-10`; latest
+  observed final total was `1.892e-10`, best sampled total was `1.287e-10`, and
+  `vacuum_grid_exceeded_count` remained zero.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py::test_square_axis_recommended_nzeta_and_example_guard \
+  tests/test_toroidal_hybrid.py::test_square_axis_first_order_weights_reduce_production_projection_error \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_parser_accepts_control_spline_axis_kind \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_records_boundary_projection_payload
+```
+
+Result: `4 passed, 1 warning`.
+
+```bash
+git diff --check
+```
+
+Result: passed.
+
+### File structure and best-practice notes
+
+- The user-facing example remains self-contained in
+  `examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py`;
+  the only code default changed is the strict staged iteration budget.
+- The projection regression lives in `tests/test_toroidal_hybrid.py` because
+  it validates the geometry helper rather than a long free-boundary solve.
+- Documentation changes are limited to the example README and convergence plan
+  page so solver claims and run instructions stay in sync with the profiling
+  lane.
+
+### Best next steps
+
+1. Let the active VMEC2000 row finish or reach a clear plateau at the final
+   stage before launching another office workload.
+2. If it stays above `1e-12`, run a focused VMEC2000 schedule/`DELT` scan on
+   the same `5,28,64` spline deck rather than increasing Fourier modes first.
+3. After the VMEC2000 decision point, run the matching `vmec_jax`
+   generated-mgrid and direct-coil rows with the same strict deck and compare
+   final components, tail plateau, boundary motion, and provider parity.
+4. Keep using the spline/control-spline bridge for the square-axis target; if
+   both VMEC2000 and `vmec_jax` plateau above the strict gate, move the hybrid
+   lane toward a solver-native spline/control-basis reparameterization instead
+   of only adding Fourier modes.
+
+### Completion percentages after M248
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `96%`.
+- VMEC2000 robustness/reference lane: `96%`, now likely schedule-limited near
+  `1e-10` on the active `5,28,64` row but still running.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `77%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `75%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- True spline/control-basis hybrid lane: `38%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---
 ## 56. 2026-06-17 M8w matrix-free block LSMR correction
 
 This lane converted the successful M8u/M8v block-dense split into a scalable

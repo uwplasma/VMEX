@@ -222,7 +222,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().nvacskip == 1
     assert module.ExampleConfig().return_best_scored_state is True
     assert module.ExampleConfig().delt == pytest.approx(0.02)
-    assert module.ExampleConfig().niter_array == (4000, 8000, 12000)
+    assert module.ExampleConfig().niter_array == (4000, 8000, 24000)
     assert module.ExampleConfig().coil_chunk_size == 512
     assert module.ExampleConfig().max_boundary_projection_error == pytest.approx(5.0e-12)
     assert module.ExampleConfig().side_power == pytest.approx(1.0)
@@ -345,6 +345,16 @@ def test_square_axis_first_order_weights_reduce_production_projection_error():
 
     assert smooth_error["max_abs_component_error"] < 1.0e-7
     assert sharp_error["max_abs_component_error"] > 1.0e-5
+
+    strict_error = square_axis_stellarator_mirror_hybrid_projection_error(
+        mpol=5,
+        ntor=28,
+        ntheta_fit=64,
+        nzeta_fit=224,
+        **base_kwargs,
+    )
+    assert strict_error["recommended_nzeta"] == 64
+    assert strict_error["max_abs_component_error"] < 5.0e-12
 
 
 def test_square_axis_resolution_recommendation_reports_finite_fourier_closure():

@@ -42,7 +42,7 @@ subroutine for this generated-``mgrid`` deck. The default free-boundary
 activation threshold is VMEC-like ``1e-3`` so the vacuum/edge coupling has
 enough final-grid iterations to converge. The square-coil example now sets
 ``NVACSKIP=1`` by default and uses ``DELT=0.02`` with staged
-``NITER_ARRAY = 4000, 8000, 12000``. This is
+``NITER_ARRAY = 4000, 8000, 24000``. This is
 intentionally conservative: the VMEC-style adaptive vacuum cadence cannot go
 below the input ``NVACSKIP`` floor, so the earlier ``NVACSKIP=NZETA`` default
 allowed long stale vacuum-source reuse windows just when this new geometry
@@ -525,7 +525,7 @@ The remaining work is deliberately narrow:
    ``solver_mode="parity"``, and the VMEC-like
    ``FREE_BOUNDARY_ACTIVATE_FSQ=1e-3`` unless a benchmark shows a better value.
    The current robust default ladder is ``NS_ARRAY = 9, 13, 17`` with
-   ``NITER_ARRAY = 4000, 8000, 12000`` and
+   ``NITER_ARRAY = 4000, 8000, 24000`` and
    ``FTOL_ARRAY = 1e-8, 1e-10, 1e-12``.
 3. Run resolution closure around the first transition beta and at ``10%`` beta,
    comparing ``NS``, ``MPOL``, ``NTOR``, ``NZETA``, generated-mgrid resolution,
