@@ -78,6 +78,28 @@ def test_source_health_fail_function_lines_is_opt_in(tmp_path: Path) -> None:
     assert source_health.main([str(tmp_path), "--fail-function-lines", "3"]) == 1
 
 
+def test_source_health_named_function_baseline_gate(tmp_path: Path, capsys) -> None:
+    source = tmp_path / "module.py"
+    source.write_text("def bounded():\n    x = 1\n    return x\n", encoding="utf-8")
+    key = f"{source}:bounded"
+
+    assert source_health.main([str(source), "--max-function-lines-at", f"{key}=3"]) == 0
+    assert source_health.main([str(source), "--max-function-lines-at", f"{key}=2"]) == 1
+    assert "exceeding baseline 2" in capsys.readouterr().out
+
+
+def test_source_health_named_function_baseline_requires_existing_key(tmp_path: Path, capsys) -> None:
+    source = tmp_path / "module.py"
+    source.write_text("def bounded():\n    return 1\n", encoding="utf-8")
+
+    assert source_health.main([str(source), "--max-function-lines-at", f"{source}:missing=3"]) == 1
+    assert "was not found" in capsys.readouterr().out
+
+
+def test_source_health_named_function_baseline_rejects_malformed_limits() -> None:
+    assert source_health.main(["vmec_jax", "--max-function-lines-at", "missing-limit"]) == 2
+
+
 def test_source_health_root_namespace_counts_helper_prefixes(tmp_path: Path) -> None:
     package = tmp_path / "vmec_jax"
     package.mkdir()

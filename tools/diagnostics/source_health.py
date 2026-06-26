@@ -119,6 +119,50 @@ def collect_function_stats(roots: Iterable[Path]) -> list[FunctionStat]:
     return sorted(stats, key=lambda item: (-item.lines, str(item.path), item.qualified_name))
 
 
+def function_stat_key(stat: FunctionStat) -> str:
+    """Return the stable ``path:function`` key used by baseline gates."""
+
+    return f"{stat.path}:{stat.qualified_name}"
+
+
+def parse_function_line_limits(values: Iterable[str]) -> dict[str, int]:
+    """Parse ``path:function=max_lines`` entries for function-size baselines."""
+
+    limits: dict[str, int] = {}
+    for raw in values:
+        key, sep, limit_text = str(raw).partition("=")
+        if not sep:
+            raise ValueError(f"Function line limit must be 'path:function=max_lines', got {raw!r}.")
+        key = key.strip()
+        if not key:
+            raise ValueError(f"Function line limit key is empty in {raw!r}.")
+        try:
+            limit = int(limit_text)
+        except ValueError as exc:
+            raise ValueError(f"Function line limit must be an integer in {raw!r}.") from exc
+        if limit < 1:
+            raise ValueError(f"Function line limit must be positive in {raw!r}.")
+        limits[key] = limit
+    return limits
+
+
+def function_line_limit_failures(
+    stats: Iterable[FunctionStat],
+    limits: dict[str, int],
+) -> list[tuple[str, int, int]]:
+    """Return named functions whose physical line count exceeds its baseline."""
+
+    by_key = {function_stat_key(stat): stat for stat in stats}
+    failures: list[tuple[str, int, int]] = []
+    for key, limit in sorted(limits.items()):
+        stat = by_key.get(key)
+        if stat is None:
+            failures.append((key, -1, limit))
+        elif stat.lines > limit:
+            failures.append((key, stat.lines, limit))
+    return failures
+
+
 def collect_root_namespace_stat(
     root: Path,
     *,
@@ -228,6 +272,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Exit nonzero if any scanned function is at or above this line count. Disabled by default.",
     )
     parser.add_argument(
+        "--max-function-lines-at",
+        action="append",
+        default=None,
+        metavar="PATH:FUNCTION=LINES",
+        help=(
+            "Exit nonzero if the named function exceeds this baseline. "
+            "May be repeated; use it to prevent known large functions from growing during refactors."
+        ),
+    )
+    parser.add_argument(
         "--root-namespace",
         default="vmec_jax",
         help="Root package to inspect for namespace-sprawl metrics.",
@@ -276,6 +330,18 @@ def main(argv: list[str] | None = None) -> int:
         failed = True
     if args.fail_function_lines > 0 and any(item.lines >= args.fail_function_lines for item in function_stats):
         failed = True
+    try:
+        function_limits = parse_function_line_limits(args.max_function_lines_at or [])
+    except ValueError as exc:
+        print(f"source-health error: {exc}")
+        return 2
+    function_limit_failures = function_line_limit_failures(function_stats, function_limits)
+    for key, observed, limit in function_limit_failures:
+        if observed < 0:
+            print(f"source-health error: {key} was not found for function-size baseline {limit}.")
+        else:
+            print(f"source-health error: {key} has {observed} lines, exceeding baseline {limit}.")
+    failed = failed or bool(function_limit_failures)
     if args.max_root_helper_prefix_files >= 0:
         failed = failed or len(namespace_stat.helper_prefix_files) > int(args.max_root_helper_prefix_files)
     if args.max_root_python_files >= 0:

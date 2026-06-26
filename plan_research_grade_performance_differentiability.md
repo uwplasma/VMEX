@@ -6585,6 +6585,59 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
 
+### 2026-06-26: Add function-size regression gate for residual-loop refactor
+
+Steps taken:
+
+- Extended ``tools/diagnostics/source_health.py`` with a repeatable
+  ``--max-function-lines-at PATH:FUNCTION=LINES`` gate.
+- Added unit tests covering passing, exceeding, missing-function, and malformed
+  named-function baseline cases.
+- Wired the CI source-health step to enforce that
+  ``vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter``
+  does not grow beyond the current ``2516``-line baseline while the residual
+  refactor continues.
+
+Results obtained:
+
+- ``python -m ruff check tools/diagnostics/source_health.py
+  tests/test_source_health_diagnostics.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_source_health_diagnostics.py -q`` passed with ``10 passed``.
+- The exact CI source-health command passed locally:
+  ``python tools/diagnostics/source_health.py --top 20
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2516``.
+- ``git diff --check`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size is ``28.37 MiB`` and no tracked file
+  exceeds ``2 MiB``.
+
+Best next steps:
+
+1. Push this CI maintainability gate and let the refreshed CI run validate it.
+2. Continue residual-loop simplification only with larger seams that lower the
+   named-function baseline; update the CI baseline downward whenever a tranche
+   removes more lines.
+3. Keep full benchmark, parity, and AD-vs-FD evidence artifacts stable unless a
+   future numerical/performance change invalidates them.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.1%.
+- Free-boundary production differentiability: 97.3%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 73.7%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
 ### 2026-06-26: Package pre-restart trigger runtime seam
 
 Steps taken:
