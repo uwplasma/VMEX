@@ -42,6 +42,7 @@ from vmec_jax.namelist import InData, write_indata
 from vmec_jax.plotting import fix_matplotlib_3d, prepare_matplotlib_3d
 from vmec_jax.profiles import pressure_profile_to_vmec_am, standard_finite_beta_profiles
 from vmec_jax.toroidal_hybrid import (
+    SquareAxisSplineControls,
     recommend_square_axis_stellarator_mirror_hybrid_resolution,
     recommended_square_axis_nzeta,
     square_axis_stellarator_mirror_hybrid_indata,
@@ -69,6 +70,7 @@ PLASMA_AXIS_HALF_WIDTH = 0.5 * COIL_SQUARE_SIDE_LENGTH
 PLASMA_AXIS_KIND = "spline"
 PLASMA_AXIS_SQUARE_POWER = 3.0
 PLASMA_AXIS_SPLINE_CORNER_RADIUS_FACTOR = 1.14
+PLASMA_AXIS_SPLINE_CONTROLS: SquareAxisSplineControls | None = None
 PLASMA_MINOR_RADIUS = 0.03
 SIDE_ELONGATION = 0.08
 SIDE_MINOR_MODULATION = 0.08
@@ -131,6 +133,7 @@ class ExampleConfig:
     plasma_axis_kind: str = PLASMA_AXIS_KIND
     plasma_axis_square_power: float = PLASMA_AXIS_SQUARE_POWER
     plasma_axis_spline_corner_radius_factor: float = PLASMA_AXIS_SPLINE_CORNER_RADIUS_FACTOR
+    plasma_axis_spline_controls: SquareAxisSplineControls | None = PLASMA_AXIS_SPLINE_CONTROLS
     plasma_minor_radius: float = PLASMA_MINOR_RADIUS
     side_elongation: float = SIDE_ELONGATION
     side_minor_modulation: float = SIDE_MINOR_MODULATION
@@ -360,7 +363,7 @@ def _stage_values(config: ExampleConfig) -> tuple[list[int] | int, list[int] | i
 
 
 def _square_axis_sample_kwargs(config: ExampleConfig) -> dict[str, Any]:
-    return {
+    kwargs: dict[str, Any] = {
         "axis_half_width": float(config.plasma_axis_half_width),
         "axis_kind": str(config.plasma_axis_kind),
         "axis_square_power": float(config.plasma_axis_square_power),
@@ -374,6 +377,19 @@ def _square_axis_sample_kwargs(config: ExampleConfig) -> dict[str, Any]:
         "corner_amplitude": float(config.corner_amplitude),
         "corner_rotation": float(config.corner_rotation),
         "corner_helicity": int(config.corner_helicity),
+    }
+    if config.plasma_axis_spline_controls is not None:
+        kwargs["axis_spline_controls"] = config.plasma_axis_spline_controls.validate()
+    return kwargs
+
+
+def _spline_controls_payload(controls: SquareAxisSplineControls | None) -> dict[str, Any] | None:
+    if controls is None:
+        return None
+    validated = controls.validate()
+    return {
+        "zeta": [float(value) for value in validated.zeta],
+        "radius": [float(value) for value in validated.radius],
     }
 
 
@@ -1232,6 +1248,7 @@ def _metrics_payload(
         "plasma_axis_half_width": float(config.plasma_axis_half_width),
         "plasma_axis_kind": str(config.plasma_axis_kind),
         "plasma_axis_spline_corner_radius_factor": float(config.plasma_axis_spline_corner_radius_factor),
+        "plasma_axis_spline_controls": _spline_controls_payload(config.plasma_axis_spline_controls),
         "side_power": float(config.side_power),
         "corner_power": float(config.corner_power),
         "coil_square_side_length": float(config.coil_square_side_length),

@@ -13,12 +13,14 @@ import pytest
 from vmec_jax.namelist import read_indata, write_indata
 import vmec_jax.toroidal_hybrid as toroidal_hybrid
 from vmec_jax.toroidal_hybrid import (
+    SquareAxisSplineControls,
     ToroidalHybridBoundarySamples,
     evaluate_toroidal_hybrid_indata_boundary,
     recommend_square_axis_stellarator_mirror_hybrid_resolution,
     recommended_square_axis_nzeta,
     sample_square_axis_stellarator_mirror_hybrid_boundary,
     sample_toroidal_stellarator_mirror_hybrid_boundary,
+    square_axis_spline_radius,
     square_axis_stellarator_mirror_hybrid_indata,
     square_axis_stellarator_mirror_hybrid_projection_error,
     toroidal_hybrid_cross_section_anisotropy,
@@ -90,6 +92,8 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
     assert indata.get_int("NTOR") == 8
     assert "RBS" not in indata.indexed
     assert "ZBC" not in indata.indexed
+    assert vj.SquareAxisSplineControls is SquareAxisSplineControls
+    assert vj.square_axis_spline_radius is square_axis_spline_radius
     assert vj.sample_square_axis_stellarator_mirror_hybrid_boundary is sample_square_axis_stellarator_mirror_hybrid_boundary
     assert vj.square_axis_stellarator_mirror_hybrid_indata is square_axis_stellarator_mirror_hybrid_indata
     assert (
@@ -97,6 +101,8 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
         is square_axis_stellarator_mirror_hybrid_projection_error
     )
     assert public_api.square_axis_stellarator_mirror_hybrid_indata is square_axis_stellarator_mirror_hybrid_indata
+    assert public_api.SquareAxisSplineControls is SquareAxisSplineControls
+    assert public_api.square_axis_spline_radius is square_axis_spline_radius
     assert (
         public_api.square_axis_stellarator_mirror_hybrid_projection_error
         is square_axis_stellarator_mirror_hybrid_projection_error
@@ -106,6 +112,74 @@ def test_square_axis_toroidal_hybrid_boundary_and_indata_are_public():
         is recommend_square_axis_stellarator_mirror_hybrid_resolution
     )
     assert public_api.recommended_square_axis_nzeta is recommended_square_axis_nzeta
+
+
+def test_square_axis_control_spline_samples_and_projects_to_vmec_boundary():
+    controls = SquareAxisSplineControls.rounded_square(axis_half_width=1.5, corner_radius_factor=1.14)
+    zeta = np.linspace(0.0, 2.0 * np.pi, 64, endpoint=False)
+    radius = square_axis_spline_radius(zeta, controls)
+
+    assert radius.shape == zeta.shape
+    assert np.min(radius) > 0.0
+    np.testing.assert_allclose(square_axis_spline_radius(controls.zeta, controls), controls.radius)
+
+    samples = sample_square_axis_stellarator_mirror_hybrid_boundary(
+        axis_kind="control_spline",
+        axis_spline_controls=controls,
+        ntheta=32,
+        nzeta=64,
+        minor_radius=0.03,
+        side_elongation=0.08,
+        side_minor_modulation=0.08,
+        corner_ellipticity=0.04,
+        corner_amplitude=0.004,
+        corner_rotation=0.30,
+    )
+    metrics = toroidal_stellarator_mirror_hybrid_metrics(samples)
+    assert metrics["min_R"] > 0.0
+    assert metrics["stellsym_R_error"] < 1.0e-13
+    assert metrics["stellsym_Z_error"] < 1.0e-13
+
+    indata = square_axis_stellarator_mirror_hybrid_indata(
+        axis_kind="control_spline",
+        axis_spline_controls=controls,
+        mpol=5,
+        ntor=16,
+        ntheta_fit=64,
+        nzeta_fit=128,
+        minor_radius=0.03,
+        side_elongation=0.08,
+        side_minor_modulation=0.08,
+        corner_ellipticity=0.04,
+        corner_amplitude=0.004,
+        corner_rotation=0.30,
+    )
+    reconstructed = evaluate_toroidal_hybrid_indata_boundary(indata, ntheta=64, nzeta=128)
+    assert reconstructed.R.shape == (64, 128)
+    assert np.min(reconstructed.R) > 0.0
+
+
+@pytest.mark.parametrize(
+    ("controls", "match"),
+    [
+        (SquareAxisSplineControls(zeta=np.array([0.0, 1.0, 2.0]), radius=np.ones(3)), "at least four"),
+        (
+            SquareAxisSplineControls(zeta=np.array([0.0, 0.0, 1.0, 2.0]), radius=np.ones(4)),
+            "distinct",
+        ),
+        (
+            SquareAxisSplineControls(zeta=np.arange(4.0), radius=np.array([1.0, -1.0, 1.0, 1.0])),
+            "positive",
+        ),
+        (
+            SquareAxisSplineControls(zeta=np.arange(4.0).reshape(2, 2), radius=np.ones(4)),
+            "one-dimensional",
+        ),
+    ],
+)
+def test_square_axis_control_spline_rejects_invalid_controls(controls, match):
+    with pytest.raises(ValueError, match=match):
+        square_axis_spline_radius(np.linspace(0.0, 1.0, 4), controls)
 
 
 def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
@@ -136,11 +210,23 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().side_power == pytest.approx(1.0)
     assert module.ExampleConfig().corner_power == pytest.approx(1.0)
     assert module.ExampleConfig().nstep == 1
+    assert module.ExampleConfig().plasma_axis_spline_controls is None
     assert module.build_square_coils(module.ExampleConfig()).params.chunk_size == 512
     assert module.build_square_coils(module.ExampleConfig(coil_chunk_size=None)).params.chunk_size is None
     indata = module.make_free_boundary_indata(module.ExampleConfig(nstep=3), beta_percent=0.0)
     assert indata.get_int("NVACSKIP") == 1
     assert indata.get_int("NSTEP") == 3
+    controls = SquareAxisSplineControls.rounded_square(axis_half_width=1.5, corner_radius_factor=1.12)
+    spline_config = module.ExampleConfig(
+        plasma_axis_kind="control_spline",
+        plasma_axis_spline_controls=controls,
+        nstep=4,
+    )
+    spline_kwargs = module._square_axis_sample_kwargs(spline_config)
+    assert spline_kwargs["axis_kind"] == "control_spline"
+    np.testing.assert_allclose(spline_kwargs["axis_spline_controls"].radius, controls.validate().radius)
+    spline_indata = module.make_free_boundary_indata(spline_config, beta_percent=0.0)
+    assert spline_indata.get_int("NSTEP") == 4
     with pytest.raises(ValueError, match="boundary projection error is too large"):
         module.run_example(
             module.ExampleConfig(

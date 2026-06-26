@@ -160,7 +160,14 @@ iteration ladder is ``NS_ARRAY = 9, 13, 17``,
 ``NVACSKIP = 1``. The default
 square axis uses the low-bandwidth rounded ``axis_kind="spline"`` profile before
 VMEC Fourier projection, which is less sensitive to ``NTOR`` than the sharper
-polar superellipse. The default square-axis side/corner weights use
+polar superellipse. For the spline-control bridge, set
+``PLASMA_AXIS_KIND = "control_spline"`` in the root example; the default
+controls are periodic side/corner radii, or an explicit
+``SquareAxisSplineControls`` object can be assigned to
+``PLASMA_AXIS_SPLINE_CONTROLS``. This still projects to VMEC Fourier
+coefficients for the solve and for VMEC2000/mgrid parity, but it keeps the
+intended square-axis control variables independent of ``MPOL`` and ``NTOR``.
+The default square-axis side/corner weights use
 ``SIDE_POWER = CORNER_POWER = 1.0``; this keeps the rounded-square target close
 to finite Fourier bandwidth. Sharper values such as ``1.4`` remain useful
 stress tests, but they reintroduce a high-mode projection tail. The default

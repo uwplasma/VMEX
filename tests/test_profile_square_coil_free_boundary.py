@@ -14,6 +14,12 @@ from vmec_jax.state import StateLayout, VMECState
 from vmec_jax.static import build_static
 
 
+def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: Path):
+    args = profile._parser().parse_args(["--outdir", str(tmp_path), "--axis-kind", "control_spline"])
+
+    assert args.axis_kind == "control_spline"
+
+
 def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tails():
     diagnostics = {
         "solver_mode": "parity",

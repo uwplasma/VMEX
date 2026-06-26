@@ -31,6 +31,115 @@ class ToroidalHybridBoundarySamples:
     corner_weight: np.ndarray
 
 
+@dataclass(frozen=True)
+class SquareAxisSplineControls:
+    """Periodic spline controls for the square-axis radial envelope.
+
+    The controls define the cylindrical major radius of the magnetic-axis
+    centerline as a function of VMEC ``zeta``.  They are intentionally separate
+    from ``MPOL``/``NTOR`` so geometry studies can keep one real-space target and
+    project it onto different VMEC Fourier decks for convergence checks.
+    """
+
+    zeta: np.ndarray
+    radius: np.ndarray
+
+    @classmethod
+    def rounded_square(
+        cls,
+        *,
+        axis_half_width: float = 1.5,
+        corner_radius_factor: float = np.sqrt(2.0),
+    ) -> "SquareAxisSplineControls":
+        """Return eight side/corner controls for a rounded square axis."""
+
+        axis_half_width = float(axis_half_width)
+        corner_radius_factor = float(corner_radius_factor)
+        if axis_half_width <= 0.0:
+            raise ValueError("axis_half_width must be positive")
+        if not np.isfinite(corner_radius_factor) or corner_radius_factor <= 1.0:
+            raise ValueError("corner_radius_factor must be finite and greater than one")
+        zeta = np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False)
+        radius = axis_half_width * np.where(
+            np.arange(8, dtype=int) % 2 == 0,
+            1.0,
+            corner_radius_factor,
+        )
+        return cls(zeta=zeta, radius=np.asarray(radius, dtype=float))
+
+    def validate(self) -> "SquareAxisSplineControls":
+        """Return normalized controls or raise for invalid input."""
+
+        zeta_arr = np.asarray(self.zeta, dtype=float)
+        radius_arr = np.asarray(self.radius, dtype=float)
+        if zeta_arr.ndim != 1 or radius_arr.ndim != 1:
+            raise ValueError("spline controls must be one-dimensional")
+        zeta = zeta_arr.reshape(-1)
+        radius = radius_arr.reshape(-1)
+        if zeta.size != radius.size:
+            raise ValueError("spline control zeta and radius arrays must have the same length")
+        if zeta.size < 4:
+            raise ValueError("at least four periodic spline controls are required")
+        if not (np.all(np.isfinite(zeta)) and np.all(np.isfinite(radius))):
+            raise ValueError("spline controls must be finite")
+        if np.any(radius <= 0.0):
+            raise ValueError("spline control radii must be positive")
+        period = 2.0 * np.pi
+        zeta_mod = np.mod(zeta, period)
+        order = np.argsort(zeta_mod)
+        zeta_sorted = zeta_mod[order]
+        radius_sorted = radius[order]
+        if np.any(np.diff(zeta_sorted) <= 1.0e-12):
+            raise ValueError("spline control zeta nodes must be distinct modulo 2*pi")
+        return SquareAxisSplineControls(zeta=zeta_sorted, radius=radius_sorted)
+
+
+def _periodic_cubic_hermite_interpolate(x_nodes: Any, y_nodes: Any, x_eval: Any) -> np.ndarray:
+    """Evaluate a periodic cubic Hermite interpolant on a full-period grid."""
+
+    controls = SquareAxisSplineControls(
+        zeta=np.asarray(x_nodes, dtype=float),
+        radius=np.asarray(y_nodes, dtype=float),
+    ).validate()
+    x = np.asarray(x_eval, dtype=float)
+    x_nodes = np.asarray(controls.zeta, dtype=float)
+    y_nodes = np.asarray(controls.radius, dtype=float)
+    period = 2.0 * np.pi
+    n = x_nodes.size
+    x_ext = np.concatenate([x_nodes[-1:] - period, x_nodes, x_nodes[:1] + period])
+    y_ext = np.concatenate([y_nodes[-1:], y_nodes, y_nodes[:1]])
+    slopes = np.empty(n, dtype=float)
+    for idx in range(n):
+        slopes[idx] = (y_ext[idx + 2] - y_ext[idx]) / (x_ext[idx + 2] - x_ext[idx])
+
+    x_mod = np.mod(x, period)
+    interval = np.searchsorted(x_nodes, x_mod, side="right") - 1
+    interval = np.where(interval < 0, n - 1, interval)
+    next_interval = (interval + 1) % n
+    x0 = x_nodes[interval]
+    x1 = x_nodes[next_interval]
+    wrap = next_interval == 0
+    x1 = np.where(wrap, x1 + period, x1)
+    x_use = np.where(wrap & (x_mod < x0), x_mod + period, x_mod)
+    h = x1 - x0
+    t = (x_use - x0) / h
+    y0 = y_nodes[interval]
+    y1 = y_nodes[next_interval]
+    m0 = slopes[interval]
+    m1 = slopes[next_interval]
+    h00 = 2.0 * t**3 - 3.0 * t**2 + 1.0
+    h10 = t**3 - 2.0 * t**2 + t
+    h01 = -2.0 * t**3 + 3.0 * t**2
+    h11 = t**3 - t**2
+    return np.asarray(h00 * y0 + h10 * h * m0 + h01 * y1 + h11 * h * m1, dtype=float)
+
+
+def square_axis_spline_radius(zeta: Any, controls: SquareAxisSplineControls) -> np.ndarray:
+    """Evaluate a periodic square-axis spline radius at VMEC ``zeta`` nodes."""
+
+    return _periodic_cubic_hermite_interpolate(controls.zeta, controls.radius, zeta)
+
+
 def recommended_square_axis_nzeta(ntor: int, *, margin: int = 8, block: int = 8) -> int:
     """Return a conservative toroidal grid size for square-axis hybrids.
 
@@ -227,6 +336,7 @@ def sample_square_axis_stellarator_mirror_hybrid_boundary(
     axis_kind: str = "superellipse",
     axis_square_power: float = 5.0,
     axis_spline_corner_radius_factor: float = np.sqrt(2.0),
+    axis_spline_controls: SquareAxisSplineControls | None = None,
     minor_radius: float = 0.10,
     side_minor_modulation: float = 0.08,
     side_elongation: float = 0.25,
@@ -241,12 +351,11 @@ def sample_square_axis_stellarator_mirror_hybrid_boundary(
 
     The magnetic axis is represented in polar form. ``axis_kind="superellipse"``
     keeps the original smooth polar superellipse. ``axis_kind="spline"`` uses a
-    lower-bandwidth rounded-square envelope through side and corner radii; this
-    is often easier to project to a compact VMEC Fourier boundary when the
-    straight mirror-side intuition matters more than a sharp mathematical
-    square. The surface is still stored in normal VMEC cylindrical coordinates,
-    so the final equilibrium can use the ordinary toroidal fixed/free-boundary
-    solver path.
+    lower-bandwidth rounded-square envelope through side and corner radii.
+    ``axis_kind="control_spline"`` evaluates explicit periodic spline controls.
+    In all cases the surface is still stored in normal VMEC cylindrical
+    coordinates, so the final equilibrium can use the ordinary toroidal
+    fixed/free-boundary solver path.
     """
 
     ntheta = int(ntheta)
@@ -256,8 +365,15 @@ def sample_square_axis_stellarator_mirror_hybrid_boundary(
     if axis_half_width <= 0.0:
         raise ValueError("axis_half_width must be positive")
     axis_kind = str(axis_kind).strip().lower()
-    if axis_kind not in {"superellipse", "spline", "spline_rounded_square", "rounded_square_spline"}:
-        raise ValueError("axis_kind must be 'superellipse' or 'spline'")
+    control_kinds = {"control_spline", "spline_controls", "periodic_spline"}
+    if axis_kind not in {
+        "superellipse",
+        "spline",
+        "spline_rounded_square",
+        "rounded_square_spline",
+        *control_kinds,
+    }:
+        raise ValueError("axis_kind must be 'superellipse', 'spline', or 'control_spline'")
     if axis_kind == "superellipse" and axis_square_power <= 2.0:
         raise ValueError("axis_square_power must exceed 2 for a square-like axis")
     axis_spline_corner_radius_factor = float(axis_spline_corner_radius_factor)
@@ -272,7 +388,17 @@ def sample_square_axis_stellarator_mirror_hybrid_boundary(
     zeta = np.linspace(0.0, 2.0 * np.pi, nzeta, endpoint=False)
     theta2, zeta2 = np.meshgrid(theta, zeta, indexing="ij")
 
-    if axis_kind == "superellipse":
+    if axis_kind in control_kinds:
+        controls = (
+            axis_spline_controls
+            if axis_spline_controls is not None
+            else SquareAxisSplineControls.rounded_square(
+                axis_half_width=float(axis_half_width),
+                corner_radius_factor=float(axis_spline_corner_radius_factor),
+            )
+        )
+        axis_r = square_axis_spline_radius(zeta, controls)
+    elif axis_kind == "superellipse":
         c = np.cos(zeta)
         s = np.sin(zeta)
         axis_r = float(axis_half_width) / np.maximum(

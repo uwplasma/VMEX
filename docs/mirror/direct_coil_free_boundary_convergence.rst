@@ -256,6 +256,13 @@ small finite ``MPOL``/``NTOR`` ladder for the current spline-smoothed target and
 returns the lowest estimated-cost candidate whose projection error satisfies
 the requested threshold. This is a boundary-representation gate, not a
 nonlinear-convergence claim.
+The first control-basis bridge is now available through
+``vmec_jax.SquareAxisSplineControls`` and ``axis_kind="control_spline"``. It
+defines the square-axis radial envelope with periodic spline controls that are
+independent of ``MPOL`` and ``NTOR``, then projects the sampled target to a VMEC
+Fourier boundary when building ``InData``. This is still a projection bridge,
+not a solver-native spline basis, but it makes the intended control variables
+explicit and testable before replacing the nonlinear solve representation.
 A projection spot check on the first-order spline shape gives max component
 boundary errors of about ``5.60e-6`` for ``MPOL=5, NTOR=12``, ``1.76e-9`` for
 ``5,20``, ``1.92e-11`` for ``5,25``, and ``3.5e-12`` for ``5,28`` or
@@ -489,15 +496,15 @@ The remaining work is deliberately narrow:
    ``8,32`` VMEC2000 profile has high startup cost before any force rows are
    available. If the ``5,28`` and ``7,28``/``8,32`` VMEC/VMEC2000 ladders still
    stall above the strict ``1e-12`` component gate, move the square-axis hybrid
-   into a true spline-basis lane instead of only increasing Fourier modes. The
-   current code already uses a spline-smoothed real-space target before VMEC
-   Fourier projection; that is a bandwidth reduction, not a new nonlinear-solve
-   basis. A true spline-basis lane should keep the same direct-coil/free-boundary
-   diagnostics but replace the boundary/control representation with a small set
-   of periodic side/corner spline control points, then project to Fourier only
-   for VMEC2000 parity or WOUT export. This keeps the primary ``vmec_jax`` path
-   closer to the intended straight-side geometry while preserving a benchmarkable
-   VMEC2000 comparison.
+   into a solver-native spline-basis lane instead of only increasing Fourier
+   modes. The current code already supports explicit periodic side/corner spline
+   controls through ``SquareAxisSplineControls``, but those controls are still
+   projected to Fourier coefficients before the solve. The next lane should keep
+   the same direct-coil/free-boundary diagnostics and move the nonlinear update
+   variables to those spline controls, projecting to Fourier only for VMEC2000
+   parity or WOUT export. This keeps the primary ``vmec_jax`` path closer to the
+   intended straight-side geometry while preserving a benchmarkable VMEC2000
+   comparison.
 5. Keep the optional virtual-casing postsolve diagnostic
    ``vmec_jax.free_boundary_validation.virtual_casing_finite_beta_boundary_diagnostics``
    attached to the square-coil example outputs. The helper accepts a solved
