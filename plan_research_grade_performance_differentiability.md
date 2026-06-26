@@ -8273,3 +8273,93 @@ Current lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.4%.
 - Docs/release hygiene: 100%.
 - Overall: 99.8%.
+
+### 2026-06-26: Final local readiness validation and public figure rerender
+
+Steps taken:
+
+- Rechecked source formatting, repository size, source-health thresholds, docs,
+  focused residual setup tests, README/docs artifact tests, fast parity/physics
+  tests, and Glasser/Mercier derivative tests after the residual state setup
+  module split.
+- Rerendered the public runtime and AD/FD evidence figures into
+  ``/tmp/vmec_jax_readiness_render`` from their documented provenance inputs.
+- Rerendered the QI README NFP 1/2/3/4 panel into
+  ``/tmp/vmec_jax_readiness_render`` from the checked-in
+  ``docs/_static/qi_readme_cases`` bundles.
+- Visually inspected the scratch runtime, AD/FD, and QI panel renders.
+- Confirmed normal ``git status`` is clean after the previous push; ignored
+  fetched WOUT/reference assets and docs build outputs remain local-only and are
+  not part of the tracked repository payload.
+
+Results obtained:
+
+- ``python -m ruff check`` on the touched solver/local-gate files passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size is about 27.13 MiB.
+- ``python tools/diagnostics/source_health.py`` with the active
+  ``solve_fixed_boundary_residual_iter=2440`` and
+  ``run_fixed_boundary=420`` gates passed.
+- ``python tools/diagnostics/local_ci_gate.py --dry-run --only
+  source-health`` passed.
+- Residual setup and solver instrumentation tests passed:
+  ``tests/test_local_ci_gate.py``,
+  ``tests/test_solve_residual_iter_setup_helpers.py``,
+  ``tests/test_solve_residual_iter_mode_transform_helpers.py``,
+  ``tests/test_solve_residual_iter_update_helpers.py``, and
+  ``tests/test_solve_performance_instrumentation.py``.
+- README/docs artifact and QI renderer tests passed:
+  ``tests/test_readme_ad_fd_evidence.py``,
+  ``tests/test_docs_release_hygiene.py``,
+  ``tests/test_minimal_seed_showcase.py``,
+  the two QI example workflow tests from ``tests/test_optimization_examples.py``,
+  ``tests/test_qi_readme_cases.py``, and the QI renderer history/lambda smoke
+  test.
+- Fast parity/physics tests passed:
+  ``tests/test_residue_getfsq_parity.py``,
+  ``tests/test_wout_profiles_currents_bundled_parity.py``,
+  ``tests/test_physics_parity_helper_gates.py``,
+  ``tests/test_vmec_parity_physics_fast_gates.py``,
+  ``tests/test_converged_wout_matrix_parity.py``,
+  ``tests/test_parity_sweep_manifest_thresholds.py``, and
+  ``tests/test_glasser_resistive_interchange.py``.
+- Full docs built with warnings as errors:
+  ``LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs
+  docs/_build/html_final_readiness``.
+- Public artifact provenance checks passed:
+  the AD/FD evidence CSV has 10 rows, maximum relative error about
+  ``4.4e-10`` against a ``1e-9`` public threshold, and no failing rows; the QI
+  README CSV has NFP 1, 2, 3, and 4 rows with empty
+  ``readme_gate_failures``.
+- Scratch rerenders matched the expected schemas and row counts:
+  runtime comparison has 16 rows, AD/FD evidence has 10 rows, and QI has 4 rows.
+- PR #20 is already merged and its merged check rollup is green, including
+  coverage/codecov. The post-merge ``main`` CI run for this docs/status update
+  is still in progress with completed jobs green.
+
+Best next steps:
+
+1. Let the post-merge ``main`` CI run finish; fix only concrete failures.
+2. If CI remains green, treat the current branch as ready for release-review
+   housekeeping. The next meaningful engineering work should not be another
+   small setup extraction; it should be a planned larger tranche such as
+   free-boundary test-suite decomposition or production performance work.
+3. Keep generated WOUTs, docs builds, benchmark scratch outputs, and fetched
+   validation assets ignored/local unless a compact, reviewed figure or CSV is
+   intentionally promoted.
+
+User needs:
+
+- No input needed unless the post-merge CI run fails on a policy question.
+
+Current lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.5%.
+- Free-boundary production differentiability: 97.7%.
+- Single-stage coil optimization: 94.2%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 84.0%.
+- VMEC2000/VMEC++ parity and physics gates: 99.4%.
+- Docs/release hygiene: 100%.
+- Overall: 99.8%.
