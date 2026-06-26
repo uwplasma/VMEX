@@ -27425,3 +27425,95 @@ Results:
 ### User input needed
 
 No user input is needed.
+
+---
+## 231. Strict VMEC2000 Cadence And First-Order Spline Priority
+
+### Steps taken
+
+- Rechecked the active ``office`` queue and PR state.
+- Confirmed the draft PR remains open and clean on
+  ``codex/mirror-geometry``.
+- Re-summarized the active VMEC2000 ``MPOL=8, NTOR=32, NZETA=72`` profile.
+- Added explicit ``NSTEP`` control to the square-coil example and backend
+  profiler:
+  - the root example now defaults to ``NSTEP = 1``;
+  - ``ExampleConfig`` carries ``nstep``;
+  - generated free-boundary inputs write ``NSTEP``;
+  - ``tools/diagnostics/profile_square_coil_free_boundary.py`` accepts
+    ``--nstep`` and records it in the JSON configuration.
+- Updated the README and convergence plan to use ``--nstep 1`` for strict
+  VMEC2000 profiles.
+
+### Results obtained
+
+- The active VMEC2000 ``8,32`` profile remains CPU-active but has not printed
+  force rows yet. Its live row is still
+  ``progress_phase=startup_or_pre_iteration_output`` with no strict residual
+  evidence.
+- The absence of force rows is partly an observability problem because the old
+  run used the default VMEC ``NSTEP`` cadence. Future strict VMEC2000 rows should
+  use ``--nstep 1``.
+- The projection scan still supports prioritizing the first-order
+  ``MPOL=5, NTOR=28, NZETA=64`` row before spending more time on ``8,32``:
+  the lower-mode first-order target is already at the same ``~3.5e-12`` Fourier
+  projection floor as ``7,28`` and ``8,32``.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q tests/test_toroidal_hybrid.py tests/test_profile_square_coil_free_boundary.py
+venv/bin/python -m py_compile examples/toroidal_stellarator_mirror_hybrid_square_coils_free_boundary.py tools/diagnostics/profile_square_coil_free_boundary.py
+ssh office "cd ~/local/vmec_mirror && python3 tools/diagnostics/summarize_square_coil_profiles.py results/square_coil_freeb_backend_profile_vmec2000_ns9_13_17_mpol8_ntor32_nzeta72_mgrid104x72x72_niter24k_fg results/square_coil_freeb_backend_profile_direct_gpu_jit_ns9_13_17_mpol6_ntor23_nzeta64_staged_anderson --markdown"
+ssh office "ps -p 508992,508745,504339 -o pid,ppid,etime,stat,%cpu,%mem,rss,vsz,command"
+```
+
+Results:
+
+- ``54 passed`` for the square-hybrid/profile focused suite.
+- Python compilation passed.
+- Existing warnings only: one JAX deprecation warning and one NumPy binary-size
+  runtime warning from the environment.
+- VMEC2000 ``8,32`` is active but still has no force-row residuals.
+
+### File structure and best-practice notes
+
+- The configuration change is kept in the root square-coil example and the
+  existing backend profiler; no new source module was added.
+- ``NSTEP`` is stored as a normal VMEC input scalar, so both ``vmec_jax`` and
+  raw VMEC2000 receive the same cadence.
+- The docs record the distinction between solver convergence and live-output
+  cadence: ``--nstep 1`` improves profiling observability but does not relax the
+  ``FTOL=1e-12`` convergence gate.
+- No generated WOUTs, raw profile JSON, or figures were committed.
+
+### Best next steps
+
+1. Commit and push the ``NSTEP`` profiler tranche.
+2. Fast-forward ``office`` and replace the old waiting VMEC2000 ``5,28`` queue
+   with a new ``--nstep 1`` first-order row.
+3. If the active ``8,32`` row still has no force rows after the current
+   profiling window, stop it as a high-startup-cost performance datum and let
+   the lower-bandwidth ``5,28`` row consume the VMEC2000 slot.
+4. Compare completed ``5,28`` / ``6,23`` / ``7,28`` / ``8,32`` rows by
+   ``final_max_component``, ``strict_components_met``, wall time, startup phase,
+   and ``vacuum_grid_exceeded_count``.
+5. If all Fourier-projected rows stall above ``1e-12``, start the true
+   spline/control-basis lane rather than continuing to increase ``MPOL`` and
+   ``NTOR``.
+
+### Completion percentages after M231
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``83%``.
+- VMEC2000 robustness/reference lane: ``89%``.
+- Direct-coil GPU/JIT parity lane: ``70%``.
+- Direct-provider profiling/instrumentation lane: ``99%``.
+- Square-axis spline-smoothed Fourier closure lane: ``94%``.
+- True spline/control-basis hybrid lane: ``20%`` planned, not yet implemented.
+- Documentation and diagnostics for active profiling: ``100%``.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``93%``
+  pending strict ``5,28``/``7,28``/``8,32`` convergence evidence.
+
+### User input needed
+
+No user input is needed.

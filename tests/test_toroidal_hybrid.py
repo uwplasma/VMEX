@@ -135,9 +135,12 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().max_boundary_projection_error == pytest.approx(5.0e-5)
     assert module.ExampleConfig().side_power == pytest.approx(1.0)
     assert module.ExampleConfig().corner_power == pytest.approx(1.0)
+    assert module.ExampleConfig().nstep == 1
     assert module.build_square_coils(module.ExampleConfig()).params.chunk_size == 512
     assert module.build_square_coils(module.ExampleConfig(coil_chunk_size=None)).params.chunk_size is None
-    assert module.make_free_boundary_indata(module.ExampleConfig(), beta_percent=0.0).get_int("NVACSKIP") == 1
+    indata = module.make_free_boundary_indata(module.ExampleConfig(nstep=3), beta_percent=0.0)
+    assert indata.get_int("NVACSKIP") == 1
+    assert indata.get_int("NSTEP") == 3
     with pytest.raises(ValueError, match="boundary projection error is too large"):
         module.run_example(
             module.ExampleConfig(

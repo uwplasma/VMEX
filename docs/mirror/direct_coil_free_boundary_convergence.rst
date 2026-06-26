@@ -224,6 +224,10 @@ active VMEC2000 profile directory and will read that sidecar, or parse
 Rows with no parsed force iterations now include ``progress_phase``. A value
 of ``startup_or_pre_iteration_output`` means VMEC2000 has opened ``threed1``
 but has not yet printed the force table; it is not a strict residual result.
+The profiler exposes ``--nstep`` and the root example writes ``NSTEP`` into the
+generated VMEC input. Use ``--nstep 1`` for strict VMEC2000 profiles so long
+high-mode runs expose force rows as soon as VMEC prints them; larger values are
+acceptable for short production runs but make live convergence diagnosis weaker.
 Completed ``vmec_jax`` backend rows also report
 ``boundary_coeff_delta_*`` and ``boundary_sample_displacement_*`` fields, which
 measure how far the accepted LCFS moved from the initial prescribed boundary.
@@ -431,13 +435,14 @@ The remaining work is deliberately narrow:
    ``FTOL=1e-8`` to identify provider/parity issues, then repeat the
    best-performing setup at ``FTOL=1e-12``. The profiler accepts explicit
    ``--ns-array``, ``--niter-array``, and ``--ftol-array`` arguments for staged
-   VMEC-style runs. Use ``--solver-mode parity`` and ``--nvacskip 1`` for
-   convergence evidence; larger ``NVACSKIP`` values are speed experiments, not
-   strict residual evidence. For radial-resolution ladders, use a widened mgrid
-   envelope and record ``vacuum_grid_exceeded_count`` before interpreting the
-   residual floor. Keep the provider-parity block enabled unless the run is a
-   pure solver-speed benchmark; it verifies that direct-coil and generated-mgrid
-   boundary fields still match after resolution or coil changes. Use the
+   VMEC-style runs. Use ``--solver-mode parity``, ``--nvacskip 1``, and
+   ``--nstep 1`` for convergence evidence; larger ``NVACSKIP`` values are speed
+   experiments, and larger ``NSTEP`` values hide live VMEC2000 residual rows.
+   For radial-resolution ladders, use a widened mgrid envelope and record
+   ``vacuum_grid_exceeded_count`` before interpreting the residual floor. Keep
+   the provider-parity block enabled unless the run is a pure solver-speed
+   benchmark; it verifies that direct-coil and generated-mgrid boundary fields
+   still match after resolution or coil changes. Use the
    tail-projection columns in the summary table to choose between extending the
    iteration budget and changing the resolution/schedule; do not interpret the
    projection as proof of convergence. Since the ``NTOR=12`` deck floors near
@@ -477,17 +482,22 @@ The remaining work is deliberately narrow:
    iteration/runtime schedule, mode/mgrid refinement, and radial-resolution
    closure. A larger ``NS`` ladder should not be interpreted unless
    ``vacuum_grid_exceeded_count`` remains zero.
-4. If the ``MPOL=7, NTOR=28`` and ``MPOL=8, NTOR=32`` spline-projected
-   VMEC/VMEC2000 ladders still stall above the strict ``1e-12`` component gate,
-   move the square-axis hybrid into a true spline-basis lane instead of only
-   increasing Fourier modes. The current code already uses a spline-smoothed
-   real-space target before VMEC Fourier projection; that is a bandwidth
-   reduction, not a new nonlinear-solve basis. A true spline-basis lane should
-   keep the same direct-coil/free-boundary diagnostics but replace the
-   boundary/control representation with a small set of periodic side/corner
-   spline control points, then project to Fourier only for VMEC2000 parity or
-   WOUT export. This keeps the primary ``vmec_jax`` path closer to the intended
-   straight-side geometry while preserving a benchmarkable VMEC2000 comparison.
+4. Prioritize the first-order ``MPOL=5, NTOR=28`` / ``NZETA=64`` spline target
+   before further increasing Fourier mode count. The projection scan shows that
+   this lower-bandwidth deck is already at the same ``~3.5e-12`` representation
+   floor as ``7,28`` and ``8,32`` for the current target, while the active
+   ``8,32`` VMEC2000 profile has high startup cost before any force rows are
+   available. If the ``5,28`` and ``7,28``/``8,32`` VMEC/VMEC2000 ladders still
+   stall above the strict ``1e-12`` component gate, move the square-axis hybrid
+   into a true spline-basis lane instead of only increasing Fourier modes. The
+   current code already uses a spline-smoothed real-space target before VMEC
+   Fourier projection; that is a bandwidth reduction, not a new nonlinear-solve
+   basis. A true spline-basis lane should keep the same direct-coil/free-boundary
+   diagnostics but replace the boundary/control representation with a small set
+   of periodic side/corner spline control points, then project to Fourier only
+   for VMEC2000 parity or WOUT export. This keeps the primary ``vmec_jax`` path
+   closer to the intended straight-side geometry while preserving a benchmarkable
+   VMEC2000 comparison.
 5. Keep the optional virtual-casing postsolve diagnostic
    ``vmec_jax.free_boundary_validation.virtual_casing_finite_beta_boundary_diagnostics``
    attached to the square-coil example outputs. The helper accepts a solved

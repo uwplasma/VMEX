@@ -325,6 +325,8 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
             "16",
             "--max-iter",
             "2",
+            "--nstep",
+            "3",
             "--skip-direct",
             "--skip-mgrid",
             "--skip-provider-parity",
@@ -336,6 +338,7 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     report = outdir / "square_coil_free_boundary_backend_profile.json"
     data = json.loads(report.read_text())
     assert data["configuration"]["max_boundary_projection_error"] == pytest.approx(1.0)
+    assert data["configuration"]["nstep"] == 3
     projection = data["boundary_projection"]
     assert projection["mpol"] == 3
     assert projection["ntor"] == 4

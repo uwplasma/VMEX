@@ -232,7 +232,7 @@ For direct-provider versus mgrid/VMEC2000 profiling, use::
 
   python tools/diagnostics/profile_square_coil_free_boundary.py \
     --ftol 1e-12 --max-iter 12000 --phiedge -0.04 \
-    --solver-mode parity --nvacskip 1 --delt 0.02 \
+    --solver-mode parity --nvacskip 1 --nstep 1 --delt 0.02 \
     --mpol 6 --ntor 23 --nzeta 64 --axis-kind spline \
     --ns-array 9,13,17 --niter-array 4000,8000,12000 \
     --ftol-array 1e-8,1e-10,1e-12 \
@@ -265,6 +265,9 @@ before the external executable exits. The summary table prints
 ``threed1`` but has not yet printed force iterations is labelled
 ``startup_or_pre_iteration_output`` instead of appearing as a blank residual
 row.
+Use ``--nstep 1`` for strict VMEC2000 profiling when live residual cadence
+matters; larger values can hide force rows for long high-mode startup or early
+iteration windows.
 Use larger ``--nvacskip`` only as a speed experiment; for convergence review,
 ``--nvacskip 1`` avoids stale free-boundary residuals on this square-hybrid
 Fourier deck. For ``NS`` ladders above the initial surface, use a widened mgrid

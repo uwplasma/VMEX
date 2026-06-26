@@ -122,6 +122,12 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument("--enforce-recommended-nzeta", action="store_true")
+    p.add_argument(
+        "--nstep",
+        type=int,
+        default=ExampleConfig().nstep,
+        help="VMEC NSTEP diagnostic cadence; use 1 for strict VMEC2000 profiling.",
+    )
     p.add_argument("--n-coils-per-side", type=int, default=4)
     p.add_argument("--coil-segments", type=int, default=96)
     p.add_argument(
@@ -1126,6 +1132,7 @@ def main(argv: list[str] | None = None) -> int:
         niter_array=niter_array,
         ftol_array=ftol_array,
         use_multigrid_schedule=len(ns_array) > 1,
+        nstep=int(args.nstep),
         delt=float(args.delt),
         nvacskip=int(args.nvacskip),
         free_boundary_activate_fsq=float(args.activate_fsq),
@@ -1202,6 +1209,7 @@ def main(argv: list[str] | None = None) -> int:
             "nzeta_underrecommended": bool(resolved_nzeta < int(recommended_nzeta)),
             "max_iter": int(niter_array[-1]),
             "ftol": float(ftol_array[-1]),
+            "nstep": int(config.nstep),
             "solver_mode": None if solver_mode is None else str(solver_mode),
             "return_best_scored_state": bool(args.return_best_scored_state),
             "freeb_anderson_pressure": bool(args.freeb_anderson_pressure),

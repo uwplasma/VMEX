@@ -90,6 +90,7 @@ FTOL_ARRAY = (1.0e-8, 1.0e-10, 1.0e-12)
 USE_MULTIGRID_SCHEDULE = True
 ENFORCE_RECOMMENDED_NZETA = True
 MAX_BOUNDARY_PROJECTION_ERROR: float | None = 5.0e-5
+NSTEP = 1
 NVACSKIP = 1
 MAX_ITER = NITER_ARRAY[-1]
 FTOL = 1.0e-12
@@ -152,6 +153,7 @@ class ExampleConfig:
     use_multigrid_schedule: bool = USE_MULTIGRID_SCHEDULE
     enforce_recommended_nzeta: bool = ENFORCE_RECOMMENDED_NZETA
     max_boundary_projection_error: float | None = MAX_BOUNDARY_PROJECTION_ERROR
+    nstep: int = NSTEP
     nvacskip: int = NVACSKIP
     phiedge: float = PHIEDGE
     toroidal_current: float = TOROIDAL_CURRENT
@@ -395,6 +397,8 @@ def _validate_example_config(config: ExampleConfig) -> None:
         raise ValueError("ntor must be at least 4 so the square-like axis fits")
     if int(config.nzeta) < 8:
         raise ValueError("nzeta must be at least 8")
+    if int(config.nstep) < 1:
+        raise ValueError("nstep must be at least 1")
     if config.solver_mode is not None:
         solver_mode = str(config.solver_mode).strip().lower()
         if solver_mode not in {"default", "parity", "accelerated"}:
@@ -470,6 +474,7 @@ def make_free_boundary_indata(config: ExampleConfig, *, beta_percent: float) -> 
             "FTOL": float(config.ftol),
             "NZETA": int(config.nzeta),
             "NTHETA": 0,
+            "NSTEP": int(config.nstep),
             "NVACSKIP": max(1, int(config.nvacskip)),
             "PMASS_TYPE": "power_series",
             "AM": am,
