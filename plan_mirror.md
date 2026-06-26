@@ -5738,6 +5738,90 @@ Visual validation:
 
 No user input is needed.
 
+## M305. Fast-forwarded waiting solver lanes to edge-velocity-scrub code
+
+### Steps taken
+
+- Rechecked the latest local branch and PR #21 checks.
+- Confirmed the latest GitHub run has `Parity Manifest Smoke` and build
+  passing; longer shards were still pending.
+- Re-summarized active `office` convergence rows from the latest summarizer.
+- Fast-forwarded only waiting scratch checkouts to `7ad3302c`:
+  - `/home/rjorge/local/vmec_mirror_edge_polish`;
+  - `/home/rjorge/local/vmec_mirror_projected_control`;
+  - `/home/rjorge/local/vmec_mirror_delt_polish`;
+  - `/home/rjorge/local/vmec_mirror_edge_velocity_scrub`.
+- Did not update active solver checkouts for the direct hot-restart or VMEC2000
+  reference rows.
+
+### Results obtained
+
+- All waiting projected/control/polish lanes now contain the latest live
+  resolution-gate diagnostics and edge-control velocity scrub code.
+- Active direct-GPU hot restart remains a production-ready representation deck
+  but is still not strict: around iteration `5266/8000`, max component
+  `2.10e-11`, strict gap `21`, and `flat_above_stage_ftol`.
+- Active VMEC2000 generated-`mgrid` reference remains in the loose `1e-8`
+  stage: around iteration `5331/8000`, max component `1.33e-8`, and
+  `flat_above_stage_ftol`.
+- The older projected-control queue has a tiny startup launcher log but no
+  force rows yet; it is still waiting behind active work.
+
+### How it was tested
+
+```bash
+gh pr checks 21 --repo uwplasma/vmec_jax --watch=false
+```
+
+Result: latest run reported parity smoke and build passing; long shards were
+pending.
+
+```bash
+ssh office 'cd /home/rjorge/local/vmec_mirror_edge_velocity_scrub && \
+  /home/rjorge/miniforge3/envs/qh-gpu/bin/python \
+  tools/diagnostics/summarize_square_coil_profiles.py --markdown ...'
+```
+
+Result: produced the live strict-gap rows summarized above.
+
+```bash
+ssh office 'for d in ...; do git pull --ff-only origin codex/mirror-geometry; done'
+```
+
+Result: all waiting scratch checkouts ended at `7ad3302c`.
+
+### File structure and best-practice adherence
+
+- No generated solver outputs were committed.
+- Remote solver artifacts remain under scratch `results/` directories.
+- Active long-running solver jobs were not interrupted or modified.
+
+### Best next steps
+
+1. Let the active direct and VMEC2000 rows reach a stage transition or finish.
+2. When the first waiting projected-edge lane starts, verify its launcher log
+   records the latest code and inspect `zero_velocity_count` after completion.
+3. If the active hot-restart remains above `1e-12`, compare:
+   current direct hot restart, older projected-control run, edge-polish run,
+   and edge-velocity-scrub run before choosing JAX-NESTOR or solver-native
+   spline-state work.
+
+### Completion percentages after M305
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row still running above target.
+- VMEC2000 robustness/reference lane: `99%`, still in loose stage.
+- True spline/control-basis hybrid lane: `89%`, waiting lanes now carry latest
+  code.
+- DELT/stage-budget polish lane: `75%`, queued on latest code.
+- Finite-beta virtual-casing validation lane: `87%`.
+- CI/API health lane: `99%`, latest quick CI checks pass; long shards pending.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M304. Queued edge-velocity scrub profile and fixed parity-smoke source gate
 
 ### Steps taken
