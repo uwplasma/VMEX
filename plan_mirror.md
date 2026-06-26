@@ -29959,3 +29959,86 @@ Results:
 ### User input needed
 
 No user input is needed.
+---
+## 261. Re-ran Local Square-Deck Robustness Probes With Control-Basis Metadata
+
+### Steps taken
+
+- Ran `tools/diagnostics/profile_square_coil_free_boundary.py` in
+  `--resolution-diagnostics-only` mode for representative user-edited decks:
+  - `MPOL=5, NTOR=20, NZETA=48`;
+  - `MPOL=5, NTOR=28, NZETA=48`;
+  - `MPOL=5, NTOR=28, NZETA=64`;
+  - `MPOL=6, NTOR=32, NZETA=72`;
+  - `MPOL=7, NTOR=28, NZETA=64`.
+- Used `--max-boundary-projection-error 5e-12` and `mgrid_nphi=NZETA` for each
+  probe so the production gate checks projection, `NZETA`, and mgrid
+  compatibility together.
+- Confirmed every `spline`/`control_spline` probe writes the new
+  `control_basis` metadata with a two-parameter square reduced basis.
+
+### Results obtained
+
+| Deck | Status | Reason | Projection max |
+| --- | --- | --- | --- |
+| `5,20,48` | diagnostic-underresolved | projection exceeds gate | `1.763381662911e-09` |
+| `5,28,48` | diagnostic-underresolved | `NZETA` below recommendation `64` | `3.480771226805e-12` |
+| `5,28,64` | production-ready | projection and grid gate pass | `3.480771226805e-12` |
+| `6,32,72` | production-ready | projection and grid gate pass | `3.468336728929e-12` |
+| `7,28,64` | production-ready | projection and grid gate pass | `3.480771226805e-12` |
+
+The useful conclusion is that changing `MPOL`, `NTOR`, or `NZETA` is robust
+only if both gates are satisfied:
+
+- the Fourier projection error is below the strict gate;
+- `NZETA` is at least the square-axis recommendation and mgrid-compatible.
+
+The production projection floor is already around `3.47e-12`, so further
+Fourier escalation alone is unlikely to solve a strict `FTOL=1e-12` nonlinear
+plateau. The reduced spline-control lane remains the better next
+implementation path.
+
+### How it was tested
+
+```bash
+venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py \
+  --outdir /tmp/square_deck_probe_matrix/mpol5_ntor28_nzeta64 \
+  --mpol 5 --ntor 28 --ns 5 --nzeta 64 --mgrid-nphi 64 \
+  --max-iter 2 --max-boundary-projection-error 5e-12 \
+  --skip-direct --skip-mgrid --skip-provider-parity \
+  --resolution-diagnostics-only
+```
+
+The same command form was repeated for the five decks above; outputs were kept
+under `/tmp` and not tracked.
+
+### File structure and best-practice notes
+
+- No source change was required for this probe tranche.
+- No result files, WOUT files, or figures were added to git.
+- The plan records only the compact deck table and conclusion.
+
+### Best next steps
+
+1. Let the active VMEC2000 strict row finish or reach a final plateau.
+2. Avoid launching higher-Fourier rows unless they test a clearly different
+   physical target; use `--resolution-diagnostics-only` first for any edited
+   deck.
+3. Move the next JAX/free-boundary prototype toward the reduced spline-control
+   state rather than continuing Fourier-only escalation.
+
+### Completion percentages after M261
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `97%`.
+- VMEC2000 robustness/reference lane: `97%`, active row still running.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `79%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `77%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- Strict production deck gating lane: `100%`.
+- True spline/control-basis hybrid lane: `58%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
