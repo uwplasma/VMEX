@@ -874,7 +874,9 @@ class _FreeBoundaryEdgeControlProjector:
         )
 
     def delta_tuple_projector(self):
-        return self.project_delta_tuple if self.enabled else None
+        if not self.enabled or self.update_mode == "coordinate":
+            return None
+        return self.project_delta_tuple
 
     def apply_coordinate_update_from_delta_tuple(
         self,

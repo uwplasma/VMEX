@@ -14,6 +14,7 @@ from vmec_jax.solvers.fixed_boundary.residual.iteration_metrics import (
     select_residual_norms_for_iteration,
 )
 from vmec_jax.solvers.fixed_boundary.residual.iteration import (
+    _FreeBoundaryEdgeControlProjector,
     _new_best_scored_state_tracker,
     _record_best_scored_state,
 )
@@ -133,6 +134,44 @@ def test_best_scored_state_tracker_prefers_strict_component_max_and_counts_fresh
     assert tracker["freeb_nvacskip"] == 5
     assert tracker["freeb_nvskip0"] == 7
     assert tracker["freeb_plascur"] == pytest.approx(0.125)
+
+
+def test_free_boundary_edge_coordinate_mode_applies_reduced_update_once(monkeypatch) -> None:
+    def fake_prepare(payload, **_kwargs):
+        return {
+            "enabled": True,
+            "info": {"enabled": True, "basis_symmetry": "square"},
+            "mode_count": 1,
+            "mode_scale_np": np.ones(1),
+            "pinv_np": np.ones((1, 4)),
+        }
+
+    monkeypatch.setattr(
+        "vmec_jax.solvers.fixed_boundary.residual.iteration._prepare_freeb_edge_control_projection",
+        fake_prepare,
+    )
+
+    coordinate = _FreeBoundaryEdgeControlProjector(
+        {"update_mode": "coordinate"},
+        indata=object(),
+        static=object(),
+        state0=object(),
+        free_boundary_enabled=True,
+        use_scan=False,
+        jit_strict_update_enabled=True,
+    )
+    projected = _FreeBoundaryEdgeControlProjector(
+        {"update_mode": "projected_delta"},
+        indata=object(),
+        static=object(),
+        state0=object(),
+        free_boundary_enabled=True,
+        use_scan=False,
+        jit_strict_update_enabled=True,
+    )
+
+    assert coordinate.delta_tuple_projector() is None
+    assert callable(projected.delta_tuple_projector())
 
 
 def test_residual_iteration_control_sample_matches_vmec2000_edge_and_precond_rules() -> None:
