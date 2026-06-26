@@ -644,6 +644,15 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
                                 "residual_rel": 0.25,
                                 "captured_fraction": 0.9682458365518543,
                             },
+                            "reduced_update_direction": {
+                                "status": "measured",
+                                "reduced_update_size": 2,
+                                "full_update_size": 128,
+                                "update_linf": 1.5e-5,
+                                "decoded_residual_linf": 3.0e-11,
+                                "decoded_residual_rel": 0.25,
+                                "captured_fraction": 0.9682458365518543,
+                            },
                         },
                         "free_boundary_solver_overrides": {
                             "freeb_edge_control_projection": {
@@ -683,6 +692,17 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
     assert row["freeb_edge_control_projection_update_direction_rms"] == pytest.approx(9.0e-12)
     assert row["freeb_edge_control_projection_update_direction_rel"] == pytest.approx(0.25)
     assert row["freeb_edge_control_projection_update_direction_captured_fraction"] == pytest.approx(
+        0.9682458365518543
+    )
+    assert row["freeb_edge_control_projection_reduced_update_status"] == "measured"
+    assert row["freeb_edge_control_projection_reduced_update_size"] == 2
+    assert row["freeb_edge_control_projection_full_update_size"] == 128
+    assert row["freeb_edge_control_projection_reduced_update_linf"] == pytest.approx(1.5e-5)
+    assert row["freeb_edge_control_projection_reduced_update_decoded_residual_linf"] == pytest.approx(
+        3.0e-11
+    )
+    assert row["freeb_edge_control_projection_reduced_update_decoded_residual_rel"] == pytest.approx(0.25)
+    assert row["freeb_edge_control_projection_reduced_update_captured_fraction"] == pytest.approx(
         0.9682458365518543
     )
     assert row["update_delta_rms"] == pytest.approx(2.0e-5)

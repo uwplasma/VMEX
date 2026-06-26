@@ -621,6 +621,11 @@ The bridge can also apply a reduced coordinate update by encoding the current
 LCFS edge, adding a reduced update vector, and decoding the result back to the
 edge row. This is the tested primitive needed before the nonlinear update loop
 can operate directly in reduced side/corner coordinates.
+Final diagnostics also report
+``free_boundary.edge_control_projection.reduced_update_direction`` for the
+current full Fourier update direction. It gives the fitted reduced update
+vector, full and reduced update sizes, captured fraction, and decoded residual,
+which is the direct A/B audit before promoting the update loop itself.
 The square-coil profile summary exposes the affine boundary-state check as
 ``boundary_control_projection_state_coordinate_linf`` and
 ``boundary_control_projection_state_reconstruction_residual_rel``.

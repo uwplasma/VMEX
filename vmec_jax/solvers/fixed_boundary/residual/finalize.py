@@ -10,6 +10,7 @@ import numpy as np
 from ..diagnostics.io import _pack_resume_state_record
 from ...free_boundary.control import (
     _freeb_edge_control_delta_tuple_projection_metrics,
+    _freeb_edge_control_reduced_update_direction_diagnostics,
     _freeb_edge_control_reduced_unknown_vector_diagnostics,
     _freeb_edge_control_state_coordinates,
     _freeb_edge_control_state_residual_metrics,
@@ -155,6 +156,33 @@ def _edge_control_update_direction_payload(ns: Mapping[str, Any]) -> dict[str, A
             lasym=bool(getattr(ns.get("cfg"), "lasym", False)),
         )
         return _freeb_edge_control_delta_tuple_projection_metrics(deltas, projection)
+    except Exception as exc:
+        return {
+            "enabled": bool(ns.get("freeb_edge_control_projection_enabled", False)),
+            "status": "failed",
+            "error": repr(exc),
+        }
+
+
+def _edge_control_reduced_update_direction_payload(ns: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the reduced edge-control update vector for the final direction."""
+
+    try:
+        projection = ns.get("freeb_edge_control_projection", {"enabled": False})
+        if not bool(projection.get("enabled", False)):
+            return {"enabled": False, "status": "disabled"}
+        update_force_blocks = ns.get("update_force_blocks")
+        transforms = ns.get("_physical_delta_transforms")
+        if update_force_blocks is None or transforms is None:
+            return {"enabled": True, "status": "unavailable"}
+        force_blocks = velocity_blocks_from_force_blocks(update_force_blocks)
+        deltas = delta_tuple_from_blocks(
+            1.0,
+            transforms,
+            *force_blocks,
+            lasym=bool(getattr(ns.get("cfg"), "lasym", False)),
+        )
+        return _freeb_edge_control_reduced_update_direction_diagnostics(deltas, projection)
     except Exception as exc:
         return {
             "enabled": bool(ns.get("freeb_edge_control_projection_enabled", False)),
@@ -569,6 +597,7 @@ def finalize_residual_iter_from_namespace(
                 "state_coordinates": _edge_control_state_coordinates_payload(ns),
                 "reduced_unknown_vector": _edge_control_reduced_unknown_payload(ns),
                 "update_direction": _edge_control_update_direction_payload(ns),
+                "reduced_update_direction": _edge_control_reduced_update_direction_payload(ns),
             },
         },
     }

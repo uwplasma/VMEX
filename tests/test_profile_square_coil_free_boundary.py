@@ -370,6 +370,7 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
     from vmec_jax.solve import (
         _freeb_edge_control_apply_coordinate_update,
         _freeb_edge_control_delta_tuple_projection_metrics,
+        _freeb_edge_control_reduced_update_direction_diagnostics,
         _freeb_edge_control_reduced_unknown_vector_diagnostics,
         _freeb_edge_control_reduced_map,
         _freeb_edge_control_state_from_coordinates,
@@ -499,6 +500,10 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
         (direction_rcos, zeros.copy(), zeros.copy(), direction_zsin, zeros.copy(), zeros.copy()),
         projection,
     )
+    reduced_direction = _freeb_edge_control_reduced_update_direction_diagnostics(
+        (direction_rcos, zeros.copy(), zeros.copy(), direction_zsin, zeros.copy(), zeros.copy()),
+        projection,
+    )
     direction_lcos = zeros.copy()
     direction_lcos[-1, 0] = 2.0
     projected_direction = _project_freeb_edge_control_delta_tuple(
@@ -557,6 +562,12 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
     assert direction_metrics["residual_linf"] > 0.1
     assert direction_metrics["control_delta_by_label"]["R00"] == pytest.approx(0.2)
     assert 0.0 < direction_metrics["captured_fraction"] < 1.0
+    assert reduced_direction["mode"] == "reduced_edge_update_direction"
+    assert reduced_direction["full_update_size"] == 4 * static.modes.K
+    assert reduced_direction["reduced_update_size"] == 1
+    assert reduced_direction["update_by_label"]["R00"] == pytest.approx(0.2)
+    assert reduced_direction["decoded_residual_linf"] > 0.1
+    assert 0.0 < reduced_direction["captured_fraction"] < 1.0
     assert np.asarray(projected_direction[0])[-1, 0] == pytest.approx(0.2)
     assert np.asarray(projected_direction[0])[-1, 1] == pytest.approx(0.0)
     assert np.asarray(projected_direction[3])[-1, 1] == pytest.approx(0.0)

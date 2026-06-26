@@ -580,6 +580,9 @@ both host and JAX-array modes.
 It can also apply a reduced edge-coordinate update by encoding the current LCFS
 edge, adding a reduced update vector, and decoding back to a ``VMECState`` edge
 row.
+Solver diagnostics include
+``free_boundary.edge_control_projection.reduced_update_direction`` to compare
+the current full Fourier update direction against that reduced update vector.
 The square-coil profile summary also reports
 ``boundary_control_projection_state_coordinate_linf`` and
 ``boundary_control_projection_state_reconstruction_residual_rel`` for this

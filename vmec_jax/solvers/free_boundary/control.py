@@ -676,11 +676,9 @@ def _freeb_edge_control_vector_projection_metrics(
     }
 
 
-def _freeb_edge_control_delta_tuple_projection_metrics(deltas: Any, projection: dict[str, Any]) -> dict[str, Any]:
-    """Measure how much an edge update direction lies outside controls."""
+def _freeb_edge_control_delta_tuple_target(deltas: Any, projection: dict[str, Any]) -> np.ndarray:
+    """Return the stacked physical LCFS edge update from a VMEC delta tuple."""
 
-    if not bool(projection.get("enabled", False)):
-        return {"enabled": False, "status": "disabled"}
     k = int(projection["mode_count"])
     scale = np.asarray(projection["mode_scale_np"], dtype=float)
     dR, dR_sin, dZ_cos, dZ, _dL_cos, _dL = deltas
@@ -693,7 +691,61 @@ def _freeb_edge_control_delta_tuple_projection_metrics(deltas: Any, projection: 
         ],
         axis=0,
     )
+    if target.size != 4 * k:
+        raise ValueError("edge-control update direction has the wrong size")
+    return target
+
+
+def _freeb_edge_control_delta_tuple_projection_metrics(deltas: Any, projection: dict[str, Any]) -> dict[str, Any]:
+    """Measure how much an edge update direction lies outside controls."""
+
+    if not bool(projection.get("enabled", False)):
+        return {"enabled": False, "status": "disabled"}
+    target = _freeb_edge_control_delta_tuple_target(deltas, projection)
     return _freeb_edge_control_vector_projection_metrics(target, projection, status="measured")
+
+
+def _freeb_edge_control_reduced_update_direction_diagnostics(
+    deltas: Any,
+    projection: dict[str, Any],
+) -> dict[str, Any]:
+    """Return the reduced edge-control vector fitted to one update direction."""
+
+    if not bool(projection.get("enabled", False)):
+        return {"enabled": False, "status": "disabled"}
+    target = _freeb_edge_control_delta_tuple_target(deltas, projection)
+    step = _freeb_edge_control_project_vector_np(target, projection)
+    decoded = step.predicted_delta
+    residual = target - decoded
+    finite = residual[np.isfinite(residual)]
+    residual_linf = float(np.max(np.abs(finite))) if finite.size else 0.0
+    residual_rms = float(np.sqrt(np.mean(finite * finite))) if finite.size else 0.0
+    full_size = int(target.size)
+    reduced_size = int(np.asarray(step.control_delta).size)
+    captured_fraction = None if step.target_l2 <= np.finfo(float).tiny else float(step.predicted_l2 / step.target_l2)
+    return {
+        "enabled": True,
+        "status": "measured",
+        "mode": "reduced_edge_update_direction",
+        "full_update_size": full_size,
+        "reduced_update_size": reduced_size,
+        "full_to_reduced_size_ratio": None if reduced_size == 0 else float(full_size / reduced_size),
+        "reduction_fraction": None if full_size == 0 else float(reduced_size / full_size),
+        "labels": list(step.labels),
+        "update_vector": [float(value) for value in step.control_delta],
+        "update_by_label": step.control_delta_by_label,
+        "update_l2": float(step.control_l2),
+        "update_linf": float(step.control_linf),
+        "rank": int(step.rank),
+        "condition_number": step.condition_number,
+        "target_l2": float(step.target_l2),
+        "decoded_update_l2": float(step.predicted_l2),
+        "decoded_residual_l2": float(np.linalg.norm(residual)),
+        "decoded_residual_linf": residual_linf,
+        "decoded_residual_rms": residual_rms,
+        "decoded_residual_rel": step.residual_rel,
+        "captured_fraction": captured_fraction,
+    }
 
 
 def _project_freeb_edge_control_delta_tuple(
