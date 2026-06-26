@@ -104,7 +104,7 @@ Make `vmec_jax` a research-grade VMEC implementation that is:
   startup, and peak memory remains materially higher than VMEC2000, especially
   for LASYM finite-beta rows. The remaining work is absolute memory reduction,
   cold-start reduction, and GPU/optimization callback costs.
-- Refactor/API/examples: 79.3%.
+- Refactor/API/examples: 80.1%.
   Public examples are better, but core source files and tests are still too
   large and too entangled. The fixed-boundary residual timing/setup seam is now
   slightly cleaner, but the main residual loop still needs a larger split.
@@ -6582,6 +6582,60 @@ Updated lane percentages:
 - Single-stage coil optimization: 92.9%.
 - CPU/GPU runtime and memory footprint: 99.2%.
 - Refactor/API/examples: 72.8%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
+### 2026-06-26: Extract VMEC2000 staged-solve driver branch
+
+Steps taken:
+
+- Moved the VMEC2000-style staged-solve branch out of
+  ``run_fixed_boundary`` into ``_run_fixed_boundary_vmec2000_iter_solver_branch``.
+- Kept the existing ``Vmec2000StagedSolveContext`` dependency injection and
+  lazy ``vmec_mode_table`` import so numerical behavior and monkeypatch seams
+  remain unchanged.
+- Lowered the GitHub Actions and local release-gate source-health baseline for
+  ``vmec_jax/driver.py:run_fixed_boundary`` from ``504`` to ``464``.
+
+Results obtained:
+
+- ``run_fixed_boundary`` now reports ``464`` lines in ``source_health.py``,
+  down from ``504`` after the previous grid-setup extraction.
+- ``_run_fixed_boundary_vmec2000_iter_solver_branch`` stays below the
+  source-health function warning threshold while making the public driver
+  easier to scan.
+- ``python -m ruff check vmec_jax/driver.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_driver_api.py tests/test_driver_fast_reconstruction.py
+  tests/test_driver_api_finish_more_coverage.py tests/test_driver_policy_helpers.py
+  tests/test_driver_policy_coverage_extra.py -q`` passed with existing
+  numerical warnings only.
+- ``python tools/diagnostics/source_health.py --top 20 --top-functions 50
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2508
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=464`` passed.
+
+Best next steps:
+
+1. Run the local CI/source-health, repo-size, and whitespace gates with the
+   lowered driver baseline.
+2. Commit and push this larger public-driver extraction if those gates pass.
+3. Let CI validate the new baseline; avoid regenerating public benchmark or
+   AD-FD artifacts because no numerical path changed.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.2%.
+- Free-boundary production differentiability: 97.6%.
+- Single-stage coil optimization: 94.0%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 80.1%.
 - VMEC2000/VMEC++ parity and physics gates: 99.3%.
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
