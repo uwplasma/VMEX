@@ -2,7 +2,7 @@
 """Run a fixed-boundary performance decomposition and write a roadmap report.
 
 This diagnostic is the first implementation artifact for
-``plan_research_grade_performance_differentiability.md`` milestones M1 and M2.
+``vmec_jax_plan/plan_research_grade_performance_differentiability.md`` milestones M1 and M2.
 It runs cold and warm ``vmec_jax`` profiler passes in separate subprocesses,
 optionally runs VMEC2000, and writes both machine-readable JSON and a compact
 Markdown report that maps VMEC2000/VMEC++ algorithmic buckets onto vmec_jax

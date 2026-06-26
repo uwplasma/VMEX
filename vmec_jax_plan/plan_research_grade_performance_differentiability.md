@@ -4,7 +4,7 @@ Status: active authoritative plan for PR #20 and follow-up work.
 Created: 2026-06-21.
 Branch: `codex/differentiability-refactor-plan`.
 
-This file supersedes the scattered planning notes in `plan_differentiability.md`
+This file supersedes the scattered planning notes in `vmec_jax_plan/plan_differentiability.md`
 for the remaining performance, differentiability, and maintainability work.
 Older plan files are historical logs unless this file explicitly points back to
 them.
@@ -707,7 +707,7 @@ Steps taken:
   reached long timeouts; that was not the historical README single-grid matrix
   required by the PR #20 readiness gate.
 - Ran the intended current-branch matrix:
-  `PYTHONPATH=$PWD JAX_ENABLE_X64=1 python tools/diagnostics/example_runtime_memory_matrix.py --inputs-dir examples_single_grid/data --kind fixed --backend all --warm-runs 1 --jax-platforms cpu --runner-label current-cpu --vmec-exec ~/bin/xvmec2000 --timeout-s 1800 --vmec-timeout-s 1800 --outdir outputs/pr20_full_matrix_current_cpu_sg`.
+  `PYTHONPATH=$PWD JAX_ENABLE_X64=1 python tools/diagnostics/example_runtime_memory_matrix.py --inputs-dir examples/data/single_grid --kind fixed --backend all --warm-runs 1 --jax-platforms cpu --runner-label current-cpu --vmec-exec ~/bin/xvmec2000 --timeout-s 1800 --vmec-timeout-s 1800 --outdir outputs/pr20_full_matrix_current_cpu_sg`.
 - Ran the matching clean `origin/main` matrix in
   `/Users/rogeriojorge/local/tests/vmec_jax_main_perf` with the same command
   and `--outdir outputs/pr20_full_matrix_main_cpu_sg`.
@@ -870,7 +870,7 @@ Steps taken:
 
 - Re-ran the historical 16-row bundled single-grid fixed-boundary matrix on the
   current branch after the full-JIT R/Z seed promotion:
-  `PYTHONPATH=$PWD JAX_ENABLE_X64=1 python tools/diagnostics/example_runtime_memory_matrix.py --inputs-dir examples_single_grid/data --kind fixed --backend all --warm-runs 1 --jax-platforms cpu --runner-label current-cpu --vmec-exec ~/bin/xvmec2000 --timeout-s 1800 --vmec-timeout-s 1800 --outdir outputs/pr20_full_matrix_current_cpu_sg_fulljit`.
+  `PYTHONPATH=$PWD JAX_ENABLE_X64=1 python tools/diagnostics/example_runtime_memory_matrix.py --inputs-dir examples/data/single_grid --kind fixed --backend all --warm-runs 1 --jax-platforms cpu --runner-label current-cpu --vmec-exec ~/bin/xvmec2000 --timeout-s 1800 --vmec-timeout-s 1800 --outdir outputs/pr20_full_matrix_current_cpu_sg_fulljit`.
 - Reused the clean `origin/main` summary in
   `/Users/rogeriojorge/local/tests/vmec_jax_main_perf/outputs/pr20_full_matrix_main_cpu_sg/summary.json`
   for current-vs-main regression comparison.
@@ -2243,7 +2243,7 @@ Steps taken:
   changes:
   `PYTHONPATH=$PWD JAX_ENABLE_X64=1 python
   tools/diagnostics/example_runtime_memory_matrix.py --inputs-dir
-  examples_single_grid/data --kind fixed --backend all --warm-runs 1
+  examples/data/single_grid --kind fixed --backend all --warm-runs 1
   --jax-platforms cpu --runner-label current-cpu-compact --vmec-exec
   ~/bin/xvmec2000 --timeout-s 1800 --vmec-timeout-s 1800 --outdir
   outputs/pr20_full_matrix_current_cpu_sg_compact`.
@@ -2463,7 +2463,7 @@ Updated lane percentages:
 
 Steps taken:
 
-- Re-ran a bounded cold setup probe on `examples_single_grid/data/input.solovev`
+- Re-ran a bounded cold setup probe on `examples/data/single_grid/input.solovev`
   with three single-grid parity iterations, timing detail enabled, and no finish
   policy.
 - Inspected the residual profile setup, force payload, strict-update, and scan
@@ -8030,6 +8030,59 @@ Updated lane percentages:
 - VMEC2000/VMEC++ parity and physics gates: 99.4%.
 - Docs/release hygiene: 100%.
 - Overall: 99.8%.
+
+## 2026-06-26 layout simplification tranche
+
+Steps taken:
+
+- Moved active and historical planning files out of the repository root into
+  `vmec_jax_plan/`, with this file remaining the authoritative umbrella plan.
+- Moved the historical single-grid example inputs into
+  `examples/data/single_grid/` so users see one examples tree and one example
+  data tree.
+- Renamed the ambiguous internal helper module `vmec_jax/drivers/io.py` to
+  `vmec_jax/drivers/interface.py`; it now describes the driver-facing
+  public-interface policy helpers it actually contains.
+- Added README files to the package, major domain subpackages, examples, tools,
+  validation, and plan directories so users and contributors can navigate the
+  repository without reverse-engineering the import graph.
+- Updated tests, diagnostics, asset fetching, CI paths, and docs to use the new
+  plan and single-grid example locations.
+
+Results obtained:
+
+- The refactor reduces top-level repository clutter without adding compatibility
+  shims for removed example or plan paths.
+- The package root now has a concise navigation README and the confusing
+  `drivers/io` duplicate name is removed.
+- Public VMEC solve APIs are unchanged; this tranche is layout and navigation
+  cleanup, not a solver algorithm change.
+
+Best next steps:
+
+1. Finish focused lint, docs, and path-sensitive tests for the layout move.
+2. If green, commit the layout tranche as one coherent refactor.
+3. Plan the next larger source-code simplification separately: consolidate the
+   QI/quasi-isodynamic modules into one domain package and continue reducing
+   large solver files without adding new root-level implementation modules.
+
+User needs:
+
+- No input needed unless the user wants to prioritize the QI package split
+  before release hygiene.
+
+Current lane percentages after this tranche:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.5%.
+- Free-boundary production differentiability: 97.7%.
+- Single-stage coil optimization: 94.2%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 87.0%.
+- VMEC2000/VMEC++ parity and physics gates: 99.4%.
+- Docs/release hygiene: 100%.
+- Repository layout/navigation cleanup: 88.0%.
+- Overall: 99.82%.
 
 ### 2026-06-26: Extract residual free-boundary and boundary setup objects
 

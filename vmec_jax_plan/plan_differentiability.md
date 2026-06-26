@@ -2,16 +2,16 @@
 
 Status: historical umbrella log for PR #20.
 
-Authoritative current plan: `plan_research_grade_performance_differentiability.md`.
+Authoritative current plan: `vmec_jax_plan/plan_research_grade_performance_differentiability.md`.
 Use that file for remaining performance, memory, differentiability, and
 refactor milestones.  This file is retained as a compact record of the PR #20
 context and earlier evidence.
 
 This file is intentionally concise.  It records the current target architecture,
 promotion gates, open lanes, and recent review evidence.  Detailed historical
-logs remain available in git history.  `plan_freeb.md` is a closed
-free-boundary evidence summary; `plan.md` and
-`discrete_adjoint_2506_plan.md` are historical references only.
+logs remain available in git history.  `vmec_jax_plan/plan_freeb.md` is a closed
+free-boundary evidence summary; `vmec_jax_plan/plan.md` and
+`vmec_jax_plan/discrete_adjoint_2506_plan.md` are historical references only.
 
 Last updated: 2026-06-20.
 
@@ -519,8 +519,8 @@ Steps taken:
 1. Re-audited the active plan, code-structure documentation, source tree,
    source-health report, tracked repository size, generated-file patterns, and
    current branch history.
-2. Confirmed `plan_differentiability.md` is the only active plan; `plan_freeb.md`,
-   `plan.md`, and `discrete_adjoint_2506_plan.md` are compact historical or
+2. Confirmed `vmec_jax_plan/plan_differentiability.md` is the only active plan; `vmec_jax_plan/plan_freeb.md`,
+   `vmec_jax_plan/plan.md`, and `vmec_jax_plan/discrete_adjoint_2506_plan.md` are compact historical or
    evidence pointers.
 3. Verified the domain source map still matches the current file layout:
    public facades in the root, implementation under `drivers/`, `solvers/`,
@@ -575,7 +575,7 @@ of the git clone size.
 Steps taken:
 
 1. Re-audited the two remaining historical plan files:
-   `plan.md` and `discrete_adjoint_2506_plan.md`.
+   `vmec_jax_plan/plan.md` and `vmec_jax_plan/discrete_adjoint_2506_plan.md`.
 2. Confirmed both were stale snapshots from earlier roadmap/discrete-adjoint
    work and were already marked as historical references in this active plan
    and in `docs/code_structure.rst`.
@@ -597,7 +597,7 @@ Results obtained:
 Tests and commands:
 
 - `git status --short --branch`
-- `wc -l plan_differentiability.md plan_freeb.md plan.md discrete_adjoint_2506_plan.md`
+- `wc -l vmec_jax_plan/plan_differentiability.md vmec_jax_plan/plan_freeb.md vmec_jax_plan/plan.md vmec_jax_plan/discrete_adjoint_2506_plan.md`
 - `rg` audits over README, docs, tests, source, and plan files for references
   to the historical plan files.
 - `python tools/diagnostics/repo_size_audit.py --top 10 --max-total-mib 50 --max-file-mib 2`
@@ -614,7 +614,7 @@ Best next steps:
 
 Steps taken:
 
-1. Re-audited `plan_freeb.md` after the active plan compaction.
+1. Re-audited `vmec_jax_plan/plan_freeb.md` after the active plan compaction.
 2. Confirmed it was explicitly closed and should not receive new progress
    entries, but still contained `25,581` lines of historical append-only logs.
 3. Replaced it with a concise free-boundary evidence summary, current claim
@@ -624,16 +624,16 @@ Steps taken:
 Results obtained:
 
 - The repository now has one active plan: this file.
-- `plan_freeb.md` is now an evidence pointer instead of a parallel historical
+- `vmec_jax_plan/plan_freeb.md` is now an evidence pointer instead of a parallel historical
   work log.
 - The full historical free-boundary transcript remains recoverable from git
   history.
 
 Tests and commands:
 
-- `sed`/`rg` audits over `plan_freeb.md`, `plan_differentiability.md`, and
+- `sed`/`rg` audits over `vmec_jax_plan/plan_freeb.md`, `vmec_jax_plan/plan_differentiability.md`, and
   `docs/code_structure.rst`.
-- `wc -l plan_differentiability.md plan_freeb.md plan.md discrete_adjoint_2506_plan.md`.
+- `wc -l vmec_jax_plan/plan_differentiability.md vmec_jax_plan/plan_freeb.md vmec_jax_plan/plan.md vmec_jax_plan/discrete_adjoint_2506_plan.md`.
 
 Best next steps:
 
@@ -646,7 +646,7 @@ Steps taken:
 
 1. Re-audited the active branch, latest commit, source-health, repo-size, and
    plan ownership.
-2. Found that `plan_differentiability.md` had grown to `34,868` lines and
+2. Found that `vmec_jax_plan/plan_differentiability.md` had grown to `34,868` lines and
    `1.6 MiB`, making it the largest tracked file.
 3. Replaced the historical append-only log with this concise current-state plan
    while keeping older details available through git history.
@@ -668,7 +668,7 @@ Tests and commands:
 - `git status --short --branch`
 - `python tools/diagnostics/source_health.py --top 20 --top-functions 60 --max-root-helper-prefix-files 2`
 - `python tools/diagnostics/repo_size_audit.py --top 10 --max-total-mib 50 --max-file-mib 2`
-- `wc -l plan_differentiability.md plan_freeb.md plan.md discrete_adjoint_2506_plan.md`
+- `wc -l vmec_jax_plan/plan_differentiability.md vmec_jax_plan/plan_freeb.md vmec_jax_plan/plan.md vmec_jax_plan/discrete_adjoint_2506_plan.md`
 - `rg` audits over the active plan for old open-lane and deferred-work markers.
 
 Best next steps:
@@ -688,8 +688,8 @@ Steps taken:
 
 1. Re-audited the branch status, active plan ownership, source-health, tracked
    repository size, and stale README/docs/source references.
-2. Confirmed this file remains the single active plan. `plan_freeb.md`,
-   `plan.md`, and `discrete_adjoint_2506_plan.md` remain compact historical
+2. Confirmed this file remains the single active plan. `vmec_jax_plan/plan_freeb.md`,
+   `vmec_jax_plan/plan.md`, and `vmec_jax_plan/discrete_adjoint_2506_plan.md` remain compact historical
    pointers only.
 3. Found one concrete public-surface drift: the root
    `vmec_jax.free_boundary_adjoint_controller` facade exported five
@@ -870,7 +870,7 @@ Steps taken:
    quickstart/optimization sections, source tree shape, package dependencies,
    source-health output, and repository size.
 2. Confirmed the repository still has one active plan: this file.
-   `plan_freeb.md`, `plan.md`, and `discrete_adjoint_2506_plan.md` remain
+   `vmec_jax_plan/plan_freeb.md`, `vmec_jax_plan/plan.md`, and `vmec_jax_plan/discrete_adjoint_2506_plan.md` remain
    compact historical/evidence pointers.
 3. Cleaned up three remaining hand-maintained physics-helper export lists in
    `quasi_isodynamic.py`, `qi_diagnostics.py`, and `bootstrap_current.py`.

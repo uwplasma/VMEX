@@ -112,12 +112,15 @@ Refactoring direction
 
 The current code intentionally preserves VMEC2000 semantics, but several
 translation-era modules are now too large for long-term research development.
-Use ``plan_differentiability.md`` as the active single source of truth for the
-staged differentiability/refactor plan.  ``plan_freeb.md`` is now a closed
-free-boundary evidence summary, not a parallel work plan. ``plan.md`` and
-``discrete_adjoint_2506_plan.md`` are compact historical pointers. New status
-updates should be summarized in ``plan_differentiability.md`` only. Before
-starting a large extraction, run:
+Use ``vmec_jax_plan/plan_research_grade_performance_differentiability.md`` as
+the active single source of truth for the staged performance,
+differentiability, validation, and refactor plan.
+``vmec_jax_plan/plan_freeb.md`` is now a closed free-boundary evidence summary,
+not a parallel work plan. ``vmec_jax_plan/plan.md``,
+``vmec_jax_plan/plan_differentiability.md``, and
+``vmec_jax_plan/discrete_adjoint_2506_plan.md`` are compact historical
+pointers. New status updates should be summarized in the umbrella plan only.
+Before starting a large extraction, run:
 
 .. code-block:: bash
 

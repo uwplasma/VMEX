@@ -25,7 +25,7 @@ from .drivers import flux as _driver_flux_helpers
 from .drivers import debug as _driver_debug_helpers
 from .drivers import dynamic_scan as _driver_dynamic_scan_helpers
 from .drivers import finish as _driver_finish_helpers
-from .drivers import io as _driver_io_helpers
+from .drivers import interface as _driver_interface_helpers
 from .drivers import output as _driver_output_helpers
 from .drivers import policy as _driver_policy_helpers
 from .drivers import results as _driver_result_helpers
@@ -333,7 +333,7 @@ def write_wout_from_fixed_boundary_run(
 
 def example_paths(case: str, *, root: str | Path | None = None) -> tuple[Path, Optional[Path]]:
     """Return (input_path, wout_path) for a bundled example case."""
-    return _driver_io_helpers.example_paths(case, root=root, package_file=__file__)
+    return _driver_interface_helpers.example_paths(case, root=root, package_file=__file__)
 
 
 def load_example(
@@ -344,7 +344,7 @@ def load_example(
     grid=None,
 ) -> ExampleData:
     """Load a bundled example case (config + static + optional wout/state)."""
-    return _driver_io_helpers.load_example(
+    return _driver_interface_helpers.load_example(
         case,
         root=root,
         with_wout=with_wout,
@@ -361,15 +361,15 @@ def load_example(
 
 def load_input(path: str | Path):
     """Convenience wrapper around `load_config`."""
-    return _driver_io_helpers.load_input(path, load_config_func=load_config)
+    return _driver_interface_helpers.load_input(path, load_config_func=load_config)
 
 
 def load_wout(path: str | Path) -> WoutData:
     """Convenience wrapper around `read_wout`."""
-    return _driver_io_helpers.load_wout(path, read_wout_func=read_wout)
+    return _driver_interface_helpers.load_wout(path, read_wout_func=read_wout)
 
 
-save_npz = _driver_io_helpers.save_npz
+save_npz = _driver_interface_helpers.save_npz
 
 
 _STEP_SIZE_SENTINEL = object()
@@ -812,7 +812,7 @@ def _maybe_print_fixed_boundary_run_intro(
     if not verbose:
         return
     if solver_lower != "vmec2000_iter" or use_initial_guess:
-        _driver_io_helpers.print_fixed_boundary_intro(
+        _driver_interface_helpers.print_fixed_boundary_intro(
             input_path=input_path,
             cfg=cfg,
             solver=solver,
@@ -822,7 +822,7 @@ def _maybe_print_fixed_boundary_run_intro(
             history_size=int(history_size),
         )
         return
-    _driver_io_helpers.print_vmec2000_run_header(
+    _driver_interface_helpers.print_vmec2000_run_header(
         input_path=input_path,
         version=os.getenv("VMEC_JAX_VMEC2000_VERSION", "vmec_jax"),
     )
@@ -959,7 +959,7 @@ def _run_fixed_boundary_vmec2000_iter_solver_branch(
             result_final_residuals=_result_final_residuals,
             result_hits_total_target=_result_hits_total_target,
             finalize_fixed_boundary_convergence_result=_driver_result_helpers.finalize_fixed_boundary_convergence_result,
-            print_vmec2000_run_summary=_driver_io_helpers.print_vmec2000_run_summary,
+            print_vmec2000_run_summary=_driver_interface_helpers.print_vmec2000_run_summary,
             default_backend_name=_default_backend_name,
             deepcopy_func=deepcopy,
             getenv=os.getenv,

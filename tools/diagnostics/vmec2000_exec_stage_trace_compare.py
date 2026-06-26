@@ -338,7 +338,7 @@ def _copy_input_and_mgrid(input_path: Path, workdir: Path) -> Path:
     if not mg_src.exists():
         search_roots = [
             repo_root / "examples" / "data",
-            repo_root / "examples_single_grid" / "data",
+            repo_root / "examples/data/single_grid",
             repo_root.parent / "STELLOPT" / "BENCHMARKS" / "VMEC_TEST",
             repo_root.parent / "external",
             repo_root / "outputs",

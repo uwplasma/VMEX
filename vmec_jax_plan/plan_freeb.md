@@ -2,7 +2,7 @@
 
 Status: closed evidence summary, not an active plan.
 
-The active umbrella plan is `plan_differentiability.md`.  Historical
+The active umbrella plan is `vmec_jax_plan/plan_differentiability.md`.  Historical
 free-boundary progress logs were intentionally compacted on 2026-06-20 to keep
 the repository lightweight and to avoid two competing task lists.  The full
 append-only transcript remains available through git history before commit
@@ -125,7 +125,7 @@ VMEC2000_INTEGRATION=1 JAX_ENABLE_X64=1 python -m pytest -q \
 
 ## Review Guardrails
 
-- Keep future progress and open decisions in `plan_differentiability.md`.
+- Keep future progress and open decisions in `vmec_jax_plan/plan_differentiability.md`.
 - Do not add a second active free-boundary plan.
 - Keep complete solves as acceptance authority in coil-only optimization
   examples unless a stronger full adaptive differentiability gate is promoted.
