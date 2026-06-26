@@ -7855,6 +7855,100 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.7%.
 
+### 2026-06-26: Refresh and compress PR-readiness public artifacts
+
+Steps taken:
+
+- Regenerated the public README/runtime artifact from the checked full-matrix
+  single-grid summary:
+  ``outputs/pr20_full_matrix_current_cpu_sg_fulljit/summary.json``.
+- Regenerated the AD-vs-central-FD evidence panel from the same-branch
+  direct-coil report in
+  ``outputs/pr20_ad_fd/qs_same_branch/same_branch_complete_solve_report.json``.
+- Regenerated the reviewed QI minimal-seed NFP1/2/3/4 panel and the compact
+  QA/QH/QP/QI README best-optimization panels from checked provenance rather
+  than launching new long optimization jobs.
+- Applied lossless PNG optimization to the large README/docs figures.  This
+  reduced tracked repository size from 28.48 MiB to 27.11 MiB without changing
+  numerical CSV/JSON evidence or WOUT outputs.
+- Kept generated WOUT fixtures, docs builds, caches, and benchmark outputs
+  ignored/untracked.
+
+Results obtained:
+
+- ``docs/_static/figures/readme_runtime_compare.{png,csv,json}`` was refreshed.
+- ``docs/_static/figures/readme_ad_fd_evidence.{png,csv,json}`` was refreshed;
+  all 10 derivative evidence rows remain below the documented ``1e-9`` relative
+  tolerance, including ``DMerc``, ``D_R``, and four branch-local free-boundary
+  scalars.
+- ``docs/_static/figures/readme_qi_optimization_cases.{png,csv}`` was
+  refreshed.  The reviewed minimal-seed QI cases have empty
+  ``readme_gate_failures`` under the current evidence policy; raw stored
+  stage-gate flags remain preserved for auditability:
+  NFP1 ``QI=1.00e-3``, smooth ``2.52e-3``, mirror ``0.322``;
+  NFP2 ``QI=2.09e-4``, smooth ``2.70e-3``, mirror ``0.265``;
+  NFP3 ``QI=6.12e-4``, smooth ``3.07e-3``, mirror ``0.318``;
+  NFP4 ``QI=2.54e-4``, smooth ``2.56e-3``, mirror ``0.287``.
+- ``docs/_static/figures/readme_best_optimization_*.png`` and
+  ``readme_best_optimizations.csv`` were refreshed.
+- ``python -m ruff check
+  tools/diagnostics/readme_runtime_compare.py
+  tools/diagnostics/readme_ad_fd_evidence.py
+  examples/optimization/render_qi_readme_cases.py
+  examples/optimization/render_readme_best_optimizations.py
+  tests/test_readme_ad_fd_evidence.py tests/test_qi_readme_cases.py`` passed.
+- ``python -m compileall -q`` on the refreshed renderer scripts passed.
+- ``python tools/diagnostics/source_health.py --top 20
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2441
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=420`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_readme_ad_fd_evidence.py tests/test_qi_readme_cases.py
+  tests/test_glasser_resistive_interchange.py -q`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_residue_getfsq_parity.py
+  tests/test_wout_profiles_currents_bundled_parity.py
+  tests/test_physics_parity_helper_gates.py
+  tests/test_vmec_parity_physics_fast_gates.py
+  tests/test_converged_wout_matrix_parity.py
+  tests/test_parity_sweep_manifest_thresholds.py -q`` passed with the existing
+  expected xfail.
+- ``PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 python -m pytest -q
+  tests/test_free_boundary_direct_coil_finite_pressure_sensitivity.py::test_direct_coil_current_only_same_branch_custom_vjp_matches_complete_solve_fd
+  tests/test_free_boundary_qs_coil_optimization_smoke.py::test_same_branch_report_writer_records_branch_local_vector_jacobian
+  -q`` passed.
+- ``LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs
+  docs/_build/html_final_tranche_ready`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 30 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size is 27.11 MiB.
+- ``git diff --check`` passed.
+
+Best next steps:
+
+1. Commit and push the refreshed/compressed public artifacts.
+2. Let the latest GitHub CI run finish; at the time of this plan entry all
+   completed jobs on ``8ef94ba0`` were green and only the exact-coverage
+   remainder job was still running.
+3. After CI is green, the remaining review-readiness work is not another figure
+   rerender but a deliberate split of the largest free-boundary validation
+   tests, or explicitly deferring that split as post-review refactor work.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.4%.
+- Free-boundary production differentiability: 97.7%.
+- Single-stage coil optimization: 94.2%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 83.0%.
+- VMEC2000/VMEC++ parity and physics gates: 99.4%.
+- Docs/release hygiene: 100%.
+- Overall: 99.75%.
+
 ### 2026-06-26: Extract residual free-boundary and boundary setup objects
 
 Steps taken:
