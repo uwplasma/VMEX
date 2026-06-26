@@ -5738,6 +5738,142 @@ Visual validation:
 
 No user input is needed.
 
+## M316. Best-scored residual state promotion for oscillatory strict rows
+
+### Steps taken
+
+- Rechecked the local branch, PR #21 head, and live `office` strict rows.
+- Confirmed the direct hot-restart row is still oscillating near, but above,
+  strict component residuals, with recent full-component samples around
+  `FSQR=8e-11` to `1.4e-10`, `FSQZ=7e-11` to `1.2e-10`, and `FSQL`
+  near `1e-11`.
+- Confirmed the VMEC2000/generated-`mgrid` reference row is still decreasing
+  but not strict, with leading residual columns still around `1e-9`.
+- Found that the profile CLI already exposed `--return-best-scored-state`, but
+  the residual-iteration solver did not yet maintain and return a real
+  best-scored physical state.
+- Added a best-state tracker that scores each physical force state by
+  max-component residual first and total residual second.
+- Skipped the free-boundary turn-on rollback point so an artificial restart
+  state cannot be promoted.
+- Restored the best-scored state during finalization when requested, and
+  carried best-component, best-iteration, full-boundary count, and fresh-boundary
+  count through diagnostics, backend profile JSON, and the profile summary.
+
+### Results obtained
+
+- The strict oscillatory JAX lane can now return the best physical state it
+  actually visited instead of only the last oscillatory state.
+- The summary table now reports both `best_total` and `best_component_max`, so
+  strict triage is based on the same component-wise target as the solver.
+- No convergence threshold or production-promotion gate was loosened.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_solve_residual_iter_update_helpers.py::test_best_scored_state_tracker_prefers_strict_component_max_and_counts_fresh_updates \
+  tests/test_solve_residual_iter_finalize_helpers.py::test_finalize_residual_iter_from_namespace_builds_diagnostics_and_result \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tails \
+  tests/test_summarize_square_coil_profiles.py::test_square_coil_profile_summary_reads_jax_and_vmec2000_rows \
+  tests/test_summarize_square_coil_profiles.py::test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge_direct
+```
+
+Result: `5 passed`.
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_solve_residual_iter_update_helpers.py \
+  tests/test_solve_residual_iter_finalize_helpers.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+```
+
+Result: `120 passed, 1 warning`.
+
+```bash
+python tools/diagnostics/source_health.py --top 20 \
+  --max-root-helper-prefix-files 2 \
+  --max-function-lines-at vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2440 \
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=420
+ruff check \
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py \
+  vmec_jax/solvers/fixed_boundary/residual/finalize.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_solve_residual_iter_update_helpers.py \
+  tests/test_solve_residual_iter_finalize_helpers.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+python -m py_compile \
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py \
+  vmec_jax/solvers/fixed_boundary/residual/finalize.py \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/summarize_square_coil_profiles.py
+git diff --check
+```
+
+Result: passed.
+
+```bash
+venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py \
+  --outdir /tmp/vmec_best_scored_smoke \
+  --beta-percent 0 --mpol 3 --ntor 4 --ns 5 --nzeta 16 \
+  --ns-array 5 --niter-array 2 --ftol-array 1e-8 \
+  --max-iter 2 --ftol 1e-8 --phiedge -0.02 --delt 0.02 \
+  --activate-fsq 1e-3 --nvacskip 1 --nstep 1 \
+  --axis-kind control_spline --side-power 1.0 --corner-power 1.0 \
+  --n-coils-per-side 2 --coil-segments 16 --coil-chunk-size 128 \
+  --skip-mgrid --skip-provider-parity --solver-mode parity \
+  --max-boundary-projection-error none --return-best-scored-state
+```
+
+Result: completed and wrote
+`/tmp/vmec_best_scored_smoke/square_coil_free_boundary_backend_profile.json`
+with `return_best_scored_state=True`, `returned_best_scored_state=True`,
+`best_scored_iter=2`, and `best_scored_component_max=2.45e-3`.  The smoke is
+intentionally underresolved and was not promoted as production evidence.
+
+### File structure and best-practice adherence
+
+- Solver-state selection lives in
+  `vmec_jax/solvers/fixed_boundary/residual/iteration.py`, while final result
+  promotion lives in
+  `vmec_jax/solvers/fixed_boundary/residual/finalize.py`.
+- User-facing diagnostics stay in the existing profile and summary tools rather
+  than adding another reporting script.
+- Tests cover the scoring order, rollback skip, finalizer state restoration,
+  backend payload, and summary column.
+- No generated profile files or figures were added to the repository.
+
+### Best next steps
+
+1. Commit and push this tranche, then fast-forward waiting `office` queues.
+2. Launch a fresh strict direct row that uses best-state promotion, rather than
+   interpreting the old hot restart that was started before this feature.
+3. Let the active VMEC2000 row continue as a backend robustness comparator; so
+   far it is not more robust for this square-axis Fourier representation.
+4. If best-state strict rows still plateau above `1e-12`, start the
+   solver-native reduced spline/control state tranche.  The evidence continues
+   to point to Fourier representation stiffness for the square linear-axis
+   segments.
+
+### Completion percentages after M316
+
+- Direct-coil GPU/JIT parity lane: `97%`, best-state promotion is implemented;
+  strict `1e-12` closure remains open.
+- Seeded hot-restart lane: `99%`, the active old run remains useful evidence
+  but does not include this new promotion logic.
+- VMEC2000 robustness/reference lane: `99%`, still active and not strict.
+- True spline/control-basis hybrid lane: `91%`, diagnostics and projected
+  controls are ready; solver-native spline state remains open.
+- CI/API health lane: `99%`, local gates pass and remote CI is pending.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
 ## M315. Source-health repair after projected update-delta diagnostics
 
 ### Steps taken

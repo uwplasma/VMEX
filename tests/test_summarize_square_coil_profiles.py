@@ -48,6 +48,7 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                         "final_fsql": 4.0e-7,
                         "final_fsq_component_sum": 9.0e-7,
                         "best_scored_fsq": 8.0e-7,
+                        "best_scored_component_max": 3.0e-7,
                         "returned_best_scored_state": True,
                         "best_scored_full_boundary_count": 10,
                         "best_scored_fresh_boundary_count": 8,
@@ -200,6 +201,7 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["promotion_blockers"] == ""
     assert rows[1]["virtual_casing_required"] is False
     assert rows[1]["best_total"] == pytest.approx(8.0e-7)
+    assert rows[1]["best_component_max"] == pytest.approx(3.0e-7)
     assert rows[1]["returned_best_scored_state"] is True
     assert rows[1]["best_scored_full_boundary_count"] == 10
     assert rows[1]["best_scored_fresh_boundary_count"] == 8

@@ -274,6 +274,18 @@ def test_finalize_residual_iter_from_namespace_builds_diagnostics_and_result() -
         "free_boundary_activate_fsq": None,
         "freeb_plascur": 0.0,
         "state": "state",
+        "return_best_scored_state": True,
+        "best_scored": {
+            "state": "best-state",
+            "iter": 6,
+            "fsq": 6.0e-9,
+            "fsqr": 1.0e-9,
+            "fsqz": 2.0e-9,
+            "fsql": 3.0e-9,
+            "component_max": 3.0e-9,
+            "full_boundary_count": 4,
+            "fresh_boundary_count": 3,
+        },
         "w_history": [0.0, 1.0],
         "fsqr2_history": [1.0e-8],
         "fsqz2_history": [2.0e-8],
@@ -295,10 +307,17 @@ def test_finalize_residual_iter_from_namespace_builds_diagnostics_and_result() -
         return_final_force_payload=True,
     )
 
-    assert result.state == "state"
+    assert result.state == "best-state"
     assert result.diagnostics["attached"] is True
     assert result.diagnostics["history_marker"] == 2
     assert result.diagnostics["converged_strict"] is True
+    assert result.diagnostics["return_best_scored_state"] is True
+    assert result.diagnostics["returned_best_scored_state"] is True
+    assert result.diagnostics["best_scored_iter"] == 6
+    assert result.diagnostics["best_scored_component_max"] == pytest.approx(3.0e-9)
+    assert result.diagnostics["best_scored_full_boundary_count"] == 4
+    assert result.diagnostics["best_scored_fresh_boundary_count"] == 3
+    assert result.diagnostics["final_fsqr"] == pytest.approx(1.0e-9)
     assert result.diagnostics["setup_axis_reset_applied"] is True
     assert result.diagnostics["setup_axis_reset_done"] is True
     assert result.diagnostics["setup_axis_force_probe_available"] is True

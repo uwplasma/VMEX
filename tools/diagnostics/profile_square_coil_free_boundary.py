@@ -1198,6 +1198,7 @@ def _final_residuals(run: Any, *, config: ExampleConfig | None = None) -> dict[s
         "best_scored_fsqr": diag.get("best_scored_fsqr"),
         "best_scored_fsqz": diag.get("best_scored_fsqz"),
         "best_scored_fsql": diag.get("best_scored_fsql"),
+        "best_scored_component_max": diag.get("best_scored_component_max"),
         "best_scored_full_boundary_count": diag.get("best_scored_full_boundary_count"),
         "best_scored_fresh_boundary_count": diag.get("best_scored_fresh_boundary_count"),
         "update_delta_rms": diag.get("update_delta_rms"),

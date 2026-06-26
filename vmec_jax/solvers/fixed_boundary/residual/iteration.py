@@ -19,7 +19,7 @@ from functools import partial
 import time
 import os
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any, Mapping, NamedTuple
 
 import numpy as np
 
@@ -372,6 +372,80 @@ def _strict_update_delta_rms_pair(proposal) -> tuple[Any, float | None]:
     """Return projected strict-update delta RMS diagnostics from a proposal."""
 
     return proposal.update_delta_rms_j, proposal.update_delta_rms
+
+
+def _new_best_scored_state_tracker(enabled: bool) -> dict[str, Any]:
+    return {
+        "enabled": bool(enabled),
+        "state": None,
+        "key": (float("inf"), float("inf")),
+        "iter": None,
+        "fsq": None,
+        "fsqr": None,
+        "fsqz": None,
+        "fsql": None,
+        "component_max": None,
+        "full_boundary_count": 0,
+        "fresh_boundary_count": 0,
+    }
+
+
+def _record_best_scored_state(
+    tracker: dict[str, Any],
+    *,
+    state: Any,
+    iter2: int,
+    fsq: tuple[float, float, float],
+    free_boundary_enabled: bool,
+    freeb_ivacskip: int,
+    freeb_reused: bool,
+    skip: bool = False,
+) -> None:
+    if (not bool(tracker.get("enabled", False))) or bool(skip):
+        return
+    fsqr, fsqz, fsql = (float(value) for value in fsq)
+    component_max = max(fsqr, fsqz, fsql)
+    component_sum = fsqr + fsqz + fsql
+    if bool(free_boundary_enabled):
+        tracker["full_boundary_count"] = int(tracker.get("full_boundary_count", 0)) + (
+            1 if int(freeb_ivacskip) == 0 else 0
+        )
+        tracker["fresh_boundary_count"] = int(tracker.get("fresh_boundary_count", 0)) + (
+            0 if bool(freeb_reused) else 1
+        )
+    key = (component_max, component_sum)
+    if key >= tuple(tracker.get("key", (float("inf"), float("inf")))):
+        return
+    tracker.update(
+        {
+            "state": state,
+            "key": key,
+            "iter": int(iter2),
+            "fsq": component_sum,
+            "fsqr": fsqr,
+            "fsqz": fsqz,
+            "fsql": fsql,
+            "component_max": component_max,
+        }
+    )
+
+
+def _finalize_residual_iter_result_from_namespace(
+    namespace: Mapping[str, Any],
+    *,
+    return_final_force_payload: bool,
+) -> SolveVmecResidualResult:
+    return _finalize_residual_iter_from_namespace(
+        namespace,
+        result_type=SolveVmecResidualResult,
+        nestor_external_only_step_func=namespace["nestor_external_only_step"],
+        residual_fsq_from_norms_func=_residual_fsq_from_norms,
+        device_get_floats_func=_device_get_floats,
+        residual_convergence_flags_func=_residual_convergence_flags,
+        residual_iter_history_diagnostics_func=lambda ns: ns["history_lists"].diagnostics(),
+        attach_free_boundary_diagnostics=namespace["_attach_freeb_diag"],
+        return_final_force_payload=bool(return_final_force_payload),
+    )
 
 
 _cached_or_current_f_norm1_jax = _precond_payload_facade._cached_or_current_f_norm1_jax
@@ -1760,6 +1834,7 @@ def solve_fixed_boundary_residual_iter(
     _env_dump_lamcal = os.getenv("VMEC_JAX_DUMP_LAMCAL", "")
     _env_dump_badjac = os.getenv("VMEC_JAX_DUMP_BADJAC", "")
     _env_dump_dir = os.getenv("VMEC_JAX_DUMP_DIR", "")
+    best_scored = _new_best_scored_state_tracker(_runtime_env_enabled(os.getenv("VMEC_JAX_RETURN_BEST_SCORED_STATE", "0")))
 
     if timing_enabled:
         timing_stats["setup_total"] = time.perf_counter() - float(_solve_wall_start)
@@ -2140,6 +2215,7 @@ def solve_fixed_boundary_residual_iter(
                 _apply_controller_update(_controller_state_after_free_boundary_turnon_restart_update, turnon_update)
                 freeb_turnon_applied = True
             fsq0_curr = fsqr_f + fsqz_f + fsql_f
+            _record_best_scored_state(best_scored, state=force_state_pre_current, iter2=iter2, fsq=(fsqr_f, fsqz_f, fsql_f), free_boundary_enabled=free_boundary_enabled, freeb_ivacskip=freeb_ivacskip, freeb_reused=freeb_reused, skip=freeb_turnon_applied)
             prev_rz_fsq_before = prev_rz_fsq
             prev_rz_fsq = _free_boundary_prev_rz_fsq_next(
                 prev_fsq_before=prev_rz_fsq_before,
@@ -3210,14 +3286,7 @@ def solve_fixed_boundary_residual_iter(
 
     freeb_edge_control_projection_apply_count = freeb_edge_control_projector.apply_count
     freeb_edge_control_projection_zero_velocity_count = freeb_edge_control_projector.zero_velocity_count
-    return _finalize_residual_iter_from_namespace(
+    return _finalize_residual_iter_result_from_namespace(
         locals(),
-        result_type=SolveVmecResidualResult,
-        nestor_external_only_step_func=nestor_external_only_step,
-        residual_fsq_from_norms_func=_residual_fsq_from_norms,
-        device_get_floats_func=_device_get_floats,
-        residual_convergence_flags_func=_residual_convergence_flags,
-        residual_iter_history_diagnostics_func=lambda _namespace: history_lists.diagnostics(),
-        attach_free_boundary_diagnostics=_attach_freeb_diag,
         return_final_force_payload=bool(return_final_force_payload),
     )

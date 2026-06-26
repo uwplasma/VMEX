@@ -145,6 +145,34 @@ def _optional_float(value: Any) -> float | None:
     return result if np.isfinite(result) else None
 
 
+def _namespace_with_best_scored_state(namespace: Mapping[str, Any]) -> tuple[Mapping[str, Any], bool]:
+    """Return a finalization namespace that restores the best scored state."""
+
+    best = namespace.get("best_scored")
+    if not isinstance(best, Mapping) or best.get("state") is None:
+        return namespace, False
+    if not bool(namespace.get("return_best_scored_state", best.get("enabled", False))):
+        return namespace, False
+    fsqr = _optional_float(best.get("fsqr"))
+    fsqz = _optional_float(best.get("fsqz"))
+    fsql = _optional_float(best.get("fsql"))
+    if fsqr is None or fsqz is None or fsql is None:
+        return namespace, False
+    ns = dict(namespace)
+    ns.update(
+        {
+            "state": best["state"],
+            "fsqr_f": fsqr,
+            "fsqz_f": fsqz,
+            "fsql_f": fsql,
+            "prev_rz_fsq": fsqr + fsqz,
+            "freeb_bsqvac_half_current": None,
+            "freeb_nestor_runtime": None,
+        }
+    )
+    return ns, True
+
+
 def build_residual_iter_resume_state_payload(
     *,
     resume_state_mode: str,
@@ -336,7 +364,7 @@ def finalize_residual_iter_from_namespace(
     loop a single, explicit finalization seam.
     """
 
-    ns = namespace
+    ns, returned_best_scored_state = _namespace_with_best_scored_state(namespace)
     timing_enabled = bool(ns["timing_enabled"])
     t_finalize_start = time.perf_counter() if timing_enabled else None
     final_freeb = final_free_boundary_residual_reports_from_namespace(
@@ -372,6 +400,9 @@ def finalize_residual_iter_from_namespace(
     t_finalize_diag_build_start = time.perf_counter() if timing_enabled else None
     freeb_policy = ns.get("_freeb_policy")
     numpy_precond_policy = ns.get("_numpy_precond_policy")
+    best_scored = ns.get("best_scored")
+    best_scored = best_scored if isinstance(best_scored, Mapping) else {}
+    return_best_scored_state = bool(ns.get("return_best_scored_state", best_scored.get("enabled", False)))
     update_delta_rms_final = _optional_float(ns.get("update_delta_rms"))
     if update_delta_rms_final is None:
         update_delta_rms_final = _optional_float(ns.get("update_delta_rms_j"))
@@ -419,6 +450,16 @@ def finalize_residual_iter_from_namespace(
         "use_restart_triggers": bool(_policy_attr("use_restart_triggers")),
         "use_direct_fallback": bool(ns["use_direct_fallback"]),
         "max_update_rms": float(ns["max_update_rms"]),
+        "return_best_scored_state": return_best_scored_state,
+        "returned_best_scored_state": bool(returned_best_scored_state),
+        "best_scored_iter": best_scored.get("iter"),
+        "best_scored_fsq": _optional_float(best_scored.get("fsq")),
+        "best_scored_fsqr": _optional_float(best_scored.get("fsqr")),
+        "best_scored_fsqz": _optional_float(best_scored.get("fsqz")),
+        "best_scored_fsql": _optional_float(best_scored.get("fsql")),
+        "best_scored_component_max": _optional_float(best_scored.get("component_max")),
+        "best_scored_full_boundary_count": int(best_scored.get("full_boundary_count", 0)),
+        "best_scored_fresh_boundary_count": int(best_scored.get("fresh_boundary_count", 0)),
         "update_delta_rms": update_delta_rms_final,
         "update_delta_to_velocity_rms_ratio": (
             None

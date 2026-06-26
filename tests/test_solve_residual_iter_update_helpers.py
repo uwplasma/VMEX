@@ -13,6 +13,10 @@ from vmec_jax.solvers.fixed_boundary.residual.iteration_metrics import (
     physical_residual_metric_channels,
     select_residual_norms_for_iteration,
 )
+from vmec_jax.solvers.fixed_boundary.residual.iteration import (
+    _new_best_scored_state_tracker,
+    _record_best_scored_state,
+)
 from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualControllerState,
     ResidualVelocityBlocks,
@@ -72,6 +76,46 @@ from vmec_jax.solvers.fixed_boundary.residual.payload_blocks import ForceBlocks
 def _blocks(*, offset: float, scale: float = 1.0) -> ResidualVelocityBlocks:
     base = np.arange(6.0, dtype=float).reshape(2, 3)
     return ResidualVelocityBlocks(*(scale * (base + offset + float(idx)) for idx in range(12)))
+
+
+def test_best_scored_state_tracker_prefers_strict_component_max_and_counts_fresh_updates() -> None:
+    tracker = _new_best_scored_state_tracker(True)
+
+    _record_best_scored_state(
+        tracker,
+        state="sum-better-but-component-worse",
+        iter2=1,
+        fsq=(1.0e-9, 1.0e-9, 8.0e-9),
+        free_boundary_enabled=True,
+        freeb_ivacskip=0,
+        freeb_reused=False,
+    )
+    _record_best_scored_state(
+        tracker,
+        state="strict-better",
+        iter2=2,
+        fsq=(3.0e-9, 3.0e-9, 3.0e-9),
+        free_boundary_enabled=True,
+        freeb_ivacskip=1,
+        freeb_reused=True,
+    )
+    _record_best_scored_state(
+        tracker,
+        state="turnon-rollback",
+        iter2=3,
+        fsq=(1.0e-12, 1.0e-12, 1.0e-12),
+        free_boundary_enabled=True,
+        freeb_ivacskip=0,
+        freeb_reused=False,
+        skip=True,
+    )
+
+    assert tracker["state"] == "strict-better"
+    assert tracker["iter"] == 2
+    assert tracker["component_max"] == pytest.approx(3.0e-9)
+    assert tracker["fsq"] == pytest.approx(9.0e-9)
+    assert tracker["full_boundary_count"] == 1
+    assert tracker["fresh_boundary_count"] == 1
 
 
 def test_residual_iteration_control_sample_matches_vmec2000_edge_and_precond_rules() -> None:
