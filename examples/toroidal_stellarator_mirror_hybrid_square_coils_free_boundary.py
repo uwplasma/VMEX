@@ -117,7 +117,7 @@ FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"
 FREE_BOUNDARY_EDGE_CONTROL_RCOND = 1.0e-12
 FREE_BOUNDARY_EDGE_CONTROL_RIDGE = 0.0
 FREE_BOUNDARY_EDGE_CONTROL_TRUST_RADIUS: float | None = None
-FREE_BOUNDARY_EDGE_CONTROL_UPDATE_MODE = "coordinate"
+FREE_BOUNDARY_EDGE_CONTROL_UPDATE_MODE = "native_coordinate"
 SOLVER_MODE = "parity"
 RETURN_BEST_SCORED_STATE = True
 LIMIT_UPDATE_RMS = False
@@ -437,7 +437,20 @@ def _edge_control_row_metrics(edge_projection: dict[str, Any]) -> dict[str, Any]
     reduced_update = _dict_or_empty(edge_projection.get("reduced_update_direction"))
     force_direction = _dict_or_empty(edge_projection.get("force_direction")) or update_direction
     reduced_force = _dict_or_empty(edge_projection.get("reduced_force_direction")) or reduced_update
+    native_last_step = _dict_or_empty(edge_projection.get("native_last_step"))
     return {
+        "free_boundary_edge_control_projection_native_force_l2": _finite_float_or_none(
+            native_last_step.get("control_force_l2")
+        ),
+        "free_boundary_edge_control_projection_native_velocity_l2": _finite_float_or_none(
+            native_last_step.get("control_velocity_l2")
+        ),
+        "free_boundary_edge_control_projection_native_update_l2": _finite_float_or_none(
+            native_last_step.get("control_update_l2")
+        ),
+        "free_boundary_edge_control_projection_native_trust_scale": _finite_float_or_none(
+            native_last_step.get("trust_scale")
+        ),
         "free_boundary_edge_control_projection_state_residual_status": state_residual.get("status"),
         "free_boundary_edge_control_projection_state_residual_linf": _finite_float_or_none(
             state_residual.get("residual_linf")
@@ -1178,8 +1191,11 @@ def _edge_control_projection_payload(config: ExampleConfig) -> dict[str, Any] | 
     if trust_radius is not None and (not np.isfinite(float(trust_radius)) or float(trust_radius) <= 0.0):
         raise ValueError("free_boundary_edge_control_trust_radius must be positive and finite when supplied")
     update_mode = str(solve_config.free_boundary_edge_control_update_mode).strip().lower()
-    if update_mode not in {"projected_delta", "coordinate"}:
-        raise ValueError("free_boundary_edge_control_update_mode must be 'projected_delta' or 'coordinate'")
+    if update_mode not in {"projected_delta", "coordinate", "native_coordinate"}:
+        raise ValueError(
+            "free_boundary_edge_control_update_mode must be 'projected_delta', "
+            "'coordinate', or 'native_coordinate'"
+        )
     sample_kwargs = {
         key: value
         for key, value in _square_axis_sample_kwargs(solve_config).items()
@@ -1586,6 +1602,12 @@ def _run_one_beta(
         "free_boundary_edge_control_projection_coordinate_update_count": edge_projection_diag.get(
             "coordinate_update_count"
         ),
+        "free_boundary_edge_control_projection_native_coordinate_update_count": edge_projection_diag.get(
+            "native_coordinate_update_count"
+        ),
+        "free_boundary_edge_control_projection_native_velocity_reset_count": edge_projection_diag.get(
+            "native_velocity_reset_count"
+        ),
         "free_boundary_edge_control_projection_control_count": edge_projection_diag.get("control_count"),
         "free_boundary_edge_control_projection_mode_count": edge_projection_diag.get("mode_count"),
         "free_boundary_edge_control_projection_reason": edge_projection_diag.get("reason"),
@@ -1757,6 +1779,12 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "free_boundary_edge_control_projection_apply_count",
         "free_boundary_edge_control_projection_delta_projection_count",
         "free_boundary_edge_control_projection_coordinate_update_count",
+        "free_boundary_edge_control_projection_native_coordinate_update_count",
+        "free_boundary_edge_control_projection_native_velocity_reset_count",
+        "free_boundary_edge_control_projection_native_force_l2",
+        "free_boundary_edge_control_projection_native_velocity_l2",
+        "free_boundary_edge_control_projection_native_update_l2",
+        "free_boundary_edge_control_projection_native_trust_scale",
         "free_boundary_edge_control_projection_control_count",
         "free_boundary_edge_control_projection_mode_count",
         "free_boundary_edge_control_projection_reason",

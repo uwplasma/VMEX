@@ -22,6 +22,21 @@ from ..fixed_boundary.residual.update import (
 )
 
 
+class FreeBoundaryNativeControlStep(NamedTuple):
+    """One solver-native reduced edge-control update."""
+
+    state: VMECState
+    update_deltas: Any
+    control_velocity: np.ndarray
+    control_update: np.ndarray
+    control_force: np.ndarray
+    target_l2: float
+    control_force_l2: float
+    control_velocity_l2: float
+    control_update_l2: float
+    trust_scale: float
+
+
 def free_boundary_iter_controls(iter2: int, iter1: int, nvacskip: int) -> tuple[int, int]:
     """Return the reduced legacy ``(ivac, ivacskip)`` free-boundary cadence."""
 
@@ -183,7 +198,18 @@ def _prepare_freeb_edge_control_projection(
         return {"enabled": False, "info": info}
 
     update_mode = str(payload.get("update_mode", payload.get("edge_update_mode", ""))).strip().lower()
-    coordinate_mode = update_mode in {"coordinate", "coordinates", "reduced", "reduced_coordinate", "reduced-coordinate"}
+    coordinate_mode = update_mode in {
+        "coordinate",
+        "coordinates",
+        "native",
+        "native_coordinate",
+        "native-coordinate",
+        "reduced",
+        "reduced_coordinate",
+        "reduced-coordinate",
+        "solver_native",
+        "solver-native",
+    }
     initial_source = "state0_edge"
     try:
         initial_payload = payload.get("initial_boundary")
@@ -291,6 +317,8 @@ def _prepare_freeb_edge_control_projection(
             "condition_number": condition_number,
             "initial_boundary_source": initial_source,
             "coordinate_mode_anchors_state0": bool(coordinate_mode and initial_source == "state0_edge"),
+            "native_coordinate_mode": update_mode
+            in {"native", "native_coordinate", "native-coordinate", "solver_native", "solver-native"},
         }
     )
     return {
@@ -548,6 +576,134 @@ def _freeb_edge_control_apply_coordinate_update(
         projection,
         current + update,
         host_update=False,
+    )
+
+
+def _freeb_edge_control_pullback_force_np(force_deltas: Any, projection: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
+    """Pull one physical LCFS edge force/update direction into controls."""
+
+    target = _freeb_edge_control_delta_tuple_target(force_deltas, projection)
+    jacobian = np.asarray(projection["jacobian_np"], dtype=float)
+    if target.size != jacobian.shape[0]:
+        raise ValueError("force_deltas and edge-control Jacobian have incompatible sizes")
+    return np.asarray(jacobian.T @ target, dtype=float), target
+
+
+def _freeb_edge_control_scale_control_np(control: Any, projection: dict[str, Any]) -> tuple[np.ndarray, float]:
+    """Apply the optional control trust radius to a host control vector."""
+
+    values = np.asarray(control, dtype=float).reshape(-1)
+    if not np.all(np.isfinite(values)):
+        raise ValueError("control vector must be finite")
+    trust_radius = _freeb_edge_control_trust_radius(projection)
+    if trust_radius is None:
+        return values, 1.0
+    norm = float(np.linalg.norm(values))
+    if norm <= float(trust_radius):
+        return values, 1.0
+    scale = float(trust_radius) / max(norm, np.finfo(float).tiny)
+    return values * scale, scale
+
+
+def _freeb_edge_control_delta_tuple_from_control_update(
+    deltas: Any,
+    projection: dict[str, Any],
+    control_update: Any,
+    *,
+    host_update: bool,
+) -> Any:
+    """Replace the LCFS edge part of an update tuple with decoded controls."""
+
+    if deltas is None:
+        return deltas
+    k = int(projection["mode_count"])
+    dR, dR_sin, dZ_cos, dZ, dL_cos, dL = deltas
+    if bool(host_update):
+        scale = np.asarray(projection["mode_scale_np"], dtype=float)
+        decoded = np.asarray(projection["jacobian_np"], dtype=float) @ np.asarray(control_update, dtype=float).reshape(-1)
+        if decoded.size != 4 * k:
+            raise ValueError("decoded edge-control update has the wrong size")
+        dR_out = np.array(dR, dtype=float, copy=True)
+        dR_sin_out = np.array(dR_sin, dtype=float, copy=True)
+        dZ_cos_out = np.array(dZ_cos, dtype=float, copy=True)
+        dZ_out = np.array(dZ, dtype=float, copy=True)
+        dR_out[-1] = decoded[0:k] / scale
+        dR_sin_out[-1] = decoded[k : 2 * k] / scale
+        dZ_cos_out[-1] = decoded[2 * k : 3 * k] / scale
+        dZ_out[-1] = decoded[3 * k : 4 * k] / scale
+        return (dR_out, dR_sin_out, dZ_cos_out, dZ_out, dL_cos, dL)
+
+    dtype = jnp.asarray(dR).dtype
+    scale = jnp.asarray(projection["mode_scale_np"], dtype=dtype)
+    decoded = jnp.asarray(projection["jacobian_np"], dtype=dtype) @ jnp.asarray(control_update, dtype=dtype).reshape((-1,))
+    if int(decoded.shape[0]) != 4 * k:
+        raise ValueError("decoded edge-control update has the wrong size")
+    dR_out = jnp.asarray(dR).at[-1, :].set(decoded[0:k] / scale)
+    dR_sin_out = jnp.asarray(dR_sin).at[-1, :].set(decoded[k : 2 * k] / scale)
+    dZ_cos_out = jnp.asarray(dZ_cos).at[-1, :].set(decoded[2 * k : 3 * k] / scale)
+    dZ_out = jnp.asarray(dZ).at[-1, :].set(decoded[3 * k : 4 * k] / scale)
+    return (dR_out, dR_sin_out, dZ_cos_out, dZ_out, dL_cos, dL)
+
+
+def _freeb_edge_control_native_coordinate_step(
+    *,
+    state_current: VMECState,
+    state_candidate: VMECState,
+    update_deltas: Any,
+    force_deltas: Any,
+    projection: dict[str, Any],
+    control_velocity: Any | None,
+    dt_eff: float,
+    b1: float,
+    fac: float,
+    force_scale: float,
+    flip_sign: float,
+    host_update: bool,
+) -> FreeBoundaryNativeControlStep:
+    """Advance the LCFS edge in solver-native reduced-control coordinates."""
+
+    control_force, target = _freeb_edge_control_pullback_force_np(force_deltas, projection)
+    previous = (
+        np.zeros_like(control_force)
+        if control_velocity is None
+        else np.asarray(control_velocity, dtype=float).reshape(control_force.shape)
+    )
+    next_velocity = float(fac) * (float(b1) * previous + float(force_scale) * float(flip_sign) * control_force)
+    control_update = float(dt_eff) * next_velocity
+    control_update, trust_scale = _freeb_edge_control_scale_control_np(control_update, projection)
+    if trust_scale != 1.0:
+        next_velocity = control_update / max(float(dt_eff), np.finfo(float).tiny)
+
+    native_edge_state = _freeb_edge_control_apply_coordinate_update(
+        state_current,
+        projection,
+        control_update,
+        host_update=bool(host_update),
+    )
+    native_edge_values = _freeb_edge_control_state_edge_values(native_edge_state, projection)
+    state_out = _freeb_edge_control_state_from_edge_values(
+        state_candidate,
+        projection,
+        native_edge_values,
+        host_update=bool(host_update),
+    )
+    update_deltas_out = _freeb_edge_control_delta_tuple_from_control_update(
+        update_deltas,
+        projection,
+        control_update,
+        host_update=bool(host_update),
+    )
+    return FreeBoundaryNativeControlStep(
+        state=state_out,
+        update_deltas=update_deltas_out,
+        control_velocity=np.asarray(next_velocity, dtype=float),
+        control_update=np.asarray(control_update, dtype=float),
+        control_force=np.asarray(control_force, dtype=float),
+        target_l2=float(np.linalg.norm(target)),
+        control_force_l2=float(np.linalg.norm(control_force)),
+        control_velocity_l2=float(np.linalg.norm(next_velocity)),
+        control_update_l2=float(np.linalg.norm(control_update)),
+        trust_scale=float(trust_scale),
     )
 
 

@@ -943,6 +943,7 @@ def _recommended_followup_payload(
         grid_exceeded = 0
     edge_enabled = bool(freeb_edge_control_projection.get("enabled"))
     edge_basis = str(freeb_edge_control_projection.get("basis_symmetry") or "").strip().lower()
+    edge_update_mode = str(freeb_edge_control_projection.get("update_mode") or "").strip().lower()
     edge_capture = str(freeb_edge_force_capture_status or "")
     edge_next_basis = (
         None
@@ -986,13 +987,32 @@ def _recommended_followup_payload(
                     "recommended_followup_reason": "square_edge_basis_underfits_force_direction",
                 }
             elif edge_capture == "basis_underfit" and edge_next_basis == "native_spline_controls":
+                if edge_update_mode != "native_coordinate":
+                    native_kind = (
+                        "direct-gpu-edge-stellarator-native-polish"
+                        if edge_basis == "stellarator"
+                        else "direct-gpu-edge-native-polish"
+                    )
+                    return {
+                        "recommended_followup_profile_kind": native_kind,
+                        "recommended_followup_reason": (
+                            f"{edge_basis or 'reduced'}_edge_basis_underfits_force_direction"
+                        ),
+                    }
                 return {
                     "recommended_followup_profile_kind": "native-spline-control-prototype",
                     "recommended_followup_reason": (
-                        f"{edge_basis or 'reduced'}_edge_basis_underfits_force_direction"
+                        f"{edge_basis or 'reduced'}_native_edge_update_still_underfits_force_direction"
                     ),
                 }
             elif bool(freeb_jax_nestor_operator):
+                if edge_update_mode != "native_coordinate":
+                    return {
+                        "recommended_followup_profile_kind": "direct-gpu-edge-stellarator-native-polish",
+                        "recommended_followup_reason": (
+                            "edge_control_and_jax_nestor_still_stalled_promote_native_spline_controls"
+                        ),
+                    }
                 return {
                     "recommended_followup_profile_kind": "native-spline-control-prototype",
                     "recommended_followup_reason": (
@@ -1485,6 +1505,9 @@ def _summary_row(
     freeb_edge_control_reduced_update_direction = freeb_edge_control_runtime.get("reduced_update_direction")
     if not isinstance(freeb_edge_control_reduced_update_direction, dict):
         freeb_edge_control_reduced_update_direction = {}
+    freeb_edge_control_native_last_step = freeb_edge_control_runtime.get("native_last_step")
+    if not isinstance(freeb_edge_control_native_last_step, dict):
+        freeb_edge_control_native_last_step = {}
     hot_restart = backend.get("hot_restart")
     hot_restart = hot_restart if isinstance(hot_restart, dict) else {}
     hot_restart_stages = hot_restart.get("stages")
@@ -1701,6 +1724,24 @@ def _summary_row(
         ),
         "freeb_edge_control_projection_coordinate_update_count": freeb_edge_control_runtime.get(
             "coordinate_update_count"
+        ),
+        "freeb_edge_control_projection_native_coordinate_update_count": freeb_edge_control_runtime.get(
+            "native_coordinate_update_count"
+        ),
+        "freeb_edge_control_projection_native_velocity_reset_count": freeb_edge_control_runtime.get(
+            "native_velocity_reset_count"
+        ),
+        "freeb_edge_control_projection_native_force_l2": _finite_float(
+            freeb_edge_control_native_last_step.get("control_force_l2")
+        ),
+        "freeb_edge_control_projection_native_velocity_l2": _finite_float(
+            freeb_edge_control_native_last_step.get("control_velocity_l2")
+        ),
+        "freeb_edge_control_projection_native_update_l2": _finite_float(
+            freeb_edge_control_native_last_step.get("control_update_l2")
+        ),
+        "freeb_edge_control_projection_native_trust_scale": _finite_float(
+            freeb_edge_control_native_last_step.get("trust_scale")
         ),
         "freeb_edge_control_projection_zero_velocity_count": freeb_edge_control_runtime.get(
             "zero_velocity_count"
@@ -2317,6 +2358,12 @@ def main(argv: list[str] | None = None) -> int:
         "freeb_edge_control_projection_apply_count",
         "freeb_edge_control_projection_delta_projection_count",
         "freeb_edge_control_projection_coordinate_update_count",
+        "freeb_edge_control_projection_native_coordinate_update_count",
+        "freeb_edge_control_projection_native_velocity_reset_count",
+        "freeb_edge_control_projection_native_force_l2",
+        "freeb_edge_control_projection_native_velocity_l2",
+        "freeb_edge_control_projection_native_update_l2",
+        "freeb_edge_control_projection_native_trust_scale",
         "freeb_edge_control_projection_zero_velocity_count",
         "freeb_edge_control_projection_state_residual_status",
         "freeb_edge_control_projection_state_residual_linf",

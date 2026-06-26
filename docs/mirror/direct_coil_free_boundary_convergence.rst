@@ -232,10 +232,11 @@ vacuum-pressure sampling.
 The square-coil backend profiler builds this payload from the existing
 ``SquareAxisControlFourierMatrix`` with
 ``--freeb-edge-control-projection square`` or ``stellarator``. This is not a
-native spline-coordinate VMEC solve: the equilibrium state is still represented
-by VMEC Fourier coefficients. It does, however, constrain free-boundary edge
-motion to the low-dimensional square-axis spline-control subspace and is the
-next A/B profile against the full-Fourier and VMEC2000/mgrid rows.
+full solver-native spline-coordinate VMEC solve: the equilibrium state is still
+represented by VMEC Fourier coefficients. It does, however, constrain
+free-boundary edge motion to the low-dimensional square-axis spline-control
+subspace and can now apply the LCFS edge through native reduced-control force
+pullback with ``--freeb-edge-control-update-mode native_coordinate``.
 The repo-root square-coil example now uses the same projection path by default
 through ``FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"`` and records the
 requested basis, control count, mode count, and solver apply count in both its
@@ -443,6 +444,10 @@ two-control square edge basis underfits the preconditioned force direction:
      --delt-values 0.015,0.02,0.025
 
    python tools/diagnostics/square_coil_followup_commands.py \
+     --profile-kind direct-gpu-edge-stellarator-native-polish \
+     --delt-values 0.015,0.02,0.025
+
+   python tools/diagnostics/square_coil_followup_commands.py \
      --profile-kind direct-gpu-edge-stellarator-jax-nestor-polish \
      --delt-values 0.015,0.02,0.025
 
@@ -453,14 +458,17 @@ two-control square edge basis underfits the preconditioned force direction:
 These commands use ``FTOL_ARRAY=1e-8,1e-10,1e-12`` by default, cached direct
 coil sampling, ``--return-best-scored-state``, pressure Anderson mixing,
 two final-grid hot restarts, and ``--freeb-edge-control-update-mode
-coordinate``. Square-basis rows use ``--freeb-edge-control-projection square``
-and output directories labelled ``edge_square_coordinate``; stellarator-basis
-rows use ``--freeb-edge-control-projection stellarator`` and output
-directories labelled ``edge_stellarator_coordinate``. The JAX-NESTOR polish
-variants additionally enable the experimental JAX NESTOR operator.
+coordinate`` unless a native-polish profile is requested. Square-basis rows use
+``--freeb-edge-control-projection square`` and output directories labelled
+``edge_square_coordinate`` or ``edge_square_native_coordinate``; stellarator
+rows use ``--freeb-edge-control-projection stellarator`` and output directories
+labelled ``edge_stellarator_coordinate`` or
+``edge_stellarator_native_coordinate``. The JAX-NESTOR polish variants
+additionally enable the experimental JAX NESTOR operator.
 The summary table now reports the edge-control projection status, requested
 basis, control count, pseudo-inverse cutoff, update mode, coordinate-update
-count, accepted-state reduced-coordinate norms, reduced unknown-vector size,
+count, native-update count, reduced native force/velocity/update norms,
+accepted-state reduced-coordinate norms, reduced unknown-vector size,
 reconstruction residuals, force-direction capture status, and the next
 recommended reduced basis. Stalled direct
 rows that did not use the reduced edge projection recommend
@@ -468,16 +476,17 @@ rows that did not use the reduced edge projection recommend
 whose two-control square basis underfits the preconditioned force direction
 recommend ``direct-gpu-edge-stellarator-polish``; stalled rows that already use
 the five-control stellarator basis and still underfit recommend the
-``native-spline-control-prototype`` lane; otherwise edge-projected rows
-recommend the matching edge-projected JAX-NESTOR profile next.
+``direct-gpu-edge-stellarator-native-polish`` lane unless that native row has
+already been tried; otherwise edge-projected rows recommend the matching
+edge-projected JAX-NESTOR profile next.
 The ``native-spline-control-prototype`` command is intentionally no-solve: it
 adds ``--native-spline-control-prototype`` to the profiler's
 ``--resolution-diagnostics-only`` path and writes a
-``native_spline_control_prototype`` JSON block. That block records the preferred
-reduced basis, the number of spline controls, the full Fourier LCFS edge size,
-the reduction fraction, and the source-code work needed to replace the VMEC
-Fourier LCFS unknowns with reduced spline controls. It does not claim an
-equilibrium or convergence result.
+``native_spline_control_prototype`` JSON block. That block records the
+preferred reduced basis, the number of spline controls, the full Fourier LCFS
+edge size, the reduction fraction, and the remaining source-code work beyond
+the current native-coordinate edge update. It does not claim an equilibrium or
+convergence result.
 The public helper
 ``vmec_jax.recommend_square_axis_stellarator_mirror_hybrid_resolution`` scans a
 small finite ``MPOL``/``NTOR`` ladder for the current spline-smoothed target and
@@ -711,16 +720,18 @@ The bridge can also apply a reduced coordinate update by encoding the current
 LCFS edge, adding a reduced update vector, and decoding the result back to the
 edge row. This is the tested primitive needed before the nonlinear update loop
 can operate directly in reduced side/corner coordinates.
-The strict residual loop now exposes that bridge as an opt-in application mode:
-``--freeb-edge-control-update-mode coordinate``. In that mode the full Fourier
-delta is still formed and projected for compatibility, but the accepted trial
-LCFS edge is rebuilt through reduced spline-control coordinates. This is not
-yet a smaller global VMEC unknown vector, but it is the first solver-loop step
-away from fragile full-Fourier edge application for long straight square-axis
-segments. Solver diagnostics and summary CSV rows report
-``edge_control_update_mode`` and ``coordinate_update_count`` so strict
-``FTOL=1e-12`` profiles can distinguish projected-delta rows from coordinate
-bridge rows.
+The strict residual loop now exposes two reduced-coordinate application modes.
+``--freeb-edge-control-update-mode coordinate`` forms the full Fourier delta
+and rebuilds the accepted trial LCFS edge through reduced spline controls.
+``--freeb-edge-control-update-mode native_coordinate`` pulls the current edge
+force back with the reduced-control Jacobian transpose, carries reduced edge
+velocity memory, decodes the reduced update to the LCFS edge, and leaves
+interior R/Z and lambda on the existing VMEC preconditioned path. This is still
+not a smaller global VMEC unknown vector, but it is the first force-pullback
+solver-loop step away from fragile full-Fourier edge application for long
+straight square-axis segments. Solver diagnostics and summary CSV rows report
+``edge_control_update_mode``, ``coordinate_update_count``,
+``native_coordinate_update_count``, and native reduced force/update norms.
 Final diagnostics also report
 ``free_boundary.edge_control_projection.reduced_update_direction`` for the
 current full Fourier update direction. It gives the fitted reduced update

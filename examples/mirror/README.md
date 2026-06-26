@@ -190,10 +190,10 @@ LCFS edge update is projected through the spline-control Fourier map before
 vacuum-pressure sampling.
 The repo-root square-coil example now enables the square reduced-control
 projection by default with ``FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"``
-and applies the projected edge update through reduced spline coordinates with
-``FREE_BOUNDARY_EDGE_CONTROL_UPDATE_MODE = "coordinate"``. It writes the
-projected-control status, update mode, and coordinate-update count to the
-preflight JSON and summary CSV.
+and pulls the LCFS edge force into reduced spline coordinates with
+``FREE_BOUNDARY_EDGE_CONTROL_UPDATE_MODE = "native_coordinate"``. It writes the
+projected-control status, update mode, coordinate-update count, native-update
+count, and reduced force/update norms to the preflight JSON and summary CSV.
 Set that top-level option to ``"none"`` for an unconstrained full-Fourier
 comparison.
 Use ``vmec_jax.square_axis_spline_radius_matrix`` to inspect the linear map
@@ -407,8 +407,8 @@ Strict free-boundary profile summaries also print
 ``freeb_edge_control_projection_force_capture_next_basis``. If the square
 basis underfits the preconditioned force direction, rerun the polish profile
 with ``--profile-kind direct-gpu-edge-stellarator-polish``; if the
-stellarator basis still underfits, the next finite implementation lane is the
-solver-native spline-control prototype.
+stellarator basis still underfits, rerun the executable native-coordinate
+profile with ``--profile-kind direct-gpu-edge-stellarator-native-polish``.
 The latest control-spline square-axis preflight matrix is:
 
 | deck | status | reason |
@@ -587,17 +587,17 @@ same Fourier deck, not as a way to remove the square-axis Fourier bottleneck.
 On active high-mode ``MPOL=5, NTOR=28, NZETA=64`` profiling, direct ``vmec_jax``
 can reach a smaller current component gap than the active VMEC2000 reference,
 but both must still satisfy the same component-wise ``FTOL=1e-12`` gate before
-promotion. If a direct-coil row has already enabled reduced square edge
-controls and the JAX/NESTOR operator and still stalls above the strict gate, the
-summary recommendation changes to ``native-spline-control-prototype``. That is
-the cue to stop adding full-Fourier retries and promote the spline-control
-variables into the nonlinear solve.
-Reduced edge-control strict updates project the accepted LCFS delta through the
-spline-control Fourier map and scrub LCFS geometry velocity memory after each
-strict step, so uncontrolled Fourier edge momentum is not carried into the next
-iteration. This is still a bridge: the full VMEC Fourier residual is reported
-separately until solver-native spline/control coordinates replace the edge-only
-projection.
+promotion. If a direct-coil row has already enabled reduced edge controls and
+the JAX/NESTOR operator and still stalls above the strict gate, the summary now
+recommends ``direct-gpu-edge-stellarator-native-polish`` unless that native row
+has already been tried. Only a stalled native-coordinate row should hand off to
+the no-solve ``native-spline-control-prototype`` readiness report.
+Reduced edge-control strict updates can now run in three modes:
+``projected_delta`` projects the full Fourier delta, ``coordinate`` rebuilds
+the accepted LCFS edge through reduced coordinates, and ``native_coordinate``
+pulls the edge force back with the reduced-control Jacobian transpose while
+carrying reduced edge velocity memory. The full VMEC Fourier residual is still
+reported separately for every mode.
 ``vmec_jax.solvers.free_boundary.ReducedControlMap`` is the public host-side
 encode/decode primitive for that next lane: it maps full Fourier edge vectors
 to reduced controls and back without changing the current solve path.
@@ -617,6 +617,8 @@ both host and JAX-array modes.
 It can also apply a reduced edge-coordinate update by encoding the current LCFS
 edge, adding a reduced update vector, and decoding back to a ``VMECState`` edge
 row.
+The ``native_coordinate`` strict-loop mode uses this operation each iteration
+after pulling the current edge force into reduced controls.
 Solver diagnostics include
 ``free_boundary.edge_control_projection.reduced_update_direction`` to compare
 the current full Fourier update direction against that reduced update vector.
@@ -662,7 +664,7 @@ recommends ``native-spline-control-prototype``. That command writes the same
 pre-solve deck report plus ``native_spline_control_prototype`` metadata and
 exits before coils, ``mgrid``, VMEC, or VMEC2000 are run. It is a design/readiness
 gate: it reports the reduced basis, control count, full Fourier edge size, and
-the solver changes required to promote spline controls into the nonlinear state.
+the remaining solver changes beyond the current native-coordinate edge update.
 The table also includes ``nzeta_auto``, ``recommended_nzeta``,
 ``side_power``, ``corner_power``, ``boundary_mode_count``, and
 ``boundary_recommended_nzeta`` so ``MPOL``/``NTOR``/``NZETA`` and

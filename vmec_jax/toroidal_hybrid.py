@@ -1594,7 +1594,7 @@ def square_axis_strict_convergence_assessment(
     reduced_enabled = bool(edge_control_projection_enabled)
     edge_update_mode = str(edge_control_update_mode).strip().lower()
     coordinate_edge_update = bool(edge_update_mode == "coordinate")
-    native_spline = bool(solver_native_spline_controls)
+    native_spline = bool(solver_native_spline_controls or edge_update_mode == "native_coordinate")
 
     blockers: list[str] = []
     if not representation_ready:
@@ -1613,7 +1613,7 @@ def square_axis_strict_convergence_assessment(
         next_steps.append("request_final_component_ftol_at_or_below_1e-12")
     if reduced_enabled:
         next_steps.append("profile_reduced_edge_control_state_and_update_residuals")
-        if not coordinate_edge_update:
+        if edge_update_mode not in {"coordinate", "native_coordinate"}:
             next_steps.append("rerun_reduced_edge_control_profile_with_coordinate_update_mode")
     elif native_spline:
         next_steps.append("profile_solver_native_spline_control_state")
@@ -1639,7 +1639,9 @@ def square_axis_strict_convergence_assessment(
         "edge_control_projection_enabled": reduced_enabled,
         "edge_control_update_mode": edge_update_mode,
         "reduced_control_profile_status": (
-            "coordinate_update_bridge"
+            "native_coordinate_update"
+            if reduced_enabled and edge_update_mode == "native_coordinate"
+            else "coordinate_update_bridge"
             if reduced_enabled and coordinate_edge_update
             else "enabled_bridge"
             if reduced_enabled
@@ -1649,6 +1651,7 @@ def square_axis_strict_convergence_assessment(
             "edge-control state residual measured on the accepted LCFS",
             "edge-control update-direction residual measured on the final update",
             "coordinate-update count reported when edge_control_update_mode='coordinate'",
+            "native-coordinate force pullback reported when edge_control_update_mode='native_coordinate'",
             "full VMEC Fourier residual still reported separately",
         ],
         "solver_native_spline_controls": native_spline,

@@ -75,6 +75,8 @@ def _parser() -> argparse.ArgumentParser:
             "direct-gpu-jax-nestor",
             "direct-gpu-edge-polish",
             "direct-gpu-edge-stellarator-polish",
+            "direct-gpu-edge-native-polish",
+            "direct-gpu-edge-stellarator-native-polish",
             "direct-gpu-edge-jax-nestor-polish",
             "direct-gpu-edge-stellarator-jax-nestor-polish",
             "native-spline-control-prototype",
@@ -90,7 +92,8 @@ def _parser() -> argparse.ArgumentParser:
             "direct-gpu-edge-polish constrains LCFS edge motion to the square-axis spline-control "
             "basis, enables pressure mixing and hot restarts by default, and keeps the direct-coil "
             "cached-JIT path. direct-gpu-edge-stellarator-polish uses the richer stellarator-symmetric "
-            "edge-control basis. The JAX-NESTOR polish variants add the experimental JAX NESTOR "
+            "edge-control basis. The native-polish variants pull LCFS edge forces into reduced "
+            "spline-control coordinates and keep reduced edge velocity memory. The JAX-NESTOR polish variants add the experimental JAX NESTOR "
             "operator too. native-spline-control-prototype emits the no-solve reduced spline-control "
             "readiness report used after both edge bases underfit the force direction."
         ),
@@ -177,12 +180,13 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--freeb-edge-control-update-mode",
-        choices=("projected_delta", "coordinate"),
+        choices=("projected_delta", "coordinate", "native_coordinate"),
         default=None,
         help=(
             "How the solver applies reduced edge-control updates. Edge-polish "
-            "profile kinds default to 'coordinate'; other edge-projected JAX "
-            "commands default to 'projected_delta'."
+            "profile kinds default to 'coordinate', native-polish kinds default "
+            "to 'native_coordinate', and other edge-projected JAX commands "
+            "default to 'projected_delta'."
         ),
     )
     p.add_argument(
@@ -292,6 +296,8 @@ def _is_direct_jax_kind(kind: str) -> bool:
         "direct-gpu-jax-nestor",
         "direct-gpu-edge-polish",
         "direct-gpu-edge-stellarator-polish",
+        "direct-gpu-edge-native-polish",
+        "direct-gpu-edge-stellarator-native-polish",
         "direct-gpu-edge-jax-nestor-polish",
         "direct-gpu-edge-stellarator-jax-nestor-polish",
     }
@@ -301,8 +307,17 @@ def _is_polish_kind(kind: str) -> bool:
     return kind in {
         "direct-gpu-edge-polish",
         "direct-gpu-edge-stellarator-polish",
+        "direct-gpu-edge-native-polish",
+        "direct-gpu-edge-stellarator-native-polish",
         "direct-gpu-edge-jax-nestor-polish",
         "direct-gpu-edge-stellarator-jax-nestor-polish",
+    }
+
+
+def _is_native_coordinate_kind(kind: str) -> bool:
+    return str(kind) in {
+        "direct-gpu-edge-native-polish",
+        "direct-gpu-edge-stellarator-native-polish",
     }
 
 
@@ -318,6 +333,7 @@ def _edge_control_projection(args: argparse.Namespace) -> str | None:
         return "stellarator"
     if str(args.profile_kind) in {
         "direct-gpu-edge-stellarator-polish",
+        "direct-gpu-edge-stellarator-native-polish",
         "direct-gpu-edge-stellarator-jax-nestor-polish",
     }:
         return "stellarator"
@@ -328,6 +344,8 @@ def _edge_control_update_mode(args: argparse.Namespace) -> str:
     requested = args.freeb_edge_control_update_mode
     if requested is not None:
         return str(requested)
+    if _is_native_coordinate_kind(str(args.profile_kind)):
+        return "native_coordinate"
     return (
         "coordinate"
         if _is_polish_kind(str(args.profile_kind)) or _is_native_spline_prototype_kind(str(args.profile_kind))

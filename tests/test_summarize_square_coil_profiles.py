@@ -684,6 +684,14 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
                             "apply_count": 7,
                             "delta_projection_count": 8,
                             "coordinate_update_count": 5,
+                            "native_coordinate_update_count": 4,
+                            "native_velocity_reset_count": 1,
+                            "native_last_step": {
+                                "control_force_l2": 1.2e-4,
+                                "control_velocity_l2": 3.4e-5,
+                                "control_update_l2": 5.6e-6,
+                                "trust_scale": 0.75,
+                            },
                             "zero_velocity_count": 6,
                             "state_residual": {
                                 "status": "measured",
@@ -757,6 +765,12 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
     assert row["freeb_edge_control_projection_apply_count"] == 7
     assert row["freeb_edge_control_projection_delta_projection_count"] == 8
     assert row["freeb_edge_control_projection_coordinate_update_count"] == 5
+    assert row["freeb_edge_control_projection_native_coordinate_update_count"] == 4
+    assert row["freeb_edge_control_projection_native_velocity_reset_count"] == 1
+    assert row["freeb_edge_control_projection_native_force_l2"] == pytest.approx(1.2e-4)
+    assert row["freeb_edge_control_projection_native_velocity_l2"] == pytest.approx(3.4e-5)
+    assert row["freeb_edge_control_projection_native_update_l2"] == pytest.approx(5.6e-6)
+    assert row["freeb_edge_control_projection_native_trust_scale"] == pytest.approx(0.75)
     assert row["freeb_edge_control_projection_zero_velocity_count"] == 6
     assert row["freeb_edge_control_projection_state_residual_status"] == "measured"
     assert row["freeb_edge_control_projection_state_residual_linf"] == pytest.approx(2.5e-14)
@@ -864,7 +878,7 @@ def test_square_coil_profile_summary_recommends_stellarator_basis_for_underfit_e
     assert row["freeb_edge_control_projection_force_capture_next_basis"] == "stellarator"
 
 
-def test_square_coil_profile_summary_recommends_native_spline_after_stellarator_underfit(
+def test_square_coil_profile_summary_recommends_native_coordinate_after_stellarator_underfit(
     tmp_path: Path,
 ):
     case_dir = tmp_path / "square_coil_freeb_backend_profile_stalled_stellarator_underfit"
@@ -914,7 +928,7 @@ def test_square_coil_profile_summary_recommends_native_spline_after_stellarator_
 
     row = summary.rows_from_profile(report)[0]
 
-    assert row["recommended_followup_profile_kind"] == "native-spline-control-prototype"
+    assert row["recommended_followup_profile_kind"] == "direct-gpu-edge-stellarator-native-polish"
     assert row["recommended_followup_reason"] == "stellarator_edge_basis_underfits_force_direction"
     assert row["freeb_edge_control_projection_force_capture_status"] == "basis_underfit"
     assert row["freeb_edge_control_projection_force_capture_next_basis"] == "native_spline_controls"
@@ -977,7 +991,7 @@ def test_square_coil_profile_summary_infers_underresolved_live_launcher_log(
     assert row["strict_evidence_status"] == "diagnostic_underresolved"
 
 
-def test_square_coil_profile_summary_recommends_native_spline_after_jax_nestor_probe(
+def test_square_coil_profile_summary_recommends_native_coordinate_after_jax_nestor_probe(
     tmp_path: Path,
 ):
     case_dir = tmp_path / "square_coil_freeb_backend_profile_stalled_direct_jax_nestor"
@@ -1093,7 +1107,7 @@ def test_square_coil_profile_summary_recommends_native_spline_after_jax_nestor_p
     assert row["free_boundary_jax_nestor_operator_jitted"] is False
     assert row["free_boundary_jax_nestor_operator_cache_hit"] is False
     assert row["free_boundary_jax_nestor_operator_time_s"] == pytest.approx(0.25)
-    assert row["recommended_followup_profile_kind"] == "native-spline-control-prototype"
+    assert row["recommended_followup_profile_kind"] == "direct-gpu-edge-stellarator-native-polish"
     assert (
         row["recommended_followup_reason"]
         == "edge_control_and_jax_nestor_still_stalled_promote_native_spline_controls"

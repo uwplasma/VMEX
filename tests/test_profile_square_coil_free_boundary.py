@@ -415,6 +415,7 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
     from vmec_jax.solve import (
         _freeb_edge_control_apply_coordinate_update,
         _freeb_edge_control_delta_tuple_projection_metrics,
+        _freeb_edge_control_native_coordinate_step,
         _freeb_edge_control_reduced_update_direction_diagnostics,
         _freeb_edge_control_reduced_unknown_vector_diagnostics,
         _freeb_edge_control_reduced_map,
@@ -569,6 +570,39 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
         axis=0,
     )
     projected_control_step = control_map.encode(projected_edge_values)
+    candidate = VMECState(
+        layout=layout,
+        Rcos=rcos + 10.0,
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zsin.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+    force_dR = zeros.copy()
+    force_dR[-1, 0] = 2.0
+    force_deltas = (force_dR, zeros.copy(), zeros.copy(), zeros.copy(), zeros.copy(), zeros.copy())
+    update_deltas = tuple(np.zeros_like(force_dR) for _ in range(6))
+    native = _freeb_edge_control_native_coordinate_step(
+        state_current=trial,
+        state_candidate=candidate,
+        update_deltas=update_deltas,
+        force_deltas=force_deltas,
+        projection=projection,
+        control_velocity=None,
+        dt_eff=0.5,
+        b1=0.0,
+        fac=1.0,
+        force_scale=0.5,
+        flip_sign=1.0,
+        host_update=True,
+    )
+    np.testing.assert_allclose(native.control_force, [2.0])
+    np.testing.assert_allclose(native.control_velocity, [1.0])
+    np.testing.assert_allclose(native.control_update, [0.5])
+    np.testing.assert_allclose(native.state.Rcos[-1, 0], trial.Rcos[-1, 0] + 0.5)
+    np.testing.assert_allclose(native.state.Rcos[0, 0], candidate.Rcos[0, 0])
+    np.testing.assert_allclose(native.update_deltas[0][-1, 0], 0.5)
     direction_rcos = zeros.copy()
     direction_zsin = zeros.copy()
     direction_rcos[-1, 0] = 0.2

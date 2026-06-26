@@ -124,6 +124,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     controller_state_from_resume_state as _controller_state_from_resume_state,
     controller_state_legacy_values as _controller_state_legacy_values,
     delta_tuple_from_blocks as _delta_tuple_from_blocks_helper,
+    delta_tuple_rms as _delta_tuple_rms,
     direct_force_fallback_acceptance_decision as _direct_force_fallback_acceptance_decision,
     direct_force_fallback_trial as _direct_force_fallback_trial,
     host_catastrophic_restart_update as _host_catastrophic_restart_update,
@@ -153,6 +154,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
 from vmec_jax.solvers.free_boundary.control import (
     _freeb_edge_control_apply_coordinate_update,
     _freeb_edge_control_control_delta_jax,
+    _freeb_edge_control_native_coordinate_step,
     _freeb_edge_control_project_vector_np,
     _prepare_freeb_edge_control_projection,
     _project_freeb_edge_control_delta_tuple,
@@ -817,7 +819,11 @@ class _FreeBoundaryEdgeControlProjector:
         self.apply_count = 0
         self.delta_projection_count = 0
         self.coordinate_update_count = 0
+        self.native_coordinate_update_count = 0
+        self.native_velocity_reset_count = 0
         self.zero_velocity_count = 0
+        self.native_control_velocity = None
+        self.native_control_last_step = {}
         self.use_scan = bool(use_scan)
         self.jit_strict_update_enabled = bool(jit_strict_update_enabled)
         mode = "projected_delta"
@@ -827,11 +833,14 @@ class _FreeBoundaryEdgeControlProjector:
             mode = "projected_delta"
         elif mode in {"coordinate", "coordinates", "reduced", "reduced_coordinate", "reduced-coordinate"}:
             mode = "coordinate"
+        elif mode in {"native", "native_coordinate", "native-coordinate", "solver_native", "solver-native"}:
+            mode = "native_coordinate"
         else:
             self.info["unsupported_update_mode"] = mode
             mode = "projected_delta"
         self.update_mode = mode
         self.info["update_mode"] = self.update_mode
+        self.info["solver_native_spline_controls"] = bool(self.update_mode == "native_coordinate")
         if self.enabled:
             self.info["zero_edge_velocity_memory"] = True
             self.jit_strict_update_enabled = False
@@ -876,9 +885,57 @@ class _FreeBoundaryEdgeControlProjector:
         )
 
     def delta_tuple_projector(self):
-        if not self.enabled or self.update_mode == "coordinate":
+        if not self.enabled or self.update_mode in {"coordinate", "native_coordinate"}:
             return None
         return self.project_delta_tuple
+
+    def reset_native_velocity(self) -> None:
+        if not self.enabled or self.update_mode != "native_coordinate":
+            return
+        self.native_control_velocity = None
+        self.native_velocity_reset_count += 1
+
+    def apply_native_coordinate_update_from_force_tuple(
+        self,
+        state_in: VMECState,
+        state_candidate: VMECState,
+        update_deltas,
+        force_deltas,
+        *,
+        dt_eff: float,
+        b1: float,
+        fac: float,
+        force_scale: float,
+        flip_sign: float,
+        host_update: bool,
+    ):
+        if not self.enabled or self.update_mode != "native_coordinate" or update_deltas is None:
+            return state_candidate, update_deltas
+        self.native_coordinate_update_count += 1
+        step = _freeb_edge_control_native_coordinate_step(
+            state_current=state_in,
+            state_candidate=state_candidate,
+            update_deltas=update_deltas,
+            force_deltas=force_deltas,
+            projection=self.projection,
+            control_velocity=self.native_control_velocity,
+            dt_eff=float(dt_eff),
+            b1=float(b1),
+            fac=float(fac),
+            force_scale=float(force_scale),
+            flip_sign=float(flip_sign),
+            host_update=bool(host_update),
+        )
+        self.native_control_velocity = step.control_velocity
+        self.native_control_last_step = {
+            "status": "applied",
+            "target_l2": float(step.target_l2),
+            "control_force_l2": float(step.control_force_l2),
+            "control_velocity_l2": float(step.control_velocity_l2),
+            "control_update_l2": float(step.control_update_l2),
+            "trust_scale": float(step.trust_scale),
+        }
+        return step.state, step.update_deltas
 
     def apply_coordinate_update_from_delta_tuple(
         self,
@@ -1867,10 +1924,12 @@ def solve_fixed_boundary_residual_iter(
     def _zero_all_velocity_blocks() -> None:
         nonlocal velocity_blocks
         velocity_blocks = _zero_all_velocity_blocks_like(velocity_blocks)
+        freeb_edge_control_projector.reset_native_velocity()
 
     def _zero_primary_velocity_blocks() -> None:
         nonlocal velocity_blocks
         velocity_blocks = _zero_primary_velocity_blocks_like(velocity_blocks)
+        freeb_edge_control_projector.reset_native_velocity()
     axis_reset_runtime_callbacks = _InitialAxisResetRuntimeCallbacks(
         _reset_axis_from_boundary, _host_axis_reset_update, _apply_controller_update, _controller_after_axis_reset,
         _zero_primary_velocity_blocks, _reset_axis_from_boundary.coeffs, _print_scan_axis_guess,
@@ -3138,6 +3197,11 @@ def solve_fixed_boundary_residual_iter(
                 or bool(backtracking)
                 or (bool(adjoint_trace) and adjoint_trace_mode == "full")
             )
+            materialize_update_rms = (
+                bool(limit_update_rms)
+                or bool(backtracking)
+                or (bool(adjoint_trace) and adjoint_trace_mode == "full")
+            )
             need_trial_eval = bool(backtracking) or bool(reference_mode) or bool(use_direct_fallback)
             use_jit_strict_update_step = (
                 bool(jit_strict_update_enabled)
@@ -3171,11 +3235,7 @@ def solve_fixed_boundary_residual_iter(
                     forces=force_blocks,
                     host_update_assembly=bool(host_update_assembly),
                     need_update_rms=bool(need_update_rms),
-                    materialize_update_rms=(
-                        bool(limit_update_rms)
-                        or bool(backtracking)
-                        or (bool(adjoint_trace) and adjoint_trace_mode == "full")
-                    ),
+                    materialize_update_rms=bool(materialize_update_rms),
                     limit_update_rms=bool(limit_update_rms),
                     max_update_rms=float(max_update_rms),
                     b1=float(b1),
@@ -3197,6 +3257,30 @@ def solve_fixed_boundary_residual_iter(
             scl = update_proposal.scale
             update_deltas = update_proposal.update_deltas
             state_try = update_proposal.state
+            if freeb_edge_control_projector.update_mode == "native_coordinate" and update_deltas is not None:
+                force_deltas = _delta_tuple_from_blocks(
+                    1.0,
+                    _physical_delta_transforms,
+                    *force_blocks,
+                    use_numpy_lasym_zeros=bool(host_update_assembly),
+                )
+                state_try, update_deltas = freeb_edge_control_projector.apply_native_coordinate_update_from_force_tuple(
+                    state,
+                    state_try,
+                    update_deltas,
+                    force_deltas,
+                    dt_eff=float(dt_eff),
+                    b1=float(b1),
+                    fac=float(fac),
+                    force_scale=float(force_scale),
+                    flip_sign=float(flip_sign),
+                    host_update=bool(host_update_assembly),
+                )
+                if bool(need_update_rms):
+                    update_delta_rms_j = _delta_tuple_rms(*update_deltas)
+                    update_delta_rms = (
+                        float(np.asarray(update_delta_rms_j)) if bool(materialize_update_rms) else None
+                    )
             state_try = freeb_edge_control_projector.apply_coordinate_update_from_delta_tuple(
                 state,
                 update_deltas,
@@ -3470,6 +3554,13 @@ def solve_fixed_boundary_residual_iter(
     freeb_edge_control_projection_coordinate_update_count = (
         freeb_edge_control_projector.coordinate_update_count
     )
+    freeb_edge_control_projection_native_coordinate_update_count = (
+        freeb_edge_control_projector.native_coordinate_update_count
+    )
+    freeb_edge_control_projection_native_velocity_reset_count = (
+        freeb_edge_control_projector.native_velocity_reset_count
+    )
+    freeb_edge_control_projection_native_last_step = dict(freeb_edge_control_projector.native_control_last_step)
     freeb_edge_control_projection_zero_velocity_count = freeb_edge_control_projector.zero_velocity_count
     return _finalize_residual_iter_result_from_namespace(
         locals(),

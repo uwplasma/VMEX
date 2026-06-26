@@ -360,11 +360,12 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--freeb-edge-control-update-mode",
-        choices=("projected_delta", "coordinate"),
+        choices=("projected_delta", "coordinate", "native_coordinate"),
         default="projected_delta",
         help=(
             "How vmec_jax applies reduced edge-control updates: project a full Fourier delta, "
-            "or apply the projected update through the reduced spline coordinates."
+            "apply the projected update through the reduced spline coordinates, or pull "
+            "the edge force into native reduced-control coordinates."
         ),
     )
     p.add_argument(
@@ -2418,7 +2419,7 @@ def _freeb_edge_control_projection_solver_payload(
         **sample_kwargs,
     )
     mode = str(update_mode).strip().lower()
-    if mode not in {"projected_delta", "coordinate"}:
+    if mode not in {"projected_delta", "coordinate", "native_coordinate"}:
         raise ValueError(f"unsupported free-boundary edge-control update mode: {update_mode!r}")
     payload["update_mode"] = mode
     return payload

@@ -160,6 +160,15 @@ def test_free_boundary_edge_coordinate_mode_applies_reduced_update_once(monkeypa
         use_scan=False,
         jit_strict_update_enabled=True,
     )
+    native = _FreeBoundaryEdgeControlProjector(
+        {"update_mode": "native_coordinate"},
+        indata=object(),
+        static=object(),
+        state0=object(),
+        free_boundary_enabled=True,
+        use_scan=False,
+        jit_strict_update_enabled=True,
+    )
     projected = _FreeBoundaryEdgeControlProjector(
         {"update_mode": "projected_delta"},
         indata=object(),
@@ -171,6 +180,9 @@ def test_free_boundary_edge_coordinate_mode_applies_reduced_update_once(monkeypa
     )
 
     assert coordinate.delta_tuple_projector() is None
+    assert native.delta_tuple_projector() is None
+    assert native.update_mode == "native_coordinate"
+    assert native.info["solver_native_spline_controls"] is True
     assert callable(projected.delta_tuple_projector())
 
 

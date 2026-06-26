@@ -259,13 +259,18 @@ It also enables the reduced square-axis free-boundary edge-control projection
 by default, so the solve still stores VMEC Fourier coefficients but constrains
 LCFS edge motion to the two-control side/corner spline subspace unless the
 top-level example option is set to ``"none"``.
+The example's default update mode is now ``"native_coordinate"``: the LCFS edge
+force is pulled back with the reduced-control Jacobian transpose, reduced edge
+velocity memory is advanced, and only the decoded edge update is written back to
+the VMEC state while the interior and lambda updates remain on the existing
+VMEC preconditioned path.
 When reduced square and stellarator edge bases still underfit the force
-direction, the profiler/summarizer now has a concrete
-``native-spline-control-prototype`` lane. This no-solve report records the
-preferred reduced spline basis, its control count, the full Fourier LCFS edge
-size, and the source-code changes needed to make those controls solver-native.
-It is the handoff point from projection-bridge profiling to the true reduced
-nonlinear state implementation.
+direction, the profiler/summarizer first recommends the executable
+``direct-gpu-edge-stellarator-native-polish`` profile. The
+``native-spline-control-prototype`` lane remains a no-solve readiness report:
+it records the preferred reduced spline basis, its control count, the full
+Fourier LCFS edge size, and the remaining source-code changes needed to promote
+those controls into a smaller global nonlinear state.
 Direct-coil convergence
 candidates are gated by a fresh residual recompute using the current
 plasma-current normalization, and the square-coil example schema ``0.5`` records

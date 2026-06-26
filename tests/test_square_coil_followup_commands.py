@@ -334,6 +334,31 @@ def test_square_coil_followup_commands_emit_stellarator_edge_polish(tmp_path: Pa
     assert "edge_stellarator_coordinate" in outdir.name
 
 
+def test_square_coil_followup_commands_emit_stellarator_native_edge_polish(tmp_path: Path):
+    args = followup._parser().parse_args(
+        [
+            "--outdir-root",
+            str(tmp_path),
+            "--delt-values",
+            "0.02",
+            "--profile-kind",
+            "direct-gpu-edge-stellarator-native-polish",
+        ]
+    )
+
+    command = followup.build_commands(args)[0]
+
+    assert command[command.index("--freeb-edge-control-projection") + 1] == "stellarator"
+    assert command[command.index("--freeb-edge-control-update-mode") + 1] == "native_coordinate"
+    assert "--freeb-anderson-pressure" in command
+    assert "--jit-forces" in command
+    assert "--skip-mgrid" in command
+    assert "--run-vmec2000" not in command
+    outdir = Path(command[command.index("--outdir") + 1])
+    assert "direct_gpu_edge_stellarator_native_polish" in outdir.name
+    assert "edge_stellarator_native_coordinate" in outdir.name
+
+
 def test_square_coil_followup_commands_reject_underrecommended_ntheta(tmp_path: Path):
     recommended = recommended_square_axis_ntheta(5)
     args = followup._parser().parse_args(
