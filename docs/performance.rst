@@ -2210,10 +2210,10 @@ omitted on the other 7 unsupported or non-converged rows.
 
 On this run, warm ``vmec_jax`` beat VMEC2000 on 7 of 16 rows and cold
 ``vmec_jax`` beat VMEC2000 on 2 of 16 rows.  The median warm single-solve row
-is ``1.51x`` VMEC2000 runtime, while the median cold row is ``3.76x`` VMEC2000
+is ``1.41x`` VMEC2000 runtime, while the median cold row is ``2.93x`` VMEC2000
 runtime because cold time includes Python/JAX/XLA setup.  Peak process memory
-remains higher than VMEC2000, with a median ``4.90x`` ratio and the largest
-ratio (``16.6x``) on the non-stellarator-symmetric finite-beta row.  The
+remains higher than VMEC2000, with a median ``4.44x`` ratio and the largest
+ratio (``16.5x``) on the non-stellarator-symmetric finite-beta row.  The
 current-vs-``origin/main`` comparison records ``0`` material regressions across
 the 48 backend/case rows, so these benchmark numbers are current PR evidence
 rather than stale pre-refactor data.

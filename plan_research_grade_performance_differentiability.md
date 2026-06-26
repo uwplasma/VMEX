@@ -159,14 +159,15 @@ The plan is complete only when all of the following are true:
 
 Tasks:
 
-- Remove the top-level README runtime/memory figure.
-- Keep detailed performance artifacts in docs, not the README front page.
+- Keep the top-level README figure runtime-only.
+- Keep detailed performance and memory artifacts in docs, not the README front page.
 - Add this authoritative plan and point older plans here.
 
 Gates:
 
 - `git diff --check`.
-- README no longer references `readme_runtime_compare.png`.
+- README references `readme_runtime_compare.png` only as a runtime figure, with
+  memory columns and details kept in docs.
 - Plan includes milestones, tests, parity gates, and source-file simplification
   targets.
 
@@ -713,7 +714,7 @@ Steps taken:
 - Compared the two matrices:
   `python tools/diagnostics/compare_runtime_memory_matrix.py --current outputs/pr20_full_matrix_current_cpu_sg/summary.json --baseline /Users/rogeriojorge/local/tests/vmec_jax_main_perf/outputs/pr20_full_matrix_main_cpu_sg/summary.json --csv-out docs/_static/figures/readme_runtime_compare_current_vs_main.csv --json-out docs/_static/figures/readme_runtime_compare_current_vs_main.json`.
 - Regenerated the docs benchmark artifact:
-  `python tools/diagnostics/readme_runtime_compare.py --cpu-summary outputs/pr20_full_matrix_current_cpu_sg/summary.json --figure-kind fixed --plot-mode runtime_memory --figure-out docs/_static/figures/readme_runtime_compare.png --csv-out docs/_static/figures/readme_runtime_compare.csv --json-out docs/_static/figures/readme_runtime_compare.json --table-out outputs/readme_runtime_table_pr20.md`.
+  `python tools/diagnostics/readme_runtime_compare.py --cpu-summary outputs/pr20_full_matrix_current_cpu_sg/summary.json --figure-kind fixed --plot-mode runtime --figure-out docs/_static/figures/readme_runtime_compare.png --csv-out docs/_static/figures/readme_runtime_compare.csv --json-out docs/_static/figures/readme_runtime_compare.json --table-out outputs/readme_runtime_table_pr20.md`.
 - Ran the executable-backed WOUT parity benchmark:
   `PYTHONPATH=$PWD JAX_ENABLE_X64=1 python tools/diagnostics/converged_wout_parity_benchmark.py --nightly --vmec-exec ~/bin/xvmec2000 --case nfp4_QH_warm_start --case solovev --case ITERModel --case LandremanPaul2021_QA_lowres --output-dir outputs/pr20_wout_parity`.
 - Copied the compact parity summary to
@@ -6689,6 +6690,61 @@ Best next steps:
 3. Keep PR wording conservative on free-boundary differentiation: current
    evidence is branch-local/fingerprint-gated, not arbitrary adaptive branch
    selection.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.2%.
+- Free-boundary production differentiability: 97.6%.
+- Single-stage coil optimization: 94.0%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 78.0%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
+### 2026-06-26: Restore README benchmark to runtime-only scope
+
+Steps taken:
+
+- Regenerated ``docs/_static/figures/readme_runtime_compare.png`` with
+  ``--plot-mode runtime`` from
+  ``outputs/pr20_full_matrix_current_cpu_sg_fulljit/summary.json``.
+- Kept memory values in ``readme_runtime_compare.csv`` and
+  ``readme_runtime_compare.json`` for the detailed performance docs, but
+  removed the peak-memory subplot from the README image.
+- Updated the stale plan milestone text and historical command that still
+  referred to a README runtime+memory figure.
+- Updated ``docs/performance.rst`` median runtime and memory ratios to match
+  the regenerated CSV/JSON provenance.
+
+Results obtained:
+
+- The README benchmark image now contains only the bundled fixed-boundary
+  runtime matrix: VMEC2000, cold/warm ``vmec_jax``, and VMEC++ where supported.
+- The regenerated CSV still has 16 fixed-boundary rows, 9 VMEC++ supported
+  rows, warm ``vmec_jax`` faster on 7 rows, and cold ``vmec_jax`` faster on 2
+  rows.
+- ``LANG=C.UTF-8 LC_ALL=C.UTF-8 python -m sphinx -W -j auto -b html docs
+  docs/_build/html_pr20_final_tranche`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size is ``28.42 MiB``.
+- ``python tools/diagnostics/source_health.py --top 25 --top-functions 80
+  --max-root-helper-prefix-files 2 --max-function-lines-at
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2508
+  --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=512`` passed.
+- ``git diff --check`` passed.
+
+Best next steps:
+
+1. Push the runtime-only README artifact correction.
+2. Let CI validate the pushed artifact commit.
+3. Treat remaining runtime/memory work as a follow-up optimization lane, not a
+   blocker for the already-regenerated public benchmark evidence.
 
 User needs:
 
