@@ -42,12 +42,22 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                         "final_fsql": 4.0e-7,
                         "final_fsq_component_sum": 9.0e-7,
                         "best_scored_fsq": 8.0e-7,
+                        "returned_best_scored_state": True,
+                        "best_scored_full_boundary_count": 10,
+                        "best_scored_fresh_boundary_count": 8,
+                        "final_residual_recomputed_on_accepted_state": True,
+                        "free_boundary_fresh_convergence_gate": True,
+                        "free_boundary_fresh_convergence_recheck_count": 3,
+                        "free_boundary_fresh_convergence_reject_count": 2,
+                        "free_boundary_fresh_convergence_failed_count": 1,
+                        "free_boundary_convergence_blocked_count": 4,
                         "free_boundary_anderson_pressure_enabled": True,
                         "free_boundary_anderson_pressure_last_theta": 0.25,
                         "history": {
                             "dt_eff_stats": {"last": 0.02, "min": 0.01},
                             "time_step_stats": {"last": 0.019},
                             "freeb_full_update_stats": {"sum": 997.0},
+                            "include_edge_stats": {"sum": 50.0, "last": 0.0},
                             "freeb_anderson_pressure_applied_stats": {"sum": 12.0},
                             "bad_jacobian_stats": {"sum": 1.0},
                             "freeb_nestor_bnormal_rms_stats": {"last": 4.0e-3, "min": 3.0e-3},
@@ -87,6 +97,15 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["final_max_component"] == pytest.approx(4.0e-7)
     assert rows[1]["strict_components_met"] is True
     assert rows[1]["best_total"] == pytest.approx(8.0e-7)
+    assert rows[1]["returned_best_scored_state"] is True
+    assert rows[1]["best_scored_full_boundary_count"] == 10
+    assert rows[1]["best_scored_fresh_boundary_count"] == 8
+    assert rows[1]["final_residual_recomputed_on_accepted_state"] is True
+    assert rows[1]["fresh_convergence_gate"] is True
+    assert rows[1]["fresh_convergence_rechecks"] == 3
+    assert rows[1]["fresh_convergence_rejects"] == 2
+    assert rows[1]["fresh_convergence_failures"] == 1
+    assert rows[1]["freeb_convergence_blocked_count"] == 4
     assert rows[1]["solver_mode"] == "parity"
     assert rows[1]["nzeta_auto"] is True
     assert rows[1]["recommended_nzeta"] == 32
@@ -98,6 +117,8 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["dt_eff_min"] == pytest.approx(0.01)
     assert rows[1]["time_step_last"] == pytest.approx(0.019)
     assert rows[1]["freeb_full_update_count"] == pytest.approx(997.0)
+    assert rows[1]["include_edge_count"] == pytest.approx(50.0)
+    assert rows[1]["include_edge_last"] == pytest.approx(0.0)
     assert rows[1]["anderson_pressure_enabled"] is True
     assert rows[1]["anderson_pressure_applied_count"] == pytest.approx(12.0)
     assert rows[1]["anderson_pressure_last_theta"] == pytest.approx(0.25)

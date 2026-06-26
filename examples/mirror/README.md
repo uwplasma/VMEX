@@ -282,6 +282,12 @@ comparison but is not sufficient for a per-component ``FTOL=1e-12`` claim.
 The table also includes ``nzeta_auto``, ``recommended_nzeta``,
 ``boundary_mode_count``, and ``boundary_recommended_nzeta`` so
 ``MPOL``/``NTOR``/``NZETA`` edits can be audited with the residuals.
+The free-boundary audit columns ``returned_best_scored_state``,
+``final_residual_recomputed_on_accepted_state``,
+``fresh_convergence_rechecks``, ``fresh_convergence_rejects``,
+``freeb_convergence_blocked_count``, ``include_edge_count``, and
+``include_edge_last`` show whether the row used a fresh full boundary update
+and whether the VMEC++-style edge-force propagation window was active.
 For Anderson A/B runs, the same table includes
 ``anderson_pressure_enabled``, ``anderson_pressure_applied_count``, and
 ``anderson_pressure_last_theta``.

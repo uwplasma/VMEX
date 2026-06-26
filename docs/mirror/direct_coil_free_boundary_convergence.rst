@@ -326,11 +326,16 @@ without adding result files to the repository. New profiler rows also include
 compact convergence-control statistics for long histories, including time-step
 extrema, full-vacuum-update counts, bad-Jacobian counts, and tail boundary
 ``B.n`` diagnostics, so future long runs can be audited without storing bulky
-full history arrays in the repository. The profile JSON also records a compact
-geometric residual-tail projection for the summed VMEC force residual. The
-summary table exposes the tail decay factor and the estimated additional
-iterations to ``1e-12``; this is a diagnostic estimate, not a convergence
-claim, but it separates monotone under-budget runs from true residual floors.
+full history arrays in the repository. The summary table now also exposes the
+fresh-boundary convergence gate, fresh recheck/reject/failure counts, best
+fresh-boundary state counts, final recompute status, and ``include_edge``
+statistics. Those columns make VMEC++-style edge-force propagation and fresh
+direct-coil recomputation auditable from the compact table. The profile JSON
+also records a compact geometric residual-tail projection for the summed VMEC
+force residual. The summary table exposes the tail decay factor and the
+estimated additional iterations to ``1e-12``; this is a diagnostic estimate,
+not a convergence claim, but it separates monotone under-budget runs from true
+residual floors.
 
 The square-axis stellarator-mirror hybrid geometry now has a lower-bandwidth
 ``axis_kind="spline"`` option. It is still projected into VMEC Fourier boundary
