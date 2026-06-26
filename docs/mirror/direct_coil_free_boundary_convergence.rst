@@ -669,18 +669,26 @@ error, mode count, and recommended ``NZETA`` for the selected
 ``boundary_mode_count``, ``boundary_recommended_nzeta``,
 ``boundary_proj_max``, and ``boundary_proj_rel``.
 The companion ``resolution_deck`` block records the recommended-``NZETA`` rule,
-signed ``nzeta_margin``, signed ``mgrid_nphi_margin``, Fourier boundary channel
-count, and points per retained toroidal mode.
+the recommended-``NTHETA`` rule, signed ``ntheta_margin``/``nzeta_margin``,
+signed ``mgrid_nphi_margin``, Fourier boundary channel count, and points per
+retained poloidal/toroidal mode.
 These metrics should be reviewed whenever changing ``MPOL``, ``NTOR``, or
-``NZETA``: they diagnose input-boundary underfitting before the free-boundary
-nonlinear solve is interpreted.
+``NTHETA``/``NZETA``: they diagnose input-boundary and VMEC quadrature
+underfitting before the free-boundary nonlinear solve is interpreted.
 The profiler also has a cheap ``--resolution-diagnostics-only`` mode that
 writes the ``boundary_projection`` and ``resolution_deck`` JSON blocks, then
 exits before coil, mgrid, or equilibrium work. Use it as the first check after
 changing mode counts or ``mgrid_nphi``; it records projection-gate status,
-recommended ``NZETA``, and whether the generated mgrid toroidal plane count is
-compatible with the VMEC ``NZETA`` grid. Production-gated square-coil rows must
-also request a strict final force tolerance. The shared
+recommended ``NTHETA``/``NZETA``, and whether the generated mgrid toroidal
+plane count is compatible with the VMEC ``NZETA`` grid. Use
+``--scale-diagnostics-only`` when the edited deck also changes ``PHIEDGE`` or
+coil current: it writes the same preflight payload plus
+``vmec_free_boundary_scale``, comparing VMEC's ``|PHIEDGE|/(R1*Z1)`` edge-field
+proxy with the directly sampled external ``R B_phi`` RMS and reporting a
+suggested ``PHIEDGE`` for that field scale. This mode builds the coils and
+samples the initial boundary, but still exits before generated-``mgrid`` files
+or equilibrium solves. Production-gated square-coil rows must also request a
+strict final force tolerance. The shared
 ``vmec_jax.square_axis_strict_schedule_status`` helper classifies the
 ``NS_ARRAY``/``NITER_ARRAY``/``FTOL_ARRAY`` schedule, and both the root example
 and ``tools/diagnostics/profile_square_coil_free_boundary.py`` reject real

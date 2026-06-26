@@ -216,8 +216,11 @@ JSON. With ``ENFORCE_RECOMMENDED_NZETA = True`` and
 ``ENFORCE_RECOMMENDED_NZETA = False`` for intentionally underresolved
 diagnostic examples. The backend
 profiler also treats omitted ``--nzeta`` or ``--nzeta auto`` as that
-recommendation. The ``resolution_deck`` block also records the
-recommended-``NZETA`` rule, signed ``nzeta_margin``, signed
+recommendation. ``NTHETA`` has the same preflight treatment through
+``recommended_square_axis_ntheta``; leave it omitted or set it to ``auto`` for
+the square-axis recommendation after changing ``MPOL``. The
+``resolution_deck`` block also records the recommended ``NTHETA`` and
+``NZETA`` rules, signed ``ntheta_margin``/``nzeta_margin``, signed
 ``mgrid_nphi_margin``, Fourier boundary channel count, and points per retained
 toroidal mode, so edited ``MPOL``/``NTOR``/``NZETA`` decks can be triaged before
 a long solve starts. Underresolved production-style example runs
@@ -339,16 +342,23 @@ Before launching a long solve after changing ``MPOL``, ``NTOR``, ``NZETA``, or
 
 The JSON report exits before coil, mgrid, or equilibrium work and writes a
 ``resolution_deck`` block with production-gate status, projection error,
-recommended ``NZETA``, and ``mgrid_nphi``/``NZETA`` compatibility. On the
-current spline-smoothed target, ``MPOL=5, NTOR=20, NZETA=48`` fails the strict
-projection gate with max component error about ``1.8e-9`` and recommends
-``MPOL=5, NTOR=28, NZETA>=64``.
+recommended ``NTHETA``/``NZETA``, and ``mgrid_nphi``/``NZETA`` compatibility.
+On the current spline-smoothed target, ``MPOL=5, NTOR=20, NZETA=48`` fails the
+strict projection gate with max component error about ``1.8e-9`` and
+recommends ``MPOL=5, NTOR=28, NZETA>=64``.
 It also writes ``control_fourier_map`` for the two reduced square-axis controls,
 including the stacked coefficient-Jacobian shape, singular values, condition
 number, and column norms. Use that block to decide whether a deck is a good
 candidate for reduced spline-control updates before starting a long solve. The
 nested ``candidate_bases`` block compares this with the five-control
 stellarator-symmetric map.
+To also check whether the requested ``PHIEDGE`` scale is consistent with the
+sampled square-coil toroidal field before a solve, add
+``--scale-diagnostics-only``. That writes the same preflight report plus
+``vmec_free_boundary_scale`` with VMEC's ``|PHIEDGE|/(R1*Z1)`` edge-field
+proxy, the sampled external ``R B_phi`` RMS, and a suggested ``PHIEDGE`` at the
+current coil current. It does not write a generated ``mgrid`` or run any
+equilibrium backend.
 The same JSON now includes ``spline_bridge``. For the current
 ``axis_kind="control_spline"`` path, that block should read as a spline target
 projected to VMEC Fourier coefficients, not as a solver-native spline basis.

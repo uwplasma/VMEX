@@ -362,6 +362,14 @@ def _parser() -> argparse.ArgumentParser:
             "then exit before coil/mgrid generation or equilibrium solves."
         ),
     )
+    p.add_argument(
+        "--scale-diagnostics-only",
+        action="store_true",
+        help=(
+            "Write the resolution diagnostics plus the VMEC PHIEDGE/current scale check, "
+            "then exit before mgrid generation or equilibrium solves."
+        ),
+    )
     return p
 
 
@@ -2652,7 +2660,16 @@ def main(argv: list[str] | None = None) -> int:
         solver_native_spline_controls=bool(spline_bridge.get("solver_native_spline_controls", False)),
         target_ftol=STRICT_COMPONENT_FTOL,
     )
-    if bool(args.resolution_diagnostics_only):
+    if bool(args.resolution_diagnostics_only) or bool(args.scale_diagnostics_only):
+        scale_payload = {"status": "skipped_resolution_diagnostics_only"}
+        if bool(args.scale_diagnostics_only):
+            coils = build_square_coils(config)
+            base_indata = make_free_boundary_indata(config, beta_percent=float(args.beta_percent))
+            scale_payload = _vmec_free_boundary_scale_payload(
+                indata=base_indata,
+                coil_params=coils.params,
+                config=config,
+            )
         payload = {
             "schema": "square_coil_free_boundary_backend_profile",
             "configuration": {
@@ -2684,7 +2701,13 @@ def main(argv: list[str] | None = None) -> int:
                 "ns_array": ns_values,
                 "niter_array": niter_values,
                 "ftol_array": ftol_values,
-                "resolution_diagnostics_only": True,
+                "nstep": int(config.nstep),
+                "phiedge": float(config.phiedge),
+                "delt": float(args.delt),
+                "activate_fsq": float(args.activate_fsq),
+                "nvacskip": int(config.nvacskip),
+                "resolution_diagnostics_only": bool(args.resolution_diagnostics_only),
+                "scale_diagnostics_only": bool(args.scale_diagnostics_only),
                 "accepted_provider_parity": bool(args.accepted_provider_parity),
                 "freeb_anderson_pressure": bool(args.freeb_anderson_pressure),
                 "freeb_jax_nestor_operator": bool(args.freeb_jax_nestor_operator),
@@ -2726,12 +2749,12 @@ def main(argv: list[str] | None = None) -> int:
             "strict_schedule": strict_schedule,
             "strict_convergence_assessment": strict_convergence_assessment,
             "resolution_deck": resolution_deck,
-            "vmec_free_boundary_scale": {"status": "skipped_resolution_diagnostics_only"},
+            "vmec_free_boundary_scale": scale_payload,
             "provider_parity": None,
             "backends": {},
         }
         report = outdir / "square_coil_free_boundary_backend_profile.json"
-        _log_step(f"writing resolution diagnostics {report}")
+        _log_step(f"writing preflight diagnostics {report}")
         report.write_text(json.dumps(_json_ready(payload), indent=2, sort_keys=True, allow_nan=False) + "\n")
         print(report)
         return 0
@@ -2861,6 +2884,7 @@ def main(argv: list[str] | None = None) -> int:
             "virtual_casing_target_chunk_size": args.virtual_casing_target_chunk_size,
             "virtual_casing_pythonpath": virtual_casing_pythonpath,
             "resolution_diagnostics_only": bool(args.resolution_diagnostics_only),
+            "scale_diagnostics_only": bool(args.scale_diagnostics_only),
             "accepted_provider_parity": bool(args.accepted_provider_parity),
             "phiedge": float(config.phiedge),
             "delt": float(args.delt),

@@ -36394,3 +36394,116 @@ solves plus the existing queues.
 ### User input needed
 
 No user input is needed.
+
+## M320 - Cheap `PHIEDGE` Scale Preflight For Square-Coil Profiles
+
+### Steps taken
+
+- Reviewed the current strict square-coil state after the `NTHETA` and
+  `PHIEDGE` diagnostic commits:
+  - the local branch is clean on the draft PR branch before this tranche;
+  - `office` still has one direct JAX hot-restart row and one VMEC2000
+    generated-`mgrid` row active, with newer strict rows correctly waiting;
+  - the active evidence still says VMEC2000 is faster for generated-`mgrid`
+    reference rows, but not yet more robust in the sense of reaching
+    per-component `FTOL=1e-12` on the current square-axis Fourier deck.
+- Added `--scale-diagnostics-only` to
+  `tools/diagnostics/profile_square_coil_free_boundary.py`.
+  This mode writes the same projection/resolution/control-map preflight report
+  as `--resolution-diagnostics-only`, builds the square coils, samples the
+  initial boundary, records `vmec_free_boundary_scale`, then exits before
+  generated-`mgrid` files or equilibrium solves.
+- Updated the square-coil README and convergence-plan docs so user edits to
+  `MPOL`, `NTOR`, `NTHETA`, `NZETA`, `mgrid_nphi`, `PHIEDGE`, or coil current
+  have an explicit cheap preflight path before a long `FTOL=1e-12` solve.
+- Added a unit test proving scale-only mode writes a real scale payload while
+  leaving provider parity, backends, and generated `mgrid` work disabled.
+
+### Results obtained
+
+- The profiler now has two distinct cheap gates:
+  - `--resolution-diagnostics-only` for Fourier projection,
+    `NTHETA`/`NZETA`, mgrid-plane compatibility, and control-map conditioning;
+  - `--scale-diagnostics-only` for the same deck checks plus VMEC's
+    `|PHIEDGE|/(R1*Z1)` edge-field proxy compared with sampled external
+    `R B_phi`.
+- This directly addresses the current robustness issue: changing resolution
+  or `PHIEDGE` can now fail fast or recommend a field-scale correction without
+  starting VMEC/JAX, VMEC2000, or writing bulky outputs.
+- A production-deck scale-only smoke with `MPOL=5`, `NTOR=28`, `NTHETA=64`,
+  `NZETA=64`, and `PHIEDGE=-0.04` reports:
+  - `resolution_deck.status = production_ready`;
+  - `vmec_free_boundary_scale.status = severe_scale_mismatch`;
+  - `|PHIEDGE|/(R1*Z1) = 38.78`;
+  - sampled external `R B_phi` RMS `= 2.43`;
+  - ratio `= 15.95`;
+  - suggested `PHIEDGE = -0.0025078856391256765`.
+  This validates the already queued scaled-`PHIEDGE` row as the right next
+  strict comparison.
+
+### How it was tested
+
+```bash
+./venv/bin/python -m pytest -q \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_vmec_scale_payload_compares_phiedge_to_external_r_bphi \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_scale_diagnostics_only_writes_scale_payload
+```
+
+Result: `2 passed, 1 warning`.
+
+```bash
+./venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py \
+  --outdir /tmp/vmec_mirror_scale_only_smoke --beta-percent 0 \
+  --mpol 5 --ntor 28 --ns 17 --nzeta 64 \
+  --ns-array 9,13,17 --niter-array 4000,8000,24000 \
+  --ftol-array 1e-8,1e-10,1e-12 --ftol 1e-12 \
+  --phiedge -0.04 --delt 0.02 --activate-fsq 1e-03 \
+  --nvacskip 1 --nstep 1 --axis-kind control_spline \
+  --side-power 1.0 --corner-power 1.0 --coil-segments 64 \
+  --max-boundary-projection-error 5e-12 --scale-diagnostics-only
+```
+
+Result: wrote only
+`/tmp/vmec_mirror_scale_only_smoke/square_coil_free_boundary_backend_profile.json`
+and produced the scale values listed above.
+
+```bash
+./venv/bin/python -m sphinx -b html docs /tmp/vmec_mirror_docs_smoke
+```
+
+Result: not run; Sphinx is not installed in the local venv.
+
+### File structure and best-practice adherence
+
+- The implementation is a narrow profiler/preflight extension; it does not
+  change solver behavior.
+- The new mode writes one JSON report under the requested output directory and
+  intentionally avoids `mgrid`, WOUT, figure, or backend output bloat.
+- The docs keep the repo-root example README and formal convergence plan
+  aligned with the profiler behavior.
+
+### Best next steps
+
+1. Let the active direct JAX and VMEC2000 strict rows continue on `office`.
+2. Compare the queued explicit-`NTHETA` and scaled-`PHIEDGE` rows when they
+   start; if both still stall above `1e-12`, prioritize the solver-native
+   spline/control-basis state over more Fourier-deck polish.
+3. Build docs in CI or a local environment with Sphinx installed.
+
+### Completion percentages after M320
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- VMEC2000 robustness/reference lane: `99%`, active reference row is still
+  running and is not yet strict.
+- Resolution/edit robustness lane: `100%`, now includes explicit
+  `NTHETA` and cheap `PHIEDGE` scale preflights.
+- True spline/control-basis hybrid lane: `84%`, projection bridge exists;
+  solver-native spline state remains open.
+- Finite-beta virtual-casing validation lane: `87%`, no new finite-beta
+  promotion row in this tranche.
+- CI/API health lane: `99%`, local focused checks pass.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.

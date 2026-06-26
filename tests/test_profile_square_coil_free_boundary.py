@@ -731,6 +731,57 @@ def test_square_coil_profile_vmec_scale_payload_compares_phiedge_to_external_r_b
     assert payload["suggested_phiedge_for_external_r_bphi_rms"] < 0.0
 
 
+def test_square_coil_profile_scale_diagnostics_only_writes_scale_payload(monkeypatch, tmp_path: Path):
+    monkeypatch.setattr(profile, "build_coil_field_geometry", lambda _params: "geometry")
+
+    def fail_mgrid(*_args, **_kwargs):
+        raise AssertionError("scale diagnostics should not write an mgrid")
+
+    def fake_sample(_provider_kind, _provider_static, _provider_params, R, Z, _phi):
+        return np.zeros_like(R), np.ones_like(R), np.zeros_like(Z)
+
+    monkeypatch.setattr(profile, "write_mgrid_from_coils", fail_mgrid)
+    monkeypatch.setattr(profile, "sample_external_field_cylindrical", fake_sample)
+
+    outdir = tmp_path / "profile_scale_only"
+    profile.main(
+        [
+            "--outdir",
+            str(outdir),
+            "--mpol",
+            "3",
+            "--ntor",
+            "4",
+            "--ns",
+            "5",
+            "--ntheta",
+            "32",
+            "--nzeta",
+            "16",
+            "--max-iter",
+            "2",
+            "--coil-segments",
+            "8",
+            "--max-boundary-projection-error",
+            "none",
+            "--scale-diagnostics-only",
+        ]
+    )
+
+    data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    assert data["configuration"]["scale_diagnostics_only"] is True
+    assert data["configuration"]["resolution_diagnostics_only"] is False
+    assert data["mgrid"]["created"] is False
+    assert data["provider_parity"] is None
+    assert data["backends"] == {}
+    assert data["vmec_free_boundary_scale"]["external_r_bphi_rms"] > 0.0
+    assert data["vmec_free_boundary_scale"]["status"] in {
+        "scale_reasonable",
+        "scale_mismatch",
+        "severe_scale_mismatch",
+    }
+
+
 def test_square_coil_profile_rejects_mgrid_nphi_not_multiple_of_nzeta(tmp_path: Path):
     with pytest.raises(ValueError, match="mgrid-nphi=.*incompatible.*nzeta"):
         profile.main(
