@@ -201,7 +201,10 @@ basis to ``square_axis_spline_control_fourier_matrix``. The default square
 basis reduces the eight side/corner spline controls to two symmetry-preserving
 parameters, which is the preferred path before increasing ``MPOL``/``NTOR``.
 The returned control map also has ``project_boundary_delta(...)`` for fitting a
-solved Fourier boundary displacement back to those reduced controls.
+solved Fourier boundary displacement back to those reduced controls. That fit
+uses the same shared reduced-control least-squares kernel as the
+free-boundary edge-control projection, so rank, singular values, conditioning,
+and residual fractions use one convention across square-hybrid diagnostics.
 The default square-axis side/corner weights use
 ``SIDE_POWER = CORNER_POWER = 1.0``; this keeps the rounded-square target close
 to finite Fourier bandwidth. Sharper values such as ``1.4`` remain useful
@@ -209,8 +212,12 @@ stress tests, but they reintroduce a high-mode projection tail. The default
 ``NZETA`` follows
 ``recommended_square_axis_nzeta``; the top-level square-coil example leaves
 ``NZETA = None`` by default, resolves it from the edited ``NTOR`` at runtime,
-and writes ``nzeta_resolution`` plus ``resolution_deck`` blocks to the metrics
-JSON. With ``ENFORCE_RECOMMENDED_NZETA = True`` and
+and writes a combined ``effective_resolution`` block plus legacy
+``ntheta_resolution``, ``nzeta_resolution``, and ``resolution_deck`` blocks to
+the preflight and metrics JSON. Each beta row and the summary CSV also record
+the requested, recommended, and effective grids, so edited ``MPOL``/``NTOR``/
+``NTHETA``/``NZETA`` runs can be compared without guessing hidden automatic
+bumps. With ``ENFORCE_RECOMMENDED_NZETA = True`` and
 ``AUTO_BUMP_NZETA_TO_RECOMMENDED = True``, an explicitly low top-level
 ``NZETA`` is lifted to the recommendation and recorded in that payload. Set
 ``ENFORCE_RECOMMENDED_NZETA = False`` for intentionally underresolved
@@ -545,6 +552,11 @@ strict step, so uncontrolled Fourier edge momentum is not carried into the next
 iteration. This is still a bridge: the full VMEC Fourier residual is reported
 separately until solver-native spline/control coordinates replace the edge-only
 projection.
+As of the active strict ``MPOL=5, NTOR=28, NZETA=64`` comparison, the direct
+JAX hot-restart row is closer to the requested ``1e-12`` component target than
+the active VMEC2000 generated-``mgrid`` row, while VMEC2000 is flat above its
+``1e-10`` stage. Treat this as a current profiling observation, not a permanent
+backend ranking; both paths still require a component-wise ``1e-12`` pass.
 To print the current strict VMEC2000 follow-up scan after such a plateau, use::
 
   python tools/diagnostics/square_coil_followup_commands.py

@@ -267,6 +267,11 @@ projection/``NZETA`` deck status, spline-control map conditioning, and a
 ``spline_bridge`` block stating that the current control-spline path is still a
 projection bridge into VMEC Fourier coefficients rather than a solver-native
 spline-control update.
+The preflight and final metrics now also include a combined
+``effective_resolution`` block with requested, recommended, and effective
+``NTHETA``/``NZETA`` values. Completed beta rows and the summary CSV repeat the
+same grid provenance, which makes ``MPOL``/``NTOR``/``NTHETA``/``NZETA`` edit
+experiments auditable without reading the generated input deck by hand.
 The profiler also rejects generated-mgrid plane counts that are not multiples
 of ``NZETA`` because the VMEC-plane mgrid sampler intentionally uses the
 discrete VMEC zeta planes without toroidal interpolation.
@@ -305,6 +310,9 @@ is the bridge diagnostic for deciding whether a solver-native spline-control
 update is justified: high capture means the accepted Fourier LCFS motion lies
 mostly in the intended low-dimensional control subspace, while low capture
 means a reduced update would need more controls or a different basis.
+The square-control projection now uses the same shared reduced-control
+least-squares kernel as the solver edge-control projection, so those diagnostics
+share rank, conditioning, and residual conventions.
 Backend rows now also include a compact ``free_boundary_promotion`` block. The
 summary table exposes this as ``boundary_condition_mode``,
 ``coil_bnormal_role``, ``production_candidate``, ``promotion_blockers``,
