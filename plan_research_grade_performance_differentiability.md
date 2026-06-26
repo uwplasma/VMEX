@@ -6693,6 +6693,83 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
 
+### 2026-06-26: Package free-boundary residual runtime state and trial scorer
+
+Steps taken:
+
+- Added ``FreeBoundaryLoopState``, ``initial_free_boundary_loop_state``, and
+  ``resume_free_boundary_loop_state`` in
+  ``vmec_jax/solvers/fixed_boundary/residual/runtime.py``.
+- Moved VMEC free-boundary cadence initialization, restart-state resume
+  handling, and initial ``plascur`` extraction out of
+  ``solve_fixed_boundary_residual_iter``.
+- Added ``trial_residual_total_runtime`` as a named runtime seam for
+  backtracking/direct-fallback/auto-flip trial-state residual scoring.
+- Updated ``solve_fixed_boundary_residual_iter`` to delegate those host-runtime
+  branches without changing the force kernels, scan path, free-boundary
+  coupling, or adjoint trace payloads.
+- Lowered both GitHub Actions and local CI source-health baselines for
+  ``solve_fixed_boundary_residual_iter`` from ``2516`` to ``2508`` lines.
+- Added focused unit tests for the new free-boundary loop-state helpers and
+  trial-residual scorer.
+
+Results obtained:
+
+- ``solve_fixed_boundary_residual_iter`` is now capped at ``2508`` physical
+  lines in CI and local release gates; ``run_fixed_boundary`` remains capped at
+  ``533`` lines.
+- ``python -m ruff check
+  vmec_jax/solvers/fixed_boundary/residual/runtime.py
+  vmec_jax/solvers/fixed_boundary/residual/iteration.py
+  tools/diagnostics/local_ci_gate.py
+  tests/test_solve_residual_iter_runtime_helpers.py
+  tests/test_local_ci_gate.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_solve_residual_iter_runtime_helpers.py
+  tests/test_local_ci_gate.py tests/test_driver_api.py -q`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q
+  tests/test_solve_axis_helpers_more_coverage.py tests/test_residual_ptau.py
+  tests/test_residual_iteration_preconditioner.py
+  tests/test_solve_residual_iter_setup_helpers.py
+  tests/test_solve_residual_iter_runtime_helpers.py
+  tests/test_solve_residual_iter_update_helpers.py
+  tests/test_solve_residual_iter_finalize_helpers.py
+  tests/test_solve_additional_helpers.py tests/test_free_boundary_wp0.py -q``
+  passed with one expected skip and only existing numerical warnings.
+- The exact source-health gate passed locally with
+  ``solve_fixed_boundary_residual_iter=2508`` and
+  ``run_fixed_boundary=533``.
+- ``python -m compileall -q`` on the changed runtime/iteration/local-CI files,
+  ``git diff --check``, and ``repo_size_audit.py`` passed; tracked size is
+  ``28.39 MiB`` and no tracked file exceeds ``2 MiB``.
+
+Best next steps:
+
+1. Push this residual-runtime packaging commit and let CI validate the lowered
+   source-health baseline.
+2. Stop doing small line-count-only extractions unless review specifically asks;
+   the next refactor/API tranche should target a larger residual-loop phase or
+   a public-driver dispatch split that removes substantially more orchestration
+   code.
+3. Keep the full runtime matrix, WOUT parity, and AD-vs-FD figures stable unless
+   a future numerical/performance path changes behavior.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.1%.
+- Free-boundary production differentiability: 97.3%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 74.5%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
 ### 2026-06-26: Add function-size regression gate for residual-loop refactor
 
 Steps taken:
