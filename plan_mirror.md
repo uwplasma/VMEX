@@ -29362,3 +29362,75 @@ Targeted test result: `13 passed`.
 ### User input needed
 
 No user input is needed.
+---
+## 254. Ran Square-Axis Resolution And Mgrid Preflight Matrix
+
+### Steps taken
+
+- Ran the square-coil profiler in `--resolution-diagnostics-only` mode for the
+  user-sensitive `MPOL`/`NTOR`/`NZETA` edits.
+- Included one generated-`mgrid` compatibility case with `mgrid_nphi` not a
+  multiple of `NZETA`.
+- Updated the examples README with the observed preflight matrix.
+
+### Results obtained
+
+| deck | status | reason |
+| --- | --- | --- |
+| `MPOL=5, NTOR=20, NZETA=48` | diagnostic-only | projection max `1.763e-9` exceeds `5e-12` |
+| `MPOL=5, NTOR=28, NZETA=48` | diagnostic-only | `NZETA=48` is below recommendation `64` |
+| `MPOL=5, NTOR=28, NZETA=64` | production-ready | projection max `3.481e-12`, mgrid-compatible |
+| `MPOL=6, NTOR=32, NZETA=72` | production-ready | projection max `3.468e-12`, mgrid-compatible |
+| `MPOL=5, NTOR=28, NZETA=64, mgrid_nphi=96` | diagnostic-only | `mgrid_nphi` is not a multiple of `NZETA` |
+
+- This confirms that the current robust path is not to let arbitrary
+  user-edited decks enter long solves. It is to run the preflight gate first,
+  then only launch VMEC/JAX or VMEC2000 for decks marked `production_ready`.
+- `control_spline` is the right default for the square hybrid at this stage:
+  it reduces the Fourier closure problem enough for `5,28,64` to pass, while
+  still feeding ordinary VMEC Fourier coefficients to VMEC/JAX and VMEC2000.
+
+### How it was tested
+
+```bash
+venv/bin/python tools/diagnostics/profile_square_coil_free_boundary.py \
+  --outdir results/preflight_m5_n28_z64 \
+  --mpol 5 --ntor 28 --nzeta 64 --mgrid-nphi 64 \
+  --axis-kind control_spline --side-power 1.0 --corner-power 1.0 \
+  --max-boundary-projection-error 5e-12 \
+  --resolution-diagnostics-only
+```
+
+Analogous commands were run for the four other rows in the table. The reports
+were written under ignored `results/preflight_*` directories.
+
+### File structure and best-practice notes
+
+- No source changes were needed for the preflight itself; the existing
+  `resolution_deck` report already captures the right robust behavior.
+- The README table is compact and points users to the production deck instead
+  of requiring them to interpret raw JSON.
+
+### Best next steps
+
+1. Keep the active VMEC2000 strict row running to completion.
+2. If it exits above the strict component gate, run the generated follow-up
+   VMEC2000 scan on production-ready decks only.
+3. Do not spend long VMEC/JAX or VMEC2000 time on diagnostic-only
+   `MPOL`/`NTOR`/`NZETA` combinations unless the goal is explicitly a
+   representation stress test.
+
+### Completion percentages after M254
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `96%`.
+- VMEC2000 robustness/reference lane: `96%`, active row still running.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `77%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `76%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- True spline/control-basis hybrid lane: `38%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.

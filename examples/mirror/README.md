@@ -284,6 +284,15 @@ recommended ``NZETA``, and ``mgrid_nphi``/``NZETA`` compatibility. On the
 current spline-smoothed target, ``MPOL=5, NTOR=20, NZETA=48`` fails the strict
 projection gate with max component error about ``1.8e-9`` and recommends
 ``MPOL=5, NTOR=28, NZETA>=64``.
+The latest control-spline square-axis preflight matrix is:
+
+| deck | status | reason |
+| --- | --- | --- |
+| ``MPOL=5, NTOR=20, NZETA=48`` | diagnostic-only | projection error exceeds gate |
+| ``MPOL=5, NTOR=28, NZETA=48`` | diagnostic-only | ``NZETA`` below recommendation |
+| ``MPOL=5, NTOR=28, NZETA=64`` | production-ready | strict gate passes |
+| ``MPOL=6, NTOR=32, NZETA=72`` | production-ready | strict gate passes |
+| ``MPOL=5, NTOR=28, NZETA=64, mgrid_nphi=96`` | diagnostic-only | mgrid/``NZETA`` mismatch |
 
 The report stays under ignored ``results/`` paths and records ``vmec_jax``
 direct-coil, ``vmec_jax`` generated-mgrid, and optional raw VMEC2000
