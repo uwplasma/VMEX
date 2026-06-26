@@ -477,6 +477,97 @@ def test_square_coil_profile_projection_gate_fails_before_backend_work(monkeypat
         )
 
 
+def test_square_coil_profile_production_gate_rejects_underrecommended_nzeta(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setattr(
+        profile,
+        "_boundary_projection_payload",
+        lambda config: {
+            "max_abs_component_error": 1.0e-13,
+            "max_abs_error": 1.0e-13,
+            "rms_error": 1.0e-14,
+            "mode_count": 1,
+        },
+    )
+
+    with pytest.raises(ValueError, match="resolution deck is not production-ready.*nzeta_below"):
+        profile.main(
+            [
+                "--outdir",
+                str(tmp_path / "profile_underrecommended_nzeta"),
+                "--mpol",
+                "5",
+                "--ntor",
+                "28",
+                "--ns",
+                "5",
+                "--nzeta",
+                "32",
+                "--mgrid-nphi",
+                "32",
+                "--max-iter",
+                "2",
+                "--max-boundary-projection-error",
+                "5e-12",
+                "--skip-direct",
+                "--skip-mgrid",
+                "--skip-provider-parity",
+            ]
+        )
+
+
+def test_square_coil_profile_projection_gate_disabled_allows_diagnostic_underrecommended_nzeta(
+    monkeypatch,
+    tmp_path: Path,
+):
+    monkeypatch.setattr(
+        profile,
+        "_boundary_projection_payload",
+        lambda config: {
+            "max_abs_component_error": 1.0e-13,
+            "max_abs_error": 1.0e-13,
+            "rms_error": 1.0e-14,
+            "mode_count": 1,
+        },
+    )
+
+    outdir = tmp_path / "profile_underrecommended_diagnostic"
+    assert (
+        profile.main(
+            [
+                "--outdir",
+                str(outdir),
+                "--mpol",
+                "5",
+                "--ntor",
+                "28",
+                "--ns",
+                "5",
+                "--nzeta",
+                "32",
+                "--mgrid-nphi",
+                "32",
+                "--max-iter",
+                "2",
+                "--max-boundary-projection-error",
+                "none",
+                "--skip-direct",
+                "--skip-mgrid",
+                "--skip-provider-parity",
+            ]
+        )
+        == 0
+    )
+
+    data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    deck = data["resolution_deck"]
+    assert deck["status"] == "diagnostic_underresolved"
+    assert "projection_gate_disabled" in deck["reasons"]
+    assert "nzeta_below_square_axis_recommendation" in deck["reasons"]
+
+
 def test_square_coil_profile_defaults_nzeta_to_square_axis_recommendation(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(profile, "write_mgrid_from_coils", lambda *args, **kwargs: None)
 

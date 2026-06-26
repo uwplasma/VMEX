@@ -1197,6 +1197,7 @@ def _enforce_boundary_projection_gate(
     *,
     config: ExampleConfig,
     projection: dict[str, Any],
+    resolution_deck: dict[str, Any],
     limit: float | None,
 ) -> None:
     if limit is None:
@@ -1204,31 +1205,41 @@ def _enforce_boundary_projection_gate(
     observed = float(projection.get("max_abs_component_error", np.inf))
     if not np.isfinite(observed):
         raise ValueError("square-hybrid boundary projection error is not finite")
-    if observed <= float(limit):
+    if observed > float(limit):
+        recommendation = recommend_square_axis_stellarator_mirror_hybrid_resolution(
+            target_max_component_error=float(limit),
+            mpol=int(config.mpol),
+            ntor=int(config.ntor),
+            max_mpol=max(8, int(config.mpol) + 2),
+            max_ntor=max(32, int(config.ntor) + 8),
+            nfp=int(config.nfp),
+            ns_array=[int(value) for value in config.ns_array],
+            niter_array=[int(value) for value in config.niter_array],
+            ftol_array=[float(value) for value in config.ftol_array],
+            phiedge=float(config.phiedge),
+            **_square_axis_sample_kwargs(config),
+        )
+        suggested = recommendation["recommended"]
+        raise ValueError(
+            "square-hybrid boundary projection error is too large for this production profile: "
+            f"max_abs_component_error={observed:.3e} exceeds {float(limit):.3e} "
+            f"for MPOL={int(config.mpol)}, NTOR={int(config.ntor)}, NZETA={int(config.nzeta)}. "
+            "Suggested finite Fourier closure for the current spline-smoothed target: "
+            f"MPOL={int(suggested['mpol'])}, NTOR={int(suggested['ntor'])}, "
+            f"NZETA>={int(suggested['recommended_nzeta'])} "
+            f"(projection error {float(suggested['max_abs_component_error']):.3e}). "
+            "Increase MPOL/NTOR/NZETA or pass --max-boundary-projection-error none for a diagnostic-only run."
+        )
+    reasons = [str(reason) for reason in resolution_deck.get("reasons", [])]
+    if not reasons:
         return
-    recommendation = recommend_square_axis_stellarator_mirror_hybrid_resolution(
-        target_max_component_error=float(limit),
-        mpol=int(config.mpol),
-        ntor=int(config.ntor),
-        max_mpol=max(8, int(config.mpol) + 2),
-        max_ntor=max(32, int(config.ntor) + 8),
-        nfp=int(config.nfp),
-        ns_array=[int(value) for value in config.ns_array],
-        niter_array=[int(value) for value in config.niter_array],
-        ftol_array=[float(value) for value in config.ftol_array],
-        phiedge=float(config.phiedge),
-        **_square_axis_sample_kwargs(config),
-    )
-    suggested = recommendation["recommended"]
+    recommended_nzeta = int(resolution_deck.get("recommended_nzeta", recommended_square_axis_nzeta(config.ntor)))
     raise ValueError(
-        "square-hybrid boundary projection error is too large for this production profile: "
-        f"max_abs_component_error={observed:.3e} exceeds {float(limit):.3e} "
-        f"for MPOL={int(config.mpol)}, NTOR={int(config.ntor)}, NZETA={int(config.nzeta)}. "
-        "Suggested finite Fourier closure for the current spline-smoothed target: "
-        f"MPOL={int(suggested['mpol'])}, NTOR={int(suggested['ntor'])}, "
-        f"NZETA>={int(suggested['recommended_nzeta'])} "
-        f"(projection error {float(suggested['max_abs_component_error']):.3e}). "
-        "Increase MPOL/NTOR/NZETA or pass --max-boundary-projection-error none for a diagnostic-only run."
+        "square-hybrid resolution deck is not production-ready for a finite projection gate: "
+        f"reasons={','.join(reasons)} for MPOL={int(config.mpol)}, NTOR={int(config.ntor)}, "
+        f"NZETA={int(config.nzeta)}, MGRID_NPHI={int(resolution_deck.get('mgrid_nphi', config.nzeta))}. "
+        f"Use NZETA>={recommended_nzeta}, keep --mgrid-nphi a multiple of NZETA, "
+        "or pass --max-boundary-projection-error none for a diagnostic-only run."
     )
 
 
@@ -1449,6 +1460,7 @@ def main(argv: list[str] | None = None) -> int:
     _enforce_boundary_projection_gate(
         config=config,
         projection=boundary_projection,
+        resolution_deck=resolution_deck,
         limit=args.max_boundary_projection_error,
     )
     coils = build_square_coils(config)

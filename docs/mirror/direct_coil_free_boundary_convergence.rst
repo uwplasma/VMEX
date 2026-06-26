@@ -500,6 +500,14 @@ the threshold to ``None`` or pass ``--max-boundary-projection-error none`` so
 the report explicitly labels them as underresolved experiments. This guard
 keeps Fourier boundary underfitting separate from nonlinear-solver or
 direct-coil provider failures.
+After the strict-deck gate update, a finite
+``--max-boundary-projection-error`` requires the whole ``resolution_deck`` to
+be production-ready before any backend solve starts. Passing the projection
+number is not enough: ``NZETA`` must also meet the square-axis recommendation
+and the generated-``mgrid`` toroidal plane count must be compatible with the
+VMEC ``NZETA`` grid. This makes user edits to ``MPOL``, ``NTOR``, ``NZETA``,
+or ``mgrid_nphi`` fail fast unless the run is explicitly marked diagnostic by
+using ``--max-boundary-projection-error none``.
 
 Promotion Gates
 ---------------

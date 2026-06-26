@@ -266,7 +266,11 @@ many more Fourier modes before strict ``FTOL=1e-12`` solver behavior is
 meaningful. For production sweeps, add a projection gate such as
 ``--max-boundary-projection-error 5e-12`` so underresolved
 ``MPOL``/``NTOR``/``NZETA`` combinations fail before starting a long backend
-solve. Omit the flag, or pass ``none``, for diagnostic underresolved profiles.
+solve. With a finite gate, the profiler now requires the full
+``resolution_deck`` to be production-ready: the projection error must pass,
+``NZETA`` must meet the square-axis recommendation, and ``mgrid_nphi`` must be
+compatible with ``NZETA``. Omit the flag, or pass ``none``, for diagnostic
+underresolved profiles.
 Before launching a long solve after changing ``MPOL``, ``NTOR``, ``NZETA``, or
 ``--mgrid-nphi``, run the same profiler in preflight mode::
 
