@@ -107,6 +107,23 @@ def _stages(cli_outdir: Path) -> tuple[Stage, ...]:
                 ),
             ),
         ),
+        Stage(
+            "source-health",
+            (
+                _python(
+                    "tools/diagnostics/source_health.py",
+                    "--top",
+                    "20",
+                    "--max-root-helper-prefix-files",
+                    "2",
+                    "--max-function-lines-at",
+                    (
+                        "vmec_jax/solvers/fixed_boundary/residual/iteration.py:"
+                        "solve_fixed_boundary_residual_iter=2516"
+                    ),
+                ),
+            ),
+        ),
         Stage("fetch-assets", (_python("tools/fetch_assets.py"),)),
         Stage(
             "fast-pytest-coverage",

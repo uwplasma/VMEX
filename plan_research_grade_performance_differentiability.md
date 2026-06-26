@@ -6585,6 +6585,56 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
 
+### 2026-06-26: Align local CI helper with source-health regression gate
+
+Steps taken:
+
+- Added a ``source-health`` stage to
+  ``tools/diagnostics/local_ci_gate.py`` so local release checks run the same
+  residual-loop function-size baseline as GitHub Actions.
+- Updated ``tests/test_local_ci_gate.py`` to require the source-health stage,
+  diagnostic script, named-function gate flag, and current residual-loop
+  baseline.
+
+Results obtained:
+
+- ``python -m ruff check tools/diagnostics/local_ci_gate.py
+  tests/test_local_ci_gate.py tools/diagnostics/source_health.py
+  tests/test_source_health_diagnostics.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q tests/test_local_ci_gate.py
+  tests/test_source_health_diagnostics.py -q`` passed with ``12 passed``.
+- ``python tools/diagnostics/local_ci_gate.py --dry-run --only source-health``
+  prints the expected source-health command with the
+  ``solve_fixed_boundary_residual_iter=2516`` baseline.
+- ``git diff --check`` passed.
+- ``python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50
+  --max-file-mib 2`` passed; tracked size remains ``28.37 MiB``.
+
+Best next steps:
+
+1. Push the local-gate alignment and let the latest CI run supersede the prior
+   in-progress run.
+2. Once CI is green, the low-hanging readiness tranche is complete unless a
+   reviewer asks for one more residual-loop extraction before merge/release.
+3. Any future residual-loop refactor should lower the named-function baseline
+   in both CI and local CI.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.1%.
+- Free-boundary production differentiability: 97.3%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 73.9%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
 ### 2026-06-26: Add function-size regression gate for residual-loop refactor
 
 Steps taken:
