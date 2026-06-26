@@ -460,6 +460,8 @@ def square_axis_free_boundary_edge_control_projection_payload(
     controls: SquareAxisSplineControls | None = None,
     symmetry: str = "square",
     rcond: float = 1.0e-12,
+    ridge: float = 0.0,
+    trust_radius: float | None = None,
     source: str = "square_axis_free_boundary_edge_control_projection",
     nfp: int = 1,
     mpol: int = 5,
@@ -483,6 +485,12 @@ def square_axis_free_boundary_edge_control_projection_payload(
     rcond_value = float(rcond)
     if not np.isfinite(rcond_value) or rcond_value <= 0.0:
         raise ValueError("rcond must be positive and finite")
+    ridge_value = float(ridge)
+    if not np.isfinite(ridge_value) or ridge_value < 0.0:
+        raise ValueError("ridge must be finite and nonnegative")
+    trust_value = None if trust_radius is None else float(trust_radius)
+    if trust_value is not None and (not np.isfinite(trust_value) or trust_value <= 0.0):
+        raise ValueError("trust_radius must be positive and finite when supplied")
     basis = square_axis_spline_symmetric_control_basis(controls, symmetry=symmetry_key)
     matrix = square_axis_spline_control_fourier_matrix(
         control_basis=basis,
@@ -506,6 +514,8 @@ def square_axis_free_boundary_edge_control_projection_payload(
         "control_count": int(jacobian.shape[1]),
         "mode_count": int(np.asarray(matrix.m).size),
         "rcond": rcond_value,
+        "ridge": ridge_value,
+        "trust_radius": trust_value,
         "rank": operator["rank"],
         "rank_deficient": operator["rank_deficient"],
         "condition_number": operator["condition_number"],

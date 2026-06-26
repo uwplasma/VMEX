@@ -504,6 +504,8 @@ def test_square_axis_free_boundary_edge_control_projection_payload():
         controls=controls,
         symmetry="square",
         rcond=1.0e-11,
+        ridge=1.0e-6,
+        trust_radius=0.25,
         source="unit_test",
         mpol=4,
         ntor=8,
@@ -525,6 +527,8 @@ def test_square_axis_free_boundary_edge_control_projection_payload():
     assert payload["control_count"] == 2
     assert payload["mode_count"] > 0
     assert payload["rcond"] == pytest.approx(1.0e-11)
+    assert payload["ridge"] == pytest.approx(1.0e-6)
+    assert payload["trust_radius"] == pytest.approx(0.25)
     assert payload["rank"] == 2
     assert payload["rank_deficient"] is False
     assert payload["native_reduced_solver_ready"] is True
@@ -538,6 +542,10 @@ def test_square_axis_free_boundary_edge_control_projection_payload():
         square_axis_free_boundary_edge_control_projection_payload(symmetry="bad")
     with pytest.raises(ValueError, match="rcond"):
         square_axis_free_boundary_edge_control_projection_payload(symmetry="square", rcond=0.0)
+    with pytest.raises(ValueError, match="ridge"):
+        square_axis_free_boundary_edge_control_projection_payload(symmetry="square", ridge=-1.0)
+    with pytest.raises(ValueError, match="trust_radius"):
+        square_axis_free_boundary_edge_control_projection_payload(symmetry="square", trust_radius=0.0)
 
 
 @pytest.mark.parametrize(
@@ -700,6 +708,8 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["edge_control_projection"]["basis_symmetry"] == "square"
     assert preflight["edge_control_projection"]["control_count"] == 2
     assert preflight["edge_control_projection"]["update_mode"] == "coordinate"
+    assert preflight["edge_control_projection"]["ridge"] == pytest.approx(0.0)
+    assert preflight["edge_control_projection"]["trust_radius"] is None
     assert preflight["edge_control_projection"]["rank"] == 2
     assert preflight["edge_control_projection"]["rank_deficient"] is False
     assert preflight["edge_control_projection"]["native_reduced_solver_ready"] is True
@@ -1336,6 +1346,8 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert metrics["plasma_axis_spline_controls"]["radius"][0] == pytest.approx(1.5)
     assert metrics["free_boundary_edge_control_projection"] == "square"
     assert metrics["free_boundary_edge_control_rcond"] == pytest.approx(1.0e-12)
+    assert metrics["free_boundary_edge_control_ridge"] == pytest.approx(0.0)
+    assert metrics["free_boundary_edge_control_trust_radius"] is None
     assert metrics["free_boundary_edge_control_update_mode"] == "coordinate"
     assert Path(metrics["preflight_json"]).exists()
     assert metrics["preflight"]["schema"] == "square_coil_hybrid_preflight"
@@ -1349,6 +1361,8 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert metrics["preflight"]["spline_bridge"]["solver_edge_control_projection_enabled"] is True
     assert metrics["preflight"]["edge_control_projection"]["enabled"] is True
     assert metrics["preflight"]["edge_control_projection"]["update_mode"] == "coordinate"
+    assert metrics["preflight"]["edge_control_projection"]["ridge"] == pytest.approx(0.0)
+    assert metrics["preflight"]["edge_control_projection"]["trust_radius"] is None
     assert metrics["betas_percent"] == [0.0]
     assert metrics["figures"] == {}
     assert Path(metrics["coils_json"]).exists()

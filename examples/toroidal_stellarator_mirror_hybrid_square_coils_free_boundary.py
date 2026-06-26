@@ -115,6 +115,8 @@ DELT: float | None = 0.02
 FREE_BOUNDARY_ACTIVATE_FSQ: float | None = 1.0e-3
 FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"
 FREE_BOUNDARY_EDGE_CONTROL_RCOND = 1.0e-12
+FREE_BOUNDARY_EDGE_CONTROL_RIDGE = 0.0
+FREE_BOUNDARY_EDGE_CONTROL_TRUST_RADIUS: float | None = None
 FREE_BOUNDARY_EDGE_CONTROL_UPDATE_MODE = "coordinate"
 SOLVER_MODE = "parity"
 RETURN_BEST_SCORED_STATE = True
@@ -190,6 +192,8 @@ class ExampleConfig:
     free_boundary_activate_fsq: float | None = FREE_BOUNDARY_ACTIVATE_FSQ
     free_boundary_edge_control_projection: str = FREE_BOUNDARY_EDGE_CONTROL_PROJECTION
     free_boundary_edge_control_rcond: float = FREE_BOUNDARY_EDGE_CONTROL_RCOND
+    free_boundary_edge_control_ridge: float = FREE_BOUNDARY_EDGE_CONTROL_RIDGE
+    free_boundary_edge_control_trust_radius: float | None = FREE_BOUNDARY_EDGE_CONTROL_TRUST_RADIUS
     free_boundary_edge_control_update_mode: str = FREE_BOUNDARY_EDGE_CONTROL_UPDATE_MODE
     solver_mode: str | None = SOLVER_MODE
     return_best_scored_state: bool = RETURN_BEST_SCORED_STATE
@@ -1137,6 +1141,12 @@ def _edge_control_projection_payload(config: ExampleConfig) -> dict[str, Any] | 
     rcond = float(solve_config.free_boundary_edge_control_rcond)
     if not np.isfinite(rcond) or rcond <= 0.0:
         raise ValueError("free_boundary_edge_control_rcond must be positive and finite")
+    ridge = float(solve_config.free_boundary_edge_control_ridge)
+    if not np.isfinite(ridge) or ridge < 0.0:
+        raise ValueError("free_boundary_edge_control_ridge must be finite and nonnegative")
+    trust_radius = solve_config.free_boundary_edge_control_trust_radius
+    if trust_radius is not None and (not np.isfinite(float(trust_radius)) or float(trust_radius) <= 0.0):
+        raise ValueError("free_boundary_edge_control_trust_radius must be positive and finite when supplied")
     update_mode = str(solve_config.free_boundary_edge_control_update_mode).strip().lower()
     if update_mode not in {"projected_delta", "coordinate"}:
         raise ValueError("free_boundary_edge_control_update_mode must be 'projected_delta' or 'coordinate'")
@@ -1149,6 +1159,8 @@ def _edge_control_projection_payload(config: ExampleConfig) -> dict[str, Any] | 
         controls=controls,
         symmetry=symmetry,
         rcond=rcond,
+        ridge=ridge,
+        trust_radius=None if trust_radius is None else float(trust_radius),
         source="toroidal_stellarator_mirror_hybrid_square_coils_free_boundary",
         nfp=int(solve_config.nfp),
         mpol=int(solve_config.mpol),
@@ -1182,6 +1194,8 @@ def _edge_control_projection_summary(config: ExampleConfig) -> dict[str, Any]:
         "mode_count": int(payload.get("mode_count", 0)),
         "jacobian_shape": [int(value) for value in jacobian.shape],
         "rcond": float(payload.get("rcond", config.free_boundary_edge_control_rcond)),
+        "ridge": float(payload.get("ridge", config.free_boundary_edge_control_ridge)),
+        "trust_radius": payload.get("trust_radius", config.free_boundary_edge_control_trust_radius),
         "update_mode": str(payload.get("update_mode", config.free_boundary_edge_control_update_mode)),
         "rank": payload.get("rank"),
         "rank_deficient": payload.get("rank_deficient"),
@@ -1525,6 +1539,12 @@ def _run_one_beta(
         "return_best_scored_state_requested": bool(config.return_best_scored_state),
         "free_boundary_edge_control_projection_requested": str(config.free_boundary_edge_control_projection),
         "free_boundary_edge_control_update_mode": str(config.free_boundary_edge_control_update_mode),
+        "free_boundary_edge_control_ridge": float(config.free_boundary_edge_control_ridge),
+        "free_boundary_edge_control_trust_radius": (
+            None
+            if config.free_boundary_edge_control_trust_radius is None
+            else float(config.free_boundary_edge_control_trust_radius)
+        ),
         "free_boundary_edge_control_projection_enabled": edge_projection_diag.get("enabled"),
         "free_boundary_edge_control_projection_apply_count": edge_projection_diag.get("apply_count"),
         "free_boundary_edge_control_projection_delta_projection_count": edge_projection_diag.get(
@@ -1695,6 +1715,8 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "return_best_scored_state_requested",
         "free_boundary_edge_control_projection_requested",
         "free_boundary_edge_control_update_mode",
+        "free_boundary_edge_control_ridge",
+        "free_boundary_edge_control_trust_radius",
         "free_boundary_edge_control_projection_enabled",
         "free_boundary_edge_control_projection_apply_count",
         "free_boundary_edge_control_projection_delta_projection_count",
@@ -2208,6 +2230,12 @@ def _metrics_payload(
         ),
         "free_boundary_edge_control_projection": str(solve_config.free_boundary_edge_control_projection),
         "free_boundary_edge_control_rcond": float(solve_config.free_boundary_edge_control_rcond),
+        "free_boundary_edge_control_ridge": float(solve_config.free_boundary_edge_control_ridge),
+        "free_boundary_edge_control_trust_radius": (
+            None
+            if solve_config.free_boundary_edge_control_trust_radius is None
+            else float(solve_config.free_boundary_edge_control_trust_radius)
+        ),
         "free_boundary_edge_control_update_mode": str(solve_config.free_boundary_edge_control_update_mode),
         "solver_mode": None if solve_config.solver_mode is None else str(solve_config.solver_mode),
         "limit_update_rms": bool(solve_config.limit_update_rms),

@@ -388,6 +388,11 @@ profiles with the projection gate disabled.
 requested deck and the effective deck, and its generated strict-profile commands
 use the effective production deck.  This keeps quick resolution scans aligned
 with the root square-coil example and the long profile harness.
+Reduced edge-control profiles can now also set
+``--freeb-edge-control-ridge`` and ``--freeb-edge-control-trust-radius``.  The
+defaults preserve the original least-squares projection, while finite values
+make strict-polish A/B rows reproducible when testing whether the plateau is an
+undamped reduced-coordinate step or a deeper free-boundary residual issue.
 The first 30-iteration direct-GPU coordinate-control smoke on the same
 ``MPOL=5, NTOR=28, NZETA=64`` hot-restart state preserved the LCFS in the
 two-control square subspace to about ``3e-15`` relative reconstruction residual

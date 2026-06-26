@@ -152,6 +152,8 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
 )
 from vmec_jax.solvers.free_boundary.control import (
     _freeb_edge_control_apply_coordinate_update,
+    _freeb_edge_control_control_delta_jax,
+    _freeb_edge_control_project_vector_np,
     _prepare_freeb_edge_control_projection,
     _project_freeb_edge_control_delta_tuple,
     _project_freeb_edge_control_state,
@@ -904,7 +906,7 @@ class _FreeBoundaryEdgeControlProjector:
             )
             if target.size != 4 * k:
                 raise ValueError("edge-control coordinate update has the wrong size")
-            control_update = np.asarray(self.projection["pinv_np"], dtype=float) @ target
+            control_update = _freeb_edge_control_project_vector_np(target, self.projection).control_delta
         else:
             dtype = jnp.asarray(dR).dtype
             scale = jnp.asarray(self.projection["mode_scale_np"], dtype=dtype)
@@ -919,7 +921,7 @@ class _FreeBoundaryEdgeControlProjector:
             )
             if int(target.shape[0]) != 4 * k:
                 raise ValueError("edge-control coordinate update has the wrong size")
-            control_update = jnp.asarray(self.projection["pinv_np"], dtype=dtype) @ target
+            control_update = _freeb_edge_control_control_delta_jax(target, self.projection)
         return _freeb_edge_control_apply_coordinate_update(
             state_in,
             self.projection,

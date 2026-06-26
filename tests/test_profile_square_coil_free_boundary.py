@@ -58,6 +58,10 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "square",
             "--freeb-edge-control-rcond",
             "1e-10",
+            "--freeb-edge-control-ridge",
+            "1e-6",
+            "--freeb-edge-control-trust-radius",
+            "0.25",
             "--freeb-edge-control-update-mode",
             "coordinate",
             "--resolution-diagnostics-only",
@@ -87,6 +91,8 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.freeb_add_analytic_bvec is True
     assert args.freeb_edge_control_projection == "square"
     assert args.freeb_edge_control_rcond == pytest.approx(1.0e-10)
+    assert args.freeb_edge_control_ridge == pytest.approx(1.0e-6)
+    assert args.freeb_edge_control_trust_radius == pytest.approx(0.25)
     assert args.freeb_edge_control_update_mode == "coordinate"
     assert args.resolution_diagnostics_only is True
 
@@ -592,6 +598,33 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
         projected_direction,
         projection,
     )
+    trusted_projection = _prepare_freeb_edge_control_projection(
+        {
+            "enabled": True,
+            "basis_symmetry": "test",
+            "labels": ["R00"],
+            "control_jacobian": jacobian,
+            "trust_radius": 0.1,
+        },
+        indata=indata,
+        static=static,
+        state0=state0,
+        free_boundary_enabled=True,
+    )
+    trusted_direction = _project_freeb_edge_control_delta_tuple(
+        (direction_rcos, zeros.copy(), zeros.copy(), direction_zsin, zeros.copy(), zeros.copy()),
+        trusted_projection,
+        host_update=True,
+    )
+    trusted_direction_jax = _project_freeb_edge_control_delta_tuple(
+        (direction_rcos, zeros.copy(), zeros.copy(), direction_zsin, zeros.copy(), zeros.copy()),
+        trusted_projection,
+        host_update=False,
+    )
+    trusted_metrics = _freeb_edge_control_delta_tuple_projection_metrics(
+        (direction_rcos, zeros.copy(), zeros.copy(), direction_zsin, zeros.copy(), zeros.copy()),
+        trusted_projection,
+    )
 
     assert np.asarray(projected.Rcos)[-1, 0] == pytest.approx(3.2)
     assert np.asarray(projected.Rcos)[-1, 1] == pytest.approx(0.0)
@@ -644,6 +677,11 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
     assert np.asarray(projected_direction[4])[-1, 0] == pytest.approx(2.0)
     assert projected_direction_metrics["residual_linf"] == pytest.approx(0.0, abs=1.0e-12)
     assert projected_direction_metrics["captured_fraction"] == pytest.approx(1.0)
+    assert trusted_projection["info"]["trust_radius"] == pytest.approx(0.1)
+    assert np.asarray(trusted_direction[0])[-1, 0] == pytest.approx(0.1)
+    assert np.asarray(trusted_direction_jax[0])[-1, 0] == pytest.approx(0.1)
+    assert trusted_metrics["control_delta_by_label"]["R00"] == pytest.approx(0.1)
+    assert trusted_metrics["trust_scale"] == pytest.approx(0.5)
 
 
 def test_free_boundary_edge_control_host_projection_uses_shared_reduced_step(monkeypatch):
@@ -1907,9 +1945,11 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
     monkeypatch.setattr(
         profile,
         "_freeb_edge_control_projection_solver_payload",
-        lambda config, *, symmetry, rcond, update_mode="projected_delta": {
+        lambda config, *, symmetry, rcond, ridge=0.0, trust_radius=None, update_mode="projected_delta": {
             **projection_payload,
             "update_mode": update_mode,
+            "ridge": ridge,
+            "trust_radius": trust_radius,
         },
     )
     monkeypatch.setattr(profile, "write_wout_from_fixed_boundary_run", lambda *args, **kwargs: None)
@@ -1967,6 +2007,8 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
         return_best_scored_state=False,
         freeb_edge_control_projection="square",
         freeb_edge_control_rcond=1.0e-10,
+        freeb_edge_control_ridge=1.0e-6,
+        freeb_edge_control_trust_radius=0.25,
         freeb_edge_control_update_mode="coordinate",
     )
 
@@ -1976,6 +2018,8 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
     assert summary["basis_symmetry"] == "square"
     assert summary["control_count"] == 2
     assert summary["update_mode"] == "coordinate"
+    assert summary["ridge"] == pytest.approx(1.0e-6)
+    assert summary["trust_radius"] == pytest.approx(0.25)
     assert out["free_boundary_edge_control_projection"]["apply_count"] == 3
     assert out["free_boundary_edge_control_projection"]["delta_projection_count"] == 5
     assert out["free_boundary_edge_control_projection"]["coordinate_update_count"] == 2

@@ -233,7 +233,33 @@ def _prepare_freeb_edge_control_projection(
     except Exception:
         rcond = 1.0e-12
     try:
+        ridge = float(payload.get("ridge", payload.get("control_ridge", 0.0)))
+    except Exception:
+        ridge = 0.0
+    if not np.isfinite(ridge) or ridge < 0.0:
+        info.update({"reason": "invalid_ridge"})
+        return {"enabled": False, "info": info}
+    trust_radius_raw = payload.get("trust_radius", payload.get("control_trust_radius"))
+    try:
+        trust_radius = None if trust_radius_raw is None else float(trust_radius_raw)
+    except Exception:
+        info.update({"reason": "invalid_trust_radius"})
+        return {"enabled": False, "info": info}
+    if trust_radius is not None and (not np.isfinite(trust_radius) or trust_radius <= 0.0):
+        info.update({"reason": "invalid_trust_radius"})
+        return {"enabled": False, "info": info}
+
+    try:
         pinv = np.linalg.pinv(jacobian, rcond=rcond)
+        if ridge > 0.0:
+            lhs = jacobian.T @ jacobian + ridge * np.eye(jacobian.shape[1])
+            rhs = jacobian.T
+            try:
+                control_operator = np.linalg.solve(lhs, rhs)
+            except np.linalg.LinAlgError:
+                control_operator = np.linalg.pinv(lhs, rcond=rcond) @ rhs
+        else:
+            control_operator = pinv
         singular_values = np.linalg.svd(jacobian, compute_uv=False)
     except Exception as exc:
         info.update({"reason": "jacobian_factorization_failed", "error": repr(exc)})
@@ -259,6 +285,8 @@ def _prepare_freeb_edge_control_projection(
             "jacobian_shape": [int(value) for value in jacobian.shape],
             "rank": int(rank),
             "rcond": float(rcond),
+            "ridge": float(ridge),
+            "trust_radius": None if trust_radius is None else float(trust_radius),
             "singular_values": [float(value) for value in singular_values],
             "condition_number": condition_number,
             "initial_boundary_source": initial_source,
@@ -271,9 +299,40 @@ def _prepare_freeb_edge_control_projection(
         "mode_count": int(mode_count),
         "jacobian_np": jacobian,
         "pinv_np": pinv,
+        "control_operator_np": np.asarray(control_operator, dtype=float),
+        "ridge": float(ridge),
+        "trust_radius": trust_radius,
         "mode_scale_np": mode_scale,
         "initial_np": initial,
     }
+
+
+def _freeb_edge_control_trust_radius(projection: dict[str, Any]) -> float | None:
+    """Return the optional reduced-control trust radius from a projection."""
+
+    value = projection.get("trust_radius", dict(projection.get("info", {})).get("trust_radius"))
+    return None if value is None else float(value)
+
+
+def _freeb_edge_control_scale_control_jax(control: Any, projection: dict[str, Any]):
+    """Apply the optional reduced-control trust radius with JAX operations."""
+
+    trust_radius = _freeb_edge_control_trust_radius(projection)
+    if trust_radius is None:
+        return control
+    trust = jnp.asarray(float(trust_radius), dtype=jnp.asarray(control).dtype)
+    norm = jnp.linalg.norm(control)
+    tiny = jnp.asarray(np.finfo(float).tiny, dtype=jnp.asarray(control).dtype)
+    scale = jnp.minimum(jnp.asarray(1.0, dtype=jnp.asarray(control).dtype), trust / jnp.maximum(norm, tiny))
+    return control * scale
+
+
+def _freeb_edge_control_control_delta_jax(target: Any, projection: dict[str, Any]):
+    """Map a physical edge target to reduced controls with JAX operations."""
+
+    dtype = jnp.asarray(target).dtype
+    operator = jnp.asarray(projection.get("control_operator_np", projection["pinv_np"]), dtype=dtype)
+    return _freeb_edge_control_scale_control_jax(operator @ target, projection)
 
 
 def _project_freeb_edge_control_state(
@@ -319,7 +378,6 @@ def _project_freeb_edge_control_state(
     scale = jnp.asarray(projection["mode_scale_np"], dtype=dtype)
     initial = {name: jnp.asarray(value, dtype=dtype) for name, value in projection["initial_np"].items()}
     jacobian = jnp.asarray(projection["jacobian_np"], dtype=dtype)
-    pinv = jnp.asarray(projection["pinv_np"], dtype=dtype)
     Rcos = jnp.asarray(state.Rcos)
     Rsin = jnp.asarray(state.Rsin)
     Zcos = jnp.asarray(state.Zcos)
@@ -333,7 +391,8 @@ def _project_freeb_edge_control_state(
         ],
         axis=0,
     )
-    projected = jacobian @ (pinv @ target)
+    control_delta = _freeb_edge_control_control_delta_jax(target, projection)
+    projected = jacobian @ control_delta
     edge_values = jnp.concatenate(
         [
             initial["R_cos"] + projected[0:k],
@@ -503,11 +562,14 @@ def _freeb_edge_control_project_vector_np(
     if target_arr.size != jacobian.shape[0]:
         raise ValueError("edge-control target and Jacobian have incompatible sizes")
     labels = tuple(str(label) for label in dict(projection.get("info", {})).get("labels", []))
+    info = dict(projection.get("info", {}))
     return reduced_control_least_squares_step(
         jacobian,
         target_arr,
         labels=labels if labels else None,
-        rcond=dict(projection.get("info", {})).get("rcond"),
+        ridge=float(info.get("ridge", projection.get("ridge", 0.0)) or 0.0),
+        rcond=info.get("rcond"),
+        trust_radius=projection.get("trust_radius", info.get("trust_radius")),
     )
 
 
@@ -676,6 +738,9 @@ def _freeb_edge_control_vector_projection_metrics(
         "control_delta_l2": step.control_l2,
         "control_delta_linf": step.control_linf,
         "control_delta_by_label": step.control_delta_by_label,
+        "ridge": float(step.ridge),
+        "trust_radius": None if step.trust_radius is None else float(step.trust_radius),
+        "trust_scale": float(step.trust_scale),
     }
 
 
@@ -793,7 +858,6 @@ def _project_freeb_edge_control_delta_tuple(
     dtype = jnp.asarray(dR).dtype
     scale = jnp.asarray(projection["mode_scale_np"], dtype=dtype)
     jacobian = jnp.asarray(projection["jacobian_np"], dtype=dtype)
-    pinv = jnp.asarray(projection["pinv_np"], dtype=dtype)
     dR_out = jnp.asarray(dR)
     dR_sin_out = jnp.asarray(dR_sin)
     dZ_cos_out = jnp.asarray(dZ_cos)
@@ -807,7 +871,8 @@ def _project_freeb_edge_control_delta_tuple(
         ],
         axis=0,
     )
-    projected = jacobian @ (pinv @ target)
+    control_delta = _freeb_edge_control_control_delta_jax(target, projection)
+    projected = jacobian @ control_delta
     dR_out = dR_out.at[-1, :].set(projected[0:k] / scale)
     dR_sin_out = dR_sin_out.at[-1, :].set(projected[k : 2 * k] / scale)
     dZ_cos_out = dZ_cos_out.at[-1, :].set(projected[2 * k : 3 * k] / scale)
