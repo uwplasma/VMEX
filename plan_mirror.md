@@ -26489,3 +26489,119 @@ the files touched in this lane.
 
 No user input is needed for the CI re-check. User input is only needed for the
 review/undraft/merge decision.
+
+---
+## 220. Strict Square-Coil Profiling Reopened
+
+### Steps taken
+
+- Reopened the toroidal square-coil stellarator-mirror hybrid lane around the
+  user's stricter requirement that production evidence use per-component
+  ``FTOL=1e-12`` rather than ``1e-8``.
+- Rechecked the local branch and PR status after the interrupted run.
+- Verified the active office jobs:
+  - VMEC2000 generated-``mgrid`` ``MPOL=7, NTOR=28, NZETA=64`` high-mode ladder;
+  - queued VMEC2000 ``MPOL=8, NTOR=32, NZETA=72`` ladder;
+  - direct-coil GPU/JIT ``MPOL=6, NTOR=23`` Anderson-pressure A/B run;
+  - queued direct-coil GPU/JIT ``MPOL=7, NTOR=28`` auto-mixer run.
+- Added a live VMEC2000 sidecar writer to
+  ``tools/diagnostics/profile_square_coil_free_boundary.py`` so long
+  ``xvmec`` runs refresh ``_partial_vmec2000_payload.json`` while still
+  running.
+- Extended
+  ``tools/diagnostics/summarize_square_coil_profiles.py`` so active VMEC2000
+  profile directories can be summarized from the live sidecar or directly from
+  ``vmec2000_mgrid/threed1*`` before the final profile JSON exists.
+- Updated the mirror README and direct-coil convergence notes with the active
+  profiling workflow.
+
+### Results obtained
+
+- The active VMEC2000 ``MPOL=7, NTOR=28`` run is still running. A live
+  ``threed1`` summary copied from office reports the current visible final row
+  at iteration ``8200`` of the final ``NS=17`` stage:
+  - final summed residual: about ``3.96e-11``;
+  - final max component residual: about ``1.60e-11``;
+  - best visible summed residual: about ``3.66e-11``;
+  - strict per-component ``1e-12``: not yet met;
+  - vacuum-grid overflow count: ``0``.
+- The evidence still favors VMEC2000 generated-``mgrid`` as the robustness and
+  runtime reference for this square-hybrid deck. The JAX direct-coil path is
+  still being profiled against that reference and has not yet produced a
+  strict ``1e-12`` production row.
+- The current ``axis_kind="spline"`` square-axis path is a spline-smoothed
+  target before VMEC Fourier projection, not a true nonlinear spline basis.
+  This remains the correct near-term bandwidth-reduction path while the
+  ``7,28`` and ``8,32`` Fourier ladders run. If those also plateau above
+  ``1e-12``, the finite next step is a true spline/control-basis lane rather
+  than more iterations on the same Fourier deck.
+
+### How it was tested
+
+Commands and evidence:
+
+```bash
+venv/bin/python -m pytest -q tests/test_profile_square_coil_free_boundary.py
+venv/bin/python -m pytest -q tests/test_summarize_square_coil_profiles.py
+venv/bin/python -m pytest -q tests/test_toroidal_hybrid.py tests/test_profile_square_coil_free_boundary.py tests/test_summarize_square_coil_profiles.py tests/test_free_boundary_acceleration.py
+venv/bin/python -m py_compile tools/diagnostics/profile_square_coil_free_boundary.py
+venv/bin/python -m py_compile tools/diagnostics/summarize_square_coil_profiles.py
+git diff --check
+```
+
+Results:
+
+- Focused profile tests: ``11 passed``.
+- Focused summary tests: ``3 passed``.
+- Relevant square-hybrid/free-boundary suite after the profiler change:
+  ``54 passed``.
+- Relevant square-hybrid/free-boundary suite after the live-summary change:
+  ``56 passed``.
+- Whitespace checks passed.
+- Active VMEC2000 live summary was generated locally from a copied office
+  ``threed1`` file using the updated summary tool.
+
+### File structure and best-practice notes
+
+- Generated numerical outputs remain under ignored ``results/`` directories.
+- The new live VMEC2000 file is a sidecar diagnostic under the selected
+  profile output directory; it does not alter solver inputs or the final JSON
+  schema.
+- The summary tool now has one shared row-construction path for completed
+  reports and active VMEC2000 sources, reducing duplicated reporting logic.
+- The source changes stay in diagnostics/reporting files, with tests in the
+  corresponding ``tests/test_*`` modules and user-facing instructions in
+  ``examples/mirror/README.md`` and ``docs/mirror``.
+
+### Best next steps
+
+1. Let the active VMEC2000 ``7,28`` run finish or reach a clear residual floor;
+   then summarize the final JSON.
+2. Let the queued VMEC2000 ``8,32`` run start if ``7,28`` remains above the
+   strict component gate.
+3. Let the direct-coil Anderson A/B run finish; compare it to the non-Anderson
+   direct ``6,23`` baseline and use the queued auto-mixer decision for the
+   direct ``7,28`` run.
+4. If both high-mode Fourier ladders plateau above ``1e-12``, start the true
+   spline/control-basis lane for the square-axis hybrid rather than extending
+   the same Fourier schedules.
+5. Keep updating this plan with completed profiles, residual floors, and the
+   exact command/deck that produced each row.
+
+### Completion percentages after M220
+
+- Square-coil strict ``FTOL=1e-12`` profiling lane: ``70%``.
+- VMEC2000 robustness/reference lane: ``80%``.
+- Direct-coil GPU/JIT parity lane: ``65%``.
+- Square-axis spline-smoothed Fourier closure lane: ``85%``.
+- True spline/control-basis hybrid lane: ``15%`` planned, not yet implemented.
+- Documentation and diagnostics for active profiling: ``95%``.
+- Overall toroidal stellarator-mirror hybrid production-readiness: ``90%``
+  pending strict high-mode evidence.
+
+### User input needed
+
+No user input is needed right now. The active and queued office profiles should
+continue running, and the next decision point is numerical: whether the high
+``MPOL``/``NTOR`` ladders reach the strict per-component ``1e-12`` gate or
+plateau above it.
