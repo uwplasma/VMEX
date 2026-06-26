@@ -430,11 +430,46 @@ def _jax_history_payload(run: Any, diag: dict[str, Any], *, length: int = 12) ->
         "freeb_nestor_source_reused_tail": _history_tail(
             diag.get("freeb_nestor_source_reused_history"), length=length, dtype=int
         ),
+        "freeb_nestor_source_reused_stats": _history_stats(
+            diag.get("freeb_nestor_source_reused_history"), dtype=int
+        ),
+        "freeb_nestor_provider_allows_source_reuse_tail": _history_tail(
+            diag.get("freeb_nestor_provider_allows_source_reuse_history"), length=length, dtype=int
+        ),
+        "freeb_nestor_provider_allows_source_reuse_stats": _history_stats(
+            diag.get("freeb_nestor_provider_allows_source_reuse_history"), dtype=int
+        ),
+        "freeb_nestor_solve_time_tail": _history_tail(
+            diag.get("freeb_nestor_solve_time_history"), length=length
+        ),
+        "freeb_nestor_solve_time_stats": _history_stats(diag.get("freeb_nestor_solve_time_history")),
+        "freeb_nestor_sample_time_tail": _history_tail(
+            diag.get("freeb_nestor_sample_time_history"), length=length
+        ),
+        "freeb_nestor_sample_time_stats": _history_stats(diag.get("freeb_nestor_sample_time_history")),
+        "freeb_nestor_trial_reused_tail": _history_tail(
+            diag.get("freeb_nestor_trial_reused_history"), length=length, dtype=int
+        ),
+        "freeb_nestor_trial_reused_stats": _history_stats(
+            diag.get("freeb_nestor_trial_reused_history"), dtype=int
+        ),
         "freeb_nestor_trial_failed_tail": _history_tail(
             diag.get("freeb_nestor_trial_failed_history"), length=length, dtype=int
         ),
         "freeb_nestor_trial_failed_stats": _history_stats(
             diag.get("freeb_nestor_trial_failed_history"), dtype=int
+        ),
+        "freeb_nestor_trial_solve_time_tail": _history_tail(
+            diag.get("freeb_nestor_trial_solve_time_history"), length=length
+        ),
+        "freeb_nestor_trial_solve_time_stats": _history_stats(
+            diag.get("freeb_nestor_trial_solve_time_history")
+        ),
+        "freeb_nestor_trial_sample_time_tail": _history_tail(
+            diag.get("freeb_nestor_trial_sample_time_history"), length=length
+        ),
+        "freeb_nestor_trial_sample_time_stats": _history_stats(
+            diag.get("freeb_nestor_trial_sample_time_history")
         ),
         "freeb_nestor_bnormal_rms_tail": _history_tail(
             diag.get("freeb_nestor_bnormal_rms_history"), length=length

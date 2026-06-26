@@ -60,6 +60,23 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                             "dt_eff_stats": {"last": 0.02, "min": 0.01},
                             "time_step_stats": {"last": 0.019},
                             "freeb_full_update_stats": {"sum": 997.0},
+                            "freeb_nestor_reused_stats": {"sum": 100.0, "last": 0.0},
+                            "freeb_nestor_source_reused_stats": {"sum": 95.0, "last": 1.0},
+                            "freeb_nestor_provider_allows_source_reuse_stats": {"last": 1.0},
+                            "freeb_nestor_sample_time_stats": {
+                                "last": 0.12,
+                                "mean": 0.2,
+                                "max": 0.5,
+                            },
+                            "freeb_nestor_solve_time_stats": {
+                                "last": 0.03,
+                                "mean": 0.04,
+                                "max": 0.08,
+                            },
+                            "freeb_nestor_trial_reused_stats": {"sum": 8.0},
+                            "freeb_nestor_trial_failed_stats": {"sum": 2.0},
+                            "freeb_nestor_trial_sample_time_stats": {"mean": 0.7, "max": 1.3},
+                            "freeb_nestor_trial_solve_time_stats": {"mean": 0.09, "max": 0.2},
                             "include_edge_stats": {"sum": 50.0, "last": 0.0},
                             "freeb_anderson_pressure_applied_stats": {"sum": 12.0},
                             "bad_jacobian_stats": {"sum": 1.0},
@@ -120,6 +137,23 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["dt_eff_min"] == pytest.approx(0.01)
     assert rows[1]["time_step_last"] == pytest.approx(0.019)
     assert rows[1]["freeb_full_update_count"] == pytest.approx(997.0)
+    assert rows[1]["nestor_reuse_count"] == pytest.approx(100.0)
+    assert rows[1]["nestor_reuse_last"] == pytest.approx(0.0)
+    assert rows[1]["nestor_source_reuse_count"] == pytest.approx(95.0)
+    assert rows[1]["nestor_source_reuse_last"] == pytest.approx(1.0)
+    assert rows[1]["nestor_provider_source_reuse_allowed_last"] == pytest.approx(1.0)
+    assert rows[1]["nestor_sample_time_last"] == pytest.approx(0.12)
+    assert rows[1]["nestor_sample_time_mean"] == pytest.approx(0.2)
+    assert rows[1]["nestor_sample_time_max"] == pytest.approx(0.5)
+    assert rows[1]["nestor_solve_time_last"] == pytest.approx(0.03)
+    assert rows[1]["nestor_solve_time_mean"] == pytest.approx(0.04)
+    assert rows[1]["nestor_solve_time_max"] == pytest.approx(0.08)
+    assert rows[1]["nestor_trial_reuse_count"] == pytest.approx(8.0)
+    assert rows[1]["nestor_trial_failed_count"] == pytest.approx(2.0)
+    assert rows[1]["nestor_trial_sample_time_mean"] == pytest.approx(0.7)
+    assert rows[1]["nestor_trial_sample_time_max"] == pytest.approx(1.3)
+    assert rows[1]["nestor_trial_solve_time_mean"] == pytest.approx(0.09)
+    assert rows[1]["nestor_trial_solve_time_max"] == pytest.approx(0.2)
     assert rows[1]["include_edge_count"] == pytest.approx(50.0)
     assert rows[1]["include_edge_last"] == pytest.approx(0.0)
     assert rows[1]["anderson_pressure_enabled"] is True
