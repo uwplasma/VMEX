@@ -566,6 +566,7 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
             "1.5",
             "--no-direct-static-cache",
             "--jit-direct-sampler",
+            "--no-direct-trial-bsqvac-resample",
             "--skip-mgrid",
             "--skip-provider-parity",
         ]
@@ -576,10 +577,12 @@ def test_square_coil_profile_passes_direct_sampler_cache_flags(monkeypatch, tmp_
     assert data["configuration"]["corner_power"] == pytest.approx(1.5)
     assert data["configuration"]["direct_static_cache"] is False
     assert data["configuration"]["jit_direct_sampler"] is True
+    assert data["configuration"]["direct_trial_bsqvac_resample"] is False
     assert captured[0]["config"].side_power == pytest.approx(1.25)
     assert captured[0]["config"].corner_power == pytest.approx(1.5)
     assert captured[0]["direct_static_cache"] is False
     assert captured[0]["jit_direct_sampler"] is True
+    assert captured[0]["direct_trial_bsqvac_resample"] is False
 
 
 def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypatch, tmp_path: Path):
@@ -626,6 +629,7 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
         return_best_scored_state=False,
         direct_static_cache=True,
         jit_direct_sampler=True,
+        direct_trial_bsqvac_resample=False,
     )
 
     assert out["status"] == "completed"
@@ -636,3 +640,4 @@ def test_square_coil_profile_run_jax_backend_uses_static_direct_sampler(monkeypa
     assert static["regularization_epsilon"] == pytest.approx(1.0e-6)
     assert static["chunk_size"] is None
     assert static["jit_sampler"] is True
+    assert static["resample_trial_bsqvac"] is False

@@ -160,6 +160,15 @@ def _parser() -> argparse.ArgumentParser:
         help="Use the cached JIT direct-coil sampler when --coil-chunk-size is 0/none.",
     )
     p.add_argument(
+        "--direct-trial-bsqvac-resample",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Resample direct-coil vacuum pressure on trial/backtracking boundaries. "
+            "Disable to benchmark VMEC2000-style committed-pressure scoring."
+        ),
+    )
+    p.add_argument(
         "--skip-provider-parity",
         action="store_true",
         help="Skip the initial-boundary direct-coil/generated-mgrid field parity diagnostic.",
@@ -779,6 +788,7 @@ def _run_jax_backend(
     freeb_anderson_pressure: bool = False,
     direct_static_cache: bool = True,
     jit_direct_sampler: bool = False,
+    direct_trial_bsqvac_resample: bool = True,
     verbose_solver: bool = False,
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
@@ -794,6 +804,7 @@ def _run_jax_backend(
                 "chunk_size": getattr(direct_params, "chunk_size", None),
                 "cache_scope": "square_coil_profile_direct_solve",
                 "jit_sampler": bool(jit_direct_sampler),
+                "resample_trial_bsqvac": bool(direct_trial_bsqvac_resample),
             }
     t0 = time.perf_counter()
     previous_return_best = os.environ.get("VMEC_JAX_RETURN_BEST_SCORED_STATE")
@@ -1221,6 +1232,7 @@ def main(argv: list[str] | None = None) -> int:
             "freeb_anderson_pressure": bool(args.freeb_anderson_pressure),
             "direct_static_cache": bool(args.direct_static_cache),
             "jit_direct_sampler": bool(args.jit_direct_sampler),
+            "direct_trial_bsqvac_resample": bool(args.direct_trial_bsqvac_resample),
             "verbose_solver": bool(args.verbose_solver),
             "phiedge": float(config.phiedge),
             "delt": float(args.delt),
@@ -1275,6 +1287,7 @@ def main(argv: list[str] | None = None) -> int:
             freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
             direct_static_cache=bool(args.direct_static_cache),
             jit_direct_sampler=bool(args.jit_direct_sampler),
+            direct_trial_bsqvac_resample=bool(args.direct_trial_bsqvac_resample),
             verbose_solver=bool(args.verbose_solver),
         )
     if not args.skip_mgrid:
@@ -1285,10 +1298,10 @@ def main(argv: list[str] | None = None) -> int:
             config=config,
             direct_params=None,
             solver_mode=solver_mode,
-                return_best_scored_state=bool(args.return_best_scored_state),
-                freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
-                verbose_solver=bool(args.verbose_solver),
-            )
+            return_best_scored_state=bool(args.return_best_scored_state),
+            freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
+            verbose_solver=bool(args.verbose_solver),
+        )
     if bool(args.run_vmec2000):
         exe = args.vmec2000_exec or find_vmec2000_exec()
         if exe is None:
