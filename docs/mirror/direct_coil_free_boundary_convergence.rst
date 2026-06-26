@@ -326,6 +326,10 @@ candidate reduced nonlinear unknown vector, the full edge coefficient size, the
 reduction fraction, and the decoded-state residual. These fields are the
 bridge audit before replacing the full Fourier LCFS edge unknowns with native
 side/corner controls.
+The root square-coil beta-scan example also writes these reduced-control audit
+values directly into its ``square_coil_hybrid_free_boundary_solve_summary.csv``
+rows, including state reconstruction residuals, reduced-unknown size,
+reduced-update size, and decoded residuals.
 Backend rows now also include a compact ``free_boundary_promotion`` block. The
 summary table exposes this as ``boundary_condition_mode``,
 ``coil_bnormal_role``, ``production_candidate``, ``promotion_blockers``,

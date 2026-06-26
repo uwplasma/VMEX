@@ -407,6 +407,103 @@ def _finite_float_or_none(value: Any) -> float | None:
     return result if np.isfinite(result) else None
 
 
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _compact_json_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, dict) and not value:
+        return None
+    if isinstance(value, (list, tuple)) and not value:
+        return None
+    return json.dumps(_json_sanitize(value), sort_keys=True, separators=(",", ":"))
+
+
+def _edge_control_row_metrics(edge_projection: dict[str, Any]) -> dict[str, Any]:
+    """Return flat CSV-safe reduced edge-control diagnostics."""
+
+    state_residual = _dict_or_empty(edge_projection.get("state_residual"))
+    state_coordinates = _dict_or_empty(edge_projection.get("state_coordinates"))
+    reduced_unknown = _dict_or_empty(edge_projection.get("reduced_unknown_vector"))
+    update_direction = _dict_or_empty(edge_projection.get("update_direction"))
+    reduced_update = _dict_or_empty(edge_projection.get("reduced_update_direction"))
+    return {
+        "free_boundary_edge_control_projection_state_residual_status": state_residual.get("status"),
+        "free_boundary_edge_control_projection_state_residual_linf": _finite_float_or_none(
+            state_residual.get("residual_linf")
+        ),
+        "free_boundary_edge_control_projection_state_residual_rms": _finite_float_or_none(
+            state_residual.get("residual_rms")
+        ),
+        "free_boundary_edge_control_projection_state_residual_rel": _finite_float_or_none(
+            state_residual.get("residual_rel")
+        ),
+        "free_boundary_edge_control_projection_state_coordinate_linf": _finite_float_or_none(
+            state_coordinates.get("coordinate_linf")
+        ),
+        "free_boundary_edge_control_projection_state_coordinate_l2": _finite_float_or_none(
+            state_coordinates.get("coordinate_l2")
+        ),
+        "free_boundary_edge_control_projection_state_coordinate_by_label": _compact_json_or_none(
+            state_coordinates.get("coordinate_by_label")
+        ),
+        "free_boundary_edge_control_projection_state_reconstruction_residual_linf": _finite_float_or_none(
+            state_coordinates.get("reconstruction_residual_linf")
+        ),
+        "free_boundary_edge_control_projection_state_reconstruction_residual_rms": _finite_float_or_none(
+            state_coordinates.get("reconstruction_residual_rms")
+        ),
+        "free_boundary_edge_control_projection_state_reconstruction_residual_rel": _finite_float_or_none(
+            state_coordinates.get("reconstruction_residual_rel")
+        ),
+        "free_boundary_edge_control_projection_reduced_unknown_status": reduced_unknown.get("status"),
+        "free_boundary_edge_control_projection_reduced_unknown_size": reduced_unknown.get(
+            "reduced_unknown_size"
+        ),
+        "free_boundary_edge_control_projection_full_edge_size": reduced_unknown.get("full_edge_size"),
+        "free_boundary_edge_control_projection_unknown_reduction_fraction": _finite_float_or_none(
+            reduced_unknown.get("reduction_fraction")
+        ),
+        "free_boundary_edge_control_projection_unknown_decoded_residual_linf": _finite_float_or_none(
+            reduced_unknown.get("decoded_residual_linf")
+        ),
+        "free_boundary_edge_control_projection_unknown_decoded_residual_rel": _finite_float_or_none(
+            reduced_unknown.get("decoded_residual_rel")
+        ),
+        "free_boundary_edge_control_projection_update_direction_linf": _finite_float_or_none(
+            update_direction.get("residual_linf")
+        ),
+        "free_boundary_edge_control_projection_update_direction_rms": _finite_float_or_none(
+            update_direction.get("residual_rms")
+        ),
+        "free_boundary_edge_control_projection_update_direction_rel": _finite_float_or_none(
+            update_direction.get("residual_rel")
+        ),
+        "free_boundary_edge_control_projection_reduced_update_status": reduced_update.get("status"),
+        "free_boundary_edge_control_projection_reduced_update_size": reduced_update.get(
+            "reduced_update_size"
+        ),
+        "free_boundary_edge_control_projection_full_update_size": reduced_update.get("full_update_size"),
+        "free_boundary_edge_control_projection_reduced_update_linf": _finite_float_or_none(
+            reduced_update.get("update_linf")
+        ),
+        "free_boundary_edge_control_projection_reduced_update_by_label": _compact_json_or_none(
+            reduced_update.get("update_by_label")
+        ),
+        "free_boundary_edge_control_projection_reduced_update_decoded_residual_linf": _finite_float_or_none(
+            reduced_update.get("decoded_residual_linf")
+        ),
+        "free_boundary_edge_control_projection_reduced_update_decoded_residual_rel": _finite_float_or_none(
+            reduced_update.get("decoded_residual_rel")
+        ),
+        "free_boundary_edge_control_projection_reduced_update_captured_fraction": _finite_float_or_none(
+            reduced_update.get("captured_fraction")
+        ),
+    }
+
+
 def _classify_stall(row: dict[str, Any]) -> str:
     if bool(row.get("converged")):
         return "converged"
@@ -1443,6 +1540,7 @@ def _run_one_beta(
         "free_boundary_edge_control_projection_update_direction_captured_fraction": edge_update_diag.get(
             "captured_fraction"
         ),
+        **_edge_control_row_metrics(edge_projection_diag),
         "converged": None
         if run.result is None
         else bool(diag.get("converged", getattr(run.result, "converged", False))),
@@ -1604,6 +1702,33 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> Path:
         "free_boundary_edge_control_projection_reason",
         "free_boundary_edge_control_projection_state_captured_fraction",
         "free_boundary_edge_control_projection_update_direction_captured_fraction",
+        "free_boundary_edge_control_projection_state_residual_status",
+        "free_boundary_edge_control_projection_state_residual_linf",
+        "free_boundary_edge_control_projection_state_residual_rms",
+        "free_boundary_edge_control_projection_state_residual_rel",
+        "free_boundary_edge_control_projection_state_coordinate_linf",
+        "free_boundary_edge_control_projection_state_coordinate_l2",
+        "free_boundary_edge_control_projection_state_coordinate_by_label",
+        "free_boundary_edge_control_projection_state_reconstruction_residual_linf",
+        "free_boundary_edge_control_projection_state_reconstruction_residual_rms",
+        "free_boundary_edge_control_projection_state_reconstruction_residual_rel",
+        "free_boundary_edge_control_projection_reduced_unknown_status",
+        "free_boundary_edge_control_projection_reduced_unknown_size",
+        "free_boundary_edge_control_projection_full_edge_size",
+        "free_boundary_edge_control_projection_unknown_reduction_fraction",
+        "free_boundary_edge_control_projection_unknown_decoded_residual_linf",
+        "free_boundary_edge_control_projection_unknown_decoded_residual_rel",
+        "free_boundary_edge_control_projection_update_direction_linf",
+        "free_boundary_edge_control_projection_update_direction_rms",
+        "free_boundary_edge_control_projection_update_direction_rel",
+        "free_boundary_edge_control_projection_reduced_update_status",
+        "free_boundary_edge_control_projection_reduced_update_size",
+        "free_boundary_edge_control_projection_full_update_size",
+        "free_boundary_edge_control_projection_reduced_update_linf",
+        "free_boundary_edge_control_projection_reduced_update_by_label",
+        "free_boundary_edge_control_projection_reduced_update_decoded_residual_linf",
+        "free_boundary_edge_control_projection_reduced_update_decoded_residual_rel",
+        "free_boundary_edge_control_projection_reduced_update_captured_fraction",
         "converged",
         "converged_strict",
         "boundary_condition_mode",

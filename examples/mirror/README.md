@@ -613,6 +613,11 @@ with the candidate reduced edge unknown size, full edge coefficient size,
 reduction fraction, and decoded residual. This is the local audit field to
 check before replacing the full Fourier LCFS edge with native side/corner
 controls.
+The root square-coil beta-scan example mirrors the same evidence in its
+``square_coil_hybrid_free_boundary_solve_summary.csv`` rows, including state
+reconstruction residuals, reduced-unknown size, reduced-update size, and decoded
+residuals, so local example runs can be reviewed without a second
+profile-summary pass.
 As of the active strict ``MPOL=5, NTOR=28, NZETA=64`` comparison, the direct
 JAX hot-restart row is closer to the requested ``1e-12`` component target than
 the active VMEC2000 generated-``mgrid`` row, while VMEC2000 is flat above its

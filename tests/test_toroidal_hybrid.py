@@ -1222,6 +1222,66 @@ def test_toroidal_hybrid_example_writes_nonblank_plots(tmp_path: Path):
         _assert_nonblank_image(path, image)
 
 
+def test_square_coil_hybrid_example_flattens_edge_control_row_metrics():
+    module = import_module("examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary")
+
+    row = module._edge_control_row_metrics(
+        {
+            "state_residual": {
+                "status": "measured",
+                "residual_linf": 2.5e-14,
+                "residual_rms": 1.0e-14,
+                "residual_rel": 4.0e-13,
+            },
+            "state_coordinates": {
+                "coordinate_by_label": {"side": 0.1, "corner": -0.2},
+                "coordinate_linf": 0.2,
+                "coordinate_l2": 0.22360679775,
+                "reconstruction_residual_linf": 0.0,
+                "reconstruction_residual_rms": 0.0,
+                "reconstruction_residual_rel": 0.0,
+            },
+            "reduced_unknown_vector": {
+                "status": "measured",
+                "reduced_unknown_size": 2,
+                "full_edge_size": 128,
+                "reduction_fraction": 2 / 128,
+                "decoded_residual_linf": 3.0e-14,
+                "decoded_residual_rel": 5.0e-13,
+            },
+            "update_direction": {
+                "residual_linf": 3.0e-11,
+                "residual_rms": 9.0e-12,
+                "residual_rel": 0.25,
+            },
+            "reduced_update_direction": {
+                "status": "measured",
+                "reduced_update_size": 2,
+                "full_update_size": 128,
+                "update_linf": 1.5e-5,
+                "update_by_label": {"side": 1.5e-5, "corner": -5.0e-6},
+                "decoded_residual_linf": 3.0e-11,
+                "decoded_residual_rel": 0.25,
+                "captured_fraction": 0.75,
+            },
+        }
+    )
+
+    assert row["free_boundary_edge_control_projection_state_residual_status"] == "measured"
+    assert row["free_boundary_edge_control_projection_state_residual_linf"] == pytest.approx(2.5e-14)
+    assert row["free_boundary_edge_control_projection_state_coordinate_by_label"] == (
+        '{"corner":-0.2,"side":0.1}'
+    )
+    assert row["free_boundary_edge_control_projection_reduced_unknown_size"] == 2
+    assert row["free_boundary_edge_control_projection_full_edge_size"] == 128
+    assert row["free_boundary_edge_control_projection_unknown_reduction_fraction"] == pytest.approx(2 / 128)
+    assert row["free_boundary_edge_control_projection_update_direction_rel"] == pytest.approx(0.25)
+    assert row["free_boundary_edge_control_projection_reduced_update_by_label"] == (
+        '{"corner":-5e-06,"side":1.5e-05}'
+    )
+    assert row["free_boundary_edge_control_projection_reduced_update_captured_fraction"] == pytest.approx(0.75)
+
+
 def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: Path):
     module = import_module("examples.toroidal_stellarator_mirror_hybrid_square_coils_free_boundary")
     metrics_path = module.run_example(
@@ -1311,6 +1371,9 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert rows[0]["free_boundary_edge_control_projection_enabled"] is True
     assert int(rows[0]["free_boundary_edge_control_projection_control_count"]) == 2
     assert "free_boundary_edge_control_projection_coordinate_update_count" in rows[0]
+    assert "free_boundary_edge_control_projection_state_reconstruction_residual_rel" in rows[0]
+    assert "free_boundary_edge_control_projection_reduced_unknown_size" in rows[0]
+    assert "free_boundary_edge_control_projection_reduced_update_decoded_residual_rel" in rows[0]
     if rows[0]["free_boundary_bnormal_rms"] is not None:
         assert np.isfinite(float(rows[0]["free_boundary_bnormal_rms"]))
     assert rows[0]["boundary_condition_mode"] == "vacuum_coil_normal"
@@ -1333,6 +1396,9 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert csv_rows[0]["free_boundary_edge_control_update_mode"] == "coordinate"
     assert csv_rows[0]["free_boundary_edge_control_projection_enabled"] == "True"
     assert "free_boundary_edge_control_projection_coordinate_update_count" in csv_rows[0]
+    assert "free_boundary_edge_control_projection_state_reconstruction_residual_rel" in csv_rows[0]
+    assert "free_boundary_edge_control_projection_reduced_unknown_size" in csv_rows[0]
+    assert "free_boundary_edge_control_projection_reduced_update_decoded_residual_rel" in csv_rows[0]
     assert "best_scored_component_max" in csv_rows[0]
     assert "virtual_casing_status" in csv_rows[0]
 
