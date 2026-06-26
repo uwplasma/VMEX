@@ -133,19 +133,35 @@ class _PublicDocstringVisitor(ast.NodeVisitor):
     def __init__(self, path: Path) -> None:
         self.path = path
         self._scope: list[str] = []
+        self._scope_kinds: list[str] = []
+        self._public_class_stack: list[bool] = []
         self.missing: list[PublicDocstringStat] = []
 
     @staticmethod
     def _is_public_callable_name(name: str) -> bool:
         return not name.startswith("_") or name in {"__init__", "__call__", "__repr__", "__str__"}
 
+    def _is_nested_in_function(self) -> bool:
+        return "function" in self._scope_kinds
+
+    def _enclosing_classes_are_public(self) -> bool:
+        return all(self._public_class_stack)
+
     def _record_if_missing(self, node: ast.ClassDef | ast.AsyncFunctionDef | ast.FunctionDef) -> None:
         name = node.name
         if isinstance(node, ast.ClassDef):
-            public = not name.startswith("_")
+            public = (
+                not name.startswith("_")
+                and not self._is_nested_in_function()
+                and self._enclosing_classes_are_public()
+            )
             kind = "class"
         else:
-            public = self._is_public_callable_name(name)
+            public = (
+                self._is_public_callable_name(name)
+                and not self._is_nested_in_function()
+                and self._enclosing_classes_are_public()
+            )
             kind = "function"
         if public and ast.get_docstring(node) is None:
             self.missing.append(
@@ -159,20 +175,33 @@ class _PublicDocstringVisitor(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:  # noqa: N802 - ast API
         self._record_if_missing(node)
+        public_class = (
+            not node.name.startswith("_")
+            and not self._is_nested_in_function()
+            and self._enclosing_classes_are_public()
+        )
         self._scope.append(node.name)
+        self._scope_kinds.append("class")
+        self._public_class_stack.append(public_class)
         self.generic_visit(node)
+        self._public_class_stack.pop()
+        self._scope_kinds.pop()
         self._scope.pop()
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:  # noqa: N802 - ast API
         self._record_if_missing(node)
         self._scope.append(node.name)
+        self._scope_kinds.append("function")
         self.generic_visit(node)
+        self._scope_kinds.pop()
         self._scope.pop()
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # noqa: N802 - ast API
         self._record_if_missing(node)
         self._scope.append(node.name)
+        self._scope_kinds.append("function")
         self.generic_visit(node)
+        self._scope_kinds.pop()
         self._scope.pop()
 
 

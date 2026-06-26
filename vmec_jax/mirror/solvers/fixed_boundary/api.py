@@ -85,6 +85,8 @@ class MirrorFixedBoundaryResult:
 
     @property
     def final_trace(self) -> FixedBoundaryTraceRow:
+        """Last recorded nonlinear solve trace row."""
+
         return self.trace[-1]
 
 

@@ -37,6 +37,8 @@ class WhamCoilFixture:
 
     @property
     def num_loops(self) -> int:
+        """Total number of circular loops represented by the fixture."""
+
         return int(len(self.coil_centers_z_m) * self.nz * self.nr)
 
 

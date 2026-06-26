@@ -196,12 +196,18 @@ class MirrorOutput:
 
     @property
     def ns(self) -> int:
+        """Number of stored radial surfaces."""
+
         return int(self.s.size)
 
     @property
     def ntheta(self) -> int:
+        """Number of stored theta nodes."""
+
         return int(self.theta.size)
 
     @property
     def nxi(self) -> int:
+        """Number of stored axial nodes."""
+
         return int(self.xi.size)

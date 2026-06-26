@@ -56,6 +56,8 @@ class ManufacturedSolveResult:
 
     @property
     def final_trace(self) -> ManufacturedSolveTraceRow:
+        """Last recorded manufactured-solution solve trace row."""
+
         return self.trace[-1]
 
 

@@ -48,13 +48,19 @@ class MirrorStateAxisym:
 
     @property
     def shape(self) -> tuple[int, int]:
+        """Shape of the axisymmetric state arrays."""
+
         return self.a.shape
 
     def tree_flatten(self):
+        """Return PyTree children for JAX transformations."""
+
         return (self.a, self.lam), None
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild an axisymmetric state from PyTree children."""
+
         del aux
         a, lam = children
         return cls(a=a, lam=lam)
@@ -99,13 +105,19 @@ class MirrorState3D:
 
     @property
     def shape(self) -> tuple[int, int, int]:
+        """Shape of the theta-dependent state arrays."""
+
         return self.a.shape
 
     def tree_flatten(self):
+        """Return PyTree children for JAX transformations."""
+
         return (self.a, self.lam), None
 
     @classmethod
     def tree_unflatten(cls, aux, children):
+        """Rebuild a theta-dependent state from PyTree children."""
+
         del aux
         a, lam = children
         return cls(a=a, lam=lam)

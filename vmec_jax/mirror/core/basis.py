@@ -49,6 +49,8 @@ class ChebyshevLobattoBasis:
 
     @property
     def num_nodes(self) -> int:
+        """Number of axial Chebyshev-Lobatto nodes."""
+
         return int(self.nodes.size)
 
     def differentiate(self, values, *, axis: int = -1):
@@ -103,10 +105,14 @@ class ThetaFourierBasis:
 
     @property
     def ntheta(self) -> int:
+        """Number of theta collocation nodes."""
+
         return int(self.theta.size)
 
     @property
     def mpol(self) -> int:
+        """Largest poloidal Fourier mode represented by this basis."""
+
         return int(self.modes[-1]) if self.modes.size else 0
 
     def evaluate(self, cos_coeffs, sin_coeffs=None):

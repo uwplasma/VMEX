@@ -36,34 +36,50 @@ class MirrorGrid:
 
     @property
     def ns(self) -> int:
+        """Number of full radial surfaces."""
+
         return int(self.s_full.size)
 
     @property
     def ntheta(self) -> int:
+        """Number of theta collocation nodes."""
+
         return self.theta_basis.ntheta
 
     @property
     def nxi(self) -> int:
+        """Number of axial Chebyshev-Lobatto nodes."""
+
         return self.axial_basis.num_nodes
 
     @property
     def theta(self) -> np.ndarray:
+        """Theta collocation nodes in radians."""
+
         return self.theta_basis.theta
 
     @property
     def xi(self) -> np.ndarray:
+        """Reference axial coordinate nodes on ``[-1, 1]``."""
+
         return self.axial_basis.nodes
 
     @property
     def w_theta(self) -> np.ndarray:
+        """Theta quadrature weights."""
+
         return self.theta_basis.weights
 
     @property
     def w_xi(self) -> np.ndarray:
+        """Chebyshev-Lobatto axial quadrature weights."""
+
         return self.axial_basis.weights
 
     @property
     def quadrature_shape(self) -> tuple[int, int, int]:
+        """Shape of arrays sampled on ``(s, theta, xi)`` nodes."""
+
         return (self.ns, self.ntheta, self.nxi)
 
 
