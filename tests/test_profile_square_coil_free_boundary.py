@@ -368,6 +368,7 @@ def test_square_coil_profile_boundary_motion_payload_measures_edge_displacement(
 def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes():
     from vmec_jax.solve import (
         _freeb_edge_control_delta_tuple_projection_metrics,
+        _freeb_edge_control_reduced_map,
         _freeb_edge_control_state_residual_metrics,
         _prepare_freeb_edge_control_projection,
         _project_freeb_edge_control_delta_tuple,
@@ -444,6 +445,18 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
     projected = _project_freeb_edge_control_state(trial, projection, host_update=True)
     raw_metrics = _freeb_edge_control_state_residual_metrics(trial, projection)
     projected_metrics = _freeb_edge_control_state_residual_metrics(projected, projection)
+    control_map = _freeb_edge_control_reduced_map(projection)
+    scale = np.asarray(projection["mode_scale_np"], dtype=float)
+    projected_edge_values = np.concatenate(
+        [
+            np.asarray(projected.Rcos, dtype=float)[-1] * scale,
+            np.asarray(projected.Rsin, dtype=float)[-1] * scale,
+            np.asarray(projected.Zcos, dtype=float)[-1] * scale,
+            np.asarray(projected.Zsin, dtype=float)[-1] * scale,
+        ],
+        axis=0,
+    )
+    projected_control_step = control_map.encode(projected_edge_values)
     direction_rcos = zeros.copy()
     direction_zsin = zeros.copy()
     direction_rcos[-1, 0] = 0.2
@@ -480,6 +493,8 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
     assert raw_metrics["control_delta_by_label"]["R00"] == pytest.approx(0.2)
     assert projected_metrics["residual_linf"] == pytest.approx(0.0, abs=1.0e-12)
     assert projected_metrics["residual_rms"] == pytest.approx(0.0, abs=1.0e-12)
+    np.testing.assert_allclose(projected_control_step.control_delta, [0.2])
+    np.testing.assert_allclose(control_map.decode(projected_control_step.control_delta), projected_edge_values)
     assert direction_metrics["status"] == "measured"
     assert direction_metrics["residual_linf"] > 0.1
     assert direction_metrics["control_delta_by_label"]["R00"] == pytest.approx(0.2)

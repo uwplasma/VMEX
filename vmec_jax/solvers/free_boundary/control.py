@@ -10,7 +10,7 @@ import numpy as np
 from vmec_jax._compat import jnp
 from vmec_jax.boundary import boundary_from_indata
 from vmec_jax.state import VMECState
-from vmec_jax.solvers.free_boundary.reduced_controls import reduced_control_least_squares_step
+from vmec_jax.solvers.free_boundary.reduced_controls import ReducedControlMap, reduced_control_least_squares_step
 
 from ..fixed_boundary.residual.update import (
     scale_velocity_blocks,
@@ -364,6 +364,31 @@ def _freeb_edge_control_project_vector_np(
     )
 
 
+def _freeb_edge_control_reduced_map(projection: dict[str, Any]) -> ReducedControlMap:
+    """Return the affine reduced-control map for a prepared edge projection."""
+
+    if not bool(projection.get("enabled", False)):
+        raise ValueError("edge-control projection is not enabled")
+    initial = {name: np.asarray(value, dtype=float) for name, value in projection["initial_np"].items()}
+    initial_vector = np.concatenate(
+        [
+            initial["R_cos"],
+            initial["R_sin"],
+            initial["Z_cos"],
+            initial["Z_sin"],
+        ],
+        axis=0,
+    )
+    info = dict(projection.get("info", {}))
+    labels = tuple(str(label) for label in info.get("labels", []))
+    return ReducedControlMap(
+        initial=initial_vector,
+        jacobian=np.asarray(projection["jacobian_np"], dtype=float),
+        labels=labels,
+        rcond=info.get("rcond"),
+    )
+
+
 def _freeb_edge_control_vector_projection_metrics(
     target: Any,
     projection: dict[str, Any],
@@ -498,16 +523,17 @@ def _freeb_edge_control_state_residual_metrics(state: VMECState, projection: dic
         return {"enabled": False, "status": "disabled"}
     k = int(projection["mode_count"])
     scale = np.asarray(projection["mode_scale_np"], dtype=float)
-    initial = {name: np.asarray(value, dtype=float) for name, value in projection["initial_np"].items()}
-    target = np.concatenate(
+    control_map = _freeb_edge_control_reduced_map(projection)
+    edge_values = np.concatenate(
         [
-            np.asarray(state.Rcos, dtype=float)[-1] * scale - initial["R_cos"],
-            np.asarray(state.Rsin, dtype=float)[-1] * scale - initial["R_sin"],
-            np.asarray(state.Zcos, dtype=float)[-1] * scale - initial["Z_cos"],
-            np.asarray(state.Zsin, dtype=float)[-1] * scale - initial["Z_sin"],
+            np.asarray(state.Rcos, dtype=float)[-1] * scale,
+            np.asarray(state.Rsin, dtype=float)[-1] * scale,
+            np.asarray(state.Zcos, dtype=float)[-1] * scale,
+            np.asarray(state.Zsin, dtype=float)[-1] * scale,
         ],
         axis=0,
     )
+    target = edge_values - control_map.initial
     if target.size != 4 * k:
         raise ValueError("state edge row has the wrong size for the edge-control projection")
     return _freeb_edge_control_vector_projection_metrics(target, projection, status="measured")
