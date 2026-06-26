@@ -33483,3 +33483,76 @@ Result: passed.
 ### User input needed
 
 No user input is needed.
+
+## M295 - Office Edge-Polish Queue Setup
+
+### Steps taken
+
+- Created a separate `office` checkout at
+  `/home/rjorge/local/vmec_mirror_edge_polish` on `codex/mirror-geometry` at
+  commit `8a970c1c`.
+- Generated a queued strict-polish direct command with
+  `tools/diagnostics/square_coil_followup_commands.py`:
+  - `--profile-kind direct-gpu-edge-polish`;
+  - `--delt-values 0.015`;
+  - `--ftol-array 1e-8,1e-10,1e-12`;
+  - `--ftol 1e-12`;
+  - `--freeb-edge-control-projection square`;
+  - pressure Anderson mixing;
+  - two final-grid hot restarts;
+  - seeded from the existing direct-GPU final-grid WOUT when available.
+- Wrote and launched the wait script
+  `/home/rjorge/local/vmec_mirror_edge_polish/results/square_coil_direct_gpu_edge_polish_queued/run_when_idle.sh`.
+
+### Results obtained
+
+- The queue script is active and waiting instead of consuming GPU/CPU now.
+- First queue log line reported:
+  `waiting at Fri Jun 26 05:58:43 CDT 2026: load=60.52 active=3`.
+- This means it sees the current direct-GPU, VMEC2000/xvmec, and related
+  profiling rows and will only start after they clear and load drops.
+
+### How it was tested
+
+```bash
+ssh office 'ps -o pid,stat,etime,pcpu,pmem,args -u rjorge | egrep "vmec_mirror_edge_polish|run_when_idle"'
+```
+
+Result: the edge-polish `run_when_idle.sh` process was present.
+
+```bash
+ssh office 'cd /home/rjorge/local/vmec_mirror_edge_polish && git status --short --branch && git log --oneline -2'
+```
+
+Result: checkout was clean and at `8a970c1c`.
+
+### File structure and best-practice adherence
+
+- The queued run lives in a separate remote checkout/results tree, not in the
+  source repo and not in this git commit.
+- No generated solver output, WOUT files, or figures were added to git.
+- The queue script waits on active profile/xvmec processes and load before
+  starting the heavy direct run.
+
+### Best next steps
+
+1. Let the current active direct-GPU and VMEC2000 rows finish.
+2. Let the existing projected-control queue run first if it becomes active.
+3. When the new edge-polish queued run starts and finishes, summarize it with
+   the new edge-control columns and compare it to the VMEC2000 mgrid reference.
+
+### Completion percentages after M295
+
+- Direct-coil GPU/JIT parity lane: `96%`, strict component closure still open.
+- Seeded hot-restart lane: `99%`, active row is closer but not strict.
+- VMEC2000 robustness/reference lane: `99%`, active row is still in loose
+  stage and monotone decreasing.
+- Resolution/edit robustness lane: `100%`.
+- True spline/control-basis hybrid lane: `83%`, edge-polish strict run is now
+  queued behind active work.
+- Strict convergence diagnostics lane: `100%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
