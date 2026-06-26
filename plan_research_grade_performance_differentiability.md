@@ -6585,6 +6585,64 @@ Updated lane percentages:
 - Docs/release hygiene: 100%.
 - Overall: 99.6%.
 
+### 2026-06-26: Extract fixed-boundary driver stage policy context
+
+Steps taken:
+
+- Added ``_FixedBoundaryStageContext`` and
+  ``_resolve_fixed_boundary_stage_context`` in ``vmec_jax/driver.py``.
+- Moved fixed-boundary multigrid/stage policy resolution and finish-policy
+  override handling out of ``run_fixed_boundary`` into that helper.
+- Added ``vmec_jax/driver.py:run_fixed_boundary=533`` to both the GitHub
+  Actions source-health gate and the local CI source-health stage so the public
+  driver cannot grow while further orchestration refactors continue.
+
+Results obtained:
+
+- ``run_fixed_boundary`` decreased from ``538`` to ``533`` physical lines.
+  This is a small safe extraction, but it creates a named seam around stage
+  policy and prevents future growth of the public driver function.
+- ``python -m ruff check vmec_jax/driver.py tools/diagnostics/local_ci_gate.py
+  tests/test_driver_api.py tests/test_local_ci_gate.py`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q tests/test_driver_api.py
+  tests/test_local_ci_gate.py -q`` passed.
+- ``PYTHONDONTWRITEBYTECODE=1 python -m pytest -q tests/test_cli_helpers.py
+  tests/test_driver_api.py -q`` passed.
+- The source-health gate passed locally with both named function baselines:
+  ``solve_fixed_boundary_residual_iter=2516`` and ``run_fixed_boundary=533``.
+- ``python tools/diagnostics/local_ci_gate.py --dry-run --only source-health``
+  prints both named function baselines.
+- ``python -m compileall -q vmec_jax/driver.py tools/diagnostics/source_health.py
+  tools/diagnostics/local_ci_gate.py``, ``git diff --check``, and
+  ``repo_size_audit.py`` passed; tracked size is ``28.38 MiB``.
+
+Best next steps:
+
+1. Push this driver-stage refactor and let CI validate the updated source-health
+   baselines.
+2. If additional code simplification is needed before review, target either a
+   larger ``run_fixed_boundary`` dispatch extraction or a larger residual-loop
+   phase extraction, then lower the corresponding baseline.
+3. Do not rerun full benchmark/parity/AD-vs-FD artifacts unless a future
+   numerical or performance-path change invalidates the existing readiness
+   artifacts.
+
+User needs:
+
+- No immediate input needed.
+
+Updated lane percentages:
+
+- Performance benchmark/profiling harness: 100%.
+- Fixed-boundary production differentiability: 97.1%.
+- Free-boundary production differentiability: 97.3%.
+- Single-stage coil optimization: 92.9%.
+- CPU/GPU runtime and memory footprint: 99.2%.
+- Refactor/API/examples: 74.2%.
+- VMEC2000/VMEC++ parity and physics gates: 99.3%.
+- Docs/release hygiene: 100%.
+- Overall: 99.6%.
+
 ### 2026-06-26: Align local CI helper with source-health regression gate
 
 Steps taken:
