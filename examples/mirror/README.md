@@ -185,7 +185,10 @@ LCFS edge update is projected through the spline-control Fourier map before
 vacuum-pressure sampling.
 The repo-root square-coil example now enables the square reduced-control
 projection by default with ``FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"``
-and writes the projected-control status to the preflight JSON and summary CSV.
+and applies the projected edge update through reduced spline coordinates with
+``FREE_BOUNDARY_EDGE_CONTROL_UPDATE_MODE = "coordinate"``. It writes the
+projected-control status, update mode, and coordinate-update count to the
+preflight JSON and summary CSV.
 Set that top-level option to ``"none"`` for an unconstrained full-Fourier
 comparison.
 Use ``vmec_jax.square_axis_spline_radius_matrix`` to inspect the linear map

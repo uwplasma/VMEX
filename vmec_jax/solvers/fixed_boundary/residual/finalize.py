@@ -592,6 +592,12 @@ def finalize_residual_iter_from_namespace(
                         getattr(ns.get("freeb_edge_control_projector"), "delta_projection_count", 0),
                     )
                 ),
+                "coordinate_update_count": int(
+                    ns.get(
+                        "freeb_edge_control_projection_coordinate_update_count",
+                        getattr(ns.get("freeb_edge_control_projector"), "coordinate_update_count", 0),
+                    )
+                ),
                 "zero_velocity_count": int(ns.get("freeb_edge_control_projection_zero_velocity_count", 0)),
                 "state_residual": _edge_control_state_residual_payload(ns),
                 "state_coordinates": _edge_control_state_coordinates_payload(ns),

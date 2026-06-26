@@ -1561,6 +1561,7 @@ def square_axis_strict_convergence_assessment(
     resolution_deck: dict[str, Any],
     strict_schedule: dict[str, Any],
     edge_control_projection_enabled: bool = False,
+    edge_control_update_mode: str = "projected_delta",
     solver_native_spline_controls: bool = False,
     target_ftol: float = 1.0e-12,
 ) -> dict[str, Any]:
@@ -1581,6 +1582,8 @@ def square_axis_strict_convergence_assessment(
     representation_ready = bool(resolution_status == "production_ready")
     full_fourier_ready = bool(representation_ready and strict_ftol_requested)
     reduced_enabled = bool(edge_control_projection_enabled)
+    edge_update_mode = str(edge_control_update_mode).strip().lower()
+    coordinate_edge_update = bool(edge_update_mode == "coordinate")
     native_spline = bool(solver_native_spline_controls)
 
     blockers: list[str] = []
@@ -1600,6 +1603,8 @@ def square_axis_strict_convergence_assessment(
         next_steps.append("request_final_component_ftol_at_or_below_1e-12")
     if reduced_enabled:
         next_steps.append("profile_reduced_edge_control_state_and_update_residuals")
+        if not coordinate_edge_update:
+            next_steps.append("rerun_reduced_edge_control_profile_with_coordinate_update_mode")
     elif native_spline:
         next_steps.append("profile_solver_native_spline_control_state")
     else:
@@ -1622,10 +1627,18 @@ def square_axis_strict_convergence_assessment(
             "finite-beta cases include virtual-casing/plasma-field boundary diagnostics",
         ],
         "edge_control_projection_enabled": reduced_enabled,
-        "reduced_control_profile_status": "enabled_bridge" if reduced_enabled else "not_enabled",
+        "edge_control_update_mode": edge_update_mode,
+        "reduced_control_profile_status": (
+            "coordinate_update_bridge"
+            if reduced_enabled and coordinate_edge_update
+            else "enabled_bridge"
+            if reduced_enabled
+            else "not_enabled"
+        ),
         "reduced_control_claim_requires": [
             "edge-control state residual measured on the accepted LCFS",
             "edge-control update-direction residual measured on the final update",
+            "coordinate-update count reported when edge_control_update_mode='coordinate'",
             "full VMEC Fourier residual still reported separately",
         ],
         "solver_native_spline_controls": native_spline,

@@ -384,12 +384,15 @@ direct research path:
 Both commands use ``FTOL_ARRAY=1e-8,1e-10,1e-12`` by default, cached direct
 coil sampling, ``--return-best-scored-state``, pressure Anderson mixing,
 two final-grid hot restarts, and ``--freeb-edge-control-projection square``.
+For the reduced-coordinate bridge profile, also pass
+``--freeb-edge-control-update-mode coordinate``.
 The second command additionally enables the experimental JAX NESTOR operator.
 Use ``--freeb-edge-control-projection stellarator`` when testing the
 stellarator-corner control subspace.
 The summary table now reports the edge-control projection status, requested
-basis, control count, pseudo-inverse cutoff, accepted-state reduced-coordinate
-norms, reduced unknown-vector size, and reconstruction residuals. Stalled direct
+basis, control count, pseudo-inverse cutoff, update mode, coordinate-update
+count, accepted-state reduced-coordinate norms, reduced unknown-vector size,
+and reconstruction residuals. Stalled direct
 rows that did not use the reduced edge projection recommend
 ``direct-gpu-edge-polish`` before additional kernel experiments; stalled rows
 that already used edge projection recommend the edge-projected JAX-NESTOR
@@ -621,6 +624,16 @@ The bridge can also apply a reduced coordinate update by encoding the current
 LCFS edge, adding a reduced update vector, and decoding the result back to the
 edge row. This is the tested primitive needed before the nonlinear update loop
 can operate directly in reduced side/corner coordinates.
+The strict residual loop now exposes that bridge as an opt-in application mode:
+``--freeb-edge-control-update-mode coordinate``. In that mode the full Fourier
+delta is still formed and projected for compatibility, but the accepted trial
+LCFS edge is rebuilt through reduced spline-control coordinates. This is not
+yet a smaller global VMEC unknown vector, but it is the first solver-loop step
+away from fragile full-Fourier edge application for long straight square-axis
+segments. Solver diagnostics and summary CSV rows report
+``edge_control_update_mode`` and ``coordinate_update_count`` so strict
+``FTOL=1e-12`` profiles can distinguish projected-delta rows from coordinate
+bridge rows.
 Final diagnostics also report
 ``free_boundary.edge_control_projection.reduced_update_direction`` for the
 current full Fourier update direction. It gives the fitted reduced update

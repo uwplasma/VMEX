@@ -58,6 +58,8 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "square",
             "--freeb-edge-control-rcond",
             "1e-10",
+            "--freeb-edge-control-update-mode",
+            "coordinate",
             "--resolution-diagnostics-only",
         ]
     )
@@ -85,6 +87,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.freeb_add_analytic_bvec is True
     assert args.freeb_edge_control_projection == "square"
     assert args.freeb_edge_control_rcond == pytest.approx(1.0e-10)
+    assert args.freeb_edge_control_update_mode == "coordinate"
     assert args.resolution_diagnostics_only is True
 
 
@@ -1752,7 +1755,10 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
     monkeypatch.setattr(
         profile,
         "_freeb_edge_control_projection_solver_payload",
-        lambda config, *, symmetry, rcond: projection_payload,
+        lambda config, *, symmetry, rcond, update_mode="projected_delta": {
+            **projection_payload,
+            "update_mode": update_mode,
+        },
     )
     monkeypatch.setattr(profile, "write_wout_from_fixed_boundary_run", lambda *args, **kwargs: None)
 
@@ -1773,6 +1779,7 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
                         "control_count": 2,
                         "apply_count": 3,
                         "delta_projection_count": 5,
+                        "coordinate_update_count": 2,
                         "zero_velocity_count": 4,
                         "state_coordinates": {
                             "enabled": True,
@@ -1808,15 +1815,18 @@ def test_square_coil_profile_run_jax_backend_passes_edge_control_projection(
         return_best_scored_state=False,
         freeb_edge_control_projection="square",
         freeb_edge_control_rcond=1.0e-10,
+        freeb_edge_control_update_mode="coordinate",
     )
 
-    assert captured["free_boundary_edge_control_projection"] is projection_payload
+    assert captured["free_boundary_edge_control_projection"]["update_mode"] == "coordinate"
     summary = out["free_boundary_solver_overrides"]["freeb_edge_control_projection"]
     assert summary["status"] == "enabled"
     assert summary["basis_symmetry"] == "square"
     assert summary["control_count"] == 2
+    assert summary["update_mode"] == "coordinate"
     assert out["free_boundary_edge_control_projection"]["apply_count"] == 3
     assert out["free_boundary_edge_control_projection"]["delta_projection_count"] == 5
+    assert out["free_boundary_edge_control_projection"]["coordinate_update_count"] == 2
     assert out["free_boundary_edge_control_projection"]["zero_velocity_count"] == 4
     state_coordinates = out["free_boundary_edge_control_projection"]["state_coordinates"]
     assert state_coordinates["coordinate_by_label"] == {"side": 0.1, "corner": -0.2}

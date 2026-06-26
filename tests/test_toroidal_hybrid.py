@@ -667,7 +667,11 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["strict_schedule"]["requested_final_ftol"] == pytest.approx(1.0e-12)
     assert preflight["strict_schedule"]["requested_final_ftol_meets_target"] is True
     assert preflight["strict_convergence_assessment"]["full_fourier_strict_profile_status"] == "ready_to_attempt"
-    assert preflight["strict_convergence_assessment"]["reduced_control_profile_status"] == "enabled_bridge"
+    assert (
+        preflight["strict_convergence_assessment"]["reduced_control_profile_status"]
+        == "coordinate_update_bridge"
+    )
+    assert preflight["strict_convergence_assessment"]["edge_control_update_mode"] == "coordinate"
     assert preflight["strict_convergence_assessment"]["solver_native_spline_status"] == "not_implemented"
     assert preflight["strict_convergence_assessment"]["vmec2000_expected_to_fix_fourier_bottleneck"] is False
     assert preflight["ntheta_resolution"]["effective_ntheta"] == recommended_square_axis_ntheta(
@@ -695,6 +699,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert preflight["edge_control_projection"]["enabled"] is True
     assert preflight["edge_control_projection"]["basis_symmetry"] == "square"
     assert preflight["edge_control_projection"]["control_count"] == 2
+    assert preflight["edge_control_projection"]["update_mode"] == "coordinate"
     assert preflight["edge_control_projection"]["rank"] == 2
     assert preflight["edge_control_projection"]["rank_deficient"] is False
     assert preflight["edge_control_projection"]["native_reduced_solver_ready"] is True
@@ -964,6 +969,7 @@ def test_square_axis_strict_convergence_assessment_separates_fourier_and_spline_
 
     assert assessment["full_fourier_strict_profile_status"] == "ready_to_attempt"
     assert assessment["reduced_control_profile_status"] == "enabled_bridge"
+    assert assessment["edge_control_update_mode"] == "projected_delta"
     assert assessment["solver_native_spline_status"] == "not_implemented"
     assert assessment["vmec2000_expected_to_fix_fourier_bottleneck"] is False
     assert "promote_native_spline_control_state_if_full_fourier_and_vmec2000_stall_above_target" in assessment[
@@ -978,6 +984,15 @@ def test_square_axis_strict_convergence_assessment_separates_fourier_and_spline_
     assert blocked["full_fourier_strict_profile_status"] == "blocked_by_preflight"
     assert "projection_error_exceeds_gate" in blocked["blockers"]
     assert "spline_control_updates_not_enabled" in blocked["blockers"]
+
+    coordinate_assessment = square_axis_strict_convergence_assessment(
+        resolution_deck=deck,
+        strict_schedule=schedule,
+        edge_control_projection_enabled=True,
+        edge_control_update_mode="coordinate",
+    )
+    assert coordinate_assessment["reduced_control_profile_status"] == "coordinate_update_bridge"
+    assert coordinate_assessment["edge_control_update_mode"] == "coordinate"
 
 
 def test_square_axis_projection_error_rejects_sampler_grid_aliases():
@@ -1261,6 +1276,7 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert metrics["plasma_axis_spline_controls"]["radius"][0] == pytest.approx(1.5)
     assert metrics["free_boundary_edge_control_projection"] == "square"
     assert metrics["free_boundary_edge_control_rcond"] == pytest.approx(1.0e-12)
+    assert metrics["free_boundary_edge_control_update_mode"] == "coordinate"
     assert Path(metrics["preflight_json"]).exists()
     assert metrics["preflight"]["schema"] == "square_coil_hybrid_preflight"
     assert metrics["preflight"]["strict_schedule"]["requested_final_ftol_meets_target"] is False
@@ -1272,6 +1288,7 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert metrics["preflight"]["spline_bridge"]["solver_native_spline_controls"] is False
     assert metrics["preflight"]["spline_bridge"]["solver_edge_control_projection_enabled"] is True
     assert metrics["preflight"]["edge_control_projection"]["enabled"] is True
+    assert metrics["preflight"]["edge_control_projection"]["update_mode"] == "coordinate"
     assert metrics["betas_percent"] == [0.0]
     assert metrics["figures"] == {}
     assert Path(metrics["coils_json"]).exists()
@@ -1290,8 +1307,10 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     if rows[0]["best_scored_component_max"] is not None:
         assert np.isfinite(float(rows[0]["best_scored_component_max"]))
     assert rows[0]["free_boundary_edge_control_projection_requested"] == "square"
+    assert rows[0]["free_boundary_edge_control_update_mode"] == "coordinate"
     assert rows[0]["free_boundary_edge_control_projection_enabled"] is True
     assert int(rows[0]["free_boundary_edge_control_projection_control_count"]) == 2
+    assert "free_boundary_edge_control_projection_coordinate_update_count" in rows[0]
     if rows[0]["free_boundary_bnormal_rms"] is not None:
         assert np.isfinite(float(rows[0]["free_boundary_bnormal_rms"]))
     assert rows[0]["boundary_condition_mode"] == "vacuum_coil_normal"
@@ -1311,7 +1330,9 @@ def test_square_coil_hybrid_free_boundary_example_runs_without_plots(tmp_path: P
     assert csv_rows[0]["ntheta"] == str(metrics["ntheta"])
     assert csv_rows[0]["nzeta"] == str(metrics["nzeta"])
     assert csv_rows[0]["free_boundary_edge_control_projection_requested"] == "square"
+    assert csv_rows[0]["free_boundary_edge_control_update_mode"] == "coordinate"
     assert csv_rows[0]["free_boundary_edge_control_projection_enabled"] == "True"
+    assert "free_boundary_edge_control_projection_coordinate_update_count" in csv_rows[0]
     assert "best_scored_component_max" in csv_rows[0]
     assert "virtual_casing_status" in csv_rows[0]
 

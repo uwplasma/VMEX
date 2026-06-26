@@ -151,6 +151,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     zero_velocity_blocks_like as _zero_velocity_blocks_like,
 )
 from vmec_jax.solvers.free_boundary.control import (
+    _freeb_edge_control_apply_coordinate_update,
     _prepare_freeb_edge_control_projection,
     _project_freeb_edge_control_delta_tuple,
     _project_freeb_edge_control_state,
@@ -734,9 +735,22 @@ class _FreeBoundaryEdgeControlProjector:
         self.enabled = bool(self.projection.get("enabled", False))
         self.apply_count = 0
         self.delta_projection_count = 0
+        self.coordinate_update_count = 0
         self.zero_velocity_count = 0
         self.use_scan = bool(use_scan)
         self.jit_strict_update_enabled = bool(jit_strict_update_enabled)
+        mode = "projected_delta"
+        if isinstance(payload, dict):
+            mode = str(payload.get("update_mode", payload.get("edge_update_mode", mode))).strip().lower()
+        if mode in {"", "default", "projection", "projected", "projected-delta"}:
+            mode = "projected_delta"
+        elif mode in {"coordinate", "coordinates", "reduced", "reduced_coordinate", "reduced-coordinate"}:
+            mode = "coordinate"
+        else:
+            self.info["unsupported_update_mode"] = mode
+            mode = "projected_delta"
+        self.update_mode = mode
+        self.info["update_mode"] = self.update_mode
         if self.enabled:
             self.info["zero_edge_velocity_memory"] = True
             self.jit_strict_update_enabled = False
@@ -782,6 +796,55 @@ class _FreeBoundaryEdgeControlProjector:
 
     def delta_tuple_projector(self):
         return self.project_delta_tuple if self.enabled else None
+
+    def apply_coordinate_update_from_delta_tuple(
+        self,
+        state_in: VMECState,
+        deltas,
+        *,
+        host_update: bool,
+        fallback_state: VMECState,
+    ) -> VMECState:
+        if not self.enabled or self.update_mode != "coordinate" or deltas is None:
+            return fallback_state
+        self.coordinate_update_count += 1
+        k = int(self.projection["mode_count"])
+        dR, dR_sin, dZ_cos, dZ, _dL_cos, _dL = deltas
+        if bool(host_update):
+            scale = np.asarray(self.projection["mode_scale_np"], dtype=float)
+            target = np.concatenate(
+                [
+                    np.asarray(dR, dtype=float)[-1] * scale,
+                    np.asarray(dR_sin, dtype=float)[-1] * scale,
+                    np.asarray(dZ_cos, dtype=float)[-1] * scale,
+                    np.asarray(dZ, dtype=float)[-1] * scale,
+                ],
+                axis=0,
+            )
+            if target.size != 4 * k:
+                raise ValueError("edge-control coordinate update has the wrong size")
+            control_update = np.asarray(self.projection["pinv_np"], dtype=float) @ target
+        else:
+            dtype = jnp.asarray(dR).dtype
+            scale = jnp.asarray(self.projection["mode_scale_np"], dtype=dtype)
+            target = jnp.concatenate(
+                [
+                    jnp.asarray(dR)[-1] * scale,
+                    jnp.asarray(dR_sin)[-1] * scale,
+                    jnp.asarray(dZ_cos)[-1] * scale,
+                    jnp.asarray(dZ)[-1] * scale,
+                ],
+                axis=0,
+            )
+            if int(target.shape[0]) != 4 * k:
+                raise ValueError("edge-control coordinate update has the wrong size")
+            control_update = jnp.asarray(self.projection["pinv_np"], dtype=dtype) @ target
+        return _freeb_edge_control_apply_coordinate_update(
+            state_in,
+            self.projection,
+            control_update,
+            host_update=bool(host_update),
+        )
 
     def scrub_velocity(self, velocities, *, host_update: bool):
         if not self.enabled:
@@ -3074,6 +3137,12 @@ def solve_fixed_boundary_residual_iter(
             scl = update_proposal.scale
             update_deltas = update_proposal.update_deltas
             state_try = update_proposal.state
+            state_try = freeb_edge_control_projector.apply_coordinate_update_from_delta_tuple(
+                state,
+                update_deltas,
+                host_update=bool(host_update_assembly),
+                fallback_state=state_try,
+            )
             probe_bad_jacobian = False
             if need_trial_eval:
                 trial_eval = _strict_trial_evaluation(
@@ -3338,6 +3407,9 @@ def solve_fixed_boundary_residual_iter(
         _record_timing("iteration_post_update", t_iteration_post_update_start)
 
     freeb_edge_control_projection_apply_count = freeb_edge_control_projector.apply_count
+    freeb_edge_control_projection_coordinate_update_count = (
+        freeb_edge_control_projector.coordinate_update_count
+    )
     freeb_edge_control_projection_zero_velocity_count = freeb_edge_control_projector.zero_velocity_count
     return _finalize_residual_iter_result_from_namespace(
         locals(),

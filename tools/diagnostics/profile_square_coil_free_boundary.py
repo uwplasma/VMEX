@@ -330,6 +330,15 @@ def _parser() -> argparse.ArgumentParser:
         help="Pseudo-inverse cutoff used by --freeb-edge-control-projection.",
     )
     p.add_argument(
+        "--freeb-edge-control-update-mode",
+        choices=("projected_delta", "coordinate"),
+        default="projected_delta",
+        help=(
+            "How vmec_jax applies reduced edge-control updates: project a full Fourier delta, "
+            "or apply the projected update through the reduced spline coordinates."
+        ),
+    )
+    p.add_argument(
         "--verbose-solver",
         action="store_true",
         help="Print VMEC-style vmec_jax iteration progress for long direct/mgrid backend profiles.",
@@ -1691,6 +1700,7 @@ def _run_jax_backend(
     freeb_add_analytic_bvec: bool | None = None,
     freeb_edge_control_projection: str = "none",
     freeb_edge_control_rcond: float = 1.0e-12,
+    freeb_edge_control_update_mode: str = "projected_delta",
     direct_static_cache: bool = True,
     jit_direct_sampler: bool = False,
     direct_trial_bsqvac_resample: bool = True,
@@ -1732,6 +1742,7 @@ def _run_jax_backend(
         config,
         symmetry=str(freeb_edge_control_projection),
         rcond=float(freeb_edge_control_rcond),
+        update_mode=str(freeb_edge_control_update_mode),
     )
     edge_control_projection_summary = _freeb_edge_control_projection_summary(
         edge_control_projection_payload,
@@ -2250,6 +2261,7 @@ def _freeb_edge_control_projection_solver_payload(
     *,
     symmetry: str,
     rcond: float,
+    update_mode: str = "projected_delta",
 ) -> dict[str, Any] | None:
     """Return the generic solver payload for square-axis edge controls."""
 
@@ -2265,7 +2277,7 @@ def _freeb_edge_control_projection_solver_payload(
         for key, value in _square_axis_sample_kwargs(config).items()
         if key not in {"axis_kind", "axis_spline_controls"}
     }
-    return square_axis_free_boundary_edge_control_projection_payload(
+    payload = square_axis_free_boundary_edge_control_projection_payload(
         controls=_square_axis_controls(config),
         symmetry=symmetry,
         rcond=float(rcond),
@@ -2277,6 +2289,11 @@ def _freeb_edge_control_projection_solver_payload(
         nzeta_fit=max(128, 8 * int(config.ntor)),
         **sample_kwargs,
     )
+    mode = str(update_mode).strip().lower()
+    if mode not in {"projected_delta", "coordinate"}:
+        raise ValueError(f"unsupported free-boundary edge-control update mode: {update_mode!r}")
+    payload["update_mode"] = mode
+    return payload
 
 
 def _freeb_edge_control_projection_summary(payload: dict[str, Any] | None, *, requested: str) -> dict[str, Any]:
@@ -2299,6 +2316,7 @@ def _freeb_edge_control_projection_summary(payload: dict[str, Any] | None, *, re
         "control_count": int(jacobian.shape[1]) if jacobian.ndim == 2 else None,
         "jacobian_shape": [int(value) for value in jacobian.shape],
         "rcond": float(payload.get("rcond", 1.0e-12)),
+        "update_mode": str(payload.get("update_mode", "projected_delta")),
     }
 
 
@@ -2750,6 +2768,7 @@ def main(argv: list[str] | None = None) -> int:
         resolution_deck=resolution_deck,
         strict_schedule=strict_schedule,
         edge_control_projection_enabled=bool(edge_control_requested and _square_axis_uses_spline_controls(config)),
+        edge_control_update_mode=str(args.freeb_edge_control_update_mode),
         solver_native_spline_controls=bool(spline_bridge.get("solver_native_spline_controls", False)),
         target_ftol=STRICT_COMPONENT_FTOL,
     )
@@ -2817,6 +2836,7 @@ def main(argv: list[str] | None = None) -> int:
                 else bool(args.freeb_add_analytic_bvec),
                 "freeb_edge_control_projection": str(args.freeb_edge_control_projection),
                 "freeb_edge_control_rcond": float(args.freeb_edge_control_rcond),
+                "freeb_edge_control_update_mode": str(args.freeb_edge_control_update_mode),
                 "jax_hot_restart_count": int(args.jax_hot_restart_count),
                 "jax_hot_restart_iters": None
                 if args.jax_hot_restart_iters is None
@@ -2958,6 +2978,7 @@ def main(argv: list[str] | None = None) -> int:
             else bool(args.freeb_add_analytic_bvec),
             "freeb_edge_control_projection": str(args.freeb_edge_control_projection),
             "freeb_edge_control_rcond": float(args.freeb_edge_control_rcond),
+            "freeb_edge_control_update_mode": str(args.freeb_edge_control_update_mode),
             "jax_hot_restart_count": int(args.jax_hot_restart_count),
             "jax_hot_restart_iters": None
             if args.jax_hot_restart_iters is None
@@ -3046,6 +3067,7 @@ def main(argv: list[str] | None = None) -> int:
             freeb_add_analytic_bvec=args.freeb_add_analytic_bvec,
             freeb_edge_control_projection=str(args.freeb_edge_control_projection),
             freeb_edge_control_rcond=float(args.freeb_edge_control_rcond),
+            freeb_edge_control_update_mode=str(args.freeb_edge_control_update_mode),
             direct_static_cache=bool(args.direct_static_cache),
             jit_direct_sampler=bool(args.jit_direct_sampler),
             direct_trial_bsqvac_resample=bool(args.direct_trial_bsqvac_resample),
@@ -3085,6 +3107,7 @@ def main(argv: list[str] | None = None) -> int:
             freeb_add_analytic_bvec=args.freeb_add_analytic_bvec,
             freeb_edge_control_projection=str(args.freeb_edge_control_projection),
             freeb_edge_control_rcond=float(args.freeb_edge_control_rcond),
+            freeb_edge_control_update_mode=str(args.freeb_edge_control_update_mode),
             jax_hot_restart_count=int(args.jax_hot_restart_count),
             jax_hot_restart_iters=args.jax_hot_restart_iters,
             jax_hot_restart_policy=str(args.jax_hot_restart_policy),

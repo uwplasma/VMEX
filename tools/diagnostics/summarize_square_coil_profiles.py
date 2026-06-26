@@ -1428,9 +1428,13 @@ def _summary_row(
         "freeb_edge_control_projection_rcond": _finite_float(
             freeb_edge_control_projection.get("rcond")
         ),
+        "freeb_edge_control_projection_update_mode": freeb_edge_control_projection.get("update_mode"),
         "freeb_edge_control_projection_apply_count": freeb_edge_control_runtime.get("apply_count"),
         "freeb_edge_control_projection_delta_projection_count": freeb_edge_control_runtime.get(
             "delta_projection_count"
+        ),
+        "freeb_edge_control_projection_coordinate_update_count": freeb_edge_control_runtime.get(
+            "coordinate_update_count"
         ),
         "freeb_edge_control_projection_zero_velocity_count": freeb_edge_control_runtime.get(
             "zero_velocity_count"
@@ -1989,8 +1993,10 @@ def main(argv: list[str] | None = None) -> int:
         "freeb_edge_control_projection_basis",
         "freeb_edge_control_projection_control_count",
         "freeb_edge_control_projection_rcond",
+        "freeb_edge_control_projection_update_mode",
         "freeb_edge_control_projection_apply_count",
         "freeb_edge_control_projection_delta_projection_count",
+        "freeb_edge_control_projection_coordinate_update_count",
         "freeb_edge_control_projection_zero_velocity_count",
         "freeb_edge_control_projection_state_residual_status",
         "freeb_edge_control_projection_state_residual_linf",
