@@ -30854,3 +30854,83 @@ passed.
 ### User input needed
 
 No user input is needed.
+
+---
+## 264. Added Accepted-Boundary Direct/Mgrid Parity Diagnostics
+
+### Steps taken
+
+- Added `--accepted-provider-parity` to
+  `tools/diagnostics/profile_square_coil_free_boundary.py`.
+- Refactored direct-coil/generated-mgrid parity stats into a reusable compact
+  helper.
+- Added an opt-in accepted-LCFS parity payload for JAX backend rows:
+  `accepted_provider_parity`.
+- Exposed accepted-provider parity status, sample label, field-vector relative
+  RMS difference, and coil-only `B.n` relative RMS difference in
+  `tools/diagnostics/summarize_square_coil_profiles.py`.
+- Documented when to use the accepted-boundary parity check in the convergence
+  plan.
+
+### Results obtained
+
+- The existing initial-boundary provider-parity check remains unchanged.
+- New backend-comparison profiles can now verify direct coils and generated
+  mgrid on the moved/accepted LCFS, which is the relevant surface for late
+  stalls and pressure-balance discretization issues.
+- Pure direct-GPU speed runs can still avoid mgrid generation by leaving
+  `--accepted-provider-parity` disabled.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+ruff check \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/summarize_square_coil_profiles.py \
+  tests/test_profile_square_coil_free_boundary.py \
+  tests/test_summarize_square_coil_profiles.py
+venv/bin/python -m py_compile \
+  tools/diagnostics/profile_square_coil_free_boundary.py \
+  tools/diagnostics/summarize_square_coil_profiles.py
+git diff --check
+```
+
+Results: `38 passed, 1 warning`; ruff, py-compile, and whitespace checks
+passed.
+
+### File structure and best-practice notes
+
+- The diagnostic is compact and lives with the existing backend profiler.
+- Summary columns expose only scalar comparison metrics; no bulky arrays or
+  output artifacts are tracked.
+- The option is explicit because it intentionally requires generated-mgrid
+  availability even for a direct-coil backend row.
+
+### Best next steps
+
+1. Enable `--accepted-provider-parity` on the next direct/mgrid/VMEC2000
+   backend-comparison run after the active heavy rows finish.
+2. Use the accepted-LCFS parity metrics to decide whether a strict stall is a
+   direct-provider issue, an mgrid/interpolation issue, or a shared nonlinear
+   solver/representation floor.
+3. If accepted parity is clean while force residuals stall, move to the
+   reduced spline-control nonlinear-update prototype rather than increasing
+   Fourier modes alone.
+
+### Completion percentages after M264
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `97%`.
+- VMEC2000 robustness/reference lane: `97%`, active row still running.
+- Direct-coil finite-beta diagnostic lane: `89%`.
+- Direct-coil GPU/JIT parity lane: `81%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `79%`.
+- Accepted-boundary provider-parity lane: `100%`.
+- True spline/control-basis hybrid lane: `62%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.

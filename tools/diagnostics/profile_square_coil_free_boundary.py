@@ -187,6 +187,14 @@ def _parser() -> argparse.ArgumentParser:
         help="Skip the initial-boundary direct-coil/generated-mgrid field parity diagnostic.",
     )
     p.add_argument(
+        "--accepted-provider-parity",
+        action="store_true",
+        help=(
+            "Also compare direct-coil and generated-mgrid fields on each accepted JAX backend LCFS. "
+            "This requires writing the generated mgrid even for direct-backend profiles."
+        ),
+    )
+    p.add_argument(
         "--return-best-scored-state",
         action="store_true",
         help="Return the lowest fresh free-boundary residual state if max_iter is exhausted.",
@@ -983,6 +991,12 @@ def _run_jax_backend(
     direct_trial_bsqvac_resample: bool = True,
     verbose_solver: bool = False,
     virtual_casing_diagnostics: bool = False,
+    accepted_provider_parity: bool = False,
+    accepted_provider_parity_mgrid_input: Path | None = None,
+    accepted_provider_parity_coil_params: Any | None = None,
+    accepted_provider_parity_bounds: dict[str, float] | None = None,
+    accepted_provider_parity_mgrid_nphi: int | None = None,
+    accepted_provider_parity_sample: str = "accepted_boundary_coil_field_only",
 ) -> dict[str, Any]:
     kwargs: dict[str, Any] = {}
     coil_geometry = None
@@ -1034,6 +1048,19 @@ def _run_jax_backend(
     wall_s = time.perf_counter() - t0
     write_wout_from_fixed_boundary_run(wout_path, run, include_fsq=True)
     residuals = _final_residuals(run, config=config)
+    accepted_parity = (
+        _accepted_provider_parity_payload(
+            run=run,
+            mgrid_input=accepted_provider_parity_mgrid_input,
+            coil_params=accepted_provider_parity_coil_params,
+            config=config,
+            bounds={} if accepted_provider_parity_bounds is None else accepted_provider_parity_bounds,
+            mgrid_nphi=int(accepted_provider_parity_mgrid_nphi or config.nzeta),
+            sample=str(accepted_provider_parity_sample),
+        )
+        if bool(accepted_provider_parity)
+        else {"status": "disabled"}
+    )
     vc_payload = (
         _virtual_casing_profile_payload(
             run=run,
@@ -1049,6 +1076,7 @@ def _run_jax_backend(
         "input": input_path,
         "wout": wout_path,
         **residuals,
+        "accepted_provider_parity": accepted_parity,
         "virtual_casing": vc_payload,
         "free_boundary_promotion": free_boundary_promotion_status(
             beta_percent=float(beta_percent),
@@ -1186,46 +1214,141 @@ def _provider_parity_payload(
             external_field_provider_static=direct_static,
             external_field_provider_params=coil_params,
         )
-        component_stats = {
-            name: _difference_stats(
-                getattr(mgrid_sample, name),
-                getattr(direct_sample, name),
-            )
-            for name in ("br_mgrid", "bp_mgrid", "bz_mgrid")
-        }
-        vacuum_stats = {
-            name: _difference_stats(
-                getattr(mgrid_sample.vac_ext, name),
-                getattr(direct_sample.vac_ext, name),
-            )
-            for name in ("bnormal", "bnormal_unit", "bu", "bv", "bsqvac")
-        }
-        field_vector = _vector_difference_stats(
-            (mgrid_sample.br_mgrid, mgrid_sample.bp_mgrid, mgrid_sample.bz_mgrid),
-            (direct_sample.br_mgrid, direct_sample.bp_mgrid, direct_sample.bz_mgrid),
+        return _provider_parity_stats(
+            status="completed",
+            reference_provider="direct_coils",
+            candidate_provider="generated_mgrid",
+            sample="initial_boundary_coil_field_only",
+            wall_s=float(time.perf_counter() - t0),
+            mgrid_sample=mgrid_sample,
+            direct_sample=direct_sample,
+            config=config,
+            bounds=bounds,
+            mgrid_nphi=mgrid_nphi,
         )
-        bnormal_rel = vacuum_stats["bnormal"]["diff_rms_rel"]
-        field_rel = field_vector["diff_rms_rel"]
-        return {
-            "status": "completed",
-            "reference_provider": "direct_coils",
-            "candidate_provider": "generated_mgrid",
-            "sample": "initial_boundary_coil_field_only",
-            "wall_s": float(time.perf_counter() - t0),
-            "ntheta": int(np.asarray(mgrid_sample.R).shape[0]),
-            "nzeta": int(np.asarray(mgrid_sample.R).shape[1]),
-            "mgrid_nphi": int(mgrid_nphi),
-            "mgrid_kp_divisible_by_nzeta": bool(int(mgrid_nphi) % max(1, int(config.nzeta)) == 0),
-            "domain": _mgrid_domain_payload(mgrid_sample, bounds),
-            "field_vector": field_vector,
-            "components": component_stats,
-            "vacuum_channels": vacuum_stats,
-            "field_rms_rel_lt_5pct": bool(field_rel is not None and float(field_rel) < 5.0e-2),
-            "bnormal_rms_rel_lt_10pct": bool(bnormal_rel is not None and float(bnormal_rel) < 1.0e-1),
-        }
     except Exception as exc:
         return {
             "status": "failed",
+            "error": repr(exc),
+            "wall_s": float(time.perf_counter() - t0),
+            "mgrid_nphi": int(mgrid_nphi),
+            "mgrid_kp_divisible_by_nzeta": bool(int(mgrid_nphi) % max(1, int(config.nzeta)) == 0),
+        }
+
+
+def _provider_parity_stats(
+    *,
+    status: str,
+    reference_provider: str,
+    candidate_provider: str,
+    sample: str,
+    wall_s: float,
+    mgrid_sample: Any,
+    direct_sample: Any,
+    config: ExampleConfig,
+    bounds: dict[str, float],
+    mgrid_nphi: int,
+) -> dict[str, Any]:
+    """Return compact direct-coil/generated-mgrid field parity metrics."""
+
+    component_stats = {
+        name: _difference_stats(
+            getattr(mgrid_sample, name),
+            getattr(direct_sample, name),
+        )
+        for name in ("br_mgrid", "bp_mgrid", "bz_mgrid")
+    }
+    vacuum_stats = {
+        name: _difference_stats(
+            getattr(mgrid_sample.vac_ext, name),
+            getattr(direct_sample.vac_ext, name),
+        )
+        for name in ("bnormal", "bnormal_unit", "bu", "bv", "bsqvac")
+    }
+    field_vector = _vector_difference_stats(
+        (mgrid_sample.br_mgrid, mgrid_sample.bp_mgrid, mgrid_sample.bz_mgrid),
+        (direct_sample.br_mgrid, direct_sample.bp_mgrid, direct_sample.bz_mgrid),
+    )
+    bnormal_rel = vacuum_stats["bnormal"]["diff_rms_rel"]
+    field_rel = field_vector["diff_rms_rel"]
+    return {
+        "status": str(status),
+        "reference_provider": str(reference_provider),
+        "candidate_provider": str(candidate_provider),
+        "sample": str(sample),
+        "wall_s": float(wall_s),
+        "ntheta": int(np.asarray(mgrid_sample.R).shape[0]),
+        "nzeta": int(np.asarray(mgrid_sample.R).shape[1]),
+        "mgrid_nphi": int(mgrid_nphi),
+        "mgrid_kp_divisible_by_nzeta": bool(int(mgrid_nphi) % max(1, int(config.nzeta)) == 0),
+        "domain": _mgrid_domain_payload(mgrid_sample, bounds),
+        "field_vector": field_vector,
+        "components": component_stats,
+        "vacuum_channels": vacuum_stats,
+        "field_rms_rel_lt_5pct": bool(field_rel is not None and float(field_rel) < 5.0e-2),
+        "bnormal_rms_rel_lt_10pct": bool(bnormal_rel is not None and float(bnormal_rel) < 1.0e-1),
+    }
+
+
+def _accepted_provider_parity_payload(
+    *,
+    run: Any,
+    mgrid_input: Path | None,
+    coil_params: Any | None,
+    config: ExampleConfig,
+    bounds: dict[str, float],
+    mgrid_nphi: int,
+    sample: str,
+) -> dict[str, Any]:
+    """Compare generated-mgrid and direct-coil fields on an accepted LCFS."""
+
+    if mgrid_input is None or coil_params is None:
+        return {"status": "skipped_requires_mgrid_and_direct_coils"}
+    t0 = time.perf_counter()
+    try:
+        mgrid_seed = run_free_boundary(
+            mgrid_input,
+            use_initial_guess=True,
+            verbose=False,
+            jit_forces=False,
+            solver_mode="parity",
+        )
+        direct_static = {
+            "coil_geometry": build_coil_field_geometry(coil_params),
+            "regularization_epsilon": getattr(coil_params, "regularization_epsilon", 0.0),
+            "chunk_size": getattr(coil_params, "chunk_size", None),
+            "cache_scope": "square_coil_profile_accepted_provider_parity",
+            "jit_sampler": False,
+        }
+        mgrid_sample = _sample_external_boundary_arrays(
+            state=run.state,
+            static=mgrid_seed.static,
+            plascur=0.0,
+        )
+        direct_sample = _sample_external_boundary_arrays(
+            state=run.state,
+            static=run.static,
+            plascur=0.0,
+            external_field_provider_kind="direct_coils",
+            external_field_provider_static=direct_static,
+            external_field_provider_params=coil_params,
+        )
+        return _provider_parity_stats(
+            status="completed",
+            reference_provider="direct_coils",
+            candidate_provider="generated_mgrid",
+            sample=sample,
+            wall_s=float(time.perf_counter() - t0),
+            mgrid_sample=mgrid_sample,
+            direct_sample=direct_sample,
+            config=config,
+            bounds=bounds,
+            mgrid_nphi=mgrid_nphi,
+        )
+    except Exception as exc:
+        return {
+            "status": "failed",
+            "sample": str(sample),
             "error": repr(exc),
             "wall_s": float(time.perf_counter() - t0),
             "mgrid_nphi": int(mgrid_nphi),
@@ -1643,6 +1766,7 @@ def main(argv: list[str] | None = None) -> int:
                 "niter_array": niter_values,
                 "ftol_array": ftol_values,
                 "resolution_diagnostics_only": True,
+                "accepted_provider_parity": bool(args.accepted_provider_parity),
             },
             "mgrid": {
                 "created": False,
@@ -1675,6 +1799,7 @@ def main(argv: list[str] | None = None) -> int:
     mgrid_path = outdir / "mgrid_square_coils.nc"
     need_mgrid = (
         (not bool(args.skip_mgrid)) or (not bool(args.skip_provider_parity)) or bool(args.run_vmec2000)
+        or bool(args.accepted_provider_parity)
     )
 
     base_indata = make_free_boundary_indata(config, beta_percent=float(args.beta_percent))
@@ -1731,6 +1856,7 @@ def main(argv: list[str] | None = None) -> int:
             "verbose_solver": bool(args.verbose_solver),
             "virtual_casing_diagnostics": bool(args.virtual_casing_diagnostics),
             "resolution_diagnostics_only": bool(args.resolution_diagnostics_only),
+            "accepted_provider_parity": bool(args.accepted_provider_parity),
             "phiedge": float(config.phiedge),
             "delt": float(args.delt),
             "activate_fsq": float(args.activate_fsq),
@@ -1791,6 +1917,12 @@ def main(argv: list[str] | None = None) -> int:
             direct_trial_bsqvac_resample=bool(args.direct_trial_bsqvac_resample),
             verbose_solver=bool(args.verbose_solver),
             virtual_casing_diagnostics=bool(args.virtual_casing_diagnostics),
+            accepted_provider_parity=bool(args.accepted_provider_parity),
+            accepted_provider_parity_mgrid_input=mgrid_input,
+            accepted_provider_parity_coil_params=coils.params,
+            accepted_provider_parity_bounds=bounds,
+            accepted_provider_parity_mgrid_nphi=mgrid_nphi,
+            accepted_provider_parity_sample="accepted_boundary_direct_backend",
         )
     if not args.skip_mgrid:
         _log_step("running vmec_jax generated-mgrid backend")
@@ -1805,6 +1937,12 @@ def main(argv: list[str] | None = None) -> int:
             freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
             verbose_solver=bool(args.verbose_solver),
             virtual_casing_diagnostics=False,
+            accepted_provider_parity=bool(args.accepted_provider_parity),
+            accepted_provider_parity_mgrid_input=mgrid_input,
+            accepted_provider_parity_coil_params=coils.params,
+            accepted_provider_parity_bounds=bounds,
+            accepted_provider_parity_mgrid_nphi=mgrid_nphi,
+            accepted_provider_parity_sample="accepted_boundary_mgrid_backend",
         )
     if bool(args.run_vmec2000):
         exe = args.vmec2000_exec or find_vmec2000_exec()

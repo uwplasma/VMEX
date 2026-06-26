@@ -272,6 +272,11 @@ def _virtual_casing_payload(backend: dict[str, Any]) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _accepted_provider_parity_payload(backend: dict[str, Any]) -> dict[str, Any]:
+    payload = backend.get("accepted_provider_parity")
+    return payload if isinstance(payload, dict) else {}
+
+
 def _promotion_payload(
     *,
     backend_name: str,
@@ -761,6 +766,13 @@ def _summary_row(
         max_iter = _last_stage_value(backend, "niter")
     remaining_iterations = _remaining_iterations(max_iter, final_iter)
     vacuum_grid_exceeded_count = backend.get("vacuum_grid_exceeded_count")
+    accepted_parity = _accepted_provider_parity_payload(backend)
+    accepted_parity_field = accepted_parity.get("field_vector")
+    accepted_parity_field = accepted_parity_field if isinstance(accepted_parity_field, dict) else {}
+    accepted_parity_vac = accepted_parity.get("vacuum_channels")
+    accepted_parity_vac = accepted_parity_vac if isinstance(accepted_parity_vac, dict) else {}
+    accepted_parity_bnormal = accepted_parity_vac.get("bnormal")
+    accepted_parity_bnormal = accepted_parity_bnormal if isinstance(accepted_parity_bnormal, dict) else {}
     next_action = _recommended_next_action(
         status=status if status is not None else backend.get("status"),
         progress_phase=backend.get("progress_phase"),
@@ -815,6 +827,16 @@ def _summary_row(
         "next_action": next_action,
         "resolution_deck_status": resolution.get("status"),
         "resolution_deck_reasons": ",".join(_as_text_list(resolution.get("reasons"))),
+        "accepted_provider_parity_status": accepted_parity.get("status"),
+        "accepted_provider_parity_sample": accepted_parity.get("sample"),
+        "accepted_provider_parity_field_diff_rms_rel": _finite_float(
+            accepted_parity_field.get("diff_rms_rel")
+        ),
+        "accepted_provider_parity_bnormal_diff_rms_rel": _finite_float(
+            accepted_parity_bnormal.get("diff_rms_rel")
+        ),
+        "accepted_provider_parity_field_lt_5pct": accepted_parity.get("field_rms_rel_lt_5pct"),
+        "accepted_provider_parity_bnormal_lt_10pct": accepted_parity.get("bnormal_rms_rel_lt_10pct"),
         "boundary_mode_count": projection.get("mode_count"),
         "boundary_recommended_nzeta": projection.get("recommended_nzeta"),
         "max_boundary_projection_error": cfg.get("max_boundary_projection_error"),
@@ -1136,6 +1158,12 @@ def main(argv: list[str] | None = None) -> int:
         "next_action",
         "resolution_deck_status",
         "resolution_deck_reasons",
+        "accepted_provider_parity_status",
+        "accepted_provider_parity_sample",
+        "accepted_provider_parity_field_diff_rms_rel",
+        "accepted_provider_parity_bnormal_diff_rms_rel",
+        "accepted_provider_parity_field_lt_5pct",
+        "accepted_provider_parity_bnormal_lt_10pct",
         "boundary_mode_count",
         "boundary_recommended_nzeta",
         "max_boundary_projection_error",

@@ -26,6 +26,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "control_spline",
             "--verbose-solver",
             "--virtual-casing-diagnostics",
+            "--accepted-provider-parity",
             "--resolution-diagnostics-only",
         ]
     )
@@ -35,6 +36,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.delt == pytest.approx(profile.ExampleConfig().delt)
     assert args.verbose_solver is True
     assert args.virtual_casing_diagnostics is True
+    assert args.accepted_provider_parity is True
     assert args.resolution_diagnostics_only is True
 
 
@@ -139,6 +141,59 @@ def test_square_coil_profile_tail_decay_projection_estimates_remaining_iteration
     assert projection["per_iter_factor"] == pytest.approx(0.3)
     assert projection["estimated_additional_iterations_to_target"]["1e-08"] == 1
     assert projection["estimated_additional_iterations_to_target"]["1e-12"] == 9
+
+
+def test_square_coil_profile_provider_parity_stats_reports_compact_thresholds():
+    config = SimpleNamespace(nzeta=4)
+    bounds = {"rmin": 0.0, "rmax": 4.0, "zmin": -1.0, "zmax": 1.0}
+    mgrid = SimpleNamespace(
+        R=np.ones((2, 2)),
+        Z=np.zeros((2, 2)),
+        br_mgrid=np.ones((2, 2)),
+        bp_mgrid=np.ones((2, 2)) * 2.0,
+        bz_mgrid=np.ones((2, 2)) * 3.0,
+        vac_ext=SimpleNamespace(
+            bnormal=np.ones((2, 2)),
+            bnormal_unit=np.ones((2, 2)),
+            bu=np.ones((2, 2)) * 2.0,
+            bv=np.ones((2, 2)) * 3.0,
+            bsqvac=np.ones((2, 2)) * 4.0,
+        ),
+    )
+    direct = SimpleNamespace(
+        R=np.ones((2, 2)),
+        Z=np.zeros((2, 2)),
+        br_mgrid=np.ones((2, 2)) * 1.01,
+        bp_mgrid=np.ones((2, 2)) * 2.02,
+        bz_mgrid=np.ones((2, 2)) * 3.03,
+        vac_ext=SimpleNamespace(
+            bnormal=np.ones((2, 2)) * 1.02,
+            bnormal_unit=np.ones((2, 2)) * 1.02,
+            bu=np.ones((2, 2)) * 2.04,
+            bv=np.ones((2, 2)) * 3.06,
+            bsqvac=np.ones((2, 2)) * 4.08,
+        ),
+    )
+
+    payload = profile._provider_parity_stats(
+        status="completed",
+        reference_provider="direct_coils",
+        candidate_provider="generated_mgrid",
+        sample="accepted_boundary_direct_backend",
+        wall_s=1.25,
+        mgrid_sample=mgrid,
+        direct_sample=direct,
+        config=config,
+        bounds=bounds,
+        mgrid_nphi=8,
+    )
+
+    assert payload["sample"] == "accepted_boundary_direct_backend"
+    assert payload["mgrid_kp_divisible_by_nzeta"] is True
+    assert payload["field_vector"]["diff_rms_rel"] == pytest.approx(0.01 / 1.01)
+    assert payload["vacuum_channels"]["bnormal"]["diff_rms_rel"] == pytest.approx(0.02 / 1.02)
+    assert payload["field_rms_rel_lt_5pct"] is True
+    assert payload["bnormal_rms_rel_lt_10pct"] is True
 
 
 def test_square_coil_profile_vmec2000_tail_plateau_classifies_flat_above_stage_ftol():

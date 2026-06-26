@@ -75,6 +75,14 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                             "target_external_b_rms": 0.82,
                             "wall_s": 4.5,
                         },
+                        "accepted_provider_parity": {
+                            "status": "completed",
+                            "sample": "accepted_boundary_mgrid_backend",
+                            "field_vector": {"diff_rms_rel": 1.5e-3},
+                            "vacuum_channels": {"bnormal": {"diff_rms_rel": 2.5e-3}},
+                            "field_rms_rel_lt_5pct": True,
+                            "bnormal_rms_rel_lt_10pct": True,
+                        },
                         "history": {
                             "dt_eff_stats": {"last": 0.02, "min": 0.01},
                             "time_step_stats": {"last": 0.019},
@@ -225,6 +233,12 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["virtual_casing_required_external_b_rms"] == pytest.approx(0.8)
     assert rows[1]["virtual_casing_target_external_b_rms"] == pytest.approx(0.82)
     assert rows[1]["virtual_casing_wall_s"] == pytest.approx(4.5)
+    assert rows[1]["accepted_provider_parity_status"] == "completed"
+    assert rows[1]["accepted_provider_parity_sample"] == "accepted_boundary_mgrid_backend"
+    assert rows[1]["accepted_provider_parity_field_diff_rms_rel"] == pytest.approx(1.5e-3)
+    assert rows[1]["accepted_provider_parity_bnormal_diff_rms_rel"] == pytest.approx(2.5e-3)
+    assert rows[1]["accepted_provider_parity_field_lt_5pct"] is True
+    assert rows[1]["accepted_provider_parity_bnormal_lt_10pct"] is True
     assert rows[1]["tail_decay_factor"] == pytest.approx(0.98)
     assert rows[1]["iters_to_1e-12_est"] == pytest.approx(1234)
     assert rows[0]["vacuum_grid_exceeded_count"] == 2

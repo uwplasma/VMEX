@@ -455,6 +455,14 @@ residual floors. Direct-coil rows produced with
 ``--virtual-casing-diagnostics`` also expose virtual-casing status,
 external-normal residuals, pressure-balance residuals, and required/target
 external-field RMS values in the same summary table.
+Rows produced with ``--accepted-provider-parity`` also compare generated-mgrid
+and direct-coil fields on the accepted JAX backend LCFS, not only on the input
+boundary. The compact backend payload is ``accepted_provider_parity``; the
+summary table exposes its status, sample label, field-vector RMS relative
+difference, and coil-only ``B.n`` RMS relative difference. Use this diagnostic
+when investigating late free-boundary stalls or pressure-balance
+discretization errors, because a clean initial-boundary parity check does not
+prove the two providers still agree on the moved LCFS.
 For active VMEC2000 rows, the profiler and summary table now also report
 ``tail_plateau_*`` fields. ``flat_above_stage_ftol`` identifies tails whose
 recent relative span is small while the last residual remains above the current
@@ -674,7 +682,10 @@ The remaining work is deliberately narrow:
    workflow; pass ``--no-direct-static-cache`` only for differentiable-provider
    parity checks. When a backend comparison still needs a generated mgrid, keep
    the mgrid write chunked even if the direct sampler uses the full-geometry
-   JIT path.
+   JIT path. Add ``--accepted-provider-parity`` to backend-comparison rows
+   when diagnosing a late stall; skip it for pure direct-GPU speed runs because
+   it intentionally keeps the generated mgrid available and performs an
+   accepted-LCFS direct/mgrid sample after the solve.
    For the first pressure-mixing A/B run, keep the same staged deck and add
    ``--freeb-anderson-pressure`` only to the direct-coil backend run; compare
    ``free_boundary_anderson_pressure_last_theta``,
