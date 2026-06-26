@@ -90,6 +90,20 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                     },
                     "vmec2000_mgrid": {
                         "status": "completed",
+                        "tail_rows": [
+                            {
+                                "it": 800,
+                                "fsqr": 2.5e-6,
+                                "fsqz": 3.0e-6,
+                                "fsql": 5.0e-7,
+                            },
+                            {
+                                "it": 1000,
+                                "fsqr": 2.0e-6,
+                                "fsqz": 3.0e-6,
+                                "fsql": 4.0e-7,
+                            },
+                        ],
                         "last_row": {
                             "it": 1000,
                             "fsqr": 2.0e-6,
@@ -113,6 +127,8 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[0]["final_max_component"] == pytest.approx(3.0e-6)
     assert rows[0]["strict_components_met"] is False
     assert rows[0]["best_total"] == pytest.approx(5.0e-6)
+    assert rows[0]["tail_decay_factor"] < 1.0
+    assert rows[0]["iters_to_1e-12_est"] > 0
     assert rows[1]["final_total"] == pytest.approx(9.0e-7)
     assert rows[1]["final_max_component"] == pytest.approx(4.0e-7)
     assert rows[1]["strict_components_met"] is True

@@ -26716,8 +26716,11 @@ for the active numerical profiles to produce final rows.
 - The projection fits ``log(final_total)`` against the actual printed
   VMEC2000 iteration labels on the current stage suffix, so it does not mix
   rows across ``NS`` stage resets.
+- Extended the same projection to completed VMEC2000 profile JSON files when
+  they contain ``tail_rows`` but not a precomputed history projection.
 - Extended the active-``threed1`` summary test to check the per-iteration
-  decay factor and estimated additional iterations to ``1e-12``.
+  decay factor and estimated additional iterations to ``1e-12``, and extended
+  the completed-profile summary test to cover ``tail_rows``.
 
 ### Results obtained
 

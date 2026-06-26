@@ -181,8 +181,14 @@ def _vmec2000_tail_projection(rows: list[Any], *, length: int = 12) -> dict[str,
     last_it: int | None = None
     for row in reversed(list(rows)):
         try:
-            it = int(row.it)
-            total = float(row.fsqr) + float(row.fsqz) + float(row.fsql)
+            if isinstance(row, dict):
+                it = int(row.get("it"))
+                total = _finite_float(row.get("total"))
+                if total is None:
+                    total = sum(float(row.get(key)) for key in ("fsqr", "fsqz", "fsql"))
+            else:
+                it = int(row.it)
+                total = float(row.fsqr) + float(row.fsqz) + float(row.fsql)
         except Exception:
             continue
         if not np.isfinite(total) or total <= 0.0:
@@ -240,6 +246,16 @@ def _summary_row(
 ) -> dict[str, Any]:
     case = _case_name(path)
     cfg = {**_config_from_case_name(case), **cfg}
+    backend_for_projection = backend
+    if backend_name == "vmec2000_mgrid" and not isinstance(backend.get("history"), dict):
+        tail_rows = backend.get("tail_rows")
+        if isinstance(tail_rows, list) and tail_rows:
+            backend_for_projection = {
+                **backend,
+                "history": {
+                    "fsq_component_sum_tail_projection": _vmec2000_tail_projection(tail_rows),
+                },
+            }
     requested_ftol = _finite_float(cfg.get("ftol"))
     if requested_ftol is None:
         requested_ftol = _finite_float(backend.get("requested_ftol"))
@@ -326,8 +342,8 @@ def _summary_row(
         "bad_jacobian_count": _stat(backend, "bad_jacobian_stats", "sum"),
         "bnormal_rms_last": _stat(backend, "freeb_nestor_bnormal_rms_stats", "last"),
         "bnormal_rms_min": _stat(backend, "freeb_nestor_bnormal_rms_stats", "min"),
-        "tail_decay_factor": _tail_projection(backend, "per_iter_factor"),
-        "iters_to_1e-12_est": _tail_projection(backend, "", target=1.0e-12),
+        "tail_decay_factor": _tail_projection(backend_for_projection, "per_iter_factor"),
+        "iters_to_1e-12_est": _tail_projection(backend_for_projection, "", target=1.0e-12),
         "wall_s": _finite_float(backend.get("wall_s")),
         "vacuum_grid_exceeded_count": backend.get("vacuum_grid_exceeded_count"),
     }
