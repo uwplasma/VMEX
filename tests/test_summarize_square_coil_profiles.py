@@ -60,6 +60,10 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                         "returned_best_scored_state": True,
                         "best_scored_full_boundary_count": 10,
                         "best_scored_fresh_boundary_count": 8,
+                        "best_scored_drift_restart_count": 2,
+                        "best_scored_drift_streak": 1,
+                        "best_scored_drift_last_restart_iter": 42,
+                        "best_scored_drift_last_ratio": 3.5,
                         "final_residual_recomputed_on_accepted_state": True,
                         "free_boundary_fresh_convergence_gate": True,
                         "free_boundary_fresh_convergence_recheck_count": 3,
@@ -213,6 +217,10 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["returned_best_scored_state"] is True
     assert rows[1]["best_scored_full_boundary_count"] == 10
     assert rows[1]["best_scored_fresh_boundary_count"] == 8
+    assert rows[1]["best_scored_drift_restart_count"] == 2
+    assert rows[1]["best_scored_drift_streak"] == 1
+    assert rows[1]["best_scored_drift_last_restart_iter"] == 42
+    assert rows[1]["best_scored_drift_last_ratio"] == pytest.approx(3.5)
     assert rows[1]["final_residual_recomputed_on_accepted_state"] is True
     assert rows[1]["fresh_convergence_gate"] is True
     assert rows[1]["fresh_convergence_rechecks"] == 3

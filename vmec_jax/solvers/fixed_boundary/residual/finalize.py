@@ -584,6 +584,10 @@ def finalize_residual_iter_from_namespace(
         "best_scored_component_max": _optional_float(best_scored.get("component_max")),
         "best_scored_full_boundary_count": int(best_scored.get("full_boundary_count", 0)),
         "best_scored_fresh_boundary_count": int(best_scored.get("fresh_boundary_count", 0)),
+        "best_scored_drift_restart_count": int(best_scored.get("drift_restart_count", 0)),
+        "best_scored_drift_streak": int(best_scored.get("drift_streak", 0)),
+        "best_scored_drift_last_restart_iter": best_scored.get("drift_last_restart_iter"),
+        "best_scored_drift_last_ratio": _optional_float(best_scored.get("drift_last_ratio")),
         "update_delta_rms": update_delta_rms_final,
         "update_delta_to_velocity_rms_ratio": (
             None

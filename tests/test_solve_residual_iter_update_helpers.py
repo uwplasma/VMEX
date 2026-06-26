@@ -15,6 +15,7 @@ from vmec_jax.solvers.fixed_boundary.residual.iteration_metrics import (
 )
 from vmec_jax.solvers.fixed_boundary.residual.iteration import (
     _FreeBoundaryEdgeControlProjector,
+    _free_boundary_best_state_drift_decision,
     _new_best_scored_state_tracker,
     _record_best_scored_state,
 )
@@ -134,6 +135,75 @@ def test_best_scored_state_tracker_prefers_strict_component_max_and_counts_fresh
     assert tracker["freeb_nvacskip"] == 5
     assert tracker["freeb_nvskip0"] == 7
     assert tracker["freeb_plascur"] == pytest.approx(0.125)
+
+
+def test_free_boundary_best_state_drift_decision_requires_tail_streak_and_caps_restarts() -> None:
+    tracker = _new_best_scored_state_tracker(True)
+    _record_best_scored_state(
+        tracker,
+        state="best",
+        iter2=10,
+        fsq=(2.0e-10, 1.0e-10, 1.0e-11),
+        free_boundary_enabled=True,
+        freeb_ivacskip=0,
+        freeb_reused=False,
+    )
+
+    watching = _free_boundary_best_state_drift_decision(
+        tracker,
+        enabled=True,
+        iter2=11,
+        current_fsq=(1.0e-9, 1.0e-10, 1.0e-11),
+        factor=3.0,
+        min_iter_since_best=5,
+        streak_window=2,
+        max_restarts=1,
+    )
+    assert not watching.restart
+    assert watching.reason == "watching"
+    assert watching.streak == 0
+
+    first_tail = _free_boundary_best_state_drift_decision(
+        tracker,
+        enabled=True,
+        iter2=15,
+        current_fsq=(7.0e-10, 1.0e-10, 1.0e-11),
+        factor=3.0,
+        min_iter_since_best=5,
+        streak_window=2,
+        max_restarts=1,
+    )
+    assert not first_tail.restart
+    assert first_tail.streak == 1
+    assert first_tail.ratio == pytest.approx(3.5)
+
+    restart = _free_boundary_best_state_drift_decision(
+        tracker,
+        enabled=True,
+        iter2=16,
+        current_fsq=(8.0e-10, 1.0e-10, 1.0e-11),
+        factor=3.0,
+        min_iter_since_best=5,
+        streak_window=2,
+        max_restarts=1,
+    )
+    assert restart.restart
+    assert restart.reason == "freeb_best_state_drift"
+    assert restart.restart_count == 1
+    assert tracker["drift_last_restart_iter"] == 16
+
+    capped = _free_boundary_best_state_drift_decision(
+        tracker,
+        enabled=True,
+        iter2=30,
+        current_fsq=(8.0e-10, 1.0e-10, 1.0e-11),
+        factor=3.0,
+        min_iter_since_best=5,
+        streak_window=1,
+        max_restarts=1,
+    )
+    assert not capped.restart
+    assert capped.reason == "max_restarts"
 
 
 def test_free_boundary_edge_coordinate_mode_applies_reduced_update_once(monkeypatch) -> None:

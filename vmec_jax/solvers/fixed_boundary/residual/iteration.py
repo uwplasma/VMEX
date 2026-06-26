@@ -401,6 +401,10 @@ def _new_best_scored_state_tracker(enabled: bool) -> dict[str, Any]:
         "freeb_nvacskip": None,
         "freeb_nvskip0": None,
         "freeb_plascur": None,
+        "drift_streak": 0,
+        "drift_restart_count": 0,
+        "drift_last_restart_iter": None,
+        "drift_last_ratio": None,
     }
 
 
@@ -468,6 +472,75 @@ def _record_best_scored_state(
         )
 
 
+class _FreeBoundaryBestStateDriftDecision(NamedTuple):
+    """Decision to roll a free-boundary solve back to its best scored state."""
+
+    restart: bool
+    current_component_max: float
+    best_component_max: float | None
+    ratio: float | None
+    streak: int
+    restart_count: int
+    reason: str
+
+
+def _free_boundary_best_state_drift_decision(
+    tracker: dict[str, Any],
+    *,
+    enabled: bool,
+    iter2: int,
+    current_fsq: tuple[float, float, float],
+    factor: float,
+    min_iter_since_best: int,
+    streak_window: int,
+    max_restarts: int,
+) -> _FreeBoundaryBestStateDriftDecision:
+    """Update and return the opt-in best-state drift restart decision."""
+
+    current = max(float(value) for value in current_fsq)
+    best = tracker.get("component_max")
+    best_iter = tracker.get("iter")
+    restart_count = int(tracker.get("drift_restart_count", 0))
+    if (
+        (not bool(enabled))
+        or tracker.get("state") is None
+        or best is None
+        or best_iter is None
+        or (not np.isfinite(current))
+        or (not np.isfinite(float(best)))
+        or float(best) <= 0.0
+    ):
+        tracker["drift_streak"] = 0
+        return _FreeBoundaryBestStateDriftDecision(False, current, None, None, 0, restart_count, "disabled")
+
+    ratio = current / max(float(best), np.finfo(float).tiny)
+    enough_tail = (int(iter2) - int(best_iter)) >= max(0, int(min_iter_since_best))
+    exceeded = ratio >= max(1.0, float(factor))
+    if exceeded and enough_tail:
+        streak = int(tracker.get("drift_streak", 0)) + 1
+    else:
+        streak = 0
+    tracker["drift_streak"] = int(streak)
+    tracker["drift_last_ratio"] = float(ratio)
+
+    if restart_count >= max(0, int(max_restarts)):
+        return _FreeBoundaryBestStateDriftDecision(
+            False, current, float(best), float(ratio), int(streak), restart_count, "max_restarts"
+        )
+    if streak < max(1, int(streak_window)):
+        return _FreeBoundaryBestStateDriftDecision(
+            False, current, float(best), float(ratio), int(streak), restart_count, "watching"
+        )
+
+    restart_count += 1
+    tracker["drift_restart_count"] = int(restart_count)
+    tracker["drift_last_restart_iter"] = int(iter2)
+    tracker["drift_streak"] = 0
+    return _FreeBoundaryBestStateDriftDecision(
+        True, current, float(best), float(ratio), int(streak), int(restart_count), "freeb_best_state_drift"
+    )
+
+
 def _finalize_residual_iter_result_from_namespace(
     namespace: Mapping[str, Any],
     *,
@@ -501,6 +574,26 @@ _edge_signature_key = _solve_runtime._edge_signature_key
 _edge_value_key = _solve_runtime._edge_value_key
 _scan_fallback_policy = _solve_runtime._scan_fallback_policy
 _residual_convergence_flags = _solve_runtime._residual_convergence_flags
+
+
+def _runtime_env_float(name: str, default: float) -> float:
+    """Read a finite positive tuning float from the environment."""
+
+    try:
+        value = float(os.getenv(name, "") or default)
+    except Exception:
+        return float(default)
+    return value if np.isfinite(value) else float(default)
+
+
+def _runtime_env_int(name: str, default: int) -> int:
+    """Read a nonnegative tuning integer from the environment."""
+
+    try:
+        value = int(os.getenv(name, "") or default)
+    except Exception:
+        return int(default)
+    return max(0, int(value))
 
 
 def _scan_chunk_settings(
@@ -2048,7 +2141,19 @@ def solve_fixed_boundary_residual_iter(
     _env_dump_lamcal = os.getenv("VMEC_JAX_DUMP_LAMCAL", "")
     _env_dump_badjac = os.getenv("VMEC_JAX_DUMP_BADJAC", "")
     _env_dump_dir = os.getenv("VMEC_JAX_DUMP_DIR", "")
-    best_scored = _new_best_scored_state_tracker(_runtime_env_enabled(os.getenv("VMEC_JAX_RETURN_BEST_SCORED_STATE", "0")))
+    freeb_drift_restart_enabled = _runtime_env_enabled(os.getenv("VMEC_JAX_FREEB_DRIFT_RESTART", "0"))
+    freeb_drift_restart_factor = max(1.0, _runtime_env_float("VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR", 3.0))
+    freeb_drift_restart_min_iter_since_best = _runtime_env_int(
+        "VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST",
+        20,
+    )
+    freeb_drift_restart_streak = max(1, _runtime_env_int("VMEC_JAX_FREEB_DRIFT_RESTART_STREAK", 10))
+    freeb_drift_restart_max_restarts = _runtime_env_int("VMEC_JAX_FREEB_DRIFT_RESTART_MAX_RESTARTS", 4)
+    return_best_scored_requested = _runtime_env_enabled(os.getenv("VMEC_JAX_RETURN_BEST_SCORED_STATE", "0"))
+    return_best_scored_state = bool(return_best_scored_requested)
+    best_scored = _new_best_scored_state_tracker(
+        bool(return_best_scored_requested) or bool(freeb_drift_restart_enabled)
+    )
 
     if timing_enabled:
         timing_stats["setup_total"] = time.perf_counter() - float(_solve_wall_start)
@@ -2830,6 +2935,63 @@ def solve_fixed_boundary_residual_iter(
                 fsqz1_safe=fsqz1_safe,
                 fsql1_safe=fsql1_safe,
             )
+
+            drift_decision = _free_boundary_best_state_drift_decision(
+                best_scored,
+                enabled=bool(free_boundary_enabled) and bool(freeb_drift_restart_enabled),
+                iter2=int(iter2),
+                current_fsq=(fsqr_f, fsqz_f, fsql_f),
+                factor=float(freeb_drift_restart_factor),
+                min_iter_since_best=int(freeb_drift_restart_min_iter_since_best),
+                streak_window=int(freeb_drift_restart_streak),
+                max_restarts=int(freeb_drift_restart_max_restarts),
+            )
+            if drift_decision.restart:
+                best_state = best_scored.get("state")
+                if best_state is not None:
+                    state = best_state
+                    freeb_bsqvac_half_current = best_scored.get("freeb_bsqvac_half_current")
+                    freeb_nestor_runtime = best_scored.get("freeb_nestor_runtime")
+                    freeb_last_model = best_scored.get("freeb_last_model")
+                    freeb_last_diagnostics = best_scored.get("freeb_last_diagnostics")
+                    if best_scored.get("freeb_ivac") is not None:
+                        freeb_ivac = int(best_scored["freeb_ivac"])
+                    if best_scored.get("freeb_ivacskip") is not None:
+                        freeb_ivacskip = int(best_scored["freeb_ivacskip"])
+                    if best_scored.get("freeb_nvacskip") is not None:
+                        freeb_nvacskip = int(best_scored["freeb_nvacskip"])
+                    if best_scored.get("freeb_nvskip0") is not None:
+                        freeb_nvskip0 = int(best_scored["freeb_nvskip0"])
+                    if best_scored.get("freeb_plascur") is not None:
+                        freeb_plascur = float(best_scored["freeb_plascur"])
+                    _zero_all_velocity_blocks()
+                    freeb_controls_cached = None
+                    precond_cache.clear()
+                    force_bcovar_update = True
+                    time_step = max(float(restart_badprog_factor) * float(time_step), 1.0e-12)
+                    inv_tau = [0.15 / float(time_step)] * int(k_ndamp)
+                    iter1 = int(iter2)
+                    ijacob = int(ijacob) + 1
+                    bad_resets = int(bad_resets) + 1
+                    fsq_prev = float(best_scored.get("fsq") or fsq_prev)
+                    fsq0_prev = fsq_prev
+                    prev_rz_fsq = float(best_scored.get("fsqr") or 0.0) + float(best_scored.get("fsqz") or 0.0)
+                    res0 = min(float(res0), fsq_prev) if float(res0) >= 0.0 else fsq_prev
+                    res1 = min(float(res1), fsq0_prev) if float(res1) >= 0.0 else fsq0_prev
+                    state_checkpoint = state
+                    _set_controller_state(_current_controller_state())
+                    step_status = "restart_freeb_drift"
+                    restart_reason = drift_decision.reason
+                    pre_restart_reason = drift_decision.reason
+                    _append_current_zero_update_history(
+                        restart_path="freeb_best_state_drift",
+                        step_status=step_status,
+                        restart_reason=restart_reason,
+                        pre_restart_reason=pre_restart_reason,
+                        time_step_value=float(time_step),
+                    )
+                    skip_time_control = True
+                    continue
 
             if converged_physical:
                 # Keep histories aligned when convergence happens before update.

@@ -1996,6 +1996,10 @@ def _summary_row(
         "returned_best_scored_state": backend.get("returned_best_scored_state"),
         "best_scored_full_boundary_count": backend.get("best_scored_full_boundary_count"),
         "best_scored_fresh_boundary_count": backend.get("best_scored_fresh_boundary_count"),
+        "best_scored_drift_restart_count": backend.get("best_scored_drift_restart_count"),
+        "best_scored_drift_streak": backend.get("best_scored_drift_streak"),
+        "best_scored_drift_last_restart_iter": backend.get("best_scored_drift_last_restart_iter"),
+        "best_scored_drift_last_ratio": _finite_float(backend.get("best_scored_drift_last_ratio")),
         "final_residual_recomputed_on_accepted_state": backend.get(
             "final_residual_recomputed_on_accepted_state"
         ),
@@ -2497,6 +2501,10 @@ def main(argv: list[str] | None = None) -> int:
         "returned_best_scored_state",
         "best_scored_full_boundary_count",
         "best_scored_fresh_boundary_count",
+        "best_scored_drift_restart_count",
+        "best_scored_drift_streak",
+        "best_scored_drift_last_restart_iter",
+        "best_scored_drift_last_ratio",
         "final_residual_recomputed_on_accepted_state",
         "fresh_convergence_gate",
         "fresh_convergence_rechecks",

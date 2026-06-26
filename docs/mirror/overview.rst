@@ -278,3 +278,9 @@ plasma-current normalization, and the square-coil example schema ``0.5`` records
 ``|B|`` and mirror-ratio response plots for comparison with the expected
 finite-beta diamagnetic field-depression and effective mirror-ratio increase in
 linear mirror traps.
+Strict free-boundary profiles now also have an opt-in best-state drift restart:
+``--freeb-drift-restart`` rolls back to the best fresh-vacuum state when the
+component residual tail moves a configured factor above the best scored point.
+Use it for rows like the current ``MPOL=5, NTOR=28, NZETA=64`` square-coil
+coordinate-control profile, whose residual improved early and then drifted
+upward, before treating the case as a plain iteration-budget miss.

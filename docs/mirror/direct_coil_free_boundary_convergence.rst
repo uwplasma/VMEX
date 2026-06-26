@@ -1132,6 +1132,22 @@ The remaining work is deliberately narrow:
    Use ``--jax-initial-restart-wout <wout_*.nc>`` when a completed strict-deck
    row already exists; this seeds the first final-grid pass from that WOUT and
    avoids replaying the full multigrid ladder just to test the restart tail.
+   When the component residual reaches an early minimum and then walks away
+   from it, enable the opt-in drift rollback before spending a longer plain
+   iteration budget.  The profiler flags are ``--freeb-drift-restart``,
+   ``--freeb-drift-restart-factor``,
+   ``--freeb-drift-restart-min-iter-since-best``,
+   ``--freeb-drift-restart-streak``, and
+   ``--freeb-drift-restart-max-restarts``.  This uses the same best-scored
+   component residual tracker as ``--return-best-scored-state`` but performs a
+   solver restart during the run: it restores the best fresh-vacuum state,
+   clears free-boundary/preconditioner caches, zeros velocity memory, and
+   shrinks the time step through the existing bad-progress factor.  The active
+   ``MPOL=5, NTOR=28, NZETA=64`` coordinate-control row is the trigger case:
+   it reached its best component residual near iteration ``52`` and had drifted
+   more than ``5`` times above that best value by iteration ``835``.  That is
+   not a useful ``MAX_ITER`` extension candidate without rollback or a changed
+   edge-control update.
 2. Re-run the square-coil beta ladder with per-beta checkpointing and the
    best-scored diagnostic fallback using the staged ``FTOL_ARRAY`` ending at
    ``1e-12``. Keep ``DELT=0.02``, ``NVACSKIP=1``,

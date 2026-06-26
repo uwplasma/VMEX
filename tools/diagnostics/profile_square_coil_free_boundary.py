@@ -250,6 +250,19 @@ def _parser() -> argparse.ArgumentParser:
         help="Return the lowest fresh free-boundary residual state if max_iter is exhausted.",
     )
     p.add_argument(
+        "--freeb-drift-restart",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Opt in to free-boundary best-state drift restarts. The solver rolls back to the best "
+            "fresh-vacuum state when component residuals drift above the configured factor."
+        ),
+    )
+    p.add_argument("--freeb-drift-restart-factor", type=float, default=3.0)
+    p.add_argument("--freeb-drift-restart-min-iter-since-best", type=int, default=20)
+    p.add_argument("--freeb-drift-restart-streak", type=int, default=10)
+    p.add_argument("--freeb-drift-restart-max-restarts", type=int, default=4)
+    p.add_argument(
         "--jax-hot-restart-count",
         type=int,
         default=0,
@@ -1406,6 +1419,10 @@ def _final_residuals(run: Any, *, config: ExampleConfig | None = None) -> dict[s
         "best_scored_component_max": diag.get("best_scored_component_max"),
         "best_scored_full_boundary_count": diag.get("best_scored_full_boundary_count"),
         "best_scored_fresh_boundary_count": diag.get("best_scored_fresh_boundary_count"),
+        "best_scored_drift_restart_count": diag.get("best_scored_drift_restart_count"),
+        "best_scored_drift_streak": diag.get("best_scored_drift_streak"),
+        "best_scored_drift_last_restart_iter": diag.get("best_scored_drift_last_restart_iter"),
+        "best_scored_drift_last_ratio": diag.get("best_scored_drift_last_ratio"),
         "update_delta_rms": diag.get("update_delta_rms"),
         "update_delta_to_velocity_rms_ratio": diag.get("update_delta_to_velocity_rms_ratio"),
         "free_boundary_convergence_blocked_count": diag.get("free_boundary_convergence_blocked_count"),
@@ -1812,6 +1829,11 @@ def _run_jax_backend(
     direct_params: Any | None,
     solver_mode: str | None,
     return_best_scored_state: bool,
+    freeb_drift_restart: bool = False,
+    freeb_drift_restart_factor: float = 3.0,
+    freeb_drift_restart_min_iter_since_best: int = 20,
+    freeb_drift_restart_streak: int = 10,
+    freeb_drift_restart_max_restarts: int = 4,
     freeb_anderson_pressure: bool = False,
     freeb_jax_nestor_operator: bool = False,
     freeb_jax_nestor_jit_operator: bool = True,
@@ -1884,6 +1906,13 @@ def _run_jax_backend(
     t0 = time.perf_counter()
     env_overrides: dict[str, str | None] = {
         "VMEC_JAX_RETURN_BEST_SCORED_STATE": _bool_env(return_best_scored_state),
+        "VMEC_JAX_FREEB_DRIFT_RESTART": _bool_env(freeb_drift_restart),
+        "VMEC_JAX_FREEB_DRIFT_RESTART_FACTOR": f"{float(freeb_drift_restart_factor):.17g}",
+        "VMEC_JAX_FREEB_DRIFT_RESTART_MIN_ITER_SINCE_BEST": str(
+            max(0, int(freeb_drift_restart_min_iter_since_best))
+        ),
+        "VMEC_JAX_FREEB_DRIFT_RESTART_STREAK": str(max(1, int(freeb_drift_restart_streak))),
+        "VMEC_JAX_FREEB_DRIFT_RESTART_MAX_RESTARTS": str(max(0, int(freeb_drift_restart_max_restarts))),
         "VMEC_JAX_FREEB_ANDERSON_PRESSURE": _bool_env(freeb_anderson_pressure),
         "VMEC_JAX_FREEB_JAX_NESTOR_OPERATOR": _bool_env(freeb_jax_nestor_operator),
         "VMEC_JAX_FREEB_JAX_NESTOR_JIT_OPERATOR": _bool_env(freeb_jax_nestor_jit_operator),
@@ -2018,6 +2047,11 @@ def _run_jax_backend(
         **residuals,
         "free_boundary_solver_overrides": {
             "return_best_scored_state": bool(return_best_scored_state),
+            "freeb_drift_restart": bool(freeb_drift_restart),
+            "freeb_drift_restart_factor": float(freeb_drift_restart_factor),
+            "freeb_drift_restart_min_iter_since_best": int(freeb_drift_restart_min_iter_since_best),
+            "freeb_drift_restart_streak": int(freeb_drift_restart_streak),
+            "freeb_drift_restart_max_restarts": int(freeb_drift_restart_max_restarts),
             "freeb_anderson_pressure": bool(freeb_anderson_pressure),
             "freeb_jax_nestor_operator": bool(freeb_jax_nestor_operator),
             "freeb_jax_nestor_jit_operator": bool(freeb_jax_nestor_jit_operator),
@@ -3297,6 +3331,11 @@ def main(argv: list[str] | None = None) -> int:
                 if args.freeb_edge_control_trust_radius is None
                 else float(args.freeb_edge_control_trust_radius),
                 "freeb_edge_control_update_mode": str(args.freeb_edge_control_update_mode),
+                "freeb_drift_restart": bool(args.freeb_drift_restart),
+                "freeb_drift_restart_factor": float(args.freeb_drift_restart_factor),
+                "freeb_drift_restart_min_iter_since_best": int(args.freeb_drift_restart_min_iter_since_best),
+                "freeb_drift_restart_streak": int(args.freeb_drift_restart_streak),
+                "freeb_drift_restart_max_restarts": int(args.freeb_drift_restart_max_restarts),
                 "jax_hot_restart_count": int(args.jax_hot_restart_count),
                 "jax_hot_restart_iters": None
                 if args.jax_hot_restart_iters is None
@@ -3535,6 +3574,11 @@ def main(argv: list[str] | None = None) -> int:
             direct_params=coils.params,
             solver_mode=solver_mode,
             return_best_scored_state=bool(args.return_best_scored_state),
+            freeb_drift_restart=bool(args.freeb_drift_restart),
+            freeb_drift_restart_factor=float(args.freeb_drift_restart_factor),
+            freeb_drift_restart_min_iter_since_best=int(args.freeb_drift_restart_min_iter_since_best),
+            freeb_drift_restart_streak=int(args.freeb_drift_restart_streak),
+            freeb_drift_restart_max_restarts=int(args.freeb_drift_restart_max_restarts),
             freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
             freeb_jax_nestor_operator=bool(args.freeb_jax_nestor_operator),
             freeb_jax_nestor_jit_operator=bool(args.freeb_jax_nestor_jit_operator),
@@ -3577,6 +3621,11 @@ def main(argv: list[str] | None = None) -> int:
             direct_params=None,
             solver_mode=solver_mode,
             return_best_scored_state=bool(args.return_best_scored_state),
+            freeb_drift_restart=bool(args.freeb_drift_restart),
+            freeb_drift_restart_factor=float(args.freeb_drift_restart_factor),
+            freeb_drift_restart_min_iter_since_best=int(args.freeb_drift_restart_min_iter_since_best),
+            freeb_drift_restart_streak=int(args.freeb_drift_restart_streak),
+            freeb_drift_restart_max_restarts=int(args.freeb_drift_restart_max_restarts),
             freeb_anderson_pressure=bool(args.freeb_anderson_pressure),
             freeb_jax_nestor_operator=bool(args.freeb_jax_nestor_operator),
             freeb_jax_nestor_jit_operator=bool(args.freeb_jax_nestor_jit_operator),
