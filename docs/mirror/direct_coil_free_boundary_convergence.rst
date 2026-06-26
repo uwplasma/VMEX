@@ -593,6 +593,11 @@ Fourier boundary values into controls and decodes controls back to the full
 coefficient vector. This is the tested host-side map needed before the
 nonlinear unknown vector can be promoted from edge-only projection to
 solver-native spline/control coordinates.
+The differentiable forward map is also public as
+``vmec_jax.reduced_control_decode(initial, jacobian, control_delta)`` and as
+``ReducedControlMap.decode_jax(...)``. It performs only
+``initial + jacobian @ control_delta``, so its Jacobian with respect to the
+reduced controls is exactly the supplied control matrix.
 The same map now underlies the accepted-state ``state_coordinates`` diagnostics
 for edge-projected free-boundary solves.
 ``SquareAxisControlFourierMatrix`` now exposes the same affine state map through

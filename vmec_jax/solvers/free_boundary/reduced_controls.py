@@ -7,6 +7,8 @@ from typing import Any
 
 import numpy as np
 
+from vmec_jax._compat import jnp
+
 
 @dataclass(frozen=True)
 class ReducedControlStep:
@@ -130,6 +132,11 @@ class ReducedControlMap:
         if not np.all(np.isfinite(controls)):
             raise ValueError("control_delta must be finite")
         return self.initial + self.jacobian @ controls
+
+    def decode_jax(self, control_delta: Any):
+        """Return full boundary values with JAX-compatible array operations."""
+
+        return reduced_control_decode(self.initial, self.jacobian, control_delta)
 
     def project(
         self,
@@ -260,3 +267,24 @@ def reduced_control_least_squares_step(
         trust_radius=trust,
         trust_scale=float(trust_scale),
     )
+
+
+def reduced_control_decode(initial: Any, jacobian: Any, control_delta: Any):
+    """Decode reduced controls with JAX-compatible affine map operations.
+
+    Native reduced-coordinate solves need the differentiable forward map
+    ``full_values = initial + jacobian @ control_delta``. The host-side
+    least-squares encoder remains separate because it is a diagnostic and
+    initialization tool, not the core reduced solve update.
+    """
+
+    initial_arr = jnp.asarray(initial).reshape((-1,))
+    jacobian_arr = jnp.asarray(jacobian, dtype=initial_arr.dtype)
+    control_arr = jnp.asarray(control_delta, dtype=initial_arr.dtype).reshape((-1,))
+    if jacobian_arr.ndim != 2:
+        raise ValueError("jacobian must be two-dimensional")
+    if int(jacobian_arr.shape[0]) != int(initial_arr.shape[0]):
+        raise ValueError("jacobian row count must match initial size")
+    if int(jacobian_arr.shape[1]) != int(control_arr.shape[0]):
+        raise ValueError("control_delta size must match the number of control columns")
+    return initial_arr + jacobian_arr @ control_arr

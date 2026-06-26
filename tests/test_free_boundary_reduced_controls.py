@@ -3,7 +3,12 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from vmec_jax.solvers.free_boundary import ReducedControlMap, reduced_control_least_squares_step
+from vmec_jax._compat import jnp
+from vmec_jax.solvers.free_boundary import (
+    ReducedControlMap,
+    reduced_control_decode,
+    reduced_control_least_squares_step,
+)
 
 
 def test_reduced_control_least_squares_step_is_public() -> None:
@@ -12,6 +17,8 @@ def test_reduced_control_least_squares_step_is_public() -> None:
 
     assert vj.ReducedControlMap is ReducedControlMap
     assert public_api.ReducedControlMap is ReducedControlMap
+    assert vj.reduced_control_decode is reduced_control_decode
+    assert public_api.reduced_control_decode is reduced_control_decode
     assert vj.reduced_control_least_squares_step is reduced_control_least_squares_step
     assert public_api.reduced_control_least_squares_step is reduced_control_least_squares_step
 
@@ -90,6 +97,29 @@ def test_reduced_control_map_encodes_decodes_and_projects_boundary_values() -> N
     assert payload["labels"] == ["side", "corner"]
 
 
+def test_reduced_control_decode_matches_host_map_and_jacobian() -> None:
+    import jax
+
+    initial = np.asarray([10.0, -1.0, 0.5])
+    jacobian = np.asarray(
+        [
+            [1.0, 0.0],
+            [0.0, 2.0],
+            [0.0, 0.0],
+        ]
+    )
+    controls = jnp.asarray([3.0, 2.0])
+    control_map = ReducedControlMap(initial=initial, jacobian=jacobian, labels=("side", "corner"))
+
+    decoded = reduced_control_decode(initial, jacobian, controls)
+    decoded_from_map = control_map.decode_jax(controls)
+    derivative = jax.jacfwd(lambda values: reduced_control_decode(initial, jacobian, values))(controls)
+
+    np.testing.assert_allclose(np.asarray(decoded), control_map.decode(np.asarray(controls)), atol=1.0e-14)
+    np.testing.assert_allclose(np.asarray(decoded_from_map), np.asarray(decoded), atol=1.0e-14)
+    np.testing.assert_allclose(np.asarray(derivative), jacobian, atol=1.0e-14)
+
+
 @pytest.mark.parametrize(
     ("jacobian", "target", "kwargs", "match"),
     [
@@ -133,3 +163,5 @@ def test_reduced_control_map_rejects_mismatched_decode_and_encode_sizes() -> Non
         control_map.decode([1.0])
     with pytest.raises(ValueError, match="finite"):
         control_map.decode([1.0, np.nan])
+    with pytest.raises(ValueError, match="control_delta size"):
+        reduced_control_decode([0.0, 0.0], np.eye(2), [1.0])

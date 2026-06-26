@@ -21,7 +21,12 @@ from __future__ import annotations
 import types as _types
 
 from .namelist import minimal_fixed_boundary_indata, read_indata, write_indata
-from .solvers.free_boundary import ReducedControlMap, ReducedControlStep, reduced_control_least_squares_step
+from .solvers.free_boundary import (
+    ReducedControlMap,
+    ReducedControlStep,
+    reduced_control_decode,
+    reduced_control_least_squares_step,
+)
 from .toroidal_hybrid import (
     SquareAxisControlBasis,
     SquareAxisControlFourierMatrix,

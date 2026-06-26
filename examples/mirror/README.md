@@ -564,6 +564,10 @@ projection.
 ``vmec_jax.solvers.free_boundary.ReducedControlMap`` is the public host-side
 encode/decode primitive for that next lane: it maps full Fourier edge vectors
 to reduced controls and back without changing the current solve path.
+Use ``vmec_jax.reduced_control_decode(...)`` or
+``ReducedControlMap.decode_jax(...)`` when the forward map needs to remain in
+JAX for differentiation; the operation is only
+``initial + jacobian @ control_delta``.
 For square-axis studies, ``SquareAxisControlFourierMatrix`` now wraps that
 primitive with ``reduced_control_map(...)``, ``encode_boundary(...)``,
 ``decode_boundary(...)``, and ``project_boundary(...)`` methods that accept
