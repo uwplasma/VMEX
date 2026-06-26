@@ -229,6 +229,8 @@ def test_square_coil_profile_tail_decay_projection_estimates_remaining_iteration
     assert projection["per_iter_factor"] == pytest.approx(0.3)
     assert projection["estimated_additional_iterations_to_target"]["1e-08"] == 1
     assert projection["estimated_additional_iterations_to_target"]["1e-12"] == 9
+    assert profile._ceil_tail_iteration_estimate(2.0 + 5.0e-13) == 2
+    assert profile._ceil_tail_iteration_estimate(2.01) == 3
 
 
 def test_square_coil_profile_rejects_loose_production_schedule():

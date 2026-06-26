@@ -65,6 +65,21 @@ LOOSE_COMPONENT_FTOL = 1.0e-8
 FORCE_COMPONENTS = ("fsqr", "fsqz", "fsql")
 
 
+def _ceil_tail_iteration_estimate(value: float) -> int | None:
+    """Ceil a positive iteration estimate without platform-dependent off-by-one noise."""
+
+    try:
+        estimate = float(value)
+    except Exception:
+        return None
+    if not np.isfinite(estimate):
+        return None
+    nearest = round(estimate)
+    if abs(estimate - nearest) <= 1.0e-10 * max(1.0, abs(estimate)):
+        return max(0, int(nearest))
+    return max(0, int(np.ceil(estimate)))
+
+
 def _json_ready(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value)
@@ -933,7 +948,9 @@ def _tail_decay_projection(
         if last <= target_f:
             estimates[f"{target_f:.0e}"] = 0
         elif log_slope < 0.0:
-            estimates[f"{target_f:.0e}"] = int(np.ceil(np.log(target_f / last) / log_slope))
+            estimates[f"{target_f:.0e}"] = _ceil_tail_iteration_estimate(
+                np.log(target_f / last) / log_slope
+            )
         else:
             estimates[f"{target_f:.0e}"] = None
     out["estimated_additional_iterations_to_target"] = estimates
@@ -2847,7 +2864,7 @@ def _vmec2000_tail_projection(
         if last <= target_f:
             estimates[key] = 0
         elif slope < 0.0:
-            estimates[key] = int(np.ceil(np.log(target_f / last) / slope))
+            estimates[key] = _ceil_tail_iteration_estimate(np.log(target_f / last) / slope)
         else:
             estimates[key] = None
     out["estimated_additional_iterations_to_target"] = estimates

@@ -39,6 +39,21 @@ FORCE_COMPONENTS = ("fsqr", "fsqz", "fsql")
 INFERRED_SQUARE_AXIS_PROJECTION_GATE = 5.0e-12
 
 
+def _ceil_tail_iteration_estimate(value: float) -> int | None:
+    """Ceil a positive iteration estimate without platform-dependent off-by-one noise."""
+
+    try:
+        estimate = float(value)
+    except Exception:
+        return None
+    if not np.isfinite(estimate):
+        return None
+    nearest = round(estimate)
+    if abs(estimate - nearest) <= 1.0e-10 * max(1.0, abs(estimate)):
+        return max(0, int(nearest))
+    return max(0, int(np.ceil(estimate)))
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -1071,7 +1086,7 @@ def _vmec2000_tail_projection(rows: list[Any], *, length: int = 12) -> dict[str,
         if last <= target:
             estimates[key] = 0
         elif slope < 0.0:
-            estimates[key] = int(np.ceil(np.log(target / last) / slope))
+            estimates[key] = _ceil_tail_iteration_estimate(np.log(target / last) / slope)
         else:
             estimates[key] = None
     out["estimated_additional_iterations_to_target"] = estimates
