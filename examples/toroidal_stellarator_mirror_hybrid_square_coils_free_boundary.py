@@ -67,7 +67,7 @@ COIL_SEGMENTS = 96
 COIL_CHUNK_SIZE: int | None = 512
 
 PLASMA_AXIS_HALF_WIDTH = 0.5 * COIL_SQUARE_SIDE_LENGTH
-PLASMA_AXIS_KIND = "spline"
+PLASMA_AXIS_KIND = "control_spline"
 PLASMA_AXIS_SQUARE_POWER = 3.0
 PLASMA_AXIS_SPLINE_CORNER_RADIUS_FACTOR = 1.14
 PLASMA_AXIS_SPLINE_CONTROLS: SquareAxisSplineControls | None = None
@@ -457,7 +457,7 @@ def _validate_example_config(config: ExampleConfig) -> None:
                 f"MPOL={int(suggested['mpol'])}, NTOR={int(suggested['ntor'])}, "
                 f"NZETA>={int(suggested['recommended_nzeta'])} "
                 f"(projection error {float(suggested['max_abs_component_error']):.3e}). "
-                "Increase MPOL/NTOR/NZETA, keep plasma_axis_kind='spline', or set "
+                "Increase MPOL/NTOR/NZETA, keep plasma_axis_kind='control_spline' or 'spline', or set "
                 "max_boundary_projection_error=None for a diagnostic-only run."
             )
 

@@ -99,7 +99,11 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--delt", type=float, default=0.05)
     p.add_argument("--activate-fsq", type=float, default=1.0e-3)
     p.add_argument("--nvacskip", type=int, default=1, help="Initial/floor NVACSKIP for VMEC free-boundary updates.")
-    p.add_argument("--axis-kind", default="spline", choices=("spline", "superellipse", "control_spline"))
+    p.add_argument(
+        "--axis-kind",
+        default=ExampleConfig().plasma_axis_kind,
+        choices=("spline", "superellipse", "control_spline"),
+    )
     p.add_argument("--axis-corner-factor", type=float, default=1.14)
     p.add_argument(
         "--side-power",

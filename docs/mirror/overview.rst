@@ -232,16 +232,16 @@ coarse square-coil scans have strict active free-boundary convergence evidence
 through beta ``5%`` at ``FTOL=1e-8``; beta ``7%`` is the first high-beta stall
 for that coarse configuration. The square-coil lane now also has a native
 direct-coil-to-``mgrid`` writer, a direct/mgrid/VMEC2000 backend profiler, and a
-low-bandwidth rounded ``axis_kind="spline"`` square-axis option to reduce
+low-bandwidth rounded ``axis_kind="control_spline"`` square-axis option to reduce
 ``NTOR`` sensitivity before VMEC Fourier projection. The source helper and
 profiler now record ``boundary_projection`` truncation errors for the selected
 ``MPOL``/``NTOR`` grid, mode count, and recommended ``NZETA``, so mode changes
 can be separated from nonlinear free-boundary convergence. The source helper
 ``recommend_square_axis_stellarator_mirror_hybrid_resolution`` gives a finite
-Fourier closure suggestion for the current spline-smoothed target before a long
+Fourier closure suggestion for the current control-spline-smoothed target before a long
 solve is launched, and the profiler treats omitted ``--nzeta`` as the
 recommendation for the selected ``NTOR``. On the current square-coil shape, the
-spline envelope
+control-spline envelope
 cuts max component projection error from superellipse-scale underfitting to
 about ``1.5e-4`` at ``MPOL=3, NTOR=8``, about ``5.6e-6`` at
 ``MPOL=3, NTOR=12``, about ``3.3e-10`` at ``MPOL=6, NTOR=23``, and about

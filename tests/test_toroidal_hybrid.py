@@ -228,6 +228,7 @@ def test_square_axis_recommended_nzeta_and_example_guard(tmp_path: Path):
     assert module.ExampleConfig().side_power == pytest.approx(1.0)
     assert module.ExampleConfig().corner_power == pytest.approx(1.0)
     assert module.ExampleConfig().nstep == 1
+    assert module.ExampleConfig().plasma_axis_kind == "control_spline"
     assert module.ExampleConfig().plasma_axis_spline_controls is None
     assert module.build_square_coils(module.ExampleConfig()).params.chunk_size == 512
     assert module.build_square_coils(module.ExampleConfig(coil_chunk_size=None)).params.chunk_size is None

@@ -234,12 +234,16 @@ measure how far the accepted LCFS moved from the initial prescribed boundary.
 These are evidence that a row used a moving free boundary; they complement, but
 do not replace, the strict force-component and finite-beta pressure-balance
 promotion gates.
-The rounded-square ``axis_kind="spline"`` option is now the default because it
-reduces low-mode projection error relative to the superellipse axis. It is
-still projected to VMEC Fourier coefficients, so large straight sections plus
-localized stellarator corners remain a difficult Fourier representation; using
-the spline envelope is a bandwidth reduction, not a replacement for resolution
-closure. The square-axis side/corner localization powers are also important:
+The rounded-square ``axis_kind="control_spline"`` bridge is now the default
+because it keeps the intended side/corner axis controls independent of
+``MPOL`` and ``NTOR`` before the VMEC Fourier projection. With the default
+uniform side/corner controls it has the same low-bandwidth projection behavior
+as ``axis_kind="spline"`` and reduces low-mode projection error relative to the
+superellipse axis. It is still projected to VMEC Fourier coefficients, so large
+straight sections plus localized stellarator corners remain a difficult
+Fourier representation; using the control-spline envelope is a bandwidth
+reduction, not a replacement for resolution closure. The square-axis
+side/corner localization powers are also important:
 the older ``side_power=corner_power=1.4`` stress shape has a high-mode tail,
 while the current first-order default ``1.0`` keeps the same broad side/corner
 geometry much closer to finite Fourier bandwidth.
@@ -427,11 +431,13 @@ and standard MHD magnetic-pressure balance notes such as
 <https://people.physics.anu.edu.au/~jnh112/AIIM/c17/chap06.pdf>`__.
 
 The square-axis stellarator-mirror hybrid geometry now has a lower-bandwidth
-``axis_kind="spline"`` option. It is still projected into VMEC Fourier boundary
-coefficients, but it replaces the sharp polar-square/superellipse content with
-a smooth rounded-square envelope before projection. This is the practical
-near-term way to reduce ``NTOR`` sensitivity; a true spline basis inside the
-VMEC solve would be a larger solver reparameterization. The public helper
+``axis_kind="control_spline"`` bridge, or equivalently the rounded
+``axis_kind="spline"`` envelope for the default uniform controls. The target is
+still projected into VMEC Fourier boundary coefficients, but it replaces the
+sharp polar-square/superellipse content with a smooth rounded-square envelope
+before projection. This is the practical near-term way to reduce ``NTOR``
+sensitivity; a true spline basis inside the VMEC solve would be a larger
+solver reparameterization. The public helper
 ``square_axis_stellarator_mirror_hybrid_projection_error`` and the square-coil
 profiler's ``boundary_projection`` JSON block now report the Fourier truncation
 error, mode count, and recommended ``NZETA`` for the selected

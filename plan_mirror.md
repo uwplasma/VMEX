@@ -5739,6 +5739,87 @@ Visual validation:
 No user input is needed.
 
 ---
+## 249. Made The Square-Axis Control Spline The Default Hybrid Representation
+
+### Steps taken
+
+- Switched the root square-coil stellarator-mirror hybrid example default from
+  the implicit rounded ``spline`` envelope to the explicit
+  ``control_spline`` bridge.
+- Aligned the backend profiler ``--axis-kind`` default with the root example
+  instead of hard-coding ``spline`` separately.
+- Updated docs to state that ``control_spline`` is the default representation
+  bridge, while VMEC and VMEC2000 still receive ordinary Fourier-projected
+  boundary coefficients.
+- Added a test assertion pinning the root example default to
+  ``control_spline``.
+
+### Results obtained
+
+- The square-axis controls are now the default user-facing representation:
+  side/corner control radii are independent of ``MPOL`` and ``NTOR`` until the
+  final VMEC Fourier projection step.
+- This addresses the linear-axis/straight-side concern without claiming a
+  native spline-basis VMEC solve. The current implementation is still a
+  projection bridge; if strict profiles plateau above ``1e-12`` after the
+  VMEC2000 reference scan, the next geometry lane is a solver-native
+  spline/control-basis reparameterization.
+- The default uniform controls retain the same low-bandwidth projection
+  behavior as the rounded ``spline`` target, so existing strict deck evidence
+  remains comparable.
+
+### How it was tested
+
+```bash
+venv/bin/python -m pytest -q \
+  tests/test_toroidal_hybrid.py::test_square_axis_recommended_nzeta_and_example_guard \
+  tests/test_toroidal_hybrid.py::test_square_axis_first_order_weights_reduce_production_projection_error \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_parser_accepts_control_spline_axis_kind \
+  tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_records_boundary_projection_payload
+```
+
+Result: `4 passed, 1 warning`.
+
+```bash
+git diff --check
+```
+
+Result: passed.
+
+### File structure and best-practice notes
+
+- The representation default lives in the top parameter block of the root
+  example, preserving the self-contained-script style requested for examples.
+- The profiler now imports the same example default, reducing duplicated
+  configuration drift between examples and diagnostics.
+- The public helper layer in ``vmec_jax.toroidal_hybrid`` remains unchanged;
+  this tranche only changes defaults and docs.
+
+### Best next steps
+
+1. Keep the active VMEC2000 strict row running to completion unless it exits or
+   clearly stalls at the final-stage floor.
+2. Use ``--axis-kind control_spline`` for the next VMEC2000 and ``vmec_jax``
+   matching profiles so new reports reflect the explicit control bridge.
+3. If the control-spline bridge plus the `5,28,64` deck still plateaus above
+   the strict component gate, open the solver-native spline/control-basis lane.
+
+### Completion percentages after M249
+
+- Square-coil strict `FTOL=1e-12` profiling lane: `96%`.
+- VMEC2000 robustness/reference lane: `96%`.
+- Direct-coil finite-beta diagnostic lane: `88%`.
+- Direct-coil GPU/JIT parity lane: `77%`.
+- `vmec_jax` generated-`mgrid` parity/performance lane: `75%`.
+- Square-axis spline-smoothed Fourier closure lane: `100%`.
+- True spline/control-basis hybrid lane: `42%`.
+- Overall toroidal stellarator-mirror hybrid production-readiness: `95%`.
+
+### User input needed
+
+No user input is needed.
+
+---
 ## 248. Aligned The Square-Coil Hybrid Defaults With The Strict `FTOL=1e-12` Deck
 
 ### Steps taken

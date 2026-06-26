@@ -162,18 +162,17 @@ iteration ladder is ``NS_ARRAY = 9, 13, 17``,
 ``MAX_BOUNDARY_PROJECTION_ERROR = 5e-12``. This is intentionally strict enough
 for ``FTOL=1e-12`` studies; set the gate to ``None`` only for diagnostic
 underresolved runs. The default
-square axis uses the low-bandwidth rounded ``axis_kind="spline"`` profile before
-VMEC Fourier projection, which is less sensitive to ``NTOR`` than the sharper
-polar superellipse. For the spline-control bridge, set
-``PLASMA_AXIS_KIND = "control_spline"`` in the root example; the default
-controls are periodic side/corner radii, or an explicit
+square axis uses the low-bandwidth ``axis_kind="control_spline"`` bridge before
+VMEC Fourier projection. The default controls are periodic side/corner radii,
+or an explicit
 ``SquareAxisSplineControls`` object can be assigned to
 ``PLASMA_AXIS_SPLINE_CONTROLS``. Uniform controls use a low-bandwidth periodic
 interpolant, so the default ``control_spline`` projection error matches the
-rounded ``spline`` target at the production mode counts. This still projects to
-VMEC Fourier coefficients for the solve and for VMEC2000/mgrid parity, but it
-keeps the intended square-axis control variables independent of ``MPOL`` and
-``NTOR``.
+rounded ``spline`` target at the production mode counts. This is less sensitive
+to ``NTOR`` than the sharper polar superellipse. It still projects to VMEC
+Fourier coefficients for the solve and for VMEC2000/mgrid parity, while keeping
+the intended square-axis control variables independent of ``MPOL`` and
+``NTOR`` before projection.
 The default square-axis side/corner weights use
 ``SIDE_POWER = CORNER_POWER = 1.0``; this keeps the rounded-square target close
 to finite Fourier bandwidth. Sharper values such as ``1.4`` remain useful
@@ -251,7 +250,7 @@ For direct-provider versus mgrid/VMEC2000 profiling, use::
   python tools/diagnostics/profile_square_coil_free_boundary.py \
     --ftol 1e-12 --max-iter 12000 --phiedge -0.04 \
     --solver-mode parity --nvacskip 1 --nstep 1 --delt 0.02 \
-    --mpol 5 --ntor 28 --nzeta 64 --axis-kind spline \
+    --mpol 5 --ntor 28 --nzeta 64 --axis-kind control_spline \
     --ns-array 9,13,17 --niter-array 4000,8000,24000 \
     --ftol-array 1e-8,1e-10,1e-12 \
     --mgrid-nr 88 --mgrid-nz 64 --mgrid-nphi 64 \
@@ -275,7 +274,7 @@ Before launching a long solve after changing ``MPOL``, ``NTOR``, ``NZETA``, or
     --mpol 5 --ntor 28 --nzeta 64 --mgrid-nphi 64 \
     --ns-array 9,13,17 --niter-array 4000,8000,24000 \
     --ftol-array 1e-8,1e-10,1e-12 \
-    --axis-kind spline --side-power 1.0 --corner-power 1.0 \
+    --axis-kind control_spline --side-power 1.0 --corner-power 1.0 \
     --max-boundary-projection-error 5e-12 \
     --resolution-diagnostics-only
 
