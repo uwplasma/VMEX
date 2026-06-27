@@ -4056,6 +4056,7 @@ def solve_fixed_boundary_residual_iter(
         freeb_edge_control_projector.native_reduced_edge_state
     )
     freeb_edge_control_projection_native_spline_state = freeb_edge_control_projector.native_spline_state
+    freeb_edge_control_projection_native_unknowns = freeb_edge_control_projector.native_unknowns
     freeb_edge_control_projection_zero_velocity_count = freeb_edge_control_projector.zero_velocity_count
     freeb_edge_control_projection_native_resync_count = freeb_edge_control_projector.native_control_resync_count
     return _finalize_residual_iter_result_from_namespace(

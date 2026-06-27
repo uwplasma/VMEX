@@ -19,6 +19,10 @@ from ...free_boundary.control import (
     _freeb_edge_control_state_residual_metrics,
     free_boundary_reduced_edge_state_from_vmec_state,
 )
+from ...free_boundary.native_state import (
+    FreeBoundaryNativeSplineUnknownVector,
+    free_boundary_native_spline_unknown_vector_from_vmec_state,
+)
 from ...free_boundary.reduced_controls import ReducedControlState
 from .runtime import (
     _build_residual_iter_timing_report,
@@ -238,6 +242,48 @@ def _edge_control_native_spline_state_payload(ns: Mapping[str, Any]) -> dict[str
         }
 
 
+def _edge_control_native_unknown_vector_payload(ns: Mapping[str, Any]) -> dict[str, Any]:
+    """Return packed native spline-control unknown-vector diagnostics."""
+
+    try:
+        projection = ns.get("freeb_edge_control_projection", {"enabled": False})
+        if not bool(projection.get("enabled", False)):
+            return {"enabled": False, "status": "disabled"}
+        projector = ns.get("freeb_edge_control_projector")
+        unknowns = ns.get(
+            "freeb_edge_control_projection_native_unknowns",
+            getattr(projector, "native_unknowns", None),
+        )
+        status = "tracked"
+        if unknowns is None:
+            state = ns.get("state")
+            if state is None:
+                return {"enabled": True, "status": "unavailable"}
+            unknowns = free_boundary_native_spline_unknown_vector_from_vmec_state(state, projection)
+            status = "state_encoded"
+        if not isinstance(unknowns, FreeBoundaryNativeSplineUnknownVector):
+            return {
+                "enabled": True,
+                "status": "invalid_type",
+                "type": type(unknowns).__name__,
+            }
+        payload = unknowns.to_dict()
+        payload.update(
+            {
+                "enabled": True,
+                "status": status,
+                "native_state_schema": "FreeBoundaryNativeSplineUnknownVector.v1",
+            }
+        )
+        return payload
+    except Exception as exc:
+        return {
+            "enabled": bool(ns.get("freeb_edge_control_projection_enabled", False)),
+            "status": "failed",
+            "error": repr(exc),
+        }
+
+
 def _edge_control_update_direction_payload(ns: Mapping[str, Any]) -> dict[str, Any]:
     """Return reduced-edge projection residuals for the final force direction.
 
@@ -348,6 +394,7 @@ def _edge_control_projection_payload(ns: Mapping[str, Any]) -> dict[str, Any]:
         "reduced_unknown_vector": _edge_control_reduced_unknown_payload(ns),
         "native_control_state": _edge_control_native_control_state_payload(ns),
         "native_spline_state": _edge_control_native_spline_state_payload(ns),
+        "native_unknown_vector": _edge_control_native_unknown_vector_payload(ns),
         "force_direction": force_direction,
         "reduced_force_direction": reduced_force_direction,
         "update_direction": force_direction,
