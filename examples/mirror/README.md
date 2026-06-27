@@ -731,6 +731,11 @@ Use ``--native-spline-actual-force-matrix-damping``,
 ``--native-spline-actual-force-linear-tol``, and
 ``--native-spline-actual-force-linear-maxiter`` to profile the damped
 normal-equation CG solve itself before spending time on long strict runs.
+Use ``--native-spline-actual-force-preconditioner hutchinson_diag`` plus
+``--native-spline-actual-force-preconditioner-probes`` to test a deterministic
+Jacobi preconditioner for ``J.T J + damping I``. This is the current finite
+way to separate a linear-solve conditioning problem from a boundary-basis or
+vacuum-coupling problem on strict ``ftol=1e-12`` square-hybrid decks.
 Use ``--native-spline-actual-force-vacuum-mode jax_replay`` when you want the
 native residual to recompute direct-coil ``bsqvac`` from the decoded boundary
 through the existing JAX-NESTOR replay path. This is the differentiable

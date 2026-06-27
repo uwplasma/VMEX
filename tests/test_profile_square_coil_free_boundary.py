@@ -99,6 +99,12 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "1e-11",
             "--native-spline-actual-force-linear-maxiter",
             "12",
+            "--native-spline-actual-force-preconditioner",
+            "hutchinson_diag",
+            "--native-spline-actual-force-preconditioner-probes",
+            "3",
+            "--native-spline-actual-force-preconditioner-floor",
+            "1e-9",
             "--native-spline-actual-force-vacuum-mode",
             "jax_replay",
         ]
@@ -150,6 +156,9 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.native_spline_actual_force_matrix_damping == pytest.approx(1.0e-7)
     assert args.native_spline_actual_force_linear_tol == pytest.approx(1.0e-11)
     assert args.native_spline_actual_force_linear_maxiter == 12
+    assert args.native_spline_actual_force_preconditioner == "hutchinson_diag"
+    assert args.native_spline_actual_force_preconditioner_probes == 3
+    assert args.native_spline_actual_force_preconditioner_floor == pytest.approx(1.0e-9)
     assert args.native_spline_actual_force_vacuum_mode == "jax_replay"
 
 
@@ -1691,6 +1700,9 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert native["matrix_free_damping"] == pytest.approx(1.0e-8)
     assert native["matrix_free_linear_tol"] == pytest.approx(1.0e-10)
     assert native["matrix_free_linear_maxiter"] == 8
+    preconditioner = native["matrix_free_preconditioner"]
+    assert preconditioner["mode"] == "none"
+    assert preconditioner["diagonal_estimated"] is False
     line_search = native["matrix_free_line_search_solve"]
     assert line_search["status"] == "completed"
     assert line_search["method"] == "matrix_free_normal_step_with_residual_line_search"
@@ -1797,6 +1809,13 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert row[
         "native_spline_actual_force_step_profile_matrix_free_linear_maxiter"
     ] == native["matrix_free_linear_maxiter"]
+    assert (
+        row["native_spline_actual_force_step_profile_matrix_free_preconditioner_mode"]
+        == "none"
+    )
+    assert row[
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_probes"
+    ] == preconditioner["probes"]
     assert row["native_spline_actual_force_step_profile_line_search_status"] == "completed"
     assert row["native_spline_actual_force_step_profile_line_search_n_iter"] == line_search[
         "n_iter"

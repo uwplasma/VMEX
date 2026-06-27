@@ -547,6 +547,27 @@ def _parser() -> argparse.ArgumentParser:
         help="CG max iterations for the native actual-force normal step. Use 'none' for the solver default.",
     )
     p.add_argument(
+        "--native-spline-actual-force-preconditioner",
+        choices=("none", "hutchinson_diag", "jacobi", "diag", "diagonal"),
+        default="none",
+        help=(
+            "Optional CG preconditioner for the native actual-force normal step. "
+            "The diagonal modes use deterministic Hutchinson probes to estimate diag(J.T J + damping I)."
+        ),
+    )
+    p.add_argument(
+        "--native-spline-actual-force-preconditioner-probes",
+        type=int,
+        default=4,
+        help="Number of deterministic Rademacher probes for the native actual-force diagonal preconditioner.",
+    )
+    p.add_argument(
+        "--native-spline-actual-force-preconditioner-floor",
+        type=float,
+        default=1.0e-12,
+        help="Positive floor applied to the estimated native actual-force preconditioner diagonal.",
+    )
+    p.add_argument(
         "--native-spline-actual-force-vacuum-mode",
         choices=("frozen_initial", "jax_replay"),
         default="frozen_initial",
@@ -3609,6 +3630,9 @@ def main(argv: list[str] | None = None) -> int:
                 matrix_damping=float(args.native_spline_actual_force_matrix_damping),
                 linear_tol=float(args.native_spline_actual_force_linear_tol),
                 linear_maxiter=args.native_spline_actual_force_linear_maxiter,
+                matrix_preconditioner=str(args.native_spline_actual_force_preconditioner),
+                matrix_preconditioner_probes=int(args.native_spline_actual_force_preconditioner_probes),
+                matrix_preconditioner_floor=float(args.native_spline_actual_force_preconditioner_floor),
                 vacuum_mode=str(args.native_spline_actual_force_vacuum_mode),
             )
             if bool(args.native_spline_actual_force_step_profile)
@@ -3689,6 +3713,15 @@ def main(argv: list[str] | None = None) -> int:
                     None
                     if args.native_spline_actual_force_linear_maxiter is None
                     else int(args.native_spline_actual_force_linear_maxiter)
+                ),
+                "native_spline_actual_force_preconditioner": str(
+                    args.native_spline_actual_force_preconditioner
+                ),
+                "native_spline_actual_force_preconditioner_probes": int(
+                    args.native_spline_actual_force_preconditioner_probes
+                ),
+                "native_spline_actual_force_preconditioner_floor": float(
+                    args.native_spline_actual_force_preconditioner_floor
                 ),
                 "native_spline_actual_force_vacuum_mode": str(
                     args.native_spline_actual_force_vacuum_mode

@@ -367,6 +367,9 @@ def native_spline_actual_force_step_profile_payload(
     matrix_damping: float = 1.0e-8,
     linear_tol: float = 1.0e-10,
     linear_maxiter: int | None = 8,
+    matrix_preconditioner: str | None = "none",
+    matrix_preconditioner_probes: int = 4,
+    matrix_preconditioner_floor: float = 1.0e-12,
     vacuum_mode: str = "frozen_initial",
 ) -> dict[str, Any]:
     """Profile one native matrix-free step using VMEC force blocks.
@@ -628,6 +631,9 @@ def native_spline_actual_force_step_profile_payload(
     damping = float(matrix_damping)
     linear_tol = float(linear_tol)
     linear_maxiter = None if linear_maxiter is None else int(linear_maxiter)
+    matrix_preconditioner = "none" if matrix_preconditioner is None else str(matrix_preconditioner)
+    matrix_preconditioner_probes = int(matrix_preconditioner_probes)
+    matrix_preconditioner_floor = float(matrix_preconditioner_floor)
     step, step_s = _time_call(
         lambda: free_boundary_native_spline_matrix_free_normal_step_jax(
             problem,
@@ -635,6 +641,9 @@ def native_spline_actual_force_step_profile_payload(
             damping=damping,
             tol=linear_tol,
             maxiter=linear_maxiter,
+            preconditioner=matrix_preconditioner,
+            preconditioner_probes=matrix_preconditioner_probes,
+            preconditioner_floor=matrix_preconditioner_floor,
         )
     )
     next_residual, next_residual_s = _time_call(lambda: problem.residual(step.next_vector))
@@ -653,6 +662,9 @@ def native_spline_actual_force_step_profile_payload(
             max_backtracks=line_search_max_backtracks,
             shrink=0.5,
             accept_ratio=1.0,
+            preconditioner=matrix_preconditioner,
+            preconditioner_probes=matrix_preconditioner_probes,
+            preconditioner_floor=matrix_preconditioner_floor,
         )
     )
     before_norm = _norms(np.asarray(projected_residual, dtype=float))
@@ -824,6 +836,7 @@ def native_spline_actual_force_step_profile_payload(
         "matrix_free_damping": damping,
         "matrix_free_linear_tol": linear_tol,
         "matrix_free_linear_maxiter": linear_maxiter,
+        "matrix_free_preconditioner": dict(step.preconditioner_info),
         "matrix_free_step_l2": float(step.step_l2),
         "matrix_free_cg_info": _json_scalar(step.cg_info),
         "matrix_free_line_search_solve": {

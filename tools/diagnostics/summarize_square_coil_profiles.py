@@ -1751,6 +1751,9 @@ def _summary_row(
     native_actual_line_search = native_actual_force_profile.get("matrix_free_line_search_solve")
     if not isinstance(native_actual_line_search, dict):
         native_actual_line_search = {}
+    native_actual_preconditioner = native_actual_force_profile.get("matrix_free_preconditioner")
+    if not isinstance(native_actual_preconditioner, dict):
+        native_actual_preconditioner = {}
     native_actual_edge_bridge_opposite = native_actual_edge_bridge.get("opposite_flip_sign_comparison")
     if not isinstance(native_actual_edge_bridge_opposite, dict):
         native_actual_edge_bridge_opposite = {}
@@ -2309,6 +2312,21 @@ def _summary_row(
         ),
         "native_spline_actual_force_step_profile_matrix_free_linear_maxiter": native_actual_force_profile.get(
             "matrix_free_linear_maxiter"
+        ),
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_mode": native_actual_preconditioner.get(
+            "mode"
+        ),
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_requested_mode": (
+            native_actual_preconditioner.get("requested_mode")
+        ),
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_probes": (
+            native_actual_preconditioner.get("probes")
+        ),
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_diag_linf": _finite_float(
+            native_actual_preconditioner.get("diagonal_linf")
+        ),
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_diag_min_abs": _finite_float(
+            native_actual_preconditioner.get("diagonal_min_abs")
         ),
         "native_spline_actual_force_step_profile_residual_reduction_factor": _finite_float(
             native_actual_force_profile.get("projected_residual_reduction_factor")
@@ -3044,6 +3062,11 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_actual_force_step_profile_matrix_free_damping",
         "native_spline_actual_force_step_profile_matrix_free_linear_tol",
         "native_spline_actual_force_step_profile_matrix_free_linear_maxiter",
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_mode",
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_requested_mode",
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_probes",
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_diag_linf",
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_diag_min_abs",
         "native_spline_actual_force_step_profile_residual_reduction_factor",
         "native_spline_actual_force_step_profile_projected_l2_before",
         "native_spline_actual_force_step_profile_projected_l2_after",

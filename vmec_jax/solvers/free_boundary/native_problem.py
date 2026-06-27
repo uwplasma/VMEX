@@ -96,6 +96,7 @@ class FreeBoundaryNativeSplineMatrixFreeStep(NamedTuple):
     step_l2: float
     damping: float
     cg_info: Any
+    preconditioner_info: dict[str, Any]
 
 
 class FreeBoundaryNativeSplineMatrixFreeSolve(NamedTuple):
@@ -241,13 +242,17 @@ def free_boundary_native_spline_matrix_free_normal_step_jax(
     damping: float = 1.0e-10,
     tol: float = 1.0e-10,
     maxiter: int | None = None,
+    preconditioner: str | None = None,
+    preconditioner_probes: int = 4,
+    preconditioner_floor: float = 1.0e-12,
 ) -> FreeBoundaryNativeSplineMatrixFreeStep:
     """Take one matrix-free damped normal-equation step.
 
     The linear operator is ``J.T @ J + damping * I``. Products with ``J`` and
     ``J.T`` come from ``jax.linearize`` and ``jax.vjp`` instead of a dense
-    Jacobian. This is still a prototype, but it is the scalable direction for
-    native spline-control solves.
+    Jacobian. An optional deterministic Hutchinson diagonal estimate can be
+    passed to CG as a Jacobi preconditioner. This is still a prototype, but it
+    is the scalable direction for native spline-control solves.
     """
 
     if not isinstance(problem, FreeBoundaryNativeSplineResidualProblem):
@@ -260,6 +265,20 @@ def free_boundary_native_spline_matrix_free_normal_step_jax(
         raise ValueError("tol must be finite and nonnegative")
     if maxiter is not None and int(maxiter) <= 0:
         raise ValueError("maxiter must be positive when supplied")
+    preconditioner_mode = "none" if preconditioner is None else str(preconditioner).strip().lower()
+    if preconditioner_mode in {"", "false", "off", "no", "identity"}:
+        preconditioner_mode = "none"
+    if preconditioner_mode not in {"none", "hutchinson_diag", "jacobi", "diag", "diagonal"}:
+        raise ValueError("preconditioner must be 'none' or 'hutchinson_diag'")
+    probes = int(preconditioner_probes)
+    if probes <= 0:
+        if preconditioner_mode == "none":
+            probes = 0
+        else:
+            raise ValueError("preconditioner_probes must be positive when a preconditioner is enabled")
+    floor_value = float(preconditioner_floor)
+    if not np.isfinite(floor_value) or floor_value <= 0.0:
+        raise ValueError("preconditioner_floor must be finite and positive")
 
     values = jnp.asarray(vector)
     residual_fn = lambda candidate: problem.residual(candidate)
@@ -275,11 +294,41 @@ def free_boundary_native_spline_matrix_free_normal_step_jax(
     def normal_matvec(step):
         return jt(jvp(step)) + damping_arr * step
 
+    cg_preconditioner = None
+    preconditioner_info: dict[str, Any] = {
+        "mode": preconditioner_mode,
+        "probes": int(probes),
+        "floor": float(floor_value),
+        "diagonal_estimated": False,
+    }
+    if preconditioner_mode != "none":
+        diagonal = _hutchinson_normal_diagonal_estimate(
+            normal_matvec,
+            values,
+            probes=probes,
+            floor=floor_value,
+        )
+
+        def cg_preconditioner(target):
+            return target / diagonal
+
+        preconditioner_info = {
+            "mode": "hutchinson_diag",
+            "requested_mode": preconditioner_mode,
+            "probes": int(probes),
+            "floor": float(floor_value),
+            "diagonal_estimated": True,
+            "diagonal_l2": float(jnp.linalg.norm(diagonal)),
+            "diagonal_linf": float(jnp.max(jnp.abs(diagonal))),
+            "diagonal_min_abs": float(jnp.min(jnp.abs(diagonal))),
+        }
+
     step, info = jax_cg(
         normal_matvec,
         rhs,
         tol=tol_value,
         maxiter=None if maxiter is None else int(maxiter),
+        M=cg_preconditioner,
     )
     next_vector = values + step
     return FreeBoundaryNativeSplineMatrixFreeStep(
@@ -291,7 +340,39 @@ def free_boundary_native_spline_matrix_free_normal_step_jax(
         step_l2=float(jnp.linalg.norm(step)),
         damping=damping_value,
         cg_info=info,
+        preconditioner_info=preconditioner_info,
     )
+
+
+def _hutchinson_normal_diagonal_estimate(
+    normal_matvec: Callable[[Any], Any],
+    template: Any,
+    *,
+    probes: int,
+    floor: float,
+):
+    """Estimate ``diag(A)`` for a matrix-free normal operator.
+
+    Rademacher probes give ``diag(A) = E[z * A z]``. The deterministic sign
+    sequence keeps profiling reproducible and avoids carrying PRNG state
+    through this low-level prototype helper.
+    """
+
+    values = jnp.asarray(template)
+    if values.ndim != 1:
+        raise ValueError("native matrix-free vectors must be one-dimensional")
+    count = int(probes)
+    if count <= 0:
+        raise ValueError("probes must be positive")
+    index = jnp.arange(values.shape[0], dtype=jnp.int32)
+    accum = jnp.zeros_like(values)
+    for probe in range(count):
+        hashed = (index * (2 * int(probe) + 3) + 17 * (int(probe) + 1)) % 4
+        signs = jnp.where(hashed < 2, 1.0, -1.0).astype(values.dtype)
+        accum = accum + signs * normal_matvec(signs)
+    diagonal = accum / jnp.asarray(count, dtype=values.dtype)
+    floor_arr = jnp.asarray(float(floor), dtype=values.dtype)
+    return jnp.maximum(jnp.abs(diagonal), floor_arr)
 
 
 def free_boundary_native_spline_matrix_free_normal_solve_jax(
@@ -303,6 +384,9 @@ def free_boundary_native_spline_matrix_free_normal_solve_jax(
     damping: float = 1.0e-10,
     linear_tol: float = 1.0e-10,
     linear_maxiter: int | None = None,
+    preconditioner: str | None = None,
+    preconditioner_probes: int = 4,
+    preconditioner_floor: float = 1.0e-12,
 ) -> FreeBoundaryNativeSplineMatrixFreeSolve:
     """Solve a small native residual problem with matrix-free normal steps."""
 
@@ -324,6 +408,9 @@ def free_boundary_native_spline_matrix_free_normal_solve_jax(
             damping=damping,
             tol=linear_tol,
             maxiter=linear_maxiter,
+            preconditioner=preconditioner,
+            preconditioner_probes=preconditioner_probes,
+            preconditioner_floor=preconditioner_floor,
         )
         current = step.next_vector
         residual = problem.residual(current)
@@ -359,6 +446,9 @@ def free_boundary_native_spline_matrix_free_line_search_solve_jax(
     max_backtracks: int = 8,
     shrink: float = 0.5,
     accept_ratio: float = 1.0,
+    preconditioner: str | None = None,
+    preconditioner_probes: int = 4,
+    preconditioner_floor: float = 1.0e-12,
 ) -> FreeBoundaryNativeSplineMatrixFreeSolve:
     """Solve a native residual problem with safeguarded matrix-free steps.
 
@@ -397,6 +487,9 @@ def free_boundary_native_spline_matrix_free_line_search_solve_jax(
             damping=damping,
             tol=linear_tol,
             maxiter=linear_maxiter,
+            preconditioner=preconditioner,
+            preconditioner_probes=preconditioner_probes,
+            preconditioner_floor=preconditioner_floor,
         )
         step_l2 = float(step.step_l2)
         before_l2 = float(residual_l2)
