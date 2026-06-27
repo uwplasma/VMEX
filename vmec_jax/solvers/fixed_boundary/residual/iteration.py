@@ -157,11 +157,12 @@ from vmec_jax.solvers.free_boundary.control import (
     _freeb_edge_control_control_delta_jax,
     _freeb_edge_control_native_coordinate_step,
     _freeb_edge_control_project_vector_np,
-    _freeb_edge_control_reduced_state_from_state,
+    _freeb_edge_control_reduced_edge_state_from_coordinates,
     _prepare_freeb_edge_control_projection,
     _project_freeb_edge_control_delta_tuple,
     _project_freeb_edge_control_state,
     _zero_freeb_edge_control_velocity_blocks,
+    free_boundary_reduced_edge_state_from_vmec_state,
 )
 from vmec_jax.field import TWOPI
 from vmec_jax.solvers.fixed_boundary.jit_cache import (
@@ -1241,7 +1242,7 @@ class _FreeBoundaryEdgeControlProjector:
         self.native_velocity_reset_count = 0
         self.zero_velocity_count = 0
         self.native_control_velocity = None
-        self.native_control_coordinates = None
+        self.native_reduced_edge_state = None
         self.native_control_last_step = {}
         self.native_control_resync_count = 0
         self.use_scan = bool(use_scan)
@@ -1268,6 +1269,24 @@ class _FreeBoundaryEdgeControlProjector:
             if self.use_scan:
                 self.use_scan = False
                 self.info["scan_disabled"] = True
+
+    @property
+    def native_control_coordinates(self):
+        """Return tracked native edge coordinates for legacy diagnostics."""
+
+        if self.native_reduced_edge_state is None:
+            return None
+        return np.asarray(self.native_reduced_edge_state.control_delta, dtype=float)
+
+    @native_control_coordinates.setter
+    def native_control_coordinates(self, coordinates) -> None:
+        if coordinates is None:
+            self.native_reduced_edge_state = None
+            return
+        self.native_reduced_edge_state = _freeb_edge_control_reduced_edge_state_from_coordinates(
+            self.projection,
+            coordinates,
+        )
 
     def apply(self, state_in: VMECState, *, host_update: bool) -> VMECState:
         if not self.enabled:
@@ -1314,7 +1333,7 @@ class _FreeBoundaryEdgeControlProjector:
         if not self.enabled or self.update_mode != "native_coordinate":
             return
         self.native_control_velocity = None
-        self.native_control_coordinates = None
+        self.native_reduced_edge_state = None
         self.native_velocity_reset_count += 1
 
     def apply_native_coordinate_update_from_force_tuple(
@@ -1341,7 +1360,7 @@ class _FreeBoundaryEdgeControlProjector:
             force_deltas=force_deltas,
             projection=self.projection,
             control_velocity=self.native_control_velocity,
-            control_coordinates=self.native_control_coordinates,
+            edge_state=self.native_reduced_edge_state,
             dt_eff=float(dt_eff),
             b1=float(b1),
             fac=float(fac),
@@ -1350,15 +1369,16 @@ class _FreeBoundaryEdgeControlProjector:
             host_update=bool(host_update),
         )
         self.native_control_velocity = step.control_velocity
-        self.native_control_coordinates = step.control_coordinates
+        self.native_reduced_edge_state = step.edge_state
+        control_coordinates = np.asarray(step.edge_state.control_delta, dtype=float)
         self.native_control_last_step = {
             "status": "applied",
             "force_metric": str(step.force_metric),
             "target_l2": float(step.target_l2),
             "control_force_l2": float(step.control_force_l2),
-            "control_coordinate_l2": float(np.linalg.norm(step.control_coordinates)),
-            "control_coordinate_linf": float(np.max(np.abs(step.control_coordinates)))
-            if np.asarray(step.control_coordinates).size
+            "control_coordinate_l2": float(np.linalg.norm(control_coordinates)),
+            "control_coordinate_linf": float(np.max(np.abs(control_coordinates)))
+            if control_coordinates.size
             else 0.0,
             "control_velocity_l2": float(step.control_velocity_l2),
             "control_update_l2": float(step.control_update_l2),
@@ -1376,8 +1396,11 @@ class _FreeBoundaryEdgeControlProjector:
 
         if not self.enabled or self.update_mode != "native_coordinate":
             return
-        reduced_state = _freeb_edge_control_reduced_state_from_state(state_in, self.projection)
-        self.native_control_coordinates = np.asarray(reduced_state.control_delta, dtype=float)
+        self.native_reduced_edge_state = free_boundary_reduced_edge_state_from_vmec_state(
+            state_in,
+            self.projection,
+        )
+        control_coordinates = np.asarray(self.native_reduced_edge_state.control_delta, dtype=float)
         scale = float(velocity_scale)
         if self.native_control_velocity is not None and np.isfinite(scale):
             self.native_control_velocity = scale * np.asarray(self.native_control_velocity, dtype=float)
@@ -1386,9 +1409,9 @@ class _FreeBoundaryEdgeControlProjector:
             {
                 "accepted_state_resync": True,
                 "backtracking_alpha": scale if np.isfinite(scale) else None,
-                "control_coordinate_l2": float(np.linalg.norm(self.native_control_coordinates)),
-                "control_coordinate_linf": float(np.max(np.abs(self.native_control_coordinates)))
-                if self.native_control_coordinates.size
+                "control_coordinate_l2": float(np.linalg.norm(control_coordinates)),
+                "control_coordinate_linf": float(np.max(np.abs(control_coordinates)))
+                if control_coordinates.size
                 else 0.0,
                 "control_velocity_l2": float(np.linalg.norm(np.asarray(self.native_control_velocity, dtype=float)))
                 if self.native_control_velocity is not None
@@ -3980,6 +4003,9 @@ def solve_fixed_boundary_residual_iter(
         freeb_edge_control_projector.native_velocity_reset_count
     )
     freeb_edge_control_projection_native_last_step = dict(freeb_edge_control_projector.native_control_last_step)
+    freeb_edge_control_projection_native_reduced_edge_state = (
+        freeb_edge_control_projector.native_reduced_edge_state
+    )
     freeb_edge_control_projection_zero_velocity_count = freeb_edge_control_projector.zero_velocity_count
     freeb_edge_control_projection_native_resync_count = freeb_edge_control_projector.native_control_resync_count
     return _finalize_residual_iter_result_from_namespace(

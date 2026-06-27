@@ -30,7 +30,7 @@ class FreeBoundaryNativeControlStep(NamedTuple):
     state: VMECState
     update_deltas: Any
     control_velocity: np.ndarray
-    control_coordinates: np.ndarray
+    edge_state: FreeBoundaryReducedEdgeState
     control_update: np.ndarray
     control_force: np.ndarray
     target_l2: float
@@ -648,6 +648,20 @@ def free_boundary_reduced_edge_state_from_vmec_state(
     )
 
 
+def _freeb_edge_control_reduced_edge_state_from_coordinates(
+    projection: dict[str, Any],
+    control_delta: Any,
+) -> FreeBoundaryReducedEdgeState:
+    """Return a reduced LCFS edge state from native control coordinates."""
+
+    return FreeBoundaryReducedEdgeState(
+        control_state=ReducedControlState(
+            control_map=_freeb_edge_control_reduced_map(projection),
+            control_delta=control_delta,
+        )
+    )
+
+
 def free_boundary_reduced_edge_state_to_vmec_state(
     reduced_edge_state: FreeBoundaryReducedEdgeState,
     template_state: VMECState,
@@ -830,7 +844,7 @@ def _freeb_edge_control_native_coordinate_step(
     force_deltas: Any,
     projection: dict[str, Any],
     control_velocity: Any | None,
-    control_coordinates: Any | None,
+    edge_state: FreeBoundaryReducedEdgeState | None,
     dt_eff: float,
     b1: float,
     fac: float,
@@ -852,26 +866,16 @@ def _freeb_edge_control_native_coordinate_step(
     if trust_scale != 1.0:
         next_velocity = control_update / max(float(dt_eff), np.finfo(float).tiny)
 
-    current_state = (
-        _freeb_edge_control_reduced_state_from_state(state_current, projection)
-        if control_coordinates is None
-        else ReducedControlState(
-            control_map=_freeb_edge_control_reduced_map(projection),
-            control_delta=control_coordinates,
-        )
+    current_edge_state = (
+        free_boundary_reduced_edge_state_from_vmec_state(state_current, projection)
+        if edge_state is None
+        else edge_state
     )
-    next_control_state = current_state.update(control_update)
-    native_edge_state = _freeb_edge_control_state_from_coordinates(
-        state_current,
-        projection,
-        next_control_state.control_delta,
-        host_update=bool(host_update),
-    )
-    native_edge_values = _freeb_edge_control_state_edge_values(native_edge_state, projection)
-    state_out = _freeb_edge_control_state_from_edge_values(
+    next_edge_state = current_edge_state.update(control_update)
+    state_out = free_boundary_reduced_edge_state_to_vmec_state(
+        next_edge_state,
         state_candidate,
         projection,
-        native_edge_values,
         host_update=bool(host_update),
     )
     update_deltas_out = _freeb_edge_control_delta_tuple_from_control_update(
@@ -884,7 +888,7 @@ def _freeb_edge_control_native_coordinate_step(
         state=state_out,
         update_deltas=update_deltas_out,
         control_velocity=np.asarray(next_velocity, dtype=float),
-        control_coordinates=np.asarray(next_control_state.control_delta, dtype=float),
+        edge_state=next_edge_state,
         control_update=np.asarray(control_update, dtype=float),
         control_force=np.asarray(control_force, dtype=float),
         target_l2=float(np.linalg.norm(target)),

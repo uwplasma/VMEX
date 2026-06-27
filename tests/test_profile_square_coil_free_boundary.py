@@ -641,7 +641,7 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
         force_deltas=force_deltas,
         projection=projection,
         control_velocity=None,
-        control_coordinates=None,
+        edge_state=None,
         dt_eff=0.5,
         b1=0.0,
         fac=1.0,
@@ -684,7 +684,7 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
         force_deltas=force_deltas,
         projection=least_squares_projection,
         control_velocity=None,
-        control_coordinates=None,
+        edge_state=None,
         dt_eff=1.0,
         b1=0.0,
         fac=1.0,
@@ -699,7 +699,7 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
         force_deltas=force_deltas,
         projection=pullback_metric_projection,
         control_velocity=None,
-        control_coordinates=None,
+        edge_state=None,
         dt_eff=1.0,
         b1=0.0,
         fac=1.0,
@@ -710,7 +710,7 @@ def test_free_boundary_edge_control_projection_removes_uncontrolled_edge_modes()
     np.testing.assert_allclose(native.control_force, [2.0])
     np.testing.assert_allclose(native.control_velocity, [1.0])
     np.testing.assert_allclose(native.control_update, [0.5])
-    np.testing.assert_allclose(native.control_coordinates, [0.7])
+    np.testing.assert_allclose(native.edge_state.control_delta, [0.7])
     assert native.force_metric == "pullback"
     assert least_squares_projection["info"]["native_force_metric"] == "least_squares"
     np.testing.assert_allclose(native_least_squares.control_force, [1.0])

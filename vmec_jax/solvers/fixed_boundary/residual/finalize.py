@@ -148,11 +148,20 @@ def _edge_control_native_control_state_payload(ns: Mapping[str, Any]) -> dict[st
         projection = ns.get("freeb_edge_control_projection", {"enabled": False})
         if not bool(projection.get("enabled", False)):
             return {"enabled": False, "status": "disabled"}
+        projector = ns.get("freeb_edge_control_projector")
+        native_edge = ns.get(
+            "freeb_edge_control_projection_native_reduced_edge_state",
+            getattr(projector, "native_reduced_edge_state", None),
+        )
+        if native_edge is not None and not isinstance(native_edge, FreeBoundaryReducedEdgeState):
+            native_edge = None
         coordinates = ns.get(
             "freeb_edge_control_projection_native_control_coordinates",
-            getattr(ns.get("freeb_edge_control_projector"), "native_control_coordinates", None),
+            getattr(projector, "native_control_coordinates", None),
         )
-        if coordinates is None:
+        if native_edge is not None:
+            status = "tracked"
+        elif coordinates is None:
             state = ns.get("state")
             if state is None:
                 return {"enabled": True, "status": "unavailable"}
