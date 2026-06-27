@@ -58,6 +58,81 @@ def _pack_vmec_interior_without_edge(state: VMECState) -> np.ndarray:
     )
 
 
+def _delta_tuple_from_state_like(value: Any) -> tuple[Any, Any, Any, Any, Any, Any]:
+    """Return a six-array VMEC delta tuple from a tuple or ``VMECState``."""
+
+    if isinstance(value, VMECState):
+        return (value.Rcos, value.Rsin, value.Zcos, value.Zsin, value.Lcos, value.Lsin)
+    if isinstance(value, (tuple, list)) and len(value) == 6:
+        return tuple(value)  # type: ignore[return-value]
+    raise TypeError("VMEC delta payload must be a VMECState or six-array tuple")
+
+
+def _pack_vmec_interior_without_edge_jax(value: Any):
+    """Pack a VMEC delta payload in native-vector interior order with JAX."""
+
+    dR, dR_sin, dZ_cos, dZ, dL_cos, dL = _delta_tuple_from_state_like(value)
+    return jnp.concatenate(
+        [
+            jnp.ravel(jnp.asarray(dR)[:-1]),
+            jnp.ravel(jnp.asarray(dR_sin)[:-1]),
+            jnp.ravel(jnp.asarray(dZ_cos)[:-1]),
+            jnp.ravel(jnp.asarray(dZ)[:-1]),
+            jnp.ravel(jnp.asarray(dL_cos)),
+            jnp.ravel(jnp.asarray(dL)),
+        ],
+        axis=0,
+    )
+
+
+def _edge_delta_tuple_target_jax(deltas: Any, projection: dict[str, Any]):
+    """Return the scaled physical LCFS edge target with JAX operations."""
+
+    k = int(projection["mode_count"])
+    dR, dR_sin, dZ_cos, dZ, _dL_cos, _dL = _delta_tuple_from_state_like(deltas)
+    dtype = jnp.asarray(dR).dtype
+    scale = jnp.asarray(projection["mode_scale_np"], dtype=dtype)
+    target = jnp.concatenate(
+        [
+            jnp.asarray(dR)[-1] * scale,
+            jnp.asarray(dR_sin)[-1] * scale,
+            jnp.asarray(dZ_cos)[-1] * scale,
+            jnp.asarray(dZ)[-1] * scale,
+        ],
+        axis=0,
+    )
+    if int(target.shape[0]) != 4 * k:
+        raise ValueError("edge-control target has the wrong size")
+    return target
+
+
+def _trust_scaled_control_jax(control: Any, projection: dict[str, Any]):
+    """Apply the optional reduced-control trust radius to a JAX vector."""
+
+    trust = projection.get("trust_radius", dict(projection.get("info", {})).get("trust_radius"))
+    values = jnp.asarray(control)
+    if trust is None:
+        return values
+    trust_value = jnp.asarray(float(trust), dtype=values.dtype)
+    tiny = jnp.asarray(np.finfo(float).tiny, dtype=values.dtype)
+    scale = jnp.minimum(jnp.asarray(1.0, dtype=values.dtype), trust_value / jnp.maximum(jnp.linalg.norm(values), tiny))
+    return values * scale
+
+
+def _native_edge_target_to_control_jax(target: Any, projection: dict[str, Any], *, edge_metric: str):
+    """Map a physical edge target to native reduced-control coordinates."""
+
+    values = jnp.asarray(target)
+    metric = str(edge_metric).strip().lower()
+    if metric in {"pullback", "adjoint", "force", "jtf", "j.t"}:
+        jacobian = jnp.asarray(projection["jacobian_np"], dtype=values.dtype)
+        return jacobian.T @ values
+    if metric in {"least_squares", "least-squares", "ls", "projection", "coordinate"}:
+        operator = jnp.asarray(projection.get("control_operator_np", projection["pinv_np"]), dtype=values.dtype)
+        return _trust_scaled_control_jax(operator @ values, projection)
+    raise ValueError("edge_metric must be 'pullback' or 'least_squares'")
+
+
 def _unpack_vmec_interior_without_edge(
     vector: Any,
     template_state: VMECState,
@@ -453,6 +528,58 @@ def free_boundary_native_spline_vector_residual_jax(
         projection,
     )
     return residual_fn(state)
+
+
+def free_boundary_native_spline_project_vmec_delta_jax(
+    deltas: Any,
+    template_state: VMECState,
+    projection: dict[str, Any],
+    *,
+    edge_metric: str = "pullback",
+):
+    """Pack a VMEC delta or force payload in native spline coordinates.
+
+    Interior ``R``/``Z`` and all ``lambda`` rows keep VMEC ordering. The LCFS
+    edge rows are scaled to physical coefficients and mapped to reduced spline
+    controls. Use ``edge_metric="pullback"`` for residuals/adjoints and
+    ``edge_metric="least_squares"`` for update-direction diagnostics.
+    """
+
+    if not bool(projection.get("enabled", False)):
+        raise ValueError("projection must be enabled")
+    interior = _pack_vmec_interior_without_edge_jax(deltas)
+    edge_target = _edge_delta_tuple_target_jax(deltas, projection)
+    edge = _native_edge_target_to_control_jax(edge_target, projection, edge_metric=edge_metric)
+    vector = jnp.concatenate([interior, jnp.ravel(edge)], axis=0)
+    expected = _native_spline_interior_size(template_state) + int(jnp.asarray(edge).size)
+    if int(vector.shape[0]) != int(expected):
+        raise ValueError("packed native residual has the wrong size")
+    return vector
+
+
+def free_boundary_native_spline_vector_projected_residual_jax(
+    vector: Any,
+    template_state: VMECState,
+    projection: dict[str, Any],
+    residual_fn: Any,
+    *,
+    edge_metric: str = "pullback",
+):
+    """Evaluate and pack a residual from native spline-control coordinates."""
+
+    if not callable(residual_fn):
+        raise TypeError("residual_fn must be callable")
+    state = free_boundary_native_spline_vector_to_vmec_state_jax(
+        vector,
+        template_state,
+        projection,
+    )
+    return free_boundary_native_spline_project_vmec_delta_jax(
+        residual_fn(state),
+        template_state,
+        projection,
+        edge_metric=edge_metric,
+    )
 
 
 class FreeBoundaryNativeSplineVectorStep(NamedTuple):

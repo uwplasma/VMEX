@@ -272,6 +272,8 @@ _LAZY_ATTRS = {
     "FreeBoundaryNativeSplineVectorStep": ".solvers.free_boundary",
     "FreeBoundaryReducedEdgeState": ".solvers.free_boundary",
     "free_boundary_native_spline_unknown_vector_from_vmec_state": ".solvers.free_boundary",
+    "free_boundary_native_spline_project_vmec_delta_jax": ".solvers.free_boundary",
+    "free_boundary_native_spline_vector_projected_residual_jax": ".solvers.free_boundary",
     "free_boundary_native_spline_vector_residual_jax": ".solvers.free_boundary",
     "free_boundary_native_spline_vector_to_vmec_state_jax": ".solvers.free_boundary",
     "free_boundary_native_spline_vector_edge_step": ".solvers.free_boundary",

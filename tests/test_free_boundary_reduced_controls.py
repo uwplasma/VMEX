@@ -16,6 +16,8 @@ from vmec_jax.solvers.free_boundary import (
     free_boundary_reduced_edge_state_from_vmec_state,
     free_boundary_reduced_edge_state_to_vmec_state,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
+    free_boundary_native_spline_project_vmec_delta_jax,
+    free_boundary_native_spline_vector_projected_residual_jax,
     free_boundary_native_spline_vector_residual_jax,
     free_boundary_native_spline_vector_to_vmec_state_jax,
     free_boundary_native_spline_vector_edge_step,
@@ -58,6 +60,22 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert (
         public_api.free_boundary_native_spline_unknown_vector_from_vmec_state
         is free_boundary_native_spline_unknown_vector_from_vmec_state
+    )
+    assert (
+        vj.free_boundary_native_spline_project_vmec_delta_jax
+        is free_boundary_native_spline_project_vmec_delta_jax
+    )
+    assert (
+        public_api.free_boundary_native_spline_project_vmec_delta_jax
+        is free_boundary_native_spline_project_vmec_delta_jax
+    )
+    assert (
+        vj.free_boundary_native_spline_vector_projected_residual_jax
+        is free_boundary_native_spline_vector_projected_residual_jax
+    )
+    assert (
+        public_api.free_boundary_native_spline_vector_projected_residual_jax
+        is free_boundary_native_spline_vector_projected_residual_jax
     )
     assert vj.free_boundary_native_spline_vector_to_vmec_state_jax is free_boundary_native_spline_vector_to_vmec_state_jax
     assert (
@@ -466,9 +484,31 @@ def test_native_spline_unknown_vector_packs_edge_controls_not_fourier_edge() -> 
     projected_vector = unknowns.vector_from_delta_tuple(deltas, edge_metric="least_squares")
     pullback_vector = unknowns.vector_from_delta_tuple(deltas, edge_metric="pullback")
     decoded_deltas = unknowns.delta_tuple_from_vector(projected_vector)
+    projected_vector_jax = free_boundary_native_spline_project_vmec_delta_jax(
+        deltas,
+        state,
+        projection,
+        edge_metric="least_squares",
+    )
+    pullback_vector_jax = free_boundary_native_spline_project_vmec_delta_jax(
+        deltas,
+        state,
+        projection,
+        edge_metric="pullback",
+    )
+    projected_residual_jax = free_boundary_native_spline_vector_projected_residual_jax(
+        unknowns.vector,
+        state,
+        projection,
+        lambda _decoded_state: deltas,
+        edge_metric="pullback",
+    )
 
     np.testing.assert_allclose(projected_vector[-1:], [4.0])
     np.testing.assert_allclose(pullback_vector[-1:], [16.0])
+    np.testing.assert_allclose(np.asarray(projected_vector_jax), projected_vector)
+    np.testing.assert_allclose(np.asarray(pullback_vector_jax), pullback_vector)
+    np.testing.assert_allclose(np.asarray(projected_residual_jax), pullback_vector)
     np.testing.assert_allclose(decoded_deltas[0][:-1], dR[:-1])
     np.testing.assert_allclose(decoded_deltas[0][-1], dR[-1])
     np.testing.assert_allclose(decoded_deltas[1][:-1], dR_sin[:-1])
@@ -479,6 +519,13 @@ def test_native_spline_unknown_vector_packs_edge_controls_not_fourier_edge() -> 
 
     with pytest.raises(ValueError, match="edge_metric"):
         unknowns.vector_from_delta_tuple(deltas, edge_metric="bad")
+    with pytest.raises(TypeError, match="residual_fn"):
+        free_boundary_native_spline_vector_projected_residual_jax(
+            unknowns.vector,
+            state,
+            projection,
+            object(),
+        )
 
 
 def test_native_spline_vector_edge_step_matches_existing_edge_bridge() -> None:
@@ -664,6 +711,23 @@ def test_native_spline_vector_residual_jax_respects_mode_scale() -> None:
         )
 
     grad = jax.grad(residual)(jnp.asarray(vector))
+    projected_grad = jax.grad(
+        lambda values: free_boundary_native_spline_vector_projected_residual_jax(
+            values,
+            state0,
+            projection,
+            lambda decoded_state: VMECState(
+                layout=decoded_state.layout,
+                Rcos=decoded_state.Rcos,
+                Rsin=jnp.zeros_like(decoded_state.Rsin),
+                Zcos=jnp.zeros_like(decoded_state.Zcos),
+                Zsin=jnp.zeros_like(decoded_state.Zsin),
+                Lcos=jnp.zeros_like(decoded_state.Lcos),
+                Lsin=jnp.zeros_like(decoded_state.Lsin),
+            ),
+            edge_metric="pullback",
+        )[-1]
+    )(jnp.asarray(vector))
     eps = 1.0e-6
     vector_plus = vector.copy()
     vector_minus = vector.copy()
@@ -673,6 +737,12 @@ def test_native_spline_vector_residual_jax_respects_mode_scale() -> None:
 
     np.testing.assert_allclose(np.asarray(grad[:-1]), np.zeros(unknowns.native_unknown_size - 1), atol=1.0e-14)
     np.testing.assert_allclose(np.asarray(grad[-1]), 3.0 / scale, rtol=1.0e-12)
+    np.testing.assert_allclose(
+        np.asarray(projected_grad[:-1]),
+        np.zeros(unknowns.native_unknown_size - 1),
+        atol=1.0e-14,
+    )
+    np.testing.assert_allclose(np.asarray(projected_grad[-1]), 9.0, rtol=1.0e-12)
     assert finite_difference == pytest.approx(3.0 / scale, rel=1.0e-8)
 
 
