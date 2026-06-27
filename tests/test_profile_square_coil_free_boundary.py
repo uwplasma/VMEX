@@ -86,6 +86,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "--resolution-diagnostics-only",
             "--native-spline-control-prototype",
             "--native-spline-vector-residual-profile",
+            "--native-spline-actual-force-step-profile",
         ]
     )
 
@@ -128,6 +129,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.resolution_diagnostics_only is True
     assert args.native_spline_control_prototype is True
     assert args.native_spline_vector_residual_profile is True
+    assert args.native_spline_actual_force_step_profile is True
 
 
 def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tails():
@@ -1476,10 +1478,12 @@ def test_square_coil_profile_native_spline_control_prototype_is_no_solve(tmp_pat
                 "4",
                 "--ns",
                 "5",
+                "--ntheta",
+                "16",
                 "--nzeta",
-                "16",
+                "8",
                 "--mgrid-nphi",
-                "16",
+                "8",
                 "--freeb-edge-control-projection",
                 "stellarator",
                 "--freeb-edge-control-update-mode",
@@ -1603,6 +1607,72 @@ def test_square_coil_profile_native_spline_vector_residual_profile_is_no_solve(t
     assert (
         row["native_spline_vector_residual_profile_next_action"]
         == "promote_packed_native_vector_into_opt_in_solver_loop"
+    )
+
+
+def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve(tmp_path: Path):
+    outdir = tmp_path / "profile_native_spline_actual_force"
+
+    assert (
+        profile.main(
+            [
+                "--outdir",
+                str(outdir),
+                "--mpol",
+                "3",
+                "--ntor",
+                "4",
+                "--ns",
+                "5",
+                "--nzeta",
+                "16",
+                "--mgrid-nphi",
+                "16",
+                "--freeb-edge-control-projection",
+                "full",
+                "--freeb-edge-control-update-mode",
+                "native_coordinate",
+                "--max-boundary-projection-error",
+                "none",
+                "--native-spline-actual-force-step-profile",
+            ]
+        )
+        == 0
+    )
+
+    data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    assert data["configuration"]["native_spline_actual_force_step_profile"] is True
+    assert data["mgrid"]["created"] is False
+    assert data["backends"] == {}
+    native = data["native_spline_actual_force_step_profile"]
+    assert native["status"] == "completed"
+    assert native["equilibrium_solve_performed"] is False
+    assert native["force_scope"] == "internal_vmec_force_blocks_only"
+    assert native["free_boundary_vacuum_pressure_included"] is False
+    assert native["native_unknown_size"] < native["full_vmec_size"]
+    assert native["removed_fourier_edge_dofs"] > 0
+    assert native["force_eval_wall_s"] >= 0.0
+    assert native["matrix_free_step_wall_s"] >= 0.0
+    assert native["projected_residual_l2_before_step"] > 0.0
+    assert native["projected_residual_l2_after_step"] >= 0.0
+    assert native["matrix_free_step_l2"] >= 0.0
+    assert native["next_action"] == "compare_actual_force_native_step_against_edge_bridge_on_tiny_deck"
+
+    row = summary.rows_from_profile(outdir / "square_coil_free_boundary_backend_profile.json")[0]
+    assert row["native_spline_actual_force_step_profile_status"] == "completed"
+    assert (
+        row["native_spline_actual_force_step_profile_force_scope"]
+        == "internal_vmec_force_blocks_only"
+    )
+    assert row["native_spline_actual_force_step_profile_native_unknown_size"] == native[
+        "native_unknown_size"
+    ]
+    assert row["native_spline_actual_force_step_profile_projected_l2_before"] == pytest.approx(
+        native["projected_residual_l2_before_step"]
+    )
+    assert (
+        row["native_spline_actual_force_step_profile_next_action"]
+        == "compare_actual_force_native_step_against_edge_bridge_on_tiny_deck"
     )
 
 

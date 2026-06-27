@@ -1450,6 +1450,7 @@ def _summary_row(
     spline_bridge: dict[str, Any] | None = None,
     vmec_free_boundary_scale: dict[str, Any] | None = None,
     native_spline_vector_residual_profile: dict[str, Any] | None = None,
+    native_spline_actual_force_step_profile: dict[str, Any] | None = None,
     status: str | None = None,
 ) -> dict[str, Any]:
     case = _case_name(path)
@@ -1716,6 +1717,11 @@ def _summary_row(
     native_matrix_free_profile = native_vector_profile.get("matrix_free_normal_step_profile")
     if not isinstance(native_matrix_free_profile, dict):
         native_matrix_free_profile = {}
+    native_actual_force_profile = (
+        native_spline_actual_force_step_profile
+        if isinstance(native_spline_actual_force_step_profile, dict)
+        else {}
+    )
     return {
         "case": case,
         "backend": backend_name,
@@ -2212,6 +2218,36 @@ def _summary_row(
         "native_spline_vector_residual_profile_next_action": native_vector_profile.get(
             "next_action"
         ),
+        "native_spline_actual_force_step_profile_status": native_actual_force_profile.get(
+            "status"
+        ),
+        "native_spline_actual_force_step_profile_force_scope": native_actual_force_profile.get(
+            "force_scope"
+        ),
+        "native_spline_actual_force_step_profile_native_unknown_size": native_actual_force_profile.get(
+            "native_unknown_size"
+        ),
+        "native_spline_actual_force_step_profile_full_vmec_size": native_actual_force_profile.get(
+            "full_vmec_size"
+        ),
+        "native_spline_actual_force_step_profile_force_eval_wall_s": _finite_float(
+            native_actual_force_profile.get("force_eval_wall_s")
+        ),
+        "native_spline_actual_force_step_profile_matrix_free_step_wall_s": _finite_float(
+            native_actual_force_profile.get("matrix_free_step_wall_s")
+        ),
+        "native_spline_actual_force_step_profile_residual_reduction_factor": _finite_float(
+            native_actual_force_profile.get("projected_residual_reduction_factor")
+        ),
+        "native_spline_actual_force_step_profile_projected_l2_before": _finite_float(
+            native_actual_force_profile.get("projected_residual_l2_before_step")
+        ),
+        "native_spline_actual_force_step_profile_projected_l2_after": _finite_float(
+            native_actual_force_profile.get("projected_residual_l2_after_step")
+        ),
+        "native_spline_actual_force_step_profile_next_action": native_actual_force_profile.get(
+            "next_action"
+        ),
         "resolution_deck_status": resolution.get("status"),
         "resolution_deck_reasons": ",".join(_as_text_list(resolution.get("reasons"))),
         "vmec_scale_status": scale.get("status"),
@@ -2448,6 +2484,10 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
     scale = scale if isinstance(scale, dict) else {}
     native_vector_profile = data.get("native_spline_vector_residual_profile", {})
     native_vector_profile = native_vector_profile if isinstance(native_vector_profile, dict) else {}
+    native_actual_force_profile = data.get("native_spline_actual_force_step_profile", {})
+    native_actual_force_profile = (
+        native_actual_force_profile if isinstance(native_actual_force_profile, dict) else {}
+    )
     rows: list[dict[str, Any]] = []
     for backend_name, backend in sorted((data.get("backends", {}) or {}).items()):
         if isinstance(backend, dict):
@@ -2464,9 +2504,16 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                     spline_bridge=spline_bridge,
                     vmec_free_boundary_scale=scale,
                     native_spline_vector_residual_profile=native_vector_profile,
+                    native_spline_actual_force_step_profile=native_actual_force_profile,
                 )
             )
-    if not rows and (projection or resolution_deck or scale or native_vector_profile):
+    if not rows and (
+        projection
+        or resolution_deck
+        or scale
+        or native_vector_profile
+        or native_actual_force_profile
+    ):
         rows.append(
             _summary_row(
                 path=path,
@@ -2480,6 +2527,7 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                 spline_bridge=spline_bridge,
                 vmec_free_boundary_scale=scale,
                 native_spline_vector_residual_profile=native_vector_profile,
+                native_spline_actual_force_step_profile=native_actual_force_profile,
             )
         )
     return rows
@@ -2774,6 +2822,16 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_vector_residual_profile_matrix_free_step_l2",
         "native_spline_vector_residual_profile_matrix_free_next_action",
         "native_spline_vector_residual_profile_next_action",
+        "native_spline_actual_force_step_profile_status",
+        "native_spline_actual_force_step_profile_force_scope",
+        "native_spline_actual_force_step_profile_native_unknown_size",
+        "native_spline_actual_force_step_profile_full_vmec_size",
+        "native_spline_actual_force_step_profile_force_eval_wall_s",
+        "native_spline_actual_force_step_profile_matrix_free_step_wall_s",
+        "native_spline_actual_force_step_profile_residual_reduction_factor",
+        "native_spline_actual_force_step_profile_projected_l2_before",
+        "native_spline_actual_force_step_profile_projected_l2_after",
+        "native_spline_actual_force_step_profile_next_action",
         "freeb_edge_control_projection_zero_velocity_count",
         "freeb_edge_control_projection_state_residual_status",
         "freeb_edge_control_projection_state_residual_linf",

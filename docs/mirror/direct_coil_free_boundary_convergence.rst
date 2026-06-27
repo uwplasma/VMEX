@@ -595,6 +595,14 @@ basis used by that native problem. This is the bridge from the real VMEC force
 evaluator into the native spline-control residual loop: R blocks use the same
 cosine signed-mode transform as the residual update, while Z and lambda blocks
 use the sine signed-mode transform and the existing lambda update scale.
+The square-coil profiler exposes the first actual-force bridge through
+``--native-spline-actual-force-step-profile``. This preflight evaluates the
+internal VMEC force blocks on the initial state, maps them through the adapter,
+and takes one native matrix-free normal step. It intentionally excludes the
+NESTOR/free-boundary vacuum-pressure term. On a diagnostic
+``MPOL=3, NTOR=4, NS=5, NTHETA=16, NZETA=8`` deck it reports ``614`` native
+unknowns versus ``690`` full VMEC unknowns and reduces the projected
+internal-force residual from about ``1.24`` to ``0.88`` in one damped step.
 The adjacent ``free_boundary_native_spline_matrix_free_normal_*`` helpers use
 ``jax.linearize``/``jax.vjp`` products and conjugate-gradient normal equations
 instead of forming the dense Jacobian. They are still prototypes, but they are

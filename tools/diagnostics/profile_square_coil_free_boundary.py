@@ -57,6 +57,7 @@ from vmec_jax.toroidal_hybrid import (
 )
 from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1, find_vmec2000_exec, run_xvmec2000
 from tools.diagnostics.native_spline_vector_profile import (
+    native_spline_actual_force_step_profile_payload,
     native_spline_vector_residual_profile_payload,
 )
 
@@ -495,6 +496,14 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Profile native spline-vector encode/decode/projected-residual/JVP cost on the "
+            "current square-coil deck, then exit before mgrid generation or equilibrium solves."
+        ),
+    )
+    p.add_argument(
+        "--native-spline-actual-force-step-profile",
+        action="store_true",
+        help=(
+            "Profile one native matrix-free step using internal VMEC force blocks on the "
             "current square-coil deck, then exit before mgrid generation or equilibrium solves."
         ),
     )
@@ -3504,6 +3513,7 @@ def main(argv: list[str] | None = None) -> int:
         or bool(args.scale_diagnostics_only)
         or bool(args.native_spline_control_prototype)
         or bool(args.native_spline_vector_residual_profile)
+        or bool(args.native_spline_actual_force_step_profile)
     ):
         scale_payload = {"status": "skipped_resolution_diagnostics_only"}
         if bool(args.scale_diagnostics_only):
@@ -3534,6 +3544,16 @@ def main(argv: list[str] | None = None) -> int:
                 edge_control_requested=str(args.freeb_edge_control_projection),
             )
             if bool(args.native_spline_vector_residual_profile)
+            else {"status": "not_requested"}
+        )
+        native_actual_force_step_payload = (
+            native_spline_actual_force_step_profile_payload(
+                config=config,
+                beta_percent=float(args.beta_percent),
+                edge_control_projection_payload=edge_control_projection_payload_for_summary,
+                edge_control_requested=str(args.freeb_edge_control_projection),
+            )
+            if bool(args.native_spline_actual_force_step_profile)
             else {"status": "not_requested"}
         )
         payload = {
@@ -3589,6 +3609,9 @@ def main(argv: list[str] | None = None) -> int:
                 "native_spline_vector_residual_profile": bool(
                     args.native_spline_vector_residual_profile
                 ),
+                "native_spline_actual_force_step_profile": bool(
+                    args.native_spline_actual_force_step_profile
+                ),
                 "accepted_provider_parity": bool(args.accepted_provider_parity),
                 "freeb_anderson_pressure": bool(args.freeb_anderson_pressure),
                 "freeb_jax_nestor_operator": bool(args.freeb_jax_nestor_operator),
@@ -3642,6 +3665,7 @@ def main(argv: list[str] | None = None) -> int:
             "spline_bridge": spline_bridge,
             "native_spline_control_prototype": native_spline_payload,
             "native_spline_vector_residual_profile": native_vector_profile_payload,
+            "native_spline_actual_force_step_profile": native_actual_force_step_payload,
             "strict_schedule": strict_schedule,
             "strict_convergence_assessment": strict_convergence_assessment,
             "resolution_deck": resolution_deck,

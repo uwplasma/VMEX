@@ -691,6 +691,11 @@ solver rather than the strict square-coil equilibrium path itself.
 ``free_boundary_native_spline_force_blocks_to_state_residual`` converts VMEC
 ``TomnspsRZL`` force blocks into the signed ``VMECState`` residual basis used
 by that prototype, reusing the same mode transforms as the residual update.
+Use ``--native-spline-actual-force-step-profile`` to run the first real-kernel
+preflight: it evaluates internal VMEC force blocks on the initial state, maps
+them into the native residual basis, and takes one matrix-free normal step. It
+does not yet include NESTOR/free-boundary vacuum pressure, so it is bridge
+evidence rather than a free-boundary equilibrium solve.
 Use ``free_boundary_native_spline_matrix_free_normal_*`` for the next prototype
 step: it applies ``J`` and ``J.T`` through JAX JVP/VJP products and solves the
 damped normal equations by conjugate gradient.

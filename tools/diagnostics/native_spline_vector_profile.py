@@ -16,6 +16,7 @@ from vmec_jax.config import config_from_indata
 from vmec_jax.init_guess import initial_guess_from_boundary
 from vmec_jax.solvers.free_boundary import (
     FreeBoundaryNativeSplineResidualProblem,
+    free_boundary_native_spline_force_blocks_to_state_residual,
     free_boundary_native_spline_matrix_free_normal_step_jax,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
     free_boundary_native_spline_vector_projected_residual_jax,
@@ -95,6 +96,13 @@ def _json_scalar(value: Any) -> float | int | str | None:
             return float(item) if np.isfinite(float(item)) else None
         return str(item)
     return str(value)
+
+
+def _mode00_index(modes: Any) -> int:
+    """Return the signed-mode index for ``m=0,n=0``."""
+
+    idx = np.where((np.asarray(modes.m) == 0) & (np.asarray(modes.n) == 0))[0]
+    return int(idx[0]) if idx.size else 0
 
 
 def _native_matrix_free_profile(
@@ -180,6 +188,222 @@ def _native_matrix_free_profile(
         "cg_info": _json_scalar(step.cg_info),
         "recommended_solver_lane": "matrix_free_native_spline_normal_or_adjoint_solve",
         "next_action": "feed_real_vmec_force_residual_into_native_matrix_free_loop",
+    }
+
+
+def native_spline_actual_force_step_profile_payload(
+    *,
+    config: ExampleConfig,
+    beta_percent: float,
+    edge_control_projection_payload: dict[str, Any] | None,
+    edge_control_requested: str,
+) -> dict[str, Any]:
+    """Profile one native matrix-free step using VMEC force blocks.
+
+    This is still a preflight diagnostic: it evaluates the internal VMEC force
+    residual on the deck-shaped initial state, converts ``TomnspsRZL`` blocks
+    into the native state residual basis, and takes one matrix-free normal
+    step. It does not run the nonlinear equilibrium loop and does not include
+    NESTOR/free-boundary vacuum-pressure coupling yet.
+    """
+
+    if edge_control_projection_payload is None:
+        return {
+            "status": "blocked",
+            "reason": "edge_control_projection_not_enabled",
+            "equilibrium_solve_performed": False,
+            "next_action": "rerun_with_freeb_edge_control_projection",
+        }
+
+    try:
+        import jax.numpy as jnp
+        from vmec_jax.field import signgs_from_sqrtg
+        from vmec_jax.geom import eval_geom
+        from vmec_jax.kernels.residue import vmec_scalxc_from_s
+        from vmec_jax.kernels.tomnsp import vmec_trig_tables
+        from vmec_jax.solvers.fixed_boundary.profiles import (
+            build_wout_like_profiles_from_indata,
+        )
+        from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
+            evaluate_residual_force_from_state,
+        )
+        from vmec_jax.solvers.fixed_boundary.residual.mode_transform import (
+            build_mode_transform_context,
+        )
+    except Exception as exc:  # pragma: no cover - dependencies are expected in this repo.
+        return {
+            "status": "blocked",
+            "reason": "actual_force_dependencies_unavailable",
+            "error": repr(exc),
+            "equilibrium_solve_performed": False,
+        }
+
+    indata = make_free_boundary_indata(config, beta_percent=float(beta_percent))
+    vmec_config = config_from_indata(indata)
+    static = build_static(vmec_config)
+    boundary = boundary_from_indata(indata, static.modes)
+    state = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
+    projection = _prepare_freeb_edge_control_projection(
+        edge_control_projection_payload,
+        indata=indata,
+        static=static,
+        state0=state,
+        free_boundary_enabled=True,
+    )
+    info = dict(projection.get("info", {}))
+    if not bool(projection.get("enabled", False)):
+        return {
+            "status": "blocked",
+            "reason": info.get("reason", "projection_disabled"),
+            "edge_control_projection": info,
+            "equilibrium_solve_performed": False,
+            "next_action": "repair_edge_control_projection_payload",
+        }
+
+    geom = eval_geom(state, static)
+    signgs = int(signgs_from_sqrtg(np.asarray(geom.sqrtg), axis_index=min(1, int(config.ns) - 1)))
+    idx00 = _mode00_index(static.modes)
+    s = jnp.asarray(static.s)
+    profile_setup = build_wout_like_profiles_from_indata(
+        indata=indata,
+        static=static,
+        s_profile=s,
+        signgs=signgs,
+        idx00=idx00,
+        prefer_host_default_profiles=True,
+        s_profile_has_tracer=False,
+    )
+    trig = vmec_trig_tables(
+        ntheta=int(vmec_config.ntheta),
+        nzeta=int(vmec_config.nzeta),
+        nfp=int(vmec_config.nfp),
+        mmax=int(vmec_config.mpol) - 1,
+        nmax=int(vmec_config.ntor),
+        lasym=bool(vmec_config.lasym),
+    )
+    mode_context = build_mode_transform_context(
+        static=static,
+        state0=state,
+        s=s,
+        host_update_assembly=False,
+        setup_host_enforce=False,
+        divide_by_scalxc_for_update=False,
+        mode_diag_exponent=0.0,
+        tree_has_tracer=lambda _value: False,
+        vmec_scalxc_from_s=vmec_scalxc_from_s,
+    )
+    unknowns, encode_s = _time_call(
+        lambda: free_boundary_native_spline_unknown_vector_from_vmec_state(state, projection)
+    )
+    vector = jnp.asarray(unknowns.vector)
+
+    def force_eval(decoded_state: VMECState):
+        return evaluate_residual_force_from_state(
+            state=decoded_state,
+            static=static,
+            wout_like=profile_setup.wout_like,
+            trig=trig,
+            s=s,
+            signgs=signgs,
+            constraint_tcon0=None,
+            freeb_pres_scale=None,
+            apply_lforbal=False,
+            apply_m1_constraints=True,
+            include_edge=True,
+            include_edge_residual=True,
+            zero_m1=True,
+            freeb_bsqvac_half=None,
+            iter_idx=None,
+            scan_debug_force_enabled=False,
+            dump_hlo_force_tomnsps=False,
+            dump_hooks={},
+        )
+
+    def residual_fn(decoded_state: VMECState) -> VMECState:
+        force_result = force_eval(decoded_state)
+        return free_boundary_native_spline_force_blocks_to_state_residual(
+            template_state=decoded_state,
+            force_blocks=force_result.frzl_full,
+            mode_context=mode_context,
+            lambda_update_scale=1.0,
+        )
+
+    force_result, force_s = _time_call(lambda: force_eval(state))
+    residual_state, residual_state_s = _time_call(lambda: residual_fn(state))
+    problem = FreeBoundaryNativeSplineResidualProblem(
+        template_state=state,
+        projection=projection,
+        residual_fn=residual_fn,
+        edge_metric="pullback",
+    )
+    projected_residual, projected_s = _time_call(lambda: problem.residual(vector))
+    damping = 1.0e-8
+    linear_tol = 1.0e-10
+    linear_maxiter = 8
+    step, step_s = _time_call(
+        lambda: free_boundary_native_spline_matrix_free_normal_step_jax(
+            problem,
+            vector,
+            damping=damping,
+            tol=linear_tol,
+            maxiter=linear_maxiter,
+        )
+    )
+    next_residual, next_residual_s = _time_call(lambda: problem.residual(step.next_vector))
+    before_norm = _norms(np.asarray(projected_residual, dtype=float))
+    after_norm = _norms(np.asarray(next_residual, dtype=float))
+    reduction = (
+        None
+        if before_norm["l2"] <= np.finfo(float).tiny
+        else float(after_norm["l2"] / before_norm["l2"])
+    )
+    force_norms = {
+        "gcr2": float(np.asarray(force_result.gcr2)),
+        "gcz2": float(np.asarray(force_result.gcz2)),
+        "gcl2": float(np.asarray(force_result.gcl2)),
+    }
+
+    return {
+        "status": "completed",
+        "equilibrium_solve_performed": False,
+        "force_scope": "internal_vmec_force_blocks_only",
+        "free_boundary_vacuum_pressure_included": False,
+        "edge_control_projection_requested": str(edge_control_requested),
+        "edge_control_projection": info,
+        "native_state_schema": "FreeBoundaryNativeSplineUnknownVector.v1",
+        "native_unknown_size": int(unknowns.native_unknown_size),
+        "full_vmec_size": int(unknowns.full_vmec_size),
+        "removed_fourier_edge_dofs": int(unknowns.removed_fourier_edge_dofs),
+        "unknown_reduction_fraction": float(unknowns.native_unknown_size / unknowns.full_vmec_size),
+        "signgs": signgs,
+        "encode_wall_s": float(encode_s),
+        "force_eval_wall_s": float(force_s),
+        "force_blocks_to_state_wall_s": float(residual_state_s),
+        "projected_residual_wall_s": float(projected_s),
+        "matrix_free_step_wall_s": float(step_s),
+        "post_step_residual_wall_s": float(next_residual_s),
+        "force_gcr2": force_norms["gcr2"],
+        "force_gcz2": force_norms["gcz2"],
+        "force_gcl2": force_norms["gcl2"],
+        "state_residual_l2": _norms(np.asarray(residual_state.layout.pack(
+            residual_state.Rcos,
+            residual_state.Rsin,
+            residual_state.Zcos,
+            residual_state.Zsin,
+            residual_state.Lcos,
+            residual_state.Lsin,
+        ), dtype=float))["l2"],
+        "projected_residual_l2_before_step": before_norm["l2"],
+        "projected_residual_linf_before_step": before_norm["linf"],
+        "projected_residual_l2_after_step": after_norm["l2"],
+        "projected_residual_linf_after_step": after_norm["linf"],
+        "projected_residual_reduction_factor": reduction,
+        "matrix_free_damping": damping,
+        "matrix_free_linear_tol": linear_tol,
+        "matrix_free_linear_maxiter": linear_maxiter,
+        "matrix_free_step_l2": float(step.step_l2),
+        "matrix_free_cg_info": _json_scalar(step.cg_info),
+        "next_action": "compare_actual_force_native_step_against_edge_bridge_on_tiny_deck",
     }
 
 
