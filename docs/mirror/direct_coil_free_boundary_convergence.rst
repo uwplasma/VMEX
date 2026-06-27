@@ -553,6 +553,10 @@ prototype/preflight report lists the resulting native unknown size, removed
 Fourier edge degrees of freedom, and reduction fraction. This is the tested
 pack/unpack contract for the future full native-control residual loop; the
 current strict solve still runs through the edge-only bridge above.
+Profile summary CSV/Markdown rows now expose the same payload through
+``freeb_edge_control_projection_native_unknown_*`` fields so strict-run tables
+show the native unknown size, removed LCFS edge DOFs, reduction fraction, and
+edge reconstruction residual without opening the nested backend JSON.
 ``FreeBoundaryNativeSplineVectorStep`` is the one-step parity adapter for that
 contract: it expresses the current LCFS update through the packed native vector
 and is tested to reproduce the existing edge-only native-coordinate bridge.

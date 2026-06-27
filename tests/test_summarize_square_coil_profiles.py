@@ -847,6 +847,19 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
                                 "reduced_unknown_size": 9,
                                 "unknown_linf": 1.0e-5,
                             },
+                            "native_unknown_vector": {
+                                "status": "tracked",
+                                "native_state_schema": "FreeBoundaryNativeSplineUnknownVector.v1",
+                                "native_unknown_size": 25202,
+                                "full_vmec_size": 26214,
+                                "interior_unknown_size": 25186,
+                                "edge_control_size": 16,
+                                "removed_fourier_edge_dofs": 1012,
+                                "unknown_reduction_fraction": 0.9613946746013581,
+                                "edge_control_linf": 2.0e-4,
+                                "edge_reconstruction_residual_linf": 2.0e-13,
+                                "edge_reconstruction_residual_rel": 1.0e-12,
+                            },
                             "zero_velocity_count": 6,
                             "state_residual": {
                                 "status": "measured",
@@ -960,6 +973,28 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
     assert row["freeb_edge_control_projection_native_spline_state_full_edge_size"] == 128
     assert row["freeb_edge_control_projection_native_spline_state_reduced_unknown_size"] == 9
     assert row["freeb_edge_control_projection_native_spline_state_unknown_linf"] == pytest.approx(1.0e-5)
+    assert row["freeb_edge_control_projection_native_unknown_status"] == "tracked"
+    assert (
+        row["freeb_edge_control_projection_native_unknown_schema"]
+        == "FreeBoundaryNativeSplineUnknownVector.v1"
+    )
+    assert row["freeb_edge_control_projection_native_unknown_size"] == 25202
+    assert row["freeb_edge_control_projection_native_unknown_full_vmec_size"] == 26214
+    assert row["freeb_edge_control_projection_native_unknown_interior_size"] == 25186
+    assert row["freeb_edge_control_projection_native_unknown_edge_control_size"] == 16
+    assert row["freeb_edge_control_projection_native_unknown_removed_edge_dofs"] == 1012
+    assert row["freeb_edge_control_projection_native_unknown_reduction_fraction"] == pytest.approx(
+        0.9613946746013581
+    )
+    assert row["freeb_edge_control_projection_native_unknown_edge_control_linf"] == pytest.approx(
+        2.0e-4
+    )
+    assert row[
+        "freeb_edge_control_projection_native_unknown_reconstruction_residual_linf"
+    ] == pytest.approx(2.0e-13)
+    assert row[
+        "freeb_edge_control_projection_native_unknown_reconstruction_residual_rel"
+    ] == pytest.approx(1.0e-12)
     assert row["freeb_edge_control_projection_zero_velocity_count"] == 6
     assert row["freeb_edge_control_projection_state_residual_status"] == "measured"
     assert row["freeb_edge_control_projection_state_residual_linf"] == pytest.approx(2.5e-14)

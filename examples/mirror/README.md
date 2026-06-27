@@ -668,6 +668,10 @@ rows, all ``lambda`` rows, and reduced LCFS spline controls, with the full
 Fourier LCFS edge rows removed. Its size and removed-DOF fields are a
 pack/unpack contract for the next solver tranche, not proof that the current
 strict loop has switched to a full native-control residual.
+The square-coil profile summary flattens this block into
+``freeb_edge_control_projection_native_unknown_*`` columns so strict profile
+CSV/Markdown rows show the native unknown size, removed edge Fourier DOFs,
+reduction fraction, and edge reconstruction residual directly.
 ``FreeBoundaryNativeSplineVectorStep`` is the parity adapter that currently
 expresses the LCFS edge update through that native vector while matching the
 existing edge-only bridge.

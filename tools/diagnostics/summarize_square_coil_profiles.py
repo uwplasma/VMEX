@@ -1560,6 +1560,9 @@ def _summary_row(
     freeb_edge_control_native_spline_state = freeb_edge_control_runtime.get("native_spline_state")
     if not isinstance(freeb_edge_control_native_spline_state, dict):
         freeb_edge_control_native_spline_state = {}
+    freeb_edge_control_native_unknown = freeb_edge_control_runtime.get("native_unknown_vector")
+    if not isinstance(freeb_edge_control_native_unknown, dict):
+        freeb_edge_control_native_unknown = {}
     hot_restart = backend.get("hot_restart")
     hot_restart = hot_restart if isinstance(hot_restart, dict) else {}
     hot_restart_stages = hot_restart.get("stages")
@@ -1899,6 +1902,39 @@ def _summary_row(
         ),
         "freeb_edge_control_projection_native_spline_state_unknown_linf": _finite_float(
             freeb_edge_control_native_spline_state.get("unknown_linf")
+        ),
+        "freeb_edge_control_projection_native_unknown_status": (
+            freeb_edge_control_native_unknown.get("status")
+        ),
+        "freeb_edge_control_projection_native_unknown_schema": (
+            freeb_edge_control_native_unknown.get("native_state_schema")
+        ),
+        "freeb_edge_control_projection_native_unknown_size": (
+            freeb_edge_control_native_unknown.get("native_unknown_size")
+        ),
+        "freeb_edge_control_projection_native_unknown_full_vmec_size": (
+            freeb_edge_control_native_unknown.get("full_vmec_size")
+        ),
+        "freeb_edge_control_projection_native_unknown_interior_size": (
+            freeb_edge_control_native_unknown.get("interior_unknown_size")
+        ),
+        "freeb_edge_control_projection_native_unknown_edge_control_size": (
+            freeb_edge_control_native_unknown.get("edge_control_size")
+        ),
+        "freeb_edge_control_projection_native_unknown_removed_edge_dofs": (
+            freeb_edge_control_native_unknown.get("removed_fourier_edge_dofs")
+        ),
+        "freeb_edge_control_projection_native_unknown_reduction_fraction": _finite_float(
+            freeb_edge_control_native_unknown.get("unknown_reduction_fraction")
+        ),
+        "freeb_edge_control_projection_native_unknown_edge_control_linf": _finite_float(
+            freeb_edge_control_native_unknown.get("edge_control_linf")
+        ),
+        "freeb_edge_control_projection_native_unknown_reconstruction_residual_linf": _finite_float(
+            freeb_edge_control_native_unknown.get("edge_reconstruction_residual_linf")
+        ),
+        "freeb_edge_control_projection_native_unknown_reconstruction_residual_rel": _finite_float(
+            freeb_edge_control_native_unknown.get("edge_reconstruction_residual_rel")
         ),
         "freeb_edge_control_projection_zero_velocity_count": freeb_edge_control_runtime.get(
             "zero_velocity_count"
@@ -2635,6 +2671,17 @@ def main(argv: list[str] | None = None) -> int:
         "freeb_edge_control_projection_native_spline_state_full_edge_size",
         "freeb_edge_control_projection_native_spline_state_reduced_unknown_size",
         "freeb_edge_control_projection_native_spline_state_unknown_linf",
+        "freeb_edge_control_projection_native_unknown_status",
+        "freeb_edge_control_projection_native_unknown_schema",
+        "freeb_edge_control_projection_native_unknown_size",
+        "freeb_edge_control_projection_native_unknown_full_vmec_size",
+        "freeb_edge_control_projection_native_unknown_interior_size",
+        "freeb_edge_control_projection_native_unknown_edge_control_size",
+        "freeb_edge_control_projection_native_unknown_removed_edge_dofs",
+        "freeb_edge_control_projection_native_unknown_reduction_fraction",
+        "freeb_edge_control_projection_native_unknown_edge_control_linf",
+        "freeb_edge_control_projection_native_unknown_reconstruction_residual_linf",
+        "freeb_edge_control_projection_native_unknown_reconstruction_residual_rel",
         "freeb_edge_control_projection_zero_velocity_count",
         "freeb_edge_control_projection_state_residual_status",
         "freeb_edge_control_projection_state_residual_linf",
