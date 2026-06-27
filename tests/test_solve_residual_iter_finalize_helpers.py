@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from vmec_jax.solvers.fixed_boundary.residual.finalize import (
+    _edge_control_native_control_state_payload,
     _namespace_with_best_scored_state,
     attach_residual_iter_timing_diagnostics,
     build_residual_iter_resume_state_from_namespace,
@@ -219,6 +220,42 @@ def test_finalize_residual_iter_result_attaches_free_boundary_and_force_payload(
     assert result.diagnostics["attached"] is True
     assert getattr(result, "_final_force_payload") is payload
     np.testing.assert_allclose(result.w_history, [0.0, 1.0, 2.0])
+
+
+def test_edge_control_native_state_payload_uses_reduced_edge_state_schema() -> None:
+    projection = {
+        "enabled": True,
+        "mode_count": 1,
+        "jacobian_np": np.asarray([[1.0], [0.0], [0.0], [0.0]]),
+        "initial_np": {
+            "R_cos": np.asarray([3.0]),
+            "R_sin": np.asarray([0.0]),
+            "Z_cos": np.asarray([0.0]),
+            "Z_sin": np.asarray([0.0]),
+        },
+        "info": {
+            "enabled": True,
+            "labels": ["R00"],
+            "rcond": 1.0e-12,
+        },
+    }
+    ns = {
+        "freeb_edge_control_projection_enabled": True,
+        "freeb_edge_control_projection": projection,
+        "freeb_edge_control_projection_native_control_coordinates": np.asarray([0.25]),
+    }
+
+    payload = _edge_control_native_control_state_payload(ns)
+
+    assert payload["enabled"] is True
+    assert payload["status"] == "tracked"
+    assert payload["mode"] == "native_reduced_lcfs_edge_state"
+    assert payload["native_state_schema"] == "FreeBoundaryReducedEdgeState.v1"
+    assert payload["full_edge_size"] == 4
+    assert payload["reduced_unknown_size"] == 1
+    assert payload["reduction_fraction"] == pytest.approx(0.25)
+    assert payload["unknown_by_label"] == {"R00": pytest.approx(0.25)}
+    assert payload["decoded_edge_linf"] == pytest.approx(3.25)
 
 
 def test_best_scored_namespace_restores_matching_free_boundary_bundle() -> None:

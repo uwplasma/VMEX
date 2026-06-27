@@ -9,12 +9,16 @@ import numpy as np
 
 from ..diagnostics.io import _pack_resume_state_record
 from ...free_boundary.control import (
+    FreeBoundaryReducedEdgeState,
     _freeb_edge_control_delta_tuple_projection_metrics,
+    _freeb_edge_control_reduced_map,
     _freeb_edge_control_reduced_update_direction_diagnostics,
     _freeb_edge_control_reduced_unknown_vector_diagnostics,
     _freeb_edge_control_state_coordinates,
     _freeb_edge_control_state_residual_metrics,
+    free_boundary_reduced_edge_state_from_vmec_state,
 )
+from ...free_boundary.reduced_controls import ReducedControlState
 from .runtime import (
     _build_residual_iter_timing_report,
     _build_resume_state_base,
@@ -149,28 +153,36 @@ def _edge_control_native_control_state_payload(ns: Mapping[str, Any]) -> dict[st
             getattr(ns.get("freeb_edge_control_projector"), "native_control_coordinates", None),
         )
         if coordinates is None:
-            return {"enabled": True, "status": "unavailable"}
-        values = np.asarray(coordinates, dtype=float).reshape(-1)
-        info = dict(projection.get("info", {}))
-        labels = tuple(str(label) for label in info.get("labels", []))
-        if labels and len(labels) != values.size:
-            labels = ()
-        labels = labels or tuple(f"control_{idx}" for idx in range(values.size))
-        return {
-            "enabled": True,
-            "status": "tracked",
-            "mode": "native_reduced_control_state",
-            "full_edge_size": int(4 * int(projection["mode_count"])),
-            "reduced_unknown_size": int(values.size),
-            "reduction_fraction": None
-            if int(projection["mode_count"]) == 0
-            else float(values.size / (4 * int(projection["mode_count"]))),
-            "labels": list(labels),
-            "unknown_vector": [float(value) for value in values],
-            "unknown_by_label": {str(label): float(value) for label, value in zip(labels, values, strict=False)},
-            "unknown_l2": float(np.linalg.norm(values)),
-            "unknown_linf": float(np.max(np.abs(values))) if values.size else 0.0,
-        }
+            state = ns.get("state")
+            if state is None:
+                return {"enabled": True, "status": "unavailable"}
+            native_edge = free_boundary_reduced_edge_state_from_vmec_state(state, projection)
+            status = "state_encoded"
+        else:
+            control_map = _freeb_edge_control_reduced_map(projection)
+            native_edge = FreeBoundaryReducedEdgeState(
+                control_state=ReducedControlState(
+                    control_map=control_map,
+                    control_delta=np.asarray(coordinates, dtype=float).reshape(-1),
+                ),
+            )
+            status = "tracked"
+        payload = native_edge.to_dict()
+        decoded = np.asarray(native_edge.decode_edge_values(), dtype=float).reshape(-1)
+        full_size = int(native_edge.control_state.control_map.full_size)
+        reduced_size = int(native_edge.control_state.control_map.control_count)
+        payload.update(
+            {
+                "enabled": True,
+                "status": status,
+                "full_edge_size": full_size,
+                "reduction_fraction": None if full_size == 0 else float(reduced_size / full_size),
+                "decoded_edge_l2": float(np.linalg.norm(decoded)),
+                "decoded_edge_linf": float(np.max(np.abs(decoded))) if decoded.size else 0.0,
+                "native_state_schema": "FreeBoundaryReducedEdgeState.v1",
+            }
+        )
+        return payload
     except Exception as exc:
         return {
             "enabled": bool(ns.get("freeb_edge_control_projection_enabled", False)),

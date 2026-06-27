@@ -775,6 +775,16 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
                                 "control_update_l2": 5.6e-6,
                                 "trust_scale": 0.75,
                             },
+                            "native_control_state": {
+                                "status": "tracked",
+                                "mode": "native_reduced_lcfs_edge_state",
+                                "native_state_schema": "FreeBoundaryReducedEdgeState.v1",
+                                "unknown_l2": 1.2e-5,
+                                "unknown_linf": 1.0e-5,
+                                "decoded_edge_linf": 3.25,
+                                "fit_residual_linf": 2.0e-14,
+                                "fit_residual_rel": 4.0e-13,
+                            },
                             "zero_velocity_count": 6,
                             "state_residual": {
                                 "status": "measured",
@@ -855,6 +865,20 @@ def test_square_coil_profile_summary_recommends_edge_jax_nestor_for_stalled_edge
     assert row["freeb_edge_control_projection_native_velocity_l2"] == pytest.approx(3.4e-5)
     assert row["freeb_edge_control_projection_native_update_l2"] == pytest.approx(5.6e-6)
     assert row["freeb_edge_control_projection_native_trust_scale"] == pytest.approx(0.75)
+    assert row["freeb_edge_control_projection_native_state_status"] == "tracked"
+    assert (
+        row["freeb_edge_control_projection_native_state_schema"]
+        == "FreeBoundaryReducedEdgeState.v1"
+    )
+    assert (
+        row["freeb_edge_control_projection_native_state_mode"]
+        == "native_reduced_lcfs_edge_state"
+    )
+    assert row["freeb_edge_control_projection_native_state_unknown_l2"] == pytest.approx(1.2e-5)
+    assert row["freeb_edge_control_projection_native_state_unknown_linf"] == pytest.approx(1.0e-5)
+    assert row["freeb_edge_control_projection_native_state_decoded_edge_linf"] == pytest.approx(3.25)
+    assert row["freeb_edge_control_projection_native_state_fit_residual_linf"] == pytest.approx(2.0e-14)
+    assert row["freeb_edge_control_projection_native_state_fit_residual_rel"] == pytest.approx(4.0e-13)
     assert row["freeb_edge_control_projection_zero_velocity_count"] == 6
     assert row["freeb_edge_control_projection_state_residual_status"] == "measured"
     assert row["freeb_edge_control_projection_state_residual_linf"] == pytest.approx(2.5e-14)

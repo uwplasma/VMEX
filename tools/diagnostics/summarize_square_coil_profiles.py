@@ -1543,6 +1543,9 @@ def _summary_row(
     freeb_edge_control_native_last_step = freeb_edge_control_runtime.get("native_last_step")
     if not isinstance(freeb_edge_control_native_last_step, dict):
         freeb_edge_control_native_last_step = {}
+    freeb_edge_control_native_state = freeb_edge_control_runtime.get("native_control_state")
+    if not isinstance(freeb_edge_control_native_state, dict):
+        freeb_edge_control_native_state = {}
     hot_restart = backend.get("hot_restart")
     hot_restart = hot_restart if isinstance(hot_restart, dict) else {}
     hot_restart_stages = hot_restart.get("stages")
@@ -1780,6 +1783,30 @@ def _summary_row(
         ),
         "freeb_edge_control_projection_native_trust_scale": _finite_float(
             freeb_edge_control_native_last_step.get("trust_scale")
+        ),
+        "freeb_edge_control_projection_native_state_status": freeb_edge_control_native_state.get(
+            "status"
+        ),
+        "freeb_edge_control_projection_native_state_schema": freeb_edge_control_native_state.get(
+            "native_state_schema"
+        ),
+        "freeb_edge_control_projection_native_state_mode": freeb_edge_control_native_state.get(
+            "mode"
+        ),
+        "freeb_edge_control_projection_native_state_unknown_l2": _finite_float(
+            freeb_edge_control_native_state.get("unknown_l2")
+        ),
+        "freeb_edge_control_projection_native_state_unknown_linf": _finite_float(
+            freeb_edge_control_native_state.get("unknown_linf")
+        ),
+        "freeb_edge_control_projection_native_state_decoded_edge_linf": _finite_float(
+            freeb_edge_control_native_state.get("decoded_edge_linf")
+        ),
+        "freeb_edge_control_projection_native_state_fit_residual_linf": _finite_float(
+            freeb_edge_control_native_state.get("fit_residual_linf")
+        ),
+        "freeb_edge_control_projection_native_state_fit_residual_rel": _finite_float(
+            freeb_edge_control_native_state.get("fit_residual_rel")
         ),
         "freeb_edge_control_projection_zero_velocity_count": freeb_edge_control_runtime.get(
             "zero_velocity_count"
@@ -2465,6 +2492,14 @@ def main(argv: list[str] | None = None) -> int:
         "freeb_edge_control_projection_native_velocity_l2",
         "freeb_edge_control_projection_native_update_l2",
         "freeb_edge_control_projection_native_trust_scale",
+        "freeb_edge_control_projection_native_state_status",
+        "freeb_edge_control_projection_native_state_schema",
+        "freeb_edge_control_projection_native_state_mode",
+        "freeb_edge_control_projection_native_state_unknown_l2",
+        "freeb_edge_control_projection_native_state_unknown_linf",
+        "freeb_edge_control_projection_native_state_decoded_edge_linf",
+        "freeb_edge_control_projection_native_state_fit_residual_linf",
+        "freeb_edge_control_projection_native_state_fit_residual_rel",
         "freeb_edge_control_projection_zero_velocity_count",
         "freeb_edge_control_projection_state_residual_status",
         "freeb_edge_control_projection_state_residual_linf",
