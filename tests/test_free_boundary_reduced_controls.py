@@ -16,6 +16,7 @@ from vmec_jax.solvers.free_boundary import (
     free_boundary_reduced_edge_state_from_vmec_state,
     free_boundary_reduced_edge_state_to_vmec_state,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
+    free_boundary_native_spline_vector_residual_jax,
     free_boundary_native_spline_vector_to_vmec_state_jax,
     free_boundary_native_spline_vector_edge_step,
     reduced_control_decode,
@@ -62,6 +63,11 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert (
         public_api.free_boundary_native_spline_vector_to_vmec_state_jax
         is free_boundary_native_spline_vector_to_vmec_state_jax
+    )
+    assert vj.free_boundary_native_spline_vector_residual_jax is free_boundary_native_spline_vector_residual_jax
+    assert (
+        public_api.free_boundary_native_spline_vector_residual_jax
+        is free_boundary_native_spline_vector_residual_jax
     )
     assert vj.free_boundary_native_spline_vector_edge_step is free_boundary_native_spline_vector_edge_step
     assert public_api.free_boundary_native_spline_vector_edge_step is free_boundary_native_spline_vector_edge_step
@@ -434,6 +440,20 @@ def test_native_spline_unknown_vector_packs_edge_controls_not_fourier_edge() -> 
     )(jnp.asarray(unknowns.vector))
     np.testing.assert_allclose(np.asarray(edge_grad[:-1]), np.zeros(unknowns.native_unknown_size - 1))
     np.testing.assert_allclose(np.asarray(edge_grad[-1:]), [2.0])
+    residual_jac = jax.jacfwd(
+        lambda vector: free_boundary_native_spline_vector_residual_jax(
+            vector,
+            state,
+            projection,
+            lambda decoded_state: jnp.asarray([decoded_state.Rcos[0, 0], decoded_state.Rcos[-1, 0]]),
+        )
+    )(jnp.asarray(unknowns.vector))
+    np.testing.assert_allclose(np.asarray(residual_jac[0, 0]), 1.0)
+    np.testing.assert_allclose(np.asarray(residual_jac[0, 1:]), np.zeros(unknowns.native_unknown_size - 1))
+    np.testing.assert_allclose(np.asarray(residual_jac[1, :-1]), np.zeros(unknowns.native_unknown_size - 1))
+    np.testing.assert_allclose(np.asarray(residual_jac[1, -1]), 2.0)
+    with pytest.raises(TypeError, match="residual_fn"):
+        free_boundary_native_spline_vector_residual_jax(unknowns.vector, state, projection, object())
 
     dR = np.asarray([[10.0], [20.0], [8.0]])
     dR_sin = np.asarray([[0.1], [0.2], [0.0]])

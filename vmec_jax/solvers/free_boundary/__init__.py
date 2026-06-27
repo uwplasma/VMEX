@@ -29,6 +29,7 @@ from .native_state import (
     FreeBoundaryNativeSplineVectorStep,
     FreeBoundaryNativeSplineUnknownVector,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
+    free_boundary_native_spline_vector_residual_jax,
     free_boundary_native_spline_vector_to_vmec_state_jax,
     free_boundary_native_spline_vector_edge_step,
 )
@@ -51,6 +52,7 @@ __all__ = [
     "free_boundary_value_and_jacobian",
     "free_boundary_value_and_jvp",
     "free_boundary_native_spline_unknown_vector_from_vmec_state",
+    "free_boundary_native_spline_vector_residual_jax",
     "free_boundary_native_spline_vector_to_vmec_state_jax",
     "free_boundary_native_spline_vector_edge_step",
     "free_boundary_reduced_edge_state_from_vmec_state",

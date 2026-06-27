@@ -559,6 +559,9 @@ and is tested to reproduce the existing edge-only native-coordinate bridge.
 ``free_boundary_native_spline_vector_to_vmec_state_jax`` decodes the same
 packed vector with JAX operations so JVP/VJP tests can be built on the native
 state representation before it becomes the primary nonlinear solve state.
+``free_boundary_native_spline_vector_residual_jax`` wraps that decode around an
+existing residual function, which is the first generic entry point for native
+coordinate JVP/VJP parity tests.
 The same native-coordinate rows report source-update capture diagnostics in
 ``native_last_step``: ``decoded_edge_update_l2``,
 ``source_edge_update_l2``, ``source_update_residual_rel``, and

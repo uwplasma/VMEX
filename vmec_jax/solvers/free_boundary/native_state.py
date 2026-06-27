@@ -437,6 +437,24 @@ def free_boundary_native_spline_vector_to_vmec_state_jax(
     )
 
 
+def free_boundary_native_spline_vector_residual_jax(
+    vector: Any,
+    template_state: VMECState,
+    projection: dict[str, Any],
+    residual_fn: Any,
+):
+    """Evaluate a VMEC residual function from native spline-control coordinates."""
+
+    if not callable(residual_fn):
+        raise TypeError("residual_fn must be callable")
+    state = free_boundary_native_spline_vector_to_vmec_state_jax(
+        vector,
+        template_state,
+        projection,
+    )
+    return residual_fn(state)
+
+
 class FreeBoundaryNativeSplineVectorStep(NamedTuple):
     """One edge update expressed through the native spline unknown vector."""
 

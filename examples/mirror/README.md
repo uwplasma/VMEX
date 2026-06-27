@@ -674,6 +674,9 @@ existing edge-only bridge.
 ``free_boundary_native_spline_vector_to_vmec_state_jax`` decodes the packed
 vector with JAX operations, giving the native-control lane a direct JVP/VJP
 entry point before the full residual loop owns the native vector.
+``free_boundary_native_spline_vector_residual_jax`` then evaluates an existing
+residual function from the native vector, so small native-coordinate derivative
+tests can be written before the production loop is migrated.
 The square-coil profile summary also reports
 ``boundary_control_projection_state_coordinate_linf`` and
 ``boundary_control_projection_state_reconstruction_residual_rel`` for this
