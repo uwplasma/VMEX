@@ -769,13 +769,20 @@ Use ``--native-spline-actual-force-preconditioner hutchinson_diag`` plus
 Jacobi preconditioner for ``J.T J + damping I``. This is the current finite
 way to separate a linear-solve conditioning problem from a boundary-basis or
 vacuum-coupling problem on strict ``ftol=1e-12`` square-hybrid decks.
+Use ``--native-spline-actual-force-preconditioner state_block_norm`` to test a
+deterministic native block-Jacobi preconditioner. It estimates one
+normal-operator scale for each packed native state block: interior ``R``/``Z``,
+``lambda``, and reduced LCFS edge controls.
 On the production ``MPOL=5, NTOR=28, NS=17, NZETA=64`` native actual-force
 preflight, increasing the CG budget to ``linear_maxiter=32`` improved the
 two-step factor to about ``0.896``. A one-probe ``hutchinson_diag`` profile with
 the same linear controls was worse, about ``0.945``. Treat the one-probe
 diagonal mode as a diagnostic only; the current better baseline is the higher
-CG budget while a block/physics preconditioner or fuller native spline state is
-developed.
+CG budget while a fuller native spline state is developed. On the tiny
+``jax_replay`` deck, ``state_block_norm`` improved the two-step native loop
+factor from ``0.7084`` to ``0.4494`` with two accepted full-alpha steps, so it
+is now the preferred first preconditioner to test before a more physical
+VMEC-style block preconditioner.
 Use ``--native-spline-actual-force-vacuum-mode jax_replay`` when you want the
 native residual to recompute direct-coil ``bsqvac`` from the decoded boundary
 through the existing JAX-NESTOR replay path. This is the differentiable

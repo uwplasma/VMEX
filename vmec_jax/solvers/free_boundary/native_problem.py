@@ -250,9 +250,10 @@ def free_boundary_native_spline_matrix_free_normal_step_jax(
 
     The linear operator is ``J.T @ J + damping * I``. Products with ``J`` and
     ``J.T`` come from ``jax.linearize`` and ``jax.vjp`` instead of a dense
-    Jacobian. An optional deterministic Hutchinson diagonal estimate can be
-    passed to CG as a Jacobi preconditioner. This is still a prototype, but it
-    is the scalable direction for native spline-control solves.
+    Jacobian. Optional preconditioners either estimate a deterministic
+    Hutchinson diagonal or a native state-block scale for the grouped
+    R/Z/lambda/edge-control unknowns. This is still a prototype, but it is the
+    scalable direction for native spline-control solves.
     """
 
     if not isinstance(problem, FreeBoundaryNativeSplineResidualProblem):
@@ -268,8 +269,12 @@ def free_boundary_native_spline_matrix_free_normal_step_jax(
     preconditioner_mode = "none" if preconditioner is None else str(preconditioner).strip().lower()
     if preconditioner_mode in {"", "false", "off", "no", "identity"}:
         preconditioner_mode = "none"
-    if preconditioner_mode not in {"none", "hutchinson_diag", "jacobi", "diag", "diagonal"}:
-        raise ValueError("preconditioner must be 'none' or 'hutchinson_diag'")
+    hutchinson_modes = {"hutchinson_diag", "jacobi", "diag", "diagonal"}
+    block_modes = {"state_block", "state_block_norm", "block_jacobi", "native_block"}
+    if preconditioner_mode not in {"none", *hutchinson_modes, *block_modes}:
+        raise ValueError(
+            "preconditioner must be 'none', 'hutchinson_diag', or 'state_block_norm'"
+        )
     probes = int(preconditioner_probes)
     if probes <= 0:
         if preconditioner_mode == "none":
@@ -301,7 +306,7 @@ def free_boundary_native_spline_matrix_free_normal_step_jax(
         "floor": float(floor_value),
         "diagonal_estimated": False,
     }
-    if preconditioner_mode != "none":
+    if preconditioner_mode in hutchinson_modes:
         diagonal = _hutchinson_normal_diagonal_estimate(
             normal_matvec,
             values,
@@ -318,6 +323,30 @@ def free_boundary_native_spline_matrix_free_normal_step_jax(
             "probes": int(probes),
             "floor": float(floor_value),
             "diagonal_estimated": True,
+            "diagonal_l2": float(jnp.linalg.norm(diagonal)),
+            "diagonal_linf": float(jnp.max(jnp.abs(diagonal))),
+            "diagonal_min_abs": float(jnp.min(jnp.abs(diagonal))),
+        }
+    elif preconditioner_mode in block_modes:
+        diagonal, block_info = _native_state_block_normal_diagonal_estimate(
+            problem,
+            normal_matvec,
+            values,
+            floor=floor_value,
+        )
+
+        def cg_preconditioner(target):
+            return target / diagonal
+
+        preconditioner_info = {
+            "mode": "state_block_norm",
+            "requested_mode": preconditioner_mode,
+            "probes": int(len(block_info)),
+            "floor": float(floor_value),
+            "diagonal_estimated": True,
+            "block_count": int(len(block_info)),
+            "block_names": [item["name"] for item in block_info],
+            "block_scales": [float(item["scale"]) for item in block_info],
             "diagonal_l2": float(jnp.linalg.norm(diagonal)),
             "diagonal_linf": float(jnp.max(jnp.abs(diagonal))),
             "diagonal_min_abs": float(jnp.min(jnp.abs(diagonal))),
@@ -373,6 +402,67 @@ def _hutchinson_normal_diagonal_estimate(
     diagonal = accum / jnp.asarray(count, dtype=values.dtype)
     floor_arr = jnp.asarray(float(floor), dtype=values.dtype)
     return jnp.maximum(jnp.abs(diagonal), floor_arr)
+
+
+def _native_state_block_slices(problem: FreeBoundaryNativeSplineResidualProblem) -> list[tuple[str, int, int]]:
+    """Return stable packed-vector slices for native state-block scaling."""
+
+    state = problem.template_state
+    ns = int(state.layout.ns)
+    k = int(state.layout.K)
+    interior_block = int(max(ns - 1, 0) * k)
+    lambda_block = int(ns * k)
+    control_count = int(np.asarray(problem.projection["jacobian_np"]).shape[1])
+    pos = 0
+    blocks: list[tuple[str, int, int]] = []
+    for name, count in (
+        ("Rcos_interior", interior_block),
+        ("Rsin_interior", interior_block),
+        ("Zcos_interior", interior_block),
+        ("Zsin_interior", interior_block),
+        ("Lcos", lambda_block),
+        ("Lsin", lambda_block),
+        ("edge_controls", control_count),
+    ):
+        next_pos = pos + int(count)
+        if next_pos > pos:
+            blocks.append((name, pos, next_pos))
+        pos = next_pos
+    return blocks
+
+
+def _native_state_block_normal_diagonal_estimate(
+    problem: FreeBoundaryNativeSplineResidualProblem,
+    normal_matvec: Callable[[Any], Any],
+    template: Any,
+    *,
+    floor: float,
+) -> tuple[Any, tuple[dict[str, float | int | str], ...]]:
+    """Estimate a block-constant diagonal for the native normal operator."""
+
+    values = jnp.asarray(template)
+    if values.ndim != 1:
+        raise ValueError("native matrix-free vectors must be one-dimensional")
+    floor_arr = jnp.asarray(float(floor), dtype=values.dtype)
+    diagonal = jnp.ones_like(values) * floor_arr
+    info: list[dict[str, float | int | str]] = []
+    for name, start, stop in _native_state_block_slices(problem):
+        width = int(stop - start)
+        probe = jnp.zeros_like(values).at[start:stop].set(1.0)
+        response = normal_matvec(probe)
+        raw_scale = jnp.sum(probe * response) / jnp.asarray(width, dtype=values.dtype)
+        scale = jnp.maximum(jnp.abs(raw_scale), floor_arr)
+        diagonal = diagonal.at[start:stop].set(scale)
+        info.append(
+            {
+                "name": name,
+                "start": int(start),
+                "stop": int(stop),
+                "size": width,
+                "scale": float(scale),
+            }
+        )
+    return diagonal, tuple(info)
 
 
 def free_boundary_native_spline_matrix_free_normal_solve_jax(

@@ -262,6 +262,15 @@ solver-native spline nonlinear loop, then differentiate the converged reduced
 residual with implicit/adjoint solves rather than relying on raw reverse-mode
 through thousands of free-boundary iterations.
 
+The first deterministic native block preconditioner is also available as
+``--native-spline-actual-force-preconditioner state_block_norm``. It estimates
+one normal-operator scale per packed native block: interior ``R``/``Z``,
+``lambda``, and reduced LCFS edge controls. On the same tiny ``jax_replay``
+deck, this lowered the two-step native-loop reduction factor from ``0.7084`` to
+``0.4494`` with both steps accepted at full alpha. This is not yet the final
+VMEC-style physics preconditioner, but it is a better baseline than the
+one-probe Hutchinson diagonal for promoting the native residual loop.
+
 The first reduced-control nonlinear-update prototype is now available as an
 opt-in ``vmec_jax`` path. ``run_free_boundary`` accepts a generic
 ``free_boundary_edge_control_projection`` payload whose Jacobian maps reduced

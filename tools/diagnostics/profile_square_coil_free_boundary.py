@@ -549,18 +549,32 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--native-spline-actual-force-preconditioner",
-        choices=("none", "hutchinson_diag", "jacobi", "diag", "diagonal"),
+        choices=(
+            "none",
+            "hutchinson_diag",
+            "jacobi",
+            "diag",
+            "diagonal",
+            "state_block",
+            "state_block_norm",
+            "block_jacobi",
+            "native_block",
+        ),
         default="none",
         help=(
             "Optional CG preconditioner for the native actual-force normal step. "
-            "The diagonal modes use deterministic Hutchinson probes to estimate diag(J.T J + damping I)."
+            "The diagonal modes use deterministic Hutchinson probes; state_block_norm uses one "
+            "scale per native R/Z/lambda/edge-control block."
         ),
     )
     p.add_argument(
         "--native-spline-actual-force-preconditioner-probes",
         type=int,
         default=4,
-        help="Number of deterministic Rademacher probes for the native actual-force diagonal preconditioner.",
+        help=(
+            "Number of deterministic Rademacher probes for the native actual-force diagonal "
+            "preconditioner. Ignored by state_block_norm."
+        ),
     )
     p.add_argument(
         "--native-spline-actual-force-preconditioner-floor",

@@ -846,40 +846,83 @@ def test_native_spline_dense_gauss_newton_solves_manufactured_residual() -> None
         preconditioner_probes=1,
         preconditioner_floor=1.0e-14,
     )
+    block_preconditioned_step = free_boundary_native_spline_matrix_free_normal_step_jax(
+        problem,
+        unknowns.vector,
+        damping=0.0,
+        tol=1.0e-12,
+        maxiter=8,
+        preconditioner="state_block_norm",
+        preconditioner_floor=1.0e-14,
+    )
+    block_preconditioned_solved = free_boundary_native_spline_matrix_free_line_search_solve_jax(
+        problem,
+        unknowns.vector,
+        max_iter=2,
+        ftol=1.0e-11,
+        damping=0.0,
+        linear_tol=1.0e-12,
+        max_backtracks=4,
+        preconditioner="state_block_norm",
+        preconditioner_floor=1.0e-14,
+    )
     decoded = problem.decode(solved.vector)
     decoded_matrix_free = problem.decode(matrix_free_solved.vector)
     decoded_line_search = problem.decode(line_search_solved.vector)
     decoded_preconditioned = problem.decode(preconditioned_solved.vector)
+    decoded_block_preconditioned = problem.decode(block_preconditioned_solved.vector)
 
     assert isinstance(step, FreeBoundaryNativeSplineDenseStep)
     assert isinstance(solved, FreeBoundaryNativeSplineDenseSolve)
     assert isinstance(matrix_free_step, FreeBoundaryNativeSplineMatrixFreeStep)
     assert isinstance(preconditioned_step, FreeBoundaryNativeSplineMatrixFreeStep)
+    assert isinstance(block_preconditioned_step, FreeBoundaryNativeSplineMatrixFreeStep)
     assert isinstance(matrix_free_solved, FreeBoundaryNativeSplineMatrixFreeSolve)
     assert isinstance(line_search_solved, FreeBoundaryNativeSplineMatrixFreeSolve)
     assert isinstance(preconditioned_solved, FreeBoundaryNativeSplineMatrixFreeSolve)
+    assert isinstance(block_preconditioned_solved, FreeBoundaryNativeSplineMatrixFreeSolve)
     assert solved.converged is True
     assert matrix_free_solved.converged is True
     assert line_search_solved.converged is True
     assert preconditioned_solved.converged is True
+    assert block_preconditioned_solved.converged is True
     assert solved.n_iter == 1
     assert matrix_free_solved.n_iter == 1
     assert line_search_solved.n_iter == 1
     assert preconditioned_solved.n_iter == 1
+    assert block_preconditioned_solved.n_iter == 1
     assert solved.residual_l2 < 1.0e-11
     assert matrix_free_solved.residual_l2 < 1.0e-11
     assert line_search_solved.residual_l2 < 1.0e-11
     assert preconditioned_solved.residual_l2 < 1.0e-11
+    assert block_preconditioned_solved.residual_l2 < 1.0e-11
     assert len(solved.history) == 1
     assert len(matrix_free_solved.history) == 1
     assert len(line_search_solved.history) == 1
     assert len(preconditioned_solved.history) == 1
+    assert len(block_preconditioned_solved.history) == 1
     assert line_search_solved.history[0]["accepted"] is True
     assert line_search_solved.history[0]["alpha"] == pytest.approx(1.0)
     assert line_search_solved.history[0]["backtracks"] == 0
     assert preconditioned_step.preconditioner_info["mode"] == "hutchinson_diag"
     assert preconditioned_step.preconditioner_info["diagonal_estimated"] is True
     assert preconditioned_step.preconditioner_info["diagonal_linf"] > 0.0
+    block_info = block_preconditioned_step.preconditioner_info
+    assert block_info["mode"] == "state_block_norm"
+    assert block_info["requested_mode"] == "state_block_norm"
+    assert block_info["diagonal_estimated"] is True
+    assert block_info["block_count"] == 7
+    assert block_info["block_names"] == [
+        "Rcos_interior",
+        "Rsin_interior",
+        "Zcos_interior",
+        "Zsin_interior",
+        "Lcos",
+        "Lsin",
+        "edge_controls",
+    ]
+    assert block_info["diagonal_linf"] > 0.0
+    assert block_info["diagonal_min_abs"] > 0.0
     np.testing.assert_allclose(np.asarray(matrix_free_step.step), np.asarray(step.step), atol=1.0e-11)
     np.testing.assert_allclose(np.asarray(decoded.Rcos), target.Rcos, atol=1.0e-12)
     np.testing.assert_allclose(np.asarray(decoded.Rsin), target.Rsin, atol=1.0e-12)
@@ -905,6 +948,24 @@ def test_native_spline_dense_gauss_newton_solves_manufactured_residual() -> None
     np.testing.assert_allclose(np.asarray(decoded_preconditioned.Zsin), target.Zsin, atol=1.0e-11)
     np.testing.assert_allclose(np.asarray(decoded_preconditioned.Lcos), target.Lcos, atol=1.0e-11)
     np.testing.assert_allclose(np.asarray(decoded_preconditioned.Lsin), target.Lsin, atol=1.0e-11)
+    np.testing.assert_allclose(
+        np.asarray(decoded_block_preconditioned.Rcos), target.Rcos, atol=1.0e-11
+    )
+    np.testing.assert_allclose(
+        np.asarray(decoded_block_preconditioned.Rsin), target.Rsin, atol=1.0e-11
+    )
+    np.testing.assert_allclose(
+        np.asarray(decoded_block_preconditioned.Zcos), target.Zcos, atol=1.0e-11
+    )
+    np.testing.assert_allclose(
+        np.asarray(decoded_block_preconditioned.Zsin), target.Zsin, atol=1.0e-11
+    )
+    np.testing.assert_allclose(
+        np.asarray(decoded_block_preconditioned.Lcos), target.Lcos, atol=1.0e-11
+    )
+    np.testing.assert_allclose(
+        np.asarray(decoded_block_preconditioned.Lsin), target.Lsin, atol=1.0e-11
+    )
 
 
 def test_native_spline_force_blocks_to_state_residual_uses_vmec_mode_mapping() -> None:

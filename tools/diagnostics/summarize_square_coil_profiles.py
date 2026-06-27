@@ -2346,6 +2346,14 @@ def _summary_row(
         "native_spline_actual_force_step_profile_matrix_free_preconditioner_probes": (
             native_actual_preconditioner.get("probes")
         ),
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_block_count": (
+            native_actual_preconditioner.get("block_count")
+        ),
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_block_names": (
+            ",".join(str(item) for item in native_actual_preconditioner.get("block_names", []))
+            if isinstance(native_actual_preconditioner.get("block_names"), list)
+            else None
+        ),
         "native_spline_actual_force_step_profile_matrix_free_preconditioner_diag_linf": _finite_float(
             native_actual_preconditioner.get("diagonal_linf")
         ),
@@ -3147,6 +3155,8 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_actual_force_step_profile_matrix_free_preconditioner_mode",
         "native_spline_actual_force_step_profile_matrix_free_preconditioner_requested_mode",
         "native_spline_actual_force_step_profile_matrix_free_preconditioner_probes",
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_block_count",
+        "native_spline_actual_force_step_profile_matrix_free_preconditioner_block_names",
         "native_spline_actual_force_step_profile_matrix_free_preconditioner_diag_linf",
         "native_spline_actual_force_step_profile_matrix_free_preconditioner_diag_min_abs",
         "native_spline_actual_force_step_profile_residual_reduction_factor",

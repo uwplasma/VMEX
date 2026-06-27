@@ -36870,3 +36870,91 @@ No user input is needed.
 ### User input needed
 
 No user input is needed.
+
+## M410 - Native state-block preconditioner for actual-force loops
+
+### Steps taken
+
+- Inspected the native spline unknown-vector packing and confirmed stable
+  blocks for interior ``R``/``Z``, ``lambda``, and reduced LCFS edge controls.
+- Added ``state_block_norm`` / ``block_jacobi`` native matrix-free
+  preconditioner support in the low-level native residual solver.
+- Exposed ``state_block_norm`` through the square-coil backend profiler CLI.
+- Added summary columns for native actual-force preconditioner block count and
+  block names.
+- Extended the low-level reduced-control tests and the profiler parser/summary
+  tests.
+- Ran frozen-vacuum and differentiable ``jax_replay`` tiny actual-force smokes
+  with the new preconditioner.
+
+### Results obtained
+
+- The preconditioner estimates one normal-operator scale for each packed native
+  state block: ``Rcos_interior``, ``Rsin_interior``, ``Zcos_interior``,
+  ``Zsin_interior``, ``Lcos``, ``Lsin``, and ``edge_controls``.
+- On the tiny frozen-vacuum actual-force deck, two accepted native loop steps
+  reduced the projected residual from ``0.4841`` to ``0.2175`` for a reduction
+  factor of ``0.4494``.
+- On the tiny differentiable ``jax_replay`` deck, the same
+  ``state_block_norm`` run also reduced ``0.4841`` to ``0.2175`` with
+  ``jax_replay_ready=true`` and ``differentiable_vacuum_pressure=true``.
+- This improves over the previous unpreconditioned two-step ``jax_replay``
+  reduction factor of ``0.7084`` and is now the preferred first native loop
+  preconditioner to test before a fuller VMEC-style physics preconditioner.
+
+### How it was tested
+
+- ``python -m pytest -q tests/test_free_boundary_reduced_controls.py -k native_spline``
+  passed with ``7 passed``.
+- ``python -m pytest -q tests/test_profile_square_coil_free_boundary.py::test_square_coil_profile_parser_accepts_control_spline_axis_kind``
+  passed.
+- ``python -m pytest -q tests/test_profile_square_coil_free_boundary.py -k native_spline_actual_force_step_profile_is_no_solve``
+  passed.
+- ``ruff check`` passed for the touched native solver, profiler, and tests.
+- ``python -m compileall`` passed for the touched native solver and profiler.
+- ``/tmp/vmec_native_block_jax_replay_m410/square_coil_free_boundary_backend_profile.json``
+  reported ``state_block_norm``, block count ``7``, loop status
+  ``iteration_budget_exhausted_reducing``, and loop reduction ``0.4494``.
+
+### File structure and best-practice notes
+
+- The preconditioner lives in
+  ``vmec_jax/solvers/free_boundary/native_problem.py`` beside the existing
+  matrix-free normal solve. It uses the native residual problem metadata rather
+  than duplicating geometry knowledge in the profiler.
+- ``tools/diagnostics/profile_square_coil_free_boundary.py`` only exposes the
+  new mode as a CLI choice.
+- ``tools/diagnostics/summarize_square_coil_profiles.py`` only flattens
+  preconditioner metadata for comparison tables.
+- No generated WOUTs, ``mgrid`` files, figures, or raw profile folders were
+  committed.
+
+### Best next steps
+
+1. Run the state-block preconditioner on a production-shaped native actual
+   force profile once office capacity frees up.
+2. Promote the reducing loop into a bounded native nonlinear solve prototype
+   that can return a decoded accepted state.
+3. Use the block-preconditioned native loop as the default differentiable
+   residual path for implicit/adjoint derivative experiments.
+
+### Completion percentages after M410
+
+- Geometry/grids/bases: `95%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `80%`.
+- Residual Newton / preconditioning: `93%`.
+- Two-coil and manufactured validation: `74%`.
+- Finite-current pitch validation: `62%`.
+- Plotting and `vmec --plot` mirror support: `78%`.
+- I/O schema and docs: `98%`.
+- Differentiable solved-state API: `37%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `68%`.
+- Stellarator-mirror hybrid lane: `78%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `93%`.
+
+### User input needed
+
+No user input is needed.
