@@ -16,6 +16,7 @@ from vmec_jax.solvers.free_boundary import (
     free_boundary_reduced_edge_state_from_vmec_state,
     free_boundary_reduced_edge_state_to_vmec_state,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
+    free_boundary_native_spline_vector_to_vmec_state_jax,
     free_boundary_native_spline_vector_edge_step,
     reduced_control_decode,
     reduced_control_least_squares_step,
@@ -27,7 +28,7 @@ from vmec_jax.solvers.free_boundary.control import (
     _freeb_edge_control_native_coordinate_step,
     _prepare_freeb_edge_control_projection,
 )
-from vmec_jax.state import StateLayout, VMECState
+from vmec_jax.state import StateLayout, VMECState, pack_state
 from vmec_jax.static import build_static
 
 
@@ -56,6 +57,11 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert (
         public_api.free_boundary_native_spline_unknown_vector_from_vmec_state
         is free_boundary_native_spline_unknown_vector_from_vmec_state
+    )
+    assert vj.free_boundary_native_spline_vector_to_vmec_state_jax is free_boundary_native_spline_vector_to_vmec_state_jax
+    assert (
+        public_api.free_boundary_native_spline_vector_to_vmec_state_jax
+        is free_boundary_native_spline_vector_to_vmec_state_jax
     )
     assert vj.free_boundary_native_spline_vector_edge_step is free_boundary_native_spline_vector_edge_step
     assert public_api.free_boundary_native_spline_vector_edge_step is free_boundary_native_spline_vector_edge_step
@@ -339,6 +345,8 @@ def test_free_boundary_reduced_edge_state_encodes_vmec_lcfs_edge_and_pullback() 
 
 
 def test_native_spline_unknown_vector_packs_edge_controls_not_fourier_edge() -> None:
+    import jax
+
     cfg = VMECConfig(
         mpol=1,
         ntor=0,
@@ -394,6 +402,11 @@ def test_native_spline_unknown_vector_packs_edge_controls_not_fourier_edge() -> 
 
     unknowns = free_boundary_native_spline_unknown_vector_from_vmec_state(state, projection)
     decoded = unknowns.to_vmec_state()
+    decoded_jax = free_boundary_native_spline_vector_to_vmec_state_jax(
+        jnp.asarray(unknowns.vector),
+        state,
+        projection,
+    )
     payload = unknowns.to_dict()
 
     assert isinstance(unknowns, FreeBoundaryNativeSplineUnknownVector)
@@ -411,6 +424,16 @@ def test_native_spline_unknown_vector_packs_edge_controls_not_fourier_edge() -> 
     np.testing.assert_allclose(np.asarray(decoded.Zsin[:-1]), np.asarray(state.Zsin[:-1]))
     np.testing.assert_allclose(np.asarray(decoded.Lcos), np.asarray(state.Lcos))
     np.testing.assert_allclose(np.asarray(decoded.Lsin), np.asarray(state.Lsin))
+    np.testing.assert_allclose(np.asarray(pack_state(decoded_jax)), np.asarray(pack_state(decoded)))
+    edge_grad = jax.grad(
+        lambda vector: free_boundary_native_spline_vector_to_vmec_state_jax(
+            vector,
+            state,
+            projection,
+        ).Rcos[-1, 0]
+    )(jnp.asarray(unknowns.vector))
+    np.testing.assert_allclose(np.asarray(edge_grad[:-1]), np.zeros(unknowns.native_unknown_size - 1))
+    np.testing.assert_allclose(np.asarray(edge_grad[-1:]), [2.0])
 
     dR = np.asarray([[10.0], [20.0], [8.0]])
     dR_sin = np.asarray([[0.1], [0.2], [0.0]])

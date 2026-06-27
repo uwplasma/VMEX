@@ -556,6 +556,9 @@ current strict solve still runs through the edge-only bridge above.
 ``FreeBoundaryNativeSplineVectorStep`` is the one-step parity adapter for that
 contract: it expresses the current LCFS update through the packed native vector
 and is tested to reproduce the existing edge-only native-coordinate bridge.
+``free_boundary_native_spline_vector_to_vmec_state_jax`` decodes the same
+packed vector with JAX operations so JVP/VJP tests can be built on the native
+state representation before it becomes the primary nonlinear solve state.
 The same native-coordinate rows report source-update capture diagnostics in
 ``native_last_step``: ``decoded_edge_update_l2``,
 ``source_edge_update_l2``, ``source_update_residual_rel``, and

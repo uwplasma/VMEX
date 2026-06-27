@@ -8,6 +8,7 @@ from typing import Any, NamedTuple
 import numpy as np
 
 from vmec_jax.state import VMECState
+from vmec_jax._compat import jnp
 
 from .control import (
     FreeBoundaryReducedEdgeState,
@@ -19,7 +20,7 @@ from .control import (
     free_boundary_reduced_edge_state_from_vmec_state,
     free_boundary_reduced_edge_state_to_vmec_state,
 )
-from .reduced_controls import ReducedControlState
+from .reduced_controls import ReducedControlState, reduced_control_decode
 
 
 def _finite_vector(values: Any, *, name: str, size: int | None = None) -> np.ndarray:
@@ -362,6 +363,78 @@ def free_boundary_native_spline_unknown_vector_from_vmec_state(
     """Encode ``state`` as native free-boundary spline-control unknowns."""
 
     return FreeBoundaryNativeSplineUnknownVector.from_vmec_state(state, projection)
+
+
+def free_boundary_native_spline_vector_to_vmec_state_jax(
+    vector: Any,
+    template_state: VMECState,
+    projection: dict[str, Any],
+) -> VMECState:
+    """Decode a native spline-control vector with JAX-compatible operations."""
+
+    if not bool(projection.get("enabled", False)):
+        raise ValueError("projection must be enabled")
+    ns = int(template_state.layout.ns)
+    k = int(template_state.layout.K)
+    control_count = int(np.asarray(projection["jacobian_np"]).shape[1])
+    interior_size = int(4 * max(ns - 1, 0) * k + 2 * ns * k)
+    total_size = int(interior_size + control_count)
+    values = jnp.asarray(vector)
+    if values.ndim != 1 or int(values.shape[0]) != total_size:
+        raise ValueError(f"vector must have size {total_size}")
+    pos = 0
+    interior_block = max(ns - 1, 0) * k
+    lambda_block = ns * k
+
+    def take(count: int):
+        nonlocal pos
+        out = values[pos : pos + count]
+        pos += count
+        return out
+
+    Rcos = jnp.asarray(template_state.Rcos, dtype=values.dtype)
+    Rsin = jnp.asarray(template_state.Rsin, dtype=values.dtype)
+    Zcos = jnp.asarray(template_state.Zcos, dtype=values.dtype)
+    Zsin = jnp.asarray(template_state.Zsin, dtype=values.dtype)
+    Lcos = jnp.asarray(template_state.Lcos, dtype=values.dtype)
+    Lsin = jnp.asarray(template_state.Lsin, dtype=values.dtype)
+    if ns > 1:
+        Rcos = Rcos.at[:-1, :].set(take(interior_block).reshape((ns - 1, k)))
+        Rsin = Rsin.at[:-1, :].set(take(interior_block).reshape((ns - 1, k)))
+        Zcos = Zcos.at[:-1, :].set(take(interior_block).reshape((ns - 1, k)))
+        Zsin = Zsin.at[:-1, :].set(take(interior_block).reshape((ns - 1, k)))
+    else:
+        take(0)
+        take(0)
+        take(0)
+        take(0)
+    Lcos = Lcos.at[:, :].set(take(lambda_block).reshape((ns, k)))
+    Lsin = Lsin.at[:, :].set(take(lambda_block).reshape((ns, k)))
+    controls = take(control_count)
+    initial = jnp.concatenate(
+        [
+            jnp.asarray(projection["initial_np"]["R_cos"], dtype=values.dtype),
+            jnp.asarray(projection["initial_np"]["R_sin"], dtype=values.dtype),
+            jnp.asarray(projection["initial_np"]["Z_cos"], dtype=values.dtype),
+            jnp.asarray(projection["initial_np"]["Z_sin"], dtype=values.dtype),
+        ],
+        axis=0,
+    )
+    edge_values = reduced_control_decode(initial, projection["jacobian_np"], controls)
+    scale = jnp.asarray(projection["mode_scale_np"], dtype=values.dtype)
+    Rcos = Rcos.at[-1, :].set(edge_values[0:k] / scale)
+    Rsin = Rsin.at[-1, :].set(edge_values[k : 2 * k] / scale)
+    Zcos = Zcos.at[-1, :].set(edge_values[2 * k : 3 * k] / scale)
+    Zsin = Zsin.at[-1, :].set(edge_values[3 * k : 4 * k] / scale)
+    return VMECState(
+        layout=template_state.layout,
+        Rcos=Rcos,
+        Rsin=Rsin,
+        Zcos=Zcos,
+        Zsin=Zsin,
+        Lcos=Lcos,
+        Lsin=Lsin,
+    )
 
 
 class FreeBoundaryNativeSplineVectorStep(NamedTuple):

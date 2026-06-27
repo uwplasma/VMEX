@@ -671,6 +671,9 @@ strict loop has switched to a full native-control residual.
 ``FreeBoundaryNativeSplineVectorStep`` is the parity adapter that currently
 expresses the LCFS edge update through that native vector while matching the
 existing edge-only bridge.
+``free_boundary_native_spline_vector_to_vmec_state_jax`` decodes the packed
+vector with JAX operations, giving the native-control lane a direct JVP/VJP
+entry point before the full residual loop owns the native vector.
 The square-coil profile summary also reports
 ``boundary_control_projection_state_coordinate_linf`` and
 ``boundary_control_projection_state_reconstruction_residual_rel`` for this
