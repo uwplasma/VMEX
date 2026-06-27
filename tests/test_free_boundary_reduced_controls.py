@@ -9,19 +9,24 @@ from vmec_jax.solvers.free_boundary import (
     FreeBoundaryNativeSplineState,
     FreeBoundaryNativeSplineUpdate,
     FreeBoundaryNativeSplineUnknownVector,
+    FreeBoundaryNativeSplineVectorStep,
     FreeBoundaryReducedEdgeState,
     ReducedControlMap,
     ReducedControlState,
     free_boundary_reduced_edge_state_from_vmec_state,
     free_boundary_reduced_edge_state_to_vmec_state,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
+    free_boundary_native_spline_vector_edge_step,
     reduced_control_decode,
     reduced_control_least_squares_step,
     reduced_control_pullback,
 )
 from vmec_jax.config import VMECConfig
 from vmec_jax.namelist import InData
-from vmec_jax.solvers.free_boundary.control import _prepare_freeb_edge_control_projection
+from vmec_jax.solvers.free_boundary.control import (
+    _freeb_edge_control_native_coordinate_step,
+    _prepare_freeb_edge_control_projection,
+)
 from vmec_jax.state import StateLayout, VMECState
 from vmec_jax.static import build_static
 
@@ -42,6 +47,7 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert public_api.FreeBoundaryNativeSplineState is FreeBoundaryNativeSplineState
     assert public_api.FreeBoundaryNativeSplineUpdate is FreeBoundaryNativeSplineUpdate
     assert public_api.FreeBoundaryNativeSplineUnknownVector is FreeBoundaryNativeSplineUnknownVector
+    assert public_api.FreeBoundaryNativeSplineVectorStep is FreeBoundaryNativeSplineVectorStep
     assert public_api.FreeBoundaryReducedEdgeState is FreeBoundaryReducedEdgeState
     assert (
         vj.free_boundary_native_spline_unknown_vector_from_vmec_state
@@ -51,6 +57,8 @@ def test_reduced_control_least_squares_step_is_public() -> None:
         public_api.free_boundary_native_spline_unknown_vector_from_vmec_state
         is free_boundary_native_spline_unknown_vector_from_vmec_state
     )
+    assert vj.free_boundary_native_spline_vector_edge_step is free_boundary_native_spline_vector_edge_step
+    assert public_api.free_boundary_native_spline_vector_edge_step is free_boundary_native_spline_vector_edge_step
     assert (
         vj.free_boundary_reduced_edge_state_from_vmec_state
         is free_boundary_reduced_edge_state_from_vmec_state
@@ -428,6 +436,127 @@ def test_native_spline_unknown_vector_packs_edge_controls_not_fourier_edge() -> 
 
     with pytest.raises(ValueError, match="edge_metric"):
         unknowns.vector_from_delta_tuple(deltas, edge_metric="bad")
+
+
+def test_native_spline_vector_edge_step_matches_existing_edge_bridge() -> None:
+    cfg = VMECConfig(
+        mpol=1,
+        ntor=0,
+        ns=3,
+        nfp=1,
+        lasym=False,
+        lthreed=False,
+        lconm1=True,
+        ntheta=8,
+        nzeta=1,
+    )
+    static = build_static(cfg)
+    layout = StateLayout(ns=3, K=static.modes.K, lasym=False)
+    zeros = np.zeros((3, static.modes.K), dtype=float)
+    state0 = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[1.0], [2.0], [3.0]]),
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+    indata = InData(
+        scalars={"MPOL": 1, "NTOR": 0, "NS_ARRAY": [3], "NFP": 1, "LASYM": False, "LCONM1": True},
+        indexed={"RBC": {(0, 0): 3.0}},
+    )
+    jacobian = np.zeros((4 * static.modes.K, 1), dtype=float)
+    jacobian[0, 0] = 2.0
+    projection = _prepare_freeb_edge_control_projection(
+        {
+            "enabled": True,
+            "basis_symmetry": "test",
+            "labels": ["edge_radius"],
+            "control_jacobian": jacobian,
+            "update_mode": "native_coordinate",
+            "native_force_metric": "least_squares",
+        },
+        indata=indata,
+        static=static,
+        state0=state0,
+        free_boundary_enabled=True,
+    )
+    state_current = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[1.0], [2.0], [3.5]]),
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+    state_candidate = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[1.5], [2.5], [9.0]]),
+        Rsin=np.asarray([[0.1], [0.2], [0.3]]),
+        Zcos=np.asarray([[0.4], [0.5], [0.6]]),
+        Zsin=np.asarray([[0.7], [0.8], [0.9]]),
+        Lcos=np.asarray([[1.0], [1.1], [1.2]]),
+        Lsin=np.asarray([[1.3], [1.4], [1.5]]),
+    )
+    update_deltas = (
+        np.asarray([[0.5], [0.5], [4.0]]),
+        np.asarray([[0.1], [0.2], [0.3]]),
+        np.asarray([[0.4], [0.5], [0.6]]),
+        np.asarray([[0.7], [0.8], [0.9]]),
+        np.asarray([[1.0], [1.1], [1.2]]),
+        np.asarray([[1.3], [1.4], [1.5]]),
+    )
+    force_deltas = (
+        np.asarray([[0.0], [0.0], [8.0]]),
+        zeros.copy(),
+        zeros.copy(),
+        zeros.copy(),
+        zeros.copy(),
+        zeros.copy(),
+    )
+    kwargs = {
+        "dt_eff": 0.1,
+        "b1": 0.8,
+        "fac": 1.0,
+        "force_scale": 1.0,
+        "flip_sign": 1.0,
+    }
+
+    legacy = _freeb_edge_control_native_coordinate_step(
+        state_current=state_current,
+        state_candidate=state_candidate,
+        update_deltas=update_deltas,
+        force_deltas=force_deltas,
+        projection=projection,
+        control_velocity=None,
+        edge_state=None,
+        host_update=True,
+        **kwargs,
+    )
+    vector_step = free_boundary_native_spline_vector_edge_step(
+        state_current=state_current,
+        state_candidate=state_candidate,
+        update_deltas=update_deltas,
+        force_deltas=force_deltas,
+        projection=projection,
+        control_velocity=None,
+        **kwargs,
+    )
+
+    assert isinstance(vector_step, FreeBoundaryNativeSplineVectorStep)
+    assert vector_step.to_dict()["mode"] == "free_boundary_native_spline_vector_step"
+    assert vector_step.force_metric == legacy.force_metric == "least_squares"
+    np.testing.assert_allclose(vector_step.control_force, legacy.control_force)
+    np.testing.assert_allclose(vector_step.control_update, legacy.control_update)
+    np.testing.assert_allclose(vector_step.control_velocity, legacy.control_velocity)
+    np.testing.assert_allclose(np.asarray(vector_step.state.Rcos), np.asarray(legacy.state.Rcos))
+    np.testing.assert_allclose(np.asarray(vector_step.state.Rsin), np.asarray(legacy.state.Rsin))
+    np.testing.assert_allclose(np.asarray(vector_step.state.Zcos), np.asarray(legacy.state.Zcos))
+    np.testing.assert_allclose(np.asarray(vector_step.state.Zsin), np.asarray(legacy.state.Zsin))
+    for actual, expected in zip(vector_step.update_deltas, legacy.update_deltas, strict=True):
+        np.testing.assert_allclose(actual, expected)
 
 
 def test_reduced_control_decode_matches_host_map_and_jacobian() -> None:

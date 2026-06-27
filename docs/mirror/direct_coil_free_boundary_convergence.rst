@@ -553,6 +553,9 @@ prototype/preflight report lists the resulting native unknown size, removed
 Fourier edge degrees of freedom, and reduction fraction. This is the tested
 pack/unpack contract for the future full native-control residual loop; the
 current strict solve still runs through the edge-only bridge above.
+``FreeBoundaryNativeSplineVectorStep`` is the one-step parity adapter for that
+contract: it expresses the current LCFS update through the packed native vector
+and is tested to reproduce the existing edge-only native-coordinate bridge.
 The same native-coordinate rows report source-update capture diagnostics in
 ``native_last_step``: ``decoded_edge_update_l2``,
 ``source_edge_update_l2``, ``source_update_residual_rel``, and

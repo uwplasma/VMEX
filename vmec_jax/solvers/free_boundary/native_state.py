@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -14,6 +14,7 @@ from .control import (
     _freeb_edge_control_delta_tuple_target,
     _freeb_edge_control_project_vector_np,
     _freeb_edge_control_reduced_map,
+    _freeb_edge_control_scale_control_np,
     _freeb_edge_control_state_edge_values,
     free_boundary_reduced_edge_state_from_vmec_state,
     free_boundary_reduced_edge_state_to_vmec_state,
@@ -361,3 +362,122 @@ def free_boundary_native_spline_unknown_vector_from_vmec_state(
     """Encode ``state`` as native free-boundary spline-control unknowns."""
 
     return FreeBoundaryNativeSplineUnknownVector.from_vmec_state(state, projection)
+
+
+class FreeBoundaryNativeSplineVectorStep(NamedTuple):
+    """One edge update expressed through the native spline unknown vector."""
+
+    unknowns: FreeBoundaryNativeSplineUnknownVector
+    state: VMECState
+    update_deltas: tuple[np.ndarray, ...]
+    native_update_vector: np.ndarray
+    control_update: np.ndarray
+    control_force: np.ndarray
+    control_velocity: np.ndarray
+    target_l2: float
+    control_force_l2: float
+    control_velocity_l2: float
+    control_update_l2: float
+    trust_scale: float
+    force_metric: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return compact JSON-friendly one-step diagnostics."""
+
+        return {
+            "mode": "free_boundary_native_spline_vector_step",
+            "native_unknown_size": int(self.unknowns.native_unknown_size),
+            "full_vmec_size": int(self.unknowns.full_vmec_size),
+            "edge_control_size": int(self.unknowns.edge_control_size),
+            "removed_fourier_edge_dofs": int(self.unknowns.removed_fourier_edge_dofs),
+            "force_metric": str(self.force_metric),
+            "target_l2": float(self.target_l2),
+            "control_force_l2": float(self.control_force_l2),
+            "control_velocity_l2": float(self.control_velocity_l2),
+            "control_update_l2": float(self.control_update_l2),
+            "trust_scale": float(self.trust_scale),
+        }
+
+
+def free_boundary_native_spline_vector_edge_step(
+    *,
+    state_current: VMECState,
+    state_candidate: VMECState,
+    update_deltas: Any,
+    force_deltas: Any,
+    projection: dict[str, Any],
+    unknowns: FreeBoundaryNativeSplineUnknownVector | None = None,
+    control_velocity: Any | None = None,
+    dt_eff: float,
+    b1: float,
+    fac: float,
+    force_scale: float,
+    flip_sign: float,
+) -> FreeBoundaryNativeSplineVectorStep:
+    """Apply one edge-control update through native unknown-vector coordinates.
+
+    The interior part of ``state_candidate`` is kept from the existing VMEC
+    update proposal.  The LCFS edge is updated in reduced spline-control
+    coordinates and decoded back to a ``VMECState``.  This mirrors the current
+    edge-only native-coordinate bridge while using the new packed native vector
+    contract.
+    """
+
+    if not bool(projection.get("enabled", False)):
+        raise ValueError("projection must be enabled")
+    current_unknowns = (
+        free_boundary_native_spline_unknown_vector_from_vmec_state(state_current, projection)
+        if unknowns is None
+        else unknowns
+    )
+    if not isinstance(current_unknowns, FreeBoundaryNativeSplineUnknownVector):
+        raise TypeError("unknowns must be a FreeBoundaryNativeSplineUnknownVector")
+    edge_count = int(current_unknowns.edge_control_size)
+    candidate_vector = np.concatenate(
+        [
+            _pack_vmec_interior_without_edge(state_candidate),
+            current_unknowns.control_delta,
+        ],
+        axis=0,
+    )
+    candidate_unknowns = FreeBoundaryNativeSplineUnknownVector(
+        template_state=state_candidate,
+        edge_state=current_unknowns.edge_state,
+        vector=candidate_vector,
+        projection=projection,
+    )
+    force_metric = str(projection.get("native_force_metric", "pullback")).strip().lower()
+    metric_for_vector = "least_squares" if force_metric == "least_squares" else "pullback"
+    force_vector = candidate_unknowns.vector_from_delta_tuple(force_deltas, edge_metric=metric_for_vector)
+    control_force = np.asarray(force_vector[-edge_count:], dtype=float)
+    previous = (
+        np.zeros_like(control_force)
+        if control_velocity is None
+        else _finite_vector(control_velocity, name="control_velocity", size=edge_count)
+    )
+    next_velocity = float(fac) * (float(b1) * previous + float(force_scale) * float(flip_sign) * control_force)
+    control_update = float(dt_eff) * next_velocity
+    control_update, trust_scale = _freeb_edge_control_scale_control_np(control_update, projection)
+    if trust_scale != 1.0:
+        next_velocity = control_update / max(float(dt_eff), np.finfo(float).tiny)
+
+    native_update_vector = candidate_unknowns.vector_from_delta_tuple(update_deltas, edge_metric="least_squares")
+    native_update_vector[-edge_count:] = control_update
+    next_vector = np.array(candidate_unknowns.vector, dtype=float, copy=True)
+    next_vector[-edge_count:] += control_update
+    next_unknowns = candidate_unknowns.with_vector(next_vector)
+    return FreeBoundaryNativeSplineVectorStep(
+        unknowns=next_unknowns,
+        state=next_unknowns.to_vmec_state(),
+        update_deltas=candidate_unknowns.delta_tuple_from_vector(native_update_vector),
+        native_update_vector=np.asarray(native_update_vector, dtype=float),
+        control_update=np.asarray(control_update, dtype=float),
+        control_force=np.asarray(control_force, dtype=float),
+        control_velocity=np.asarray(next_velocity, dtype=float),
+        target_l2=float(np.linalg.norm(_freeb_edge_control_delta_tuple_target(force_deltas, projection))),
+        control_force_l2=float(np.linalg.norm(control_force)),
+        control_velocity_l2=float(np.linalg.norm(next_velocity)),
+        control_update_l2=float(np.linalg.norm(control_update)),
+        trust_scale=float(trust_scale),
+        force_metric="least_squares" if metric_for_vector == "least_squares" else "pullback",
+    )
