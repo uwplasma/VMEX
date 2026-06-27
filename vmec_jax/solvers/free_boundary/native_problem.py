@@ -106,7 +106,7 @@ class FreeBoundaryNativeSplineMatrixFreeSolve(NamedTuple):
     n_iter: int
     converged: bool
     residual_l2: float
-    history: tuple[dict[str, float | int], ...]
+    history: tuple[dict[str, float | int | bool], ...]
 
 
 def free_boundary_native_spline_force_blocks_to_state_residual(
@@ -343,6 +343,140 @@ def free_boundary_native_spline_matrix_free_normal_solve_jax(
         n_iter=int(n_iter),
         converged=bool(converged),
         residual_l2=residual_l2,
+        history=tuple(history),
+    )
+
+
+def free_boundary_native_spline_matrix_free_line_search_solve_jax(
+    problem: FreeBoundaryNativeSplineResidualProblem,
+    vector: Any,
+    *,
+    max_iter: int = 8,
+    ftol: float = 1.0e-12,
+    damping: float = 1.0e-10,
+    linear_tol: float = 1.0e-10,
+    linear_maxiter: int | None = None,
+    max_backtracks: int = 8,
+    shrink: float = 0.5,
+    accept_ratio: float = 1.0,
+) -> FreeBoundaryNativeSplineMatrixFreeSolve:
+    """Solve a native residual problem with safeguarded matrix-free steps.
+
+    Each nonlinear iteration computes the same damped normal-equation step as
+    ``free_boundary_native_spline_matrix_free_normal_step_jax`` and then
+    backtracks along that direction until the residual norm does not exceed
+    ``accept_ratio * current_norm``. If every trial is worse, the solve stops
+    without accepting a degrading update.
+    """
+
+    if int(max_iter) < 0:
+        raise ValueError("max_iter must be nonnegative")
+    target = float(ftol)
+    if not np.isfinite(target) or target < 0.0:
+        raise ValueError("ftol must be finite and nonnegative")
+    if int(max_backtracks) < 0:
+        raise ValueError("max_backtracks must be nonnegative")
+    shrink_value = float(shrink)
+    if not np.isfinite(shrink_value) or not (0.0 < shrink_value < 1.0):
+        raise ValueError("shrink must be finite and between 0 and 1")
+    accept_ratio_value = float(accept_ratio)
+    if not np.isfinite(accept_ratio_value) or accept_ratio_value <= 0.0:
+        raise ValueError("accept_ratio must be finite and positive")
+
+    current = jnp.asarray(vector)
+    history: list[dict[str, float | int | bool]] = []
+    residual = problem.residual(current)
+    residual_l2 = float(jnp.linalg.norm(residual))
+    converged = residual_l2 <= target
+    accepted_iter = 0
+    attempt_iter = 0
+    while (not converged) and accepted_iter < int(max_iter):
+        step = free_boundary_native_spline_matrix_free_normal_step_jax(
+            problem,
+            current,
+            damping=damping,
+            tol=linear_tol,
+            maxiter=linear_maxiter,
+        )
+        step_l2 = float(step.step_l2)
+        before_l2 = float(residual_l2)
+        if step_l2 <= np.finfo(float).tiny:
+            history.append(
+                {
+                    "iter": int(attempt_iter + 1),
+                    "accepted": False,
+                    "alpha": 0.0,
+                    "backtracks": 0,
+                    "residual_l2_before": before_l2,
+                    "residual_l2": before_l2,
+                    "step_l2": step_l2,
+                    "reason": 0,
+                }
+            )
+            break
+
+        best_vector = current
+        best_residual = residual
+        best_l2 = before_l2
+        best_alpha = 0.0
+        best_backtracks = 0
+        accepted = False
+        alpha = 1.0
+        for backtracks in range(int(max_backtracks) + 1):
+            alpha_arr = jnp.asarray(alpha, dtype=current.dtype)
+            trial_vector = current + alpha_arr * step.step
+            trial_residual = problem.residual(trial_vector)
+            trial_l2 = float(jnp.linalg.norm(trial_residual))
+            if trial_l2 < best_l2:
+                best_vector = trial_vector
+                best_residual = trial_residual
+                best_l2 = trial_l2
+                best_alpha = float(alpha)
+                best_backtracks = int(backtracks)
+            if trial_l2 <= accept_ratio_value * before_l2:
+                best_vector = trial_vector
+                best_residual = trial_residual
+                best_l2 = trial_l2
+                best_alpha = float(alpha)
+                best_backtracks = int(backtracks)
+                accepted = True
+                break
+            alpha *= shrink_value
+
+        # If strict non-increase failed but one trial improved, accept the best
+        # improving trial. This avoids rejecting useful steps due to a very
+        # small accept-ratio margin while still preventing uphill moves.
+        if not accepted and best_l2 < before_l2:
+            accepted = True
+
+        attempt_iter += 1
+        history.append(
+            {
+                "iter": int(attempt_iter),
+                "accepted": bool(accepted),
+                "alpha": float(best_alpha),
+                "backtracks": int(best_backtracks),
+                "residual_l2_before": before_l2,
+                "residual_l2": float(best_l2),
+                "step_l2": step_l2,
+                "accepted_step_l2": float(best_alpha * step_l2),
+            }
+        )
+        if not accepted:
+            break
+
+        current = best_vector
+        residual = best_residual
+        residual_l2 = float(best_l2)
+        accepted_iter += 1
+        converged = residual_l2 <= target
+
+    return FreeBoundaryNativeSplineMatrixFreeSolve(
+        vector=current,
+        residual=residual,
+        n_iter=int(accepted_iter),
+        converged=bool(converged),
+        residual_l2=float(residual_l2),
         history=tuple(history),
     )
 

@@ -1665,6 +1665,18 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert native["projected_residual_l2_before_step"] > 0.0
     assert native["projected_residual_l2_after_step"] >= 0.0
     assert native["matrix_free_step_l2"] >= 0.0
+    line_search = native["matrix_free_line_search_solve"]
+    assert line_search["status"] == "completed"
+    assert line_search["method"] == "matrix_free_normal_step_with_residual_line_search"
+    assert line_search["max_iter"] == 2
+    assert line_search["max_backtracks"] == 8
+    assert line_search["wall_s"] >= 0.0
+    assert 0 <= line_search["n_iter"] <= 2
+    assert line_search["final_residual_l2"] <= native["projected_residual_l2_before_step"]
+    assert line_search["final_residual_reduction_factor"] <= 1.0
+    assert isinstance(line_search["history"], list)
+    if line_search["history"]:
+        assert line_search["history"][0]["accepted"] is True
     mapping = native["force_block_mapping_audit"]
     assert mapping["status"] == "state_residual_matches_delta_tuple_from_blocks"
     assert mapping["reference_path"] == "delta_tuple_from_blocks_with_physical_delta_transforms"
@@ -1739,6 +1751,19 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert row["native_spline_actual_force_step_profile_projected_l2_before"] == pytest.approx(
         native["projected_residual_l2_before_step"]
     )
+    assert row["native_spline_actual_force_step_profile_line_search_status"] == "completed"
+    assert row["native_spline_actual_force_step_profile_line_search_n_iter"] == line_search[
+        "n_iter"
+    ]
+    assert row["native_spline_actual_force_step_profile_line_search_converged"] == line_search[
+        "converged"
+    ]
+    assert row["native_spline_actual_force_step_profile_line_search_final_l2"] == pytest.approx(
+        line_search["final_residual_l2"]
+    )
+    assert row[
+        "native_spline_actual_force_step_profile_line_search_reduction_factor"
+    ] == pytest.approx(line_search["final_residual_reduction_factor"])
     assert (
         row["native_spline_actual_force_step_profile_next_action"]
         == "promote_matrix_free_native_spline_residual_with_vacuum_pressure_and_line_search"

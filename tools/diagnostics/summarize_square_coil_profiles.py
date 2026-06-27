@@ -1748,6 +1748,9 @@ def _summary_row(
     native_actual_edge_bridge = native_actual_force_profile.get("edge_bridge_comparison")
     if not isinstance(native_actual_edge_bridge, dict):
         native_actual_edge_bridge = {}
+    native_actual_line_search = native_actual_force_profile.get("matrix_free_line_search_solve")
+    if not isinstance(native_actual_line_search, dict):
+        native_actual_line_search = {}
     native_actual_edge_bridge_opposite = native_actual_edge_bridge.get("opposite_flip_sign_comparison")
     if not isinstance(native_actual_edge_bridge_opposite, dict):
         native_actual_edge_bridge_opposite = {}
@@ -2297,6 +2300,21 @@ def _summary_row(
         ),
         "native_spline_actual_force_step_profile_projected_l2_after": _finite_float(
             native_actual_force_profile.get("projected_residual_l2_after_step")
+        ),
+        "native_spline_actual_force_step_profile_line_search_status": native_actual_line_search.get(
+            "status"
+        ),
+        "native_spline_actual_force_step_profile_line_search_n_iter": native_actual_line_search.get(
+            "n_iter"
+        ),
+        "native_spline_actual_force_step_profile_line_search_converged": native_actual_line_search.get(
+            "converged"
+        ),
+        "native_spline_actual_force_step_profile_line_search_final_l2": _finite_float(
+            native_actual_line_search.get("final_residual_l2")
+        ),
+        "native_spline_actual_force_step_profile_line_search_reduction_factor": _finite_float(
+            native_actual_line_search.get("final_residual_reduction_factor")
         ),
         "native_spline_actual_force_step_profile_next_action": native_actual_force_profile.get(
             "next_action"
@@ -3002,6 +3020,11 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_actual_force_step_profile_residual_reduction_factor",
         "native_spline_actual_force_step_profile_projected_l2_before",
         "native_spline_actual_force_step_profile_projected_l2_after",
+        "native_spline_actual_force_step_profile_line_search_status",
+        "native_spline_actual_force_step_profile_line_search_n_iter",
+        "native_spline_actual_force_step_profile_line_search_converged",
+        "native_spline_actual_force_step_profile_line_search_final_l2",
+        "native_spline_actual_force_step_profile_line_search_reduction_factor",
         "native_spline_actual_force_step_profile_next_action",
         "native_spline_actual_force_step_profile_mapping_status",
         "native_spline_actual_force_step_profile_mapping_delta_linf",

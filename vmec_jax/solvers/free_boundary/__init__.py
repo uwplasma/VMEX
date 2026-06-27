@@ -44,6 +44,7 @@ from .native_problem import (
     free_boundary_native_spline_dense_gauss_newton_solve_jax,
     free_boundary_native_spline_dense_gauss_newton_step_jax,
     free_boundary_native_spline_force_blocks_to_state_residual,
+    free_boundary_native_spline_matrix_free_line_search_solve_jax,
     free_boundary_native_spline_matrix_free_normal_solve_jax,
     free_boundary_native_spline_matrix_free_normal_step_jax,
 )
@@ -79,6 +80,7 @@ __all__ = [
     "free_boundary_native_spline_dense_gauss_newton_solve_jax",
     "free_boundary_native_spline_dense_gauss_newton_step_jax",
     "free_boundary_native_spline_force_blocks_to_state_residual",
+    "free_boundary_native_spline_matrix_free_line_search_solve_jax",
     "free_boundary_native_spline_matrix_free_normal_solve_jax",
     "free_boundary_native_spline_matrix_free_normal_step_jax",
     "free_boundary_reduced_edge_state_from_vmec_state",

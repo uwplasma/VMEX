@@ -717,6 +717,12 @@ free-boundary vacuum pressure and a line search, not further tuning of the
 edge-only momentum bridge. The current preflight freezes the vacuum pressure at
 the initial state so JAX can linearize the VMEC residual; trial-state NESTOR
 resampling remains the next production solver step.
+The same payload includes a tiny safeguarded nonlinear loop using
+``free_boundary_native_spline_matrix_free_line_search_solve_jax``. On the tiny
+deck, two accepted full steps reduce the vacuum-coupled projected residual from
+about ``1.235`` to ``0.720``. This is not yet an equilibrium solve, but it is
+the first strict-lane evidence that the native matrix-free residual direction
+can make repeated safeguarded progress where the edge-only bridge cannot.
 Use ``free_boundary_native_spline_matrix_free_normal_*`` for the next prototype
 step: it applies ``J`` and ``J.T`` through JAX JVP/VJP products and solves the
 damped normal equations by conjugate gradient.

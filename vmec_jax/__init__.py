@@ -280,6 +280,7 @@ _LAZY_ATTRS = {
     "free_boundary_native_spline_dense_gauss_newton_solve_jax": ".solvers.free_boundary",
     "free_boundary_native_spline_dense_gauss_newton_step_jax": ".solvers.free_boundary",
     "free_boundary_native_spline_force_blocks_to_state_residual": ".solvers.free_boundary",
+    "free_boundary_native_spline_matrix_free_line_search_solve_jax": ".solvers.free_boundary",
     "free_boundary_native_spline_matrix_free_normal_solve_jax": ".solvers.free_boundary",
     "free_boundary_native_spline_matrix_free_normal_step_jax": ".solvers.free_boundary",
     "free_boundary_native_spline_project_vmec_delta_jax": ".solvers.free_boundary",

@@ -18,6 +18,7 @@ from vmec_jax.init_guess import initial_guess_from_boundary
 from vmec_jax.solvers.free_boundary import (
     FreeBoundaryNativeSplineResidualProblem,
     free_boundary_native_spline_force_blocks_to_state_residual,
+    free_boundary_native_spline_matrix_free_line_search_solve_jax,
     free_boundary_native_spline_matrix_free_normal_step_jax,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
     free_boundary_native_spline_vector_edge_step,
@@ -562,6 +563,22 @@ def native_spline_actual_force_step_profile_payload(
         )
     )
     next_residual, next_residual_s = _time_call(lambda: problem.residual(step.next_vector))
+    line_search_max_iter = 2
+    line_search_max_backtracks = 8
+    line_search_solve, line_search_s = _time_call(
+        lambda: free_boundary_native_spline_matrix_free_line_search_solve_jax(
+            problem,
+            vector,
+            max_iter=line_search_max_iter,
+            ftol=1.0e-12,
+            damping=damping,
+            linear_tol=linear_tol,
+            linear_maxiter=linear_maxiter,
+            max_backtracks=line_search_max_backtracks,
+            shrink=0.5,
+            accept_ratio=1.0,
+        )
+    )
     before_norm = _norms(np.asarray(projected_residual, dtype=float))
     after_norm = _norms(np.asarray(next_residual, dtype=float))
     reduction = (
@@ -729,6 +746,22 @@ def native_spline_actual_force_step_profile_payload(
         "matrix_free_linear_maxiter": linear_maxiter,
         "matrix_free_step_l2": float(step.step_l2),
         "matrix_free_cg_info": _json_scalar(step.cg_info),
+        "matrix_free_line_search_solve": {
+            "status": "completed",
+            "method": "matrix_free_normal_step_with_residual_line_search",
+            "max_iter": line_search_max_iter,
+            "max_backtracks": line_search_max_backtracks,
+            "wall_s": float(line_search_s),
+            "n_iter": int(line_search_solve.n_iter),
+            "converged": bool(line_search_solve.converged),
+            "final_residual_l2": float(line_search_solve.residual_l2),
+            "final_residual_reduction_factor": (
+                None
+                if before_norm["l2"] <= np.finfo(float).tiny
+                else float(line_search_solve.residual_l2 / before_norm["l2"])
+            ),
+            "history": [dict(item) for item in line_search_solve.history],
+        },
         "edge_bridge_comparison": {
             "status": "completed",
             "method": "free_boundary_native_spline_vector_edge_step",
