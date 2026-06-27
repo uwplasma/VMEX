@@ -434,11 +434,19 @@ The latest control-spline square-axis preflight matrix is:
 
 | deck | status | reason |
 | --- | --- | --- |
-| ``MPOL=5, NTOR=20, NZETA=48`` | diagnostic-only | projection error exceeds gate |
-| ``MPOL=5, NTOR=28, NZETA=48`` | diagnostic-only | ``NZETA`` below recommendation |
+| ``MPOL=5, NTOR=20, NZETA=48`` | auto-promotes to production deck | requested projection error exceeds gate |
+| ``MPOL=5, NTOR=28, NZETA=48`` | auto-promotes to production deck | requested ``NZETA`` below recommendation |
 | ``MPOL=5, NTOR=28, NZETA=64`` | production-ready | strict gate passes |
 | ``MPOL=6, NTOR=32, NZETA=72`` | production-ready | strict gate passes |
+| ``MPOL=7, NTOR=28, NZETA=64`` | production-ready | strict gate passes |
+| ``MPOL=8, NTOR=32, NZETA=72`` | production-ready | strict gate passes |
 | ``MPOL=5, NTOR=28, NZETA=64, mgrid_nphi=96`` | diagnostic-only | mgrid/``NZETA`` mismatch |
+
+With the default production projection gate, edited strict decks therefore run
+through the effective deck selected by the preflight. This is intentional:
+manual ``MPOL``/``NTOR``/``NZETA`` changes are supported, but lowering the
+Fourier or collocation resolution below the square-axis recommendation is a
+diagnostic input unless the script can auto-promote it before the solve.
 
 To regenerate that classification locally without writing coils, mgrid files,
 WOUT files, or figures, run:
