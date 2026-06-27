@@ -181,7 +181,7 @@ def _initial_free_boundary_vacuum_pressure(
     state: VMECState,
     static: Any,
     indata: Any,
-) -> tuple[dict[str, Any], np.ndarray | None, float | None]:
+) -> tuple[dict[str, Any], np.ndarray | None, float | None, Any | None, Any | None]:
     """Sample initial edge vacuum pressure for native free-boundary diagnostics."""
 
     try:
@@ -194,12 +194,13 @@ def _initial_free_boundary_vacuum_pressure(
             "status": "blocked",
             "reason": "free_boundary_vacuum_dependencies_unavailable",
             "error": repr(exc),
-        }, None, None
+        }, None, None, None, None
 
     try:
         coils = build_square_coils(config)
+        coil_geometry = build_coil_field_geometry(coils.params)
         provider_static = {
-            "coil_geometry": build_coil_field_geometry(coils.params),
+            "coil_geometry": coil_geometry,
             "regularization_epsilon": float(getattr(coils.params, "regularization_epsilon", 0.0)),
             "chunk_size": getattr(coils.params, "chunk_size", None),
             "cache_scope": "native_spline_actual_force_step_profile",
@@ -251,14 +252,14 @@ def _initial_free_boundary_vacuum_pressure(
             "nestor_bnormal_rms": _json_scalar(diagnostics.get("bnormal_rms")),
             "nestor_bsqvac_rms": _json_scalar(diagnostics.get("bsqvac_rms")),
             "next_action": "replace_frozen_bsqvac_with_differentiable_jax_nestor_or_adjoint_replay",
-        }, bsqvac, None if pres_scale is None else float(pres_scale)
+        }, bsqvac, None if pres_scale is None else float(pres_scale), coils.params, coil_geometry
     except Exception as exc:
         return {
             "status": "failed",
             "mode": "direct_coils_nestor_external_only_frozen_initial_edge",
             "error": repr(exc),
             "next_action": "repair_direct_coil_nestor_sampling_for_native_residual",
-        }, None, None
+        }, None, None, None, None
 
 
 def _mode00_index(modes: Any) -> int:
@@ -363,6 +364,7 @@ def native_spline_actual_force_step_profile_payload(
     line_search_max_iter: int = 2,
     line_search_ftol: float = 1.0e-12,
     line_search_max_backtracks: int = 8,
+    vacuum_mode: str = "frozen_initial",
 ) -> dict[str, Any]:
     """Profile one native matrix-free step using VMEC force blocks.
 
@@ -459,17 +461,84 @@ def native_spline_actual_force_step_profile_payload(
         tree_has_tracer=lambda _value: False,
         vmec_scalxc_from_s=vmec_scalxc_from_s,
     )
-    vacuum_pressure, freeb_bsqvac_half, freeb_pres_scale = _initial_free_boundary_vacuum_pressure(
+    vacuum_pressure, freeb_bsqvac_half, freeb_pres_scale, coil_params, coil_geometry = _initial_free_boundary_vacuum_pressure(
         config=config,
         state=state,
         static=static,
         indata=indata,
     )
+    vacuum_mode = str(vacuum_mode).strip().lower()
+    if vacuum_mode not in {"frozen_initial", "jax_replay"}:
+        raise ValueError("vacuum_mode must be 'frozen_initial' or 'jax_replay'")
+    jax_replay_context: dict[str, Any] | None = None
+    jax_replay_ready = False
+    jax_replay_error: str | None = None
+    if vacuum_mode == "jax_replay" and coil_params is not None and coil_geometry is not None:
+        try:
+            from vmec_jax.solvers.free_boundary.adjoint.boundary_replay import (
+                free_boundary_boundary_geometry_jax,
+            )
+            from vmec_jax.solvers.free_boundary.adjoint.replay_context import (
+                direct_coil_boundary_replay_context,
+            )
+
+            initial_geometry = free_boundary_boundary_geometry_jax(state, static)
+            jax_replay_context = direct_coil_boundary_replay_context(static, initial_geometry)
+            jax_replay_ready = True
+        except Exception as exc:
+            jax_replay_error = repr(exc)
+
+    vacuum_pressure = dict(vacuum_pressure)
+    vacuum_pressure["requested_mode"] = vacuum_mode
+    vacuum_pressure["differentiable_vacuum_pressure"] = bool(jax_replay_ready)
+    vacuum_pressure["jax_replay_ready"] = bool(jax_replay_ready)
+    if jax_replay_error is not None:
+        vacuum_pressure["jax_replay_error"] = jax_replay_error
+    if vacuum_mode == "jax_replay" and not jax_replay_ready:
+        vacuum_pressure["status"] = "failed_jax_replay_setup"
+        vacuum_pressure["next_action"] = "repair_jax_nestor_replay_setup_for_native_residual"
     vacuum_pressure_included = freeb_bsqvac_half is not None
     unknowns, encode_s = _time_call(
         lambda: free_boundary_native_spline_unknown_vector_from_vmec_state(state, projection)
     )
     vector = jnp.asarray(unknowns.vector)
+
+    def vacuum_bsqvac_for_state(decoded_state: VMECState):
+        if jax_replay_ready and jax_replay_context is not None and coil_params is not None:
+            from vmec_jax.solvers.free_boundary.adjoint.boundary_replay import (
+                free_boundary_boundary_geometry_jax,
+            )
+            from vmec_jax.solvers.free_boundary.adjoint.direct_coil_replay import (
+                direct_coil_boundary_bsqvac_jax,
+            )
+
+            geometry = free_boundary_boundary_geometry_jax(decoded_state, static)
+            replay = direct_coil_boundary_bsqvac_jax(
+                coil_params,
+                R=geometry["R"],
+                Z=geometry["Z"],
+                phi=geometry["phi"],
+                Ru=geometry["Ru"],
+                Zu=geometry["Zu"],
+                Rv=geometry["Rv"],
+                Zv=geometry["Zv"],
+                ruu=geometry["ruu"],
+                ruv=geometry["ruv"],
+                rvv=geometry["rvv"],
+                zuu=geometry["zuu"],
+                zuv=geometry["zuv"],
+                zvv=geometry["zvv"],
+                basis=jax_replay_context["basis"],
+                tables=jax_replay_context["tables"],
+                signgs=signgs,
+                nvper=int(jax_replay_context["nvper"]),
+                wint=jax_replay_context["wint"],
+                include_diagnostics=False,
+                include_mode_diagnostics=False,
+                coil_geometry=coil_geometry,
+            )
+            return replay["bsqvac"]
+        return freeb_bsqvac_half
 
     def force_eval(decoded_state: VMECState):
         return evaluate_residual_force_from_state(
@@ -486,7 +555,7 @@ def native_spline_actual_force_step_profile_payload(
             include_edge=True,
             include_edge_residual=True,
             zero_m1=True,
-            freeb_bsqvac_half=freeb_bsqvac_half,
+            freeb_bsqvac_half=vacuum_bsqvac_for_state(decoded_state),
             iter_idx=None,
             scan_debug_force_enabled=False,
             dump_hlo_force_tomnsps=False,
@@ -707,9 +776,13 @@ def native_spline_actual_force_step_profile_payload(
         "status": "completed",
         "equilibrium_solve_performed": False,
         "force_scope": (
-            "vmec_force_blocks_with_frozen_initial_free_boundary_vacuum_pressure"
-            if vacuum_pressure_included
-            else "internal_vmec_force_blocks_only"
+            "vmec_force_blocks_with_differentiable_jax_replayed_free_boundary_vacuum_pressure"
+            if jax_replay_ready
+            else (
+                "vmec_force_blocks_with_frozen_initial_free_boundary_vacuum_pressure"
+                if vacuum_pressure_included
+                else "internal_vmec_force_blocks_only"
+            )
         ),
         "free_boundary_vacuum_pressure_included": bool(vacuum_pressure_included),
         "free_boundary_vacuum_pressure": vacuum_pressure,

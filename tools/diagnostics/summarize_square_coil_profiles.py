@@ -2274,6 +2274,15 @@ def _summary_row(
         "native_spline_actual_force_step_profile_vacuum_pressure_mode": native_actual_vacuum_pressure.get(
             "mode"
         ),
+        "native_spline_actual_force_step_profile_vacuum_pressure_requested_mode": native_actual_vacuum_pressure.get(
+            "requested_mode"
+        ),
+        "native_spline_actual_force_step_profile_vacuum_pressure_differentiable": native_actual_vacuum_pressure.get(
+            "differentiable_vacuum_pressure"
+        ),
+        "native_spline_actual_force_step_profile_vacuum_pressure_jax_replay_ready": native_actual_vacuum_pressure.get(
+            "jax_replay_ready"
+        ),
         "native_spline_actual_force_step_profile_vacuum_pressure_bsqvac_linf": _finite_float(
             native_actual_vacuum_pressure.get("bsqvac_linf")
         ),
@@ -3014,6 +3023,9 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_actual_force_step_profile_vacuum_pressure_included",
         "native_spline_actual_force_step_profile_vacuum_pressure_status",
         "native_spline_actual_force_step_profile_vacuum_pressure_mode",
+        "native_spline_actual_force_step_profile_vacuum_pressure_requested_mode",
+        "native_spline_actual_force_step_profile_vacuum_pressure_differentiable",
+        "native_spline_actual_force_step_profile_vacuum_pressure_jax_replay_ready",
         "native_spline_actual_force_step_profile_vacuum_pressure_bsqvac_linf",
         "native_spline_actual_force_step_profile_vacuum_pressure_wall_s",
         "native_spline_actual_force_step_profile_native_unknown_size",

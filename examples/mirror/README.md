@@ -727,6 +727,14 @@ Use ``--native-spline-actual-force-line-search-max-iter``,
 ``--native-spline-actual-force-line-search-ftol``, and
 ``--native-spline-actual-force-line-search-max-backtracks`` to turn that
 preflight into a longer native residual study without editing the script.
+Use ``--native-spline-actual-force-vacuum-mode jax_replay`` when you want the
+native residual to recompute direct-coil ``bsqvac`` from the decoded boundary
+through the existing JAX-NESTOR replay path. This is the differentiable
+trial-vacuum lane; keep the default ``frozen_initial`` mode for quick
+regression profiles. On the tiny deck, ``jax_replay`` matches the frozen-mode
+one-step reduction to roundoff but costs about one minute for the first
+matrix-free step because the dense JAX-NESTOR replay is inside the linearized
+residual.
 Use ``free_boundary_native_spline_matrix_free_normal_*`` for the next prototype
 step: it applies ``J`` and ``J.T`` through JAX JVP/VJP products and solves the
 damped normal equations by conjugate gradient.

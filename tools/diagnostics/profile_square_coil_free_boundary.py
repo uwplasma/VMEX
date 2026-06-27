@@ -528,6 +528,16 @@ def _parser() -> argparse.ArgumentParser:
         default=8,
         help="Maximum backtracks per native actual-force line-search iteration.",
     )
+    p.add_argument(
+        "--native-spline-actual-force-vacuum-mode",
+        choices=("frozen_initial", "jax_replay"),
+        default="frozen_initial",
+        help=(
+            "Vacuum-pressure treatment for --native-spline-actual-force-step-profile. "
+            "'frozen_initial' uses the initial NESTOR edge pressure; 'jax_replay' "
+            "recomputes direct-coil bsqvac from the decoded boundary through the JAX replay path."
+        ),
+    )
     return p
 
 
@@ -3578,6 +3588,7 @@ def main(argv: list[str] | None = None) -> int:
                 line_search_max_backtracks=int(
                     args.native_spline_actual_force_line_search_max_backtracks
                 ),
+                vacuum_mode=str(args.native_spline_actual_force_vacuum_mode),
             )
             if bool(args.native_spline_actual_force_step_profile)
             else {"status": "not_requested"}
@@ -3646,6 +3657,9 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 "native_spline_actual_force_line_search_max_backtracks": int(
                     args.native_spline_actual_force_line_search_max_backtracks
+                ),
+                "native_spline_actual_force_vacuum_mode": str(
+                    args.native_spline_actual_force_vacuum_mode
                 ),
                 "accepted_provider_parity": bool(args.accepted_provider_parity),
                 "freeb_anderson_pressure": bool(args.freeb_anderson_pressure),

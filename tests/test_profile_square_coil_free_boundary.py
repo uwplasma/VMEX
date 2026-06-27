@@ -93,6 +93,8 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "1e-13",
             "--native-spline-actual-force-line-search-max-backtracks",
             "6",
+            "--native-spline-actual-force-vacuum-mode",
+            "jax_replay",
         ]
     )
 
@@ -139,6 +141,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.native_spline_actual_force_line_search_max_iter == 5
     assert args.native_spline_actual_force_line_search_ftol == pytest.approx(1.0e-13)
     assert args.native_spline_actual_force_line_search_max_backtracks == 6
+    assert args.native_spline_actual_force_vacuum_mode == "jax_replay"
 
 
 def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tails():
@@ -1661,11 +1664,13 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     vacuum = native["free_boundary_vacuum_pressure"]
     assert vacuum["status"] == "included"
     assert vacuum["mode"] == "direct_coils_nestor_external_only_frozen_initial_edge"
+    assert vacuum["requested_mode"] == "frozen_initial"
     assert vacuum["provider"] == "direct_coils"
     assert vacuum["coil_count"] == 16
     assert vacuum["coil_segments"] == 96
     assert vacuum["trial_vacuum_pressure_resampled"] is False
     assert vacuum["differentiable_vacuum_pressure"] is False
+    assert vacuum["jax_replay_ready"] is False
     assert vacuum["bsqvac_linf"] > 0.0
     assert native["native_unknown_size"] < native["full_vmec_size"]
     assert native["removed_fourier_edge_dofs"] > 0
@@ -1752,6 +1757,16 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
         row["native_spline_actual_force_step_profile_vacuum_pressure_mode"]
         == "direct_coils_nestor_external_only_frozen_initial_edge"
     )
+    assert (
+        row["native_spline_actual_force_step_profile_vacuum_pressure_requested_mode"]
+        == "frozen_initial"
+    )
+    assert row[
+        "native_spline_actual_force_step_profile_vacuum_pressure_differentiable"
+    ] is False
+    assert row[
+        "native_spline_actual_force_step_profile_vacuum_pressure_jax_replay_ready"
+    ] is False
     assert row[
         "native_spline_actual_force_step_profile_vacuum_pressure_bsqvac_linf"
     ] == pytest.approx(vacuum["bsqvac_linf"])
