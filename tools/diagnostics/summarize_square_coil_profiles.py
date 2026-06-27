@@ -1751,6 +1751,9 @@ def _summary_row(
     native_actual_edge_bridge_opposite = native_actual_edge_bridge.get("opposite_flip_sign_comparison")
     if not isinstance(native_actual_edge_bridge_opposite, dict):
         native_actual_edge_bridge_opposite = {}
+    native_actual_force_mapping = native_actual_force_profile.get("force_block_mapping_audit")
+    if not isinstance(native_actual_force_mapping, dict):
+        native_actual_force_mapping = {}
     return {
         "case": case,
         "backend": backend_name,
@@ -2276,6 +2279,18 @@ def _summary_row(
         ),
         "native_spline_actual_force_step_profile_next_action": native_actual_force_profile.get(
             "next_action"
+        ),
+        "native_spline_actual_force_step_profile_mapping_status": native_actual_force_mapping.get(
+            "status"
+        ),
+        "native_spline_actual_force_step_profile_mapping_delta_linf": _finite_float(
+            native_actual_force_mapping.get("delta_linf")
+        ),
+        "native_spline_actual_force_step_profile_mapping_delta_rel": _finite_float(
+            native_actual_force_mapping.get("delta_rel")
+        ),
+        "native_spline_actual_force_step_profile_mapping_cosine": _finite_float(
+            native_actual_force_mapping.get("cosine")
         ),
         "native_spline_actual_force_step_profile_edge_bridge_status": native_actual_edge_bridge.get(
             "status"
@@ -2950,6 +2965,10 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_actual_force_step_profile_projected_l2_before",
         "native_spline_actual_force_step_profile_projected_l2_after",
         "native_spline_actual_force_step_profile_next_action",
+        "native_spline_actual_force_step_profile_mapping_status",
+        "native_spline_actual_force_step_profile_mapping_delta_linf",
+        "native_spline_actual_force_step_profile_mapping_delta_rel",
+        "native_spline_actual_force_step_profile_mapping_cosine",
         "native_spline_actual_force_step_profile_edge_bridge_status",
         "native_spline_actual_force_step_profile_edge_bridge_force_metric",
         "native_spline_actual_force_step_profile_edge_bridge_wall_s",

@@ -80,6 +80,18 @@ def _norms(values: Any) -> dict[str, float]:
     }
 
 
+def _pack_state_payload(template: VMECState, value: Any) -> np.ndarray:
+    """Pack a VMECState or six-array delta tuple into one host vector."""
+
+    if isinstance(value, VMECState):
+        parts = (value.Rcos, value.Rsin, value.Zcos, value.Zsin, value.Lcos, value.Lsin)
+    elif isinstance(value, (tuple, list)) and len(value) == 6:
+        parts = tuple(value)
+    else:
+        raise TypeError("value must be a VMECState or six-array tuple")
+    return np.asarray(template.layout.pack(*parts), dtype=float).reshape(-1)
+
+
 def _cosine(a: Any, b: Any) -> float | None:
     """Return the cosine between two finite vectors, or ``None`` for zero vectors."""
 
@@ -249,6 +261,7 @@ def native_spline_actual_force_step_profile_payload(
         from vmec_jax.solvers.fixed_boundary.residual.mode_transform import (
             build_mode_transform_context,
         )
+        from vmec_jax.solvers.fixed_boundary.residual.update import delta_tuple_from_blocks
     except Exception as exc:  # pragma: no cover - dependencies are expected in this repo.
         return {
             "status": "blocked",
@@ -349,6 +362,48 @@ def native_spline_actual_force_step_profile_payload(
 
     force_result, force_s = _time_call(lambda: force_eval(state))
     residual_state, residual_state_s = _time_call(lambda: residual_fn(state))
+    physical_delta_transforms = (
+        mode_context.mn_cos_to_signed_physical,
+        mode_context.mn_sin_to_signed_physical,
+        mode_context.mn_cos_to_signed_physical_lambda,
+        mode_context.mn_sin_to_signed_physical_lambda,
+    )
+    force_blocks = force_result.frzl_full
+    delta_tuple_reference = delta_tuple_from_blocks(
+        1.0,
+        physical_delta_transforms,
+        force_blocks.frcc,
+        getattr(force_blocks, "frss", None),
+        getattr(force_blocks, "frsc", None),
+        getattr(force_blocks, "frcs", None),
+        force_blocks.fzsc,
+        getattr(force_blocks, "fzcs", None),
+        getattr(force_blocks, "fzcc", None),
+        getattr(force_blocks, "fzss", None),
+        force_blocks.flsc,
+        getattr(force_blocks, "flcs", None),
+        getattr(force_blocks, "flcc", None),
+        getattr(force_blocks, "flss", None),
+        lasym=bool(vmec_config.lasym),
+        zeros_dR_np=np.zeros_like(np.asarray(state.Rcos, dtype=float)),
+        use_numpy_lasym_zeros=True,
+    )
+    residual_state_vector = _pack_state_payload(state, residual_state)
+    delta_tuple_reference_vector = _pack_state_payload(state, delta_tuple_reference)
+    mapping_delta = residual_state_vector - delta_tuple_reference_vector
+    reference_norm = _norms(delta_tuple_reference_vector)
+    mapping_delta_norm = _norms(mapping_delta)
+    mapping_delta_rel = (
+        None
+        if reference_norm["l2"] <= np.finfo(float).tiny
+        else float(mapping_delta_norm["l2"] / reference_norm["l2"])
+    )
+    mapping_delta_linf = mapping_delta_norm["linf"]
+    mapping_status = (
+        "state_residual_matches_delta_tuple_from_blocks"
+        if mapping_delta_linf <= 1.0e-12 * max(1.0, reference_norm["linf"])
+        else "state_residual_differs_from_delta_tuple_from_blocks"
+    )
     problem = FreeBoundaryNativeSplineResidualProblem(
         template_state=state,
         projection=projection,
@@ -472,14 +527,16 @@ def native_spline_actual_force_step_profile_payload(
         "force_gcr2": force_norms["gcr2"],
         "force_gcz2": force_norms["gcz2"],
         "force_gcl2": force_norms["gcl2"],
-        "state_residual_l2": _norms(np.asarray(residual_state.layout.pack(
-            residual_state.Rcos,
-            residual_state.Rsin,
-            residual_state.Zcos,
-            residual_state.Zsin,
-            residual_state.Lcos,
-            residual_state.Lsin,
-        ), dtype=float))["l2"],
+        "state_residual_l2": _norms(residual_state_vector)["l2"],
+        "force_block_mapping_audit": {
+            "status": mapping_status,
+            "reference_path": "delta_tuple_from_blocks_with_physical_delta_transforms",
+            "candidate_path": "free_boundary_native_spline_force_blocks_to_state_residual",
+            "delta_l2": mapping_delta_norm["l2"],
+            "delta_linf": mapping_delta_linf,
+            "delta_rel": mapping_delta_rel,
+            "cosine": _cosine(residual_state_vector, delta_tuple_reference_vector),
+        },
         "projected_residual_l2_before_step": before_norm["l2"],
         "projected_residual_linf_before_step": before_norm["linf"],
         "projected_residual_l2_after_step": after_norm["l2"],

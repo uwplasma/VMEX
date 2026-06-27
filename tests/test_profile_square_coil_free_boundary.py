@@ -1656,6 +1656,13 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert native["projected_residual_l2_before_step"] > 0.0
     assert native["projected_residual_l2_after_step"] >= 0.0
     assert native["matrix_free_step_l2"] >= 0.0
+    mapping = native["force_block_mapping_audit"]
+    assert mapping["status"] == "state_residual_matches_delta_tuple_from_blocks"
+    assert mapping["reference_path"] == "delta_tuple_from_blocks_with_physical_delta_transforms"
+    assert mapping["candidate_path"] == "free_boundary_native_spline_force_blocks_to_state_residual"
+    assert mapping["delta_linf"] == pytest.approx(0.0, abs=1.0e-12)
+    assert mapping["delta_rel"] == pytest.approx(0.0, abs=1.0e-12)
+    assert mapping["cosine"] == pytest.approx(1.0, abs=1.0e-12)
     bridge = native["edge_bridge_comparison"]
     assert bridge["status"] == "completed"
     assert bridge["method"] == "free_boundary_native_spline_vector_edge_step"
@@ -1699,6 +1706,14 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
         == "resolve_native_force_sign_and_add_free_boundary_vacuum_pressure"
     )
     assert row["native_spline_actual_force_step_profile_edge_bridge_status"] == "completed"
+    assert (
+        row["native_spline_actual_force_step_profile_mapping_status"]
+        == "state_residual_matches_delta_tuple_from_blocks"
+    )
+    assert row["native_spline_actual_force_step_profile_mapping_delta_linf"] == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
     assert row["native_spline_actual_force_step_profile_edge_bridge_force_metric"] == bridge[
         "force_metric"
     ]
