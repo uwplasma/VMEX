@@ -606,6 +606,9 @@ The live VMEC2000 sidecar separates ``parsed_latest_stage_ftol`` from
 ``requested_final_ftol``.  A staged run can therefore still be judged against
 the requested ``FTOL_ARRAY[-1]=1e-12`` target even while VMEC2000 is printing
 the current coarse-stage ``FTOLV=1e-8`` rows.
+The summary table uses ``requested_final_ftol`` for ``requested_ftol`` when
+that field is present and keeps the printed stage in
+``parsed_latest_stage_ftol`` / ``current_stage_ftol``.
 Copied VMEC2000 sidecars can also be summarized locally after transfer from a
 remote machine, even if the filename is no longer
 ``_partial_vmec2000_payload.json``.

@@ -317,6 +317,9 @@ The sidecar records both ``parsed_latest_stage_ftol`` and
 ``requested_final_ftol``.  Strict convergence is judged against the latter when
 the profiler launched a staged ladder, so an active coarse stage printed with
 ``FTOLV=1e-8`` is not mistaken for the requested final ``1e-12`` solve.
+The summary table follows the same rule: ``requested_ftol`` prefers
+``requested_final_ftol`` when available, while the latest printed VMEC stage is
+reported separately in ``parsed_latest_stage_ftol`` and ``current_stage_ftol``.
 Rows with no parsed force iterations now include ``progress_phase``. A value
 of ``startup_or_pre_iteration_output`` means VMEC2000 has opened ``threed1``
 but has not yet printed the force table; it is not a strict residual result.

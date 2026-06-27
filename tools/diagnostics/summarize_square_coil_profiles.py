@@ -1500,20 +1500,36 @@ def _summary_row(
                     ),
                 },
             }
+    strict_payload = backend.get("strict_convergence")
+    strict_payload = strict_payload if isinstance(strict_payload, dict) else {}
     requested_ftol = _finite_float(cfg.get("ftol"))
     if requested_ftol is None:
+        requested_ftol = _finite_float(backend.get("requested_final_ftol"))
+    if requested_ftol is None:
         requested_ftol = _finite_float(backend.get("requested_ftol"))
+    if requested_ftol is None:
+        requested_ftol = _finite_float(strict_payload.get("requested_ftol"))
+    parsed_latest_stage_ftol = _finite_float(backend.get("parsed_latest_stage_ftol"))
     if requested_ftol is None:
         stage_summaries = backend.get("stage_summaries")
         if isinstance(stage_summaries, list) and stage_summaries:
             last_stage = stage_summaries[-1]
             if isinstance(last_stage, dict):
                 requested_ftol = _finite_float(last_stage.get("ftolv"))
+    if parsed_latest_stage_ftol is None:
+        stage_summaries = backend.get("stage_summaries")
+        if isinstance(stage_summaries, list) and stage_summaries:
+            last_stage = stage_summaries[-1]
+            if isinstance(last_stage, dict):
+                parsed_latest_stage_ftol = _finite_float(last_stage.get("ftolv"))
     tail_plateau = backend.get("tail_plateau")
     if not isinstance(tail_plateau, dict):
         tail_rows = backend.get("tail_rows")
         tail_plateau = (
-            _tail_plateau_payload(tail_rows, stage_ftol=requested_ftol)
+            _tail_plateau_payload(
+                tail_rows,
+                stage_ftol=parsed_latest_stage_ftol if parsed_latest_stage_ftol is not None else requested_ftol,
+            )
             if isinstance(tail_rows, list)
             else {}
         )
@@ -2146,6 +2162,8 @@ def _summary_row(
         "max_iter": max_iter,
         **stage_schedule,
         "requested_ftol": requested_ftol,
+        "requested_final_ftol": requested_ftol,
+        "parsed_latest_stage_ftol": parsed_latest_stage_ftol,
         "strict_gap": strict_gap,
         "remaining_iterations": remaining_iterations,
         "next_action": next_action,
@@ -2865,6 +2883,7 @@ def _strict_summary_fields() -> list[str]:
         "ns",
         "nzeta",
         "requested_ftol",
+        "parsed_latest_stage_ftol",
         "strict_components_met",
         "strict_gap",
         "final_iter",

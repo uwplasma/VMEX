@@ -1589,6 +1589,43 @@ def test_square_coil_profile_summary_prefers_active_partial_sidecar(tmp_path: Pa
     assert row["strict_components_met"] is True
 
 
+def test_square_coil_profile_summary_uses_partial_requested_final_ftol(tmp_path: Path):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_stage_ftol_sidecar"
+    case_dir.mkdir()
+    partial = case_dir / "_partial_vmec2000_payload.json"
+    partial.write_text(
+        json.dumps(
+            {
+                "status": "running_partial",
+                "progress_phase": "force_iterations",
+                "force_rows_started": True,
+                "parsed_latest_stage_ftol": 1.0e-8,
+                "requested_final_ftol": 1.0e-12,
+                "ftol_array": [1.0e-8, 1.0e-10, 1.0e-12],
+                "stage_summaries": [
+                    {"ns": 9, "niter": 8000, "ftolv": 1.0e-8, "iteration_row_count": 1}
+                ],
+                "last_row": {"it": 200, "fsqr": 4.0e-8, "fsqz": 2.0e-8, "fsql": 1.0e-8},
+                "tail_rows": [
+                    {"it": 199, "total": 8.0e-8, "max_component": 5.0e-8},
+                    {"it": 200, "total": 7.0e-8, "max_component": 4.0e-8},
+                ],
+            }
+        )
+    )
+
+    row = summary.rows_from_source(partial)[0]
+
+    assert row["status"] == "running_partial"
+    assert row["requested_ftol"] == pytest.approx(1.0e-12)
+    assert row["requested_final_ftol"] == pytest.approx(1.0e-12)
+    assert row["parsed_latest_stage_ftol"] == pytest.approx(1.0e-8)
+    assert row["current_stage_ftol"] == pytest.approx(1.0e-8)
+    assert row["final_max_component"] == pytest.approx(4.0e-8)
+    assert row["strict_gap"] == pytest.approx(4.0e4)
+    assert row["strict_components_met"] is False
+
+
 def test_square_coil_profile_summary_finds_nested_live_sidecars_from_root(tmp_path: Path):
     final_case = tmp_path / "square_coil_freeb_backend_profile_completed"
     final_case.mkdir()
