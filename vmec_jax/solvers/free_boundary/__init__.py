@@ -18,6 +18,7 @@ from .reduced_controls import (
     reduced_control_pullback,
 )
 from .control import (
+    FreeBoundaryNativeSplineForce,
     FreeBoundaryNativeSplineState,
     FreeBoundaryNativeSplineUpdate,
     FreeBoundaryReducedEdgeState,
@@ -28,6 +29,7 @@ from .control import (
 __all__ = [
     "DEFAULT_FREE_BOUNDARY_DERIVATIVE_OUTPUTS",
     "FreeBoundaryDerivativeOptions",
+    "FreeBoundaryNativeSplineForce",
     "FreeBoundaryNativeSplineState",
     "FreeBoundaryNativeSplineUpdate",
     "FreeBoundaryReducedEdgeState",

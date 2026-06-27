@@ -5,6 +5,7 @@ import pytest
 
 from vmec_jax._compat import jnp
 from vmec_jax.solvers.free_boundary import (
+    FreeBoundaryNativeSplineForce,
     FreeBoundaryNativeSplineState,
     FreeBoundaryNativeSplineUpdate,
     FreeBoundaryReducedEdgeState,
@@ -29,11 +30,13 @@ def test_reduced_control_least_squares_step_is_public() -> None:
 
     assert vj.ReducedControlMap is ReducedControlMap
     assert vj.ReducedControlState is ReducedControlState
+    assert vj.FreeBoundaryNativeSplineForce is FreeBoundaryNativeSplineForce
     assert vj.FreeBoundaryNativeSplineState is FreeBoundaryNativeSplineState
     assert vj.FreeBoundaryNativeSplineUpdate is FreeBoundaryNativeSplineUpdate
     assert vj.FreeBoundaryReducedEdgeState is FreeBoundaryReducedEdgeState
     assert public_api.ReducedControlMap is ReducedControlMap
     assert public_api.ReducedControlState is ReducedControlState
+    assert public_api.FreeBoundaryNativeSplineForce is FreeBoundaryNativeSplineForce
     assert public_api.FreeBoundaryNativeSplineState is FreeBoundaryNativeSplineState
     assert public_api.FreeBoundaryNativeSplineUpdate is FreeBoundaryNativeSplineUpdate
     assert public_api.FreeBoundaryReducedEdgeState is FreeBoundaryReducedEdgeState
@@ -264,6 +267,7 @@ def test_free_boundary_reduced_edge_state_encodes_vmec_lcfs_edge_and_pullback() 
         update_deltas=force_deltas,
         host_update=True,
     )
+    native_force = native_spline_state.force_from_delta_tuple(force_deltas)
     full_adjoint = jnp.asarray([2.0, 7.0, *([0.0] * (4 * static.modes.K - 2))])
     _decoded, vjp_fun = jax.vjp(
         lambda values: reduced_edge.control_state.control_map.decode_jax(values),
@@ -300,6 +304,12 @@ def test_free_boundary_reduced_edge_state_encodes_vmec_lcfs_edge_and_pullback() 
     assert native_update.source_update_residual_rel == pytest.approx(0.75)
     assert native_update.source_update_captured_fraction == pytest.approx(0.25)
     assert native_update.to_dict()["mode"] == "free_boundary_native_spline_update"
+    assert isinstance(native_force, FreeBoundaryNativeSplineForce)
+    np.testing.assert_allclose(native_force.control_force, [2.0])
+    assert native_force.metric == "pullback"
+    assert native_force.control_force_l2 == pytest.approx(2.0)
+    assert native_force.source_edge_force_l2 == pytest.approx(2.0)
+    assert native_force.to_dict()["mode"] == "free_boundary_native_spline_force"
     np.testing.assert_allclose(native_spline_state.pullback_delta_tuple(force_deltas), [2.0])
     np.testing.assert_allclose(
         np.asarray(reduced_edge.pullback_jax(full_adjoint)),

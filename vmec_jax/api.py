@@ -22,6 +22,7 @@ import types as _types
 
 from .namelist import minimal_fixed_boundary_indata, read_indata, write_indata
 from .solvers.free_boundary import (
+    FreeBoundaryNativeSplineForce,
     FreeBoundaryNativeSplineState,
     FreeBoundaryNativeSplineUpdate,
     FreeBoundaryReducedEdgeState,

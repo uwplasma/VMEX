@@ -77,6 +77,31 @@ class FreeBoundaryNativeSplineUpdate(NamedTuple):
         }
 
 
+class FreeBoundaryNativeSplineForce(NamedTuple):
+    """An LCFS edge force pulled back to reduced spline controls."""
+
+    control_force: np.ndarray
+    source_edge_force: np.ndarray
+    metric: str
+    control_force_l2: float
+    control_force_linf: float
+    source_edge_force_l2: float
+    source_edge_force_linf: float
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return compact JSON-friendly force diagnostics."""
+
+        return {
+            "mode": "free_boundary_native_spline_force",
+            "metric": str(self.metric),
+            "reduced_force_size": int(self.control_force.size),
+            "control_force_l2": float(self.control_force_l2),
+            "control_force_linf": float(self.control_force_linf),
+            "source_edge_force_l2": float(self.source_edge_force_l2),
+            "source_edge_force_linf": float(self.source_edge_force_linf),
+        }
+
+
 @dataclass(frozen=True)
 class FreeBoundaryReducedEdgeState:
     """LCFS edge row represented in reduced free-boundary controls.
@@ -295,6 +320,27 @@ class FreeBoundaryNativeSplineState:
             source_update_residual_linf=residual_linf,
             source_update_residual_rel=residual_rel,
             source_update_captured_fraction=captured_fraction,
+        )
+
+    def force_from_delta_tuple(self, force_deltas: Any) -> FreeBoundaryNativeSplineForce:
+        """Pull the LCFS edge part of a VMEC force tuple into native controls."""
+
+        control_force, source_force, metric = _freeb_edge_control_native_force_np(
+            force_deltas,
+            self.projection,
+        )
+        finite_control = control_force[np.isfinite(control_force)]
+        finite_source = source_force[np.isfinite(source_force)]
+        control_linf = float(np.max(np.abs(finite_control))) if finite_control.size else 0.0
+        source_linf = float(np.max(np.abs(finite_source))) if finite_source.size else 0.0
+        return FreeBoundaryNativeSplineForce(
+            control_force=np.asarray(control_force, dtype=float),
+            source_edge_force=np.asarray(source_force, dtype=float),
+            metric=str(metric),
+            control_force_l2=float(np.linalg.norm(control_force)),
+            control_force_linf=control_linf,
+            source_edge_force_l2=float(np.linalg.norm(source_force)),
+            source_edge_force_linf=source_linf,
         )
 
     def to_vmec_state(self, *, host_update: bool) -> VMECState:
@@ -1066,7 +1112,18 @@ def _freeb_edge_control_native_coordinate_step(
 ) -> FreeBoundaryNativeControlStep:
     """Advance the LCFS edge in solver-native reduced-control coordinates."""
 
-    control_force, target, force_metric = _freeb_edge_control_native_force_np(force_deltas, projection)
+    current_edge_state = (
+        free_boundary_reduced_edge_state_from_vmec_state(state_current, projection)
+        if edge_state is None
+        else edge_state
+    )
+    current_native_state = FreeBoundaryNativeSplineState(
+        template_state=state_candidate,
+        edge_state=current_edge_state,
+        projection=projection,
+    )
+    native_force = current_native_state.force_from_delta_tuple(force_deltas)
+    control_force = native_force.control_force
     previous = (
         np.zeros_like(control_force)
         if control_velocity is None
@@ -1078,16 +1135,6 @@ def _freeb_edge_control_native_coordinate_step(
     if trust_scale != 1.0:
         next_velocity = control_update / max(float(dt_eff), np.finfo(float).tiny)
 
-    current_edge_state = (
-        free_boundary_reduced_edge_state_from_vmec_state(state_current, projection)
-        if edge_state is None
-        else edge_state
-    )
-    current_native_state = FreeBoundaryNativeSplineState(
-        template_state=state_candidate,
-        edge_state=current_edge_state,
-        projection=projection,
-    )
     native_update = current_native_state.apply_edge_control_update(
         control_update,
         update_deltas=update_deltas,
@@ -1101,12 +1148,12 @@ def _freeb_edge_control_native_coordinate_step(
         edge_state=native_update.native_state.edge_state,
         control_update=np.asarray(control_update, dtype=float),
         control_force=np.asarray(control_force, dtype=float),
-        target_l2=float(np.linalg.norm(target)),
-        control_force_l2=float(np.linalg.norm(control_force)),
+        target_l2=float(native_force.source_edge_force_l2),
+        control_force_l2=float(native_force.control_force_l2),
         control_velocity_l2=float(np.linalg.norm(next_velocity)),
         control_update_l2=float(np.linalg.norm(control_update)),
         trust_scale=float(trust_scale),
-        force_metric=str(force_metric),
+        force_metric=str(native_force.metric),
         native_update=native_update,
     )
 
