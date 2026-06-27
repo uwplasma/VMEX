@@ -47,6 +47,29 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                     "suggested_phiedge_for_external_r_bphi_rms": -0.0025,
                     "suggested_phiedge_over_current": 0.0625,
                 },
+                "strict_convergence_assessment": {
+                    "full_fourier_strict_profile_status": "ready_to_attempt",
+                    "reduced_control_profile_status": "native_coordinate_update",
+                    "solver_native_spline_status": "edge_only_bridge",
+                    "solver_native_spline_edge_controls": True,
+                    "solver_native_spline_scope": "lcfs_edge_only",
+                    "full_native_spline_state_required_for_less_fourier_pressure": True,
+                    "vmec2000_expected_to_fix_fourier_bottleneck": False,
+                },
+                "spline_bridge": {
+                    "status": "spline_control_to_fourier_bridge",
+                    "nonlinear_solver_boundary_basis": "edge_reduced_spline_controls_decoded_to_vmec_fourier",
+                    "solver_native_spline_controls": False,
+                    "solver_native_spline_edge_controls": True,
+                    "solver_native_spline_scope": "lcfs_edge_only",
+                    "solver_edge_control_projection_enabled": True,
+                    "solver_edge_control_update_mode": "native_coordinate",
+                    "can_reduce_input_shape_dofs": True,
+                    "can_project_free_boundary_edge_updates": True,
+                    "can_reduce_free_boundary_edge_dofs": True,
+                    "can_reduce_full_nonlinear_solver_dofs": False,
+                    "requires_native_spline_state_for_reduced_nonlinear_dofs": True,
+                },
                 "backends": {
                     "vmec_jax_mgrid": {
                         "status": "completed",
@@ -258,6 +281,28 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["vmec_scale_status"] == "severe_scale_mismatch"
     assert rows[1]["vmec_scale_proxy_over_external_r_bphi_rms"] == pytest.approx(16.0)
     assert rows[1]["vmec_scale_suggested_phiedge"] == pytest.approx(-0.0025)
+    assert rows[1]["strict_assessment_full_fourier_status"] == "ready_to_attempt"
+    assert rows[1]["strict_assessment_reduced_control_status"] == "native_coordinate_update"
+    assert rows[1]["strict_assessment_solver_native_spline_status"] == "edge_only_bridge"
+    assert rows[1]["strict_assessment_solver_native_spline_edge_controls"] is True
+    assert rows[1]["strict_assessment_solver_native_spline_scope"] == "lcfs_edge_only"
+    assert rows[1]["strict_assessment_full_native_spline_state_required"] is True
+    assert rows[1]["strict_assessment_vmec2000_fix_fourier_bottleneck"] is False
+    assert rows[1]["spline_bridge_status"] == "spline_control_to_fourier_bridge"
+    assert (
+        rows[1]["spline_bridge_nonlinear_solver_boundary_basis"]
+        == "edge_reduced_spline_controls_decoded_to_vmec_fourier"
+    )
+    assert rows[1]["spline_bridge_solver_native_spline_controls"] is False
+    assert rows[1]["spline_bridge_solver_native_spline_edge_controls"] is True
+    assert rows[1]["spline_bridge_solver_native_spline_scope"] == "lcfs_edge_only"
+    assert rows[1]["spline_bridge_solver_edge_control_projection_enabled"] is True
+    assert rows[1]["spline_bridge_solver_edge_control_update_mode"] == "native_coordinate"
+    assert rows[1]["spline_bridge_can_reduce_input_shape_dofs"] is True
+    assert rows[1]["spline_bridge_can_project_free_boundary_edge_updates"] is True
+    assert rows[1]["spline_bridge_can_reduce_free_boundary_edge_dofs"] is True
+    assert rows[1]["spline_bridge_can_reduce_full_nonlinear_solver_dofs"] is False
+    assert rows[1]["spline_bridge_requires_native_spline_state_for_reduced_nonlinear_dofs"] is True
     assert rows[1]["boundary_coeff_delta_l2"] == pytest.approx(0.04)
     assert rows[1]["boundary_coeff_delta_linf"] == pytest.approx(0.02)
     assert rows[1]["boundary_coeff_delta_rel"] == pytest.approx(1.0e-2)

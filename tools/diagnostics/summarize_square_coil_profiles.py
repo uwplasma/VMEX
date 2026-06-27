@@ -1436,6 +1436,7 @@ def _summary_row(
     projection: dict[str, Any],
     resolution_deck: dict[str, Any] | None = None,
     strict_convergence_assessment: dict[str, Any] | None = None,
+    spline_bridge: dict[str, Any] | None = None,
     vmec_free_boundary_scale: dict[str, Any] | None = None,
     status: str | None = None,
 ) -> dict[str, Any]:
@@ -1671,6 +1672,7 @@ def _summary_row(
     convergence_assessment = (
         strict_convergence_assessment if isinstance(strict_convergence_assessment, dict) else {}
     )
+    spline_bridge = spline_bridge if isinstance(spline_bridge, dict) else {}
     scale = vmec_free_boundary_scale if isinstance(vmec_free_boundary_scale, dict) else {}
     return {
         "case": case,
@@ -1942,8 +1944,51 @@ def _summary_row(
         "strict_assessment_solver_native_spline_status": convergence_assessment.get(
             "solver_native_spline_status"
         ),
+        "strict_assessment_solver_native_spline_edge_controls": convergence_assessment.get(
+            "solver_native_spline_edge_controls"
+        ),
+        "strict_assessment_solver_native_spline_scope": convergence_assessment.get(
+            "solver_native_spline_scope"
+        ),
+        "strict_assessment_full_native_spline_state_required": convergence_assessment.get(
+            "full_native_spline_state_required_for_less_fourier_pressure"
+        ),
         "strict_assessment_vmec2000_fix_fourier_bottleneck": convergence_assessment.get(
             "vmec2000_expected_to_fix_fourier_bottleneck"
+        ),
+        "spline_bridge_status": spline_bridge.get("status"),
+        "spline_bridge_nonlinear_solver_boundary_basis": spline_bridge.get(
+            "nonlinear_solver_boundary_basis"
+        ),
+        "spline_bridge_solver_native_spline_controls": spline_bridge.get(
+            "solver_native_spline_controls"
+        ),
+        "spline_bridge_solver_native_spline_edge_controls": spline_bridge.get(
+            "solver_native_spline_edge_controls"
+        ),
+        "spline_bridge_solver_native_spline_scope": spline_bridge.get(
+            "solver_native_spline_scope"
+        ),
+        "spline_bridge_solver_edge_control_projection_enabled": spline_bridge.get(
+            "solver_edge_control_projection_enabled"
+        ),
+        "spline_bridge_solver_edge_control_update_mode": spline_bridge.get(
+            "solver_edge_control_update_mode"
+        ),
+        "spline_bridge_can_reduce_input_shape_dofs": spline_bridge.get(
+            "can_reduce_input_shape_dofs"
+        ),
+        "spline_bridge_can_project_free_boundary_edge_updates": spline_bridge.get(
+            "can_project_free_boundary_edge_updates"
+        ),
+        "spline_bridge_can_reduce_free_boundary_edge_dofs": spline_bridge.get(
+            "can_reduce_free_boundary_edge_dofs"
+        ),
+        "spline_bridge_can_reduce_full_nonlinear_solver_dofs": spline_bridge.get(
+            "can_reduce_full_nonlinear_solver_dofs"
+        ),
+        "spline_bridge_requires_native_spline_state_for_reduced_nonlinear_dofs": spline_bridge.get(
+            "requires_native_spline_state_for_reduced_nonlinear_dofs"
         ),
         "resolution_deck_status": resolution.get("status"),
         "resolution_deck_reasons": ",".join(_as_text_list(resolution.get("reasons"))),
@@ -2165,6 +2210,8 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
     strict_convergence_assessment = (
         strict_convergence_assessment if isinstance(strict_convergence_assessment, dict) else {}
     )
+    spline_bridge = data.get("spline_bridge", {})
+    spline_bridge = spline_bridge if isinstance(spline_bridge, dict) else {}
     scale = data.get("vmec_free_boundary_scale", {})
     scale = scale if isinstance(scale, dict) else {}
     rows: list[dict[str, Any]] = []
@@ -2179,6 +2226,7 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                     projection=projection,
                     resolution_deck=resolution_deck,
                     strict_convergence_assessment=strict_convergence_assessment,
+                    spline_bridge=spline_bridge,
                     vmec_free_boundary_scale=scale,
                 )
             )
@@ -2192,6 +2240,7 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                 projection=projection,
                 resolution_deck=resolution_deck,
                 strict_convergence_assessment=strict_convergence_assessment,
+                spline_bridge=spline_bridge,
                 vmec_free_boundary_scale=scale,
             )
         )
@@ -2489,7 +2538,22 @@ def main(argv: list[str] | None = None) -> int:
         "strict_assessment_full_fourier_status",
         "strict_assessment_reduced_control_status",
         "strict_assessment_solver_native_spline_status",
+        "strict_assessment_solver_native_spline_edge_controls",
+        "strict_assessment_solver_native_spline_scope",
+        "strict_assessment_full_native_spline_state_required",
         "strict_assessment_vmec2000_fix_fourier_bottleneck",
+        "spline_bridge_status",
+        "spline_bridge_nonlinear_solver_boundary_basis",
+        "spline_bridge_solver_native_spline_controls",
+        "spline_bridge_solver_native_spline_edge_controls",
+        "spline_bridge_solver_native_spline_scope",
+        "spline_bridge_solver_edge_control_projection_enabled",
+        "spline_bridge_solver_edge_control_update_mode",
+        "spline_bridge_can_reduce_input_shape_dofs",
+        "spline_bridge_can_project_free_boundary_edge_updates",
+        "spline_bridge_can_reduce_free_boundary_edge_dofs",
+        "spline_bridge_can_reduce_full_nonlinear_solver_dofs",
+        "spline_bridge_requires_native_spline_state_for_reduced_nonlinear_dofs",
         "recommended_followup_profile_kind",
         "recommended_followup_reason",
         "resolution_deck_status",
