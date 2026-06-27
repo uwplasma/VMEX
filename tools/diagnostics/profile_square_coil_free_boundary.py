@@ -507,6 +507,27 @@ def _parser() -> argparse.ArgumentParser:
             "current square-coil deck, then exit before mgrid generation or equilibrium solves."
         ),
     )
+    p.add_argument(
+        "--native-spline-actual-force-line-search-max-iter",
+        type=int,
+        default=2,
+        help=(
+            "Maximum native matrix-free line-search iterations inside "
+            "--native-spline-actual-force-step-profile."
+        ),
+    )
+    p.add_argument(
+        "--native-spline-actual-force-line-search-ftol",
+        type=float,
+        default=1.0e-12,
+        help="Residual L2 target for the native actual-force line-search profile.",
+    )
+    p.add_argument(
+        "--native-spline-actual-force-line-search-max-backtracks",
+        type=int,
+        default=8,
+        help="Maximum backtracks per native actual-force line-search iteration.",
+    )
     return p
 
 
@@ -3552,6 +3573,11 @@ def main(argv: list[str] | None = None) -> int:
                 beta_percent=float(args.beta_percent),
                 edge_control_projection_payload=edge_control_projection_payload_for_summary,
                 edge_control_requested=str(args.freeb_edge_control_projection),
+                line_search_max_iter=int(args.native_spline_actual_force_line_search_max_iter),
+                line_search_ftol=float(args.native_spline_actual_force_line_search_ftol),
+                line_search_max_backtracks=int(
+                    args.native_spline_actual_force_line_search_max_backtracks
+                ),
             )
             if bool(args.native_spline_actual_force_step_profile)
             else {"status": "not_requested"}
@@ -3611,6 +3637,15 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 "native_spline_actual_force_step_profile": bool(
                     args.native_spline_actual_force_step_profile
+                ),
+                "native_spline_actual_force_line_search_max_iter": int(
+                    args.native_spline_actual_force_line_search_max_iter
+                ),
+                "native_spline_actual_force_line_search_ftol": float(
+                    args.native_spline_actual_force_line_search_ftol
+                ),
+                "native_spline_actual_force_line_search_max_backtracks": int(
+                    args.native_spline_actual_force_line_search_max_backtracks
                 ),
                 "accepted_provider_parity": bool(args.accepted_provider_parity),
                 "freeb_anderson_pressure": bool(args.freeb_anderson_pressure),

@@ -360,6 +360,9 @@ def native_spline_actual_force_step_profile_payload(
     beta_percent: float,
     edge_control_projection_payload: dict[str, Any] | None,
     edge_control_requested: str,
+    line_search_max_iter: int = 2,
+    line_search_ftol: float = 1.0e-12,
+    line_search_max_backtracks: int = 8,
 ) -> dict[str, Any]:
     """Profile one native matrix-free step using VMEC force blocks.
 
@@ -563,14 +566,15 @@ def native_spline_actual_force_step_profile_payload(
         )
     )
     next_residual, next_residual_s = _time_call(lambda: problem.residual(step.next_vector))
-    line_search_max_iter = 2
-    line_search_max_backtracks = 8
+    line_search_max_iter = max(0, int(line_search_max_iter))
+    line_search_ftol = float(line_search_ftol)
+    line_search_max_backtracks = max(0, int(line_search_max_backtracks))
     line_search_solve, line_search_s = _time_call(
         lambda: free_boundary_native_spline_matrix_free_line_search_solve_jax(
             problem,
             vector,
             max_iter=line_search_max_iter,
-            ftol=1.0e-12,
+            ftol=line_search_ftol,
             damping=damping,
             linear_tol=linear_tol,
             linear_maxiter=linear_maxiter,
@@ -750,6 +754,7 @@ def native_spline_actual_force_step_profile_payload(
             "status": "completed",
             "method": "matrix_free_normal_step_with_residual_line_search",
             "max_iter": line_search_max_iter,
+            "ftol": line_search_ftol,
             "max_backtracks": line_search_max_backtracks,
             "wall_s": float(line_search_s),
             "n_iter": int(line_search_solve.n_iter),

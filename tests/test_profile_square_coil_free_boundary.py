@@ -87,6 +87,12 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "--native-spline-control-prototype",
             "--native-spline-vector-residual-profile",
             "--native-spline-actual-force-step-profile",
+            "--native-spline-actual-force-line-search-max-iter",
+            "5",
+            "--native-spline-actual-force-line-search-ftol",
+            "1e-13",
+            "--native-spline-actual-force-line-search-max-backtracks",
+            "6",
         ]
     )
 
@@ -130,6 +136,9 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.native_spline_control_prototype is True
     assert args.native_spline_vector_residual_profile is True
     assert args.native_spline_actual_force_step_profile is True
+    assert args.native_spline_actual_force_line_search_max_iter == 5
+    assert args.native_spline_actual_force_line_search_ftol == pytest.approx(1.0e-13)
+    assert args.native_spline_actual_force_line_search_max_backtracks == 6
 
 
 def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tails():
@@ -1669,6 +1678,7 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert line_search["status"] == "completed"
     assert line_search["method"] == "matrix_free_normal_step_with_residual_line_search"
     assert line_search["max_iter"] == 2
+    assert line_search["ftol"] == pytest.approx(1.0e-12)
     assert line_search["max_backtracks"] == 8
     assert line_search["wall_s"] >= 0.0
     assert 0 <= line_search["n_iter"] <= 2
@@ -1755,6 +1765,9 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert row["native_spline_actual_force_step_profile_line_search_n_iter"] == line_search[
         "n_iter"
     ]
+    assert row["native_spline_actual_force_step_profile_line_search_ftol"] == pytest.approx(
+        line_search["ftol"]
+    )
     assert row["native_spline_actual_force_step_profile_line_search_converged"] == line_search[
         "converged"
     ]

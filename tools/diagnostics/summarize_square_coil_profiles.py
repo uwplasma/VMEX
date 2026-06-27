@@ -2307,6 +2307,9 @@ def _summary_row(
         "native_spline_actual_force_step_profile_line_search_n_iter": native_actual_line_search.get(
             "n_iter"
         ),
+        "native_spline_actual_force_step_profile_line_search_ftol": _finite_float(
+            native_actual_line_search.get("ftol")
+        ),
         "native_spline_actual_force_step_profile_line_search_converged": native_actual_line_search.get(
             "converged"
         ),
@@ -3022,6 +3025,7 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_actual_force_step_profile_projected_l2_after",
         "native_spline_actual_force_step_profile_line_search_status",
         "native_spline_actual_force_step_profile_line_search_n_iter",
+        "native_spline_actual_force_step_profile_line_search_ftol",
         "native_spline_actual_force_step_profile_line_search_converged",
         "native_spline_actual_force_step_profile_line_search_final_l2",
         "native_spline_actual_force_step_profile_line_search_reduction_factor",
