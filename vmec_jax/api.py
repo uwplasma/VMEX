@@ -22,9 +22,12 @@ import types as _types
 
 from .namelist import minimal_fixed_boundary_indata, read_indata, write_indata
 from .solvers.free_boundary import (
+    FreeBoundaryReducedEdgeState,
     ReducedControlMap,
     ReducedControlState,
     ReducedControlStep,
+    free_boundary_reduced_edge_state_from_vmec_state,
+    free_boundary_reduced_edge_state_to_vmec_state,
     reduced_control_decode,
     reduced_control_least_squares_step,
     reduced_control_pullback,

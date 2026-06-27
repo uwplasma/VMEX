@@ -5,12 +5,20 @@ import pytest
 
 from vmec_jax._compat import jnp
 from vmec_jax.solvers.free_boundary import (
+    FreeBoundaryReducedEdgeState,
     ReducedControlMap,
     ReducedControlState,
+    free_boundary_reduced_edge_state_from_vmec_state,
+    free_boundary_reduced_edge_state_to_vmec_state,
     reduced_control_decode,
     reduced_control_least_squares_step,
     reduced_control_pullback,
 )
+from vmec_jax.config import VMECConfig
+from vmec_jax.namelist import InData
+from vmec_jax.solvers.free_boundary.control import _prepare_freeb_edge_control_projection
+from vmec_jax.state import StateLayout, VMECState
+from vmec_jax.static import build_static
 
 
 def test_reduced_control_least_squares_step_is_public() -> None:
@@ -19,8 +27,26 @@ def test_reduced_control_least_squares_step_is_public() -> None:
 
     assert vj.ReducedControlMap is ReducedControlMap
     assert vj.ReducedControlState is ReducedControlState
+    assert vj.FreeBoundaryReducedEdgeState is FreeBoundaryReducedEdgeState
     assert public_api.ReducedControlMap is ReducedControlMap
     assert public_api.ReducedControlState is ReducedControlState
+    assert public_api.FreeBoundaryReducedEdgeState is FreeBoundaryReducedEdgeState
+    assert (
+        vj.free_boundary_reduced_edge_state_from_vmec_state
+        is free_boundary_reduced_edge_state_from_vmec_state
+    )
+    assert (
+        public_api.free_boundary_reduced_edge_state_from_vmec_state
+        is free_boundary_reduced_edge_state_from_vmec_state
+    )
+    assert (
+        vj.free_boundary_reduced_edge_state_to_vmec_state
+        is free_boundary_reduced_edge_state_to_vmec_state
+    )
+    assert (
+        public_api.free_boundary_reduced_edge_state_to_vmec_state
+        is free_boundary_reduced_edge_state_to_vmec_state
+    )
     assert vj.reduced_control_decode is reduced_control_decode
     assert public_api.reduced_control_decode is reduced_control_decode
     assert vj.reduced_control_least_squares_step is reduced_control_least_squares_step
@@ -131,6 +157,110 @@ def test_reduced_control_state_tracks_native_coordinates() -> None:
     assert updated.control_delta_by_label == {"side": 3.25, "corner": 1.5}
     assert payload["reduced_unknown_size"] == 2
     assert payload["unknown_by_label"] == {"side": 3.25, "corner": 1.5}
+
+
+def test_free_boundary_reduced_edge_state_encodes_vmec_lcfs_edge_and_pullback() -> None:
+    import jax
+
+    cfg = VMECConfig(
+        mpol=2,
+        ntor=0,
+        ns=3,
+        nfp=1,
+        lasym=False,
+        lthreed=False,
+        lconm1=True,
+        ntheta=8,
+        nzeta=1,
+    )
+    static = build_static(cfg)
+    layout = StateLayout(ns=3, K=static.modes.K, lasym=False)
+    zeros = np.zeros((3, static.modes.K), dtype=float)
+    anchor_rcos = zeros.copy()
+    anchor_rcos[-1, 0] = 3.0
+    state0 = VMECState(
+        layout=layout,
+        Rcos=anchor_rcos,
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+    indata = InData(
+        scalars={"MPOL": 2, "NTOR": 0, "NS_ARRAY": [3], "NFP": 1, "LASYM": False, "LCONM1": True},
+        indexed={"RBC": {(0, 0): 3.0}},
+    )
+    jacobian = np.zeros((4 * static.modes.K, 1), dtype=float)
+    jacobian[0, 0] = 1.0
+    projection = _prepare_freeb_edge_control_projection(
+        {
+            "enabled": True,
+            "basis_symmetry": "test",
+            "labels": ["R00"],
+            "control_jacobian": jacobian,
+            "update_mode": "native_coordinate",
+        },
+        indata=indata,
+        static=static,
+        state0=state0,
+        free_boundary_enabled=True,
+    )
+
+    rcos = zeros.copy()
+    rcos[-1, 0] = 3.25
+    rcos[-1, 1] = 0.5
+    state = VMECState(
+        layout=layout,
+        Rcos=rcos,
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+
+    reduced_edge = free_boundary_reduced_edge_state_from_vmec_state(state, projection)
+    decoded_state = free_boundary_reduced_edge_state_to_vmec_state(
+        reduced_edge,
+        state,
+        projection,
+        host_update=True,
+    )
+    decoded_state_jax = free_boundary_reduced_edge_state_to_vmec_state(
+        reduced_edge,
+        state,
+        projection,
+        host_update=False,
+    )
+    updated_state = free_boundary_reduced_edge_state_to_vmec_state(
+        reduced_edge.update([0.5]),
+        state,
+        projection,
+        host_update=True,
+    )
+    full_adjoint = jnp.asarray([2.0, 7.0, *([0.0] * (4 * static.modes.K - 2))])
+    _decoded, vjp_fun = jax.vjp(
+        lambda values: reduced_edge.control_state.control_map.decode_jax(values),
+        jnp.asarray(reduced_edge.control_delta),
+    )
+
+    assert projection["enabled"] is True
+    assert reduced_edge.control_delta_by_label == {"R00": pytest.approx(0.25)}
+    assert reduced_edge.fit_residual_linf > 0.0
+    assert reduced_edge.to_dict()["mode"] == "native_reduced_lcfs_edge_state"
+    np.testing.assert_allclose(reduced_edge.decode_edge_values()[0], 3.25)
+    np.testing.assert_allclose(np.asarray(reduced_edge.decode_edge_values_jax())[0], 3.25)
+    assert np.asarray(decoded_state.Rcos)[-1, 0] == pytest.approx(3.25)
+    assert np.asarray(decoded_state.Rcos)[-1, 1] == pytest.approx(0.0)
+    np.testing.assert_allclose(np.asarray(decoded_state_jax.Rcos), np.asarray(decoded_state.Rcos))
+    assert np.asarray(updated_state.Rcos)[-1, 0] == pytest.approx(3.75)
+    np.testing.assert_allclose(
+        np.asarray(reduced_edge.pullback_jax(full_adjoint)),
+        np.asarray(vjp_fun(full_adjoint)[0]),
+        atol=1.0e-14,
+    )
+    np.testing.assert_allclose(reduced_edge.pullback(np.asarray(full_adjoint)), [2.0])
 
 
 def test_reduced_control_decode_matches_host_map_and_jacobian() -> None:

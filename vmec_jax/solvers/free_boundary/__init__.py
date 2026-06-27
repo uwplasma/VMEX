@@ -17,10 +17,16 @@ from .reduced_controls import (
     reduced_control_least_squares_step,
     reduced_control_pullback,
 )
+from .control import (
+    FreeBoundaryReducedEdgeState,
+    free_boundary_reduced_edge_state_from_vmec_state,
+    free_boundary_reduced_edge_state_to_vmec_state,
+)
 
 __all__ = [
     "DEFAULT_FREE_BOUNDARY_DERIVATIVE_OUTPUTS",
     "FreeBoundaryDerivativeOptions",
+    "FreeBoundaryReducedEdgeState",
     "ReducedControlMap",
     "ReducedControlState",
     "ReducedControlStep",
@@ -29,6 +35,8 @@ __all__ = [
     "contract_free_boundary_vjp",
     "free_boundary_value_and_jacobian",
     "free_boundary_value_and_jvp",
+    "free_boundary_reduced_edge_state_from_vmec_state",
+    "free_boundary_reduced_edge_state_to_vmec_state",
     "reduced_control_decode",
     "reduced_control_least_squares_step",
     "reduced_control_pullback",

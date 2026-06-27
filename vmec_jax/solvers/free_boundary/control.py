@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 from typing import Any, Callable, NamedTuple
 
@@ -38,6 +39,88 @@ class FreeBoundaryNativeControlStep(NamedTuple):
     control_update_l2: float
     trust_scale: float
     force_metric: str
+
+
+@dataclass(frozen=True)
+class FreeBoundaryReducedEdgeState:
+    """LCFS edge row represented in reduced free-boundary controls.
+
+    The object stores the reduced coordinates and the affine map that decodes
+    them to the physical VMEC LCFS edge coefficients.  It is the small bridge
+    needed by native-coordinate solves: advance the reduced coordinates, decode
+    only at VMEC force-evaluation boundaries, and pull edge residuals or adjoints
+    back with the transpose map.
+    """
+
+    control_state: ReducedControlState
+    fit_residual_linf: float = 0.0
+    fit_residual_rel: float | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.control_state, ReducedControlState):
+            raise TypeError("control_state must be a ReducedControlState")
+        fit_linf = float(self.fit_residual_linf)
+        if not np.isfinite(fit_linf) or fit_linf < 0.0:
+            raise ValueError("fit_residual_linf must be finite and nonnegative")
+        fit_rel = None if self.fit_residual_rel is None else float(self.fit_residual_rel)
+        if fit_rel is not None and (not np.isfinite(fit_rel) or fit_rel < 0.0):
+            raise ValueError("fit_residual_rel must be finite and nonnegative when supplied")
+        object.__setattr__(self, "fit_residual_linf", fit_linf)
+        object.__setattr__(self, "fit_residual_rel", fit_rel)
+
+    @property
+    def control_delta(self) -> np.ndarray:
+        """Reduced LCFS edge coordinates."""
+
+        return self.control_state.control_delta
+
+    @property
+    def control_delta_by_label(self) -> dict[str, float]:
+        """Reduced coordinates keyed by the projection labels."""
+
+        return self.control_state.control_delta_by_label
+
+    def decode_edge_values(self) -> np.ndarray:
+        """Decode to stacked physical edge coefficients."""
+
+        return self.control_state.decode()
+
+    def decode_edge_values_jax(self):
+        """Decode with JAX-compatible operations."""
+
+        return self.control_state.decode_jax()
+
+    def update(self, control_update: Any) -> "FreeBoundaryReducedEdgeState":
+        """Return a new reduced edge state after adding ``control_update``."""
+
+        return FreeBoundaryReducedEdgeState(
+            control_state=self.control_state.update(control_update),
+            fit_residual_linf=0.0,
+            fit_residual_rel=0.0,
+        )
+
+    def pullback(self, full_edge_values: Any) -> np.ndarray:
+        """Map a physical edge residual or adjoint into reduced controls."""
+
+        return self.control_state.control_map.pullback(full_edge_values)
+
+    def pullback_jax(self, full_edge_values: Any):
+        """Return the JAX-compatible reduced-control pullback."""
+
+        return self.control_state.control_map.pullback_jax(full_edge_values)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return compact JSON-friendly reduced edge-state diagnostics."""
+
+        payload = self.control_state.to_dict()
+        payload.update(
+            {
+                "mode": "native_reduced_lcfs_edge_state",
+                "fit_residual_linf": float(self.fit_residual_linf),
+                "fit_residual_rel": self.fit_residual_rel,
+            }
+        )
+        return payload
 
 
 def free_boundary_iter_controls(iter2: int, iter1: int, nvacskip: int) -> tuple[int, int]:
@@ -534,6 +617,61 @@ def _freeb_edge_control_state_from_coordinates(
     return _freeb_edge_control_state_from_edge_values(state, projection, edge_values, host_update=False)
 
 
+def free_boundary_reduced_edge_state_from_vmec_state(
+    state: VMECState,
+    projection: dict[str, Any],
+    *,
+    ridge: float = 0.0,
+    trust_radius: float | None = None,
+) -> FreeBoundaryReducedEdgeState:
+    """Encode a VMEC LCFS edge row as native reduced controls.
+
+    ``projection`` is the prepared free-boundary edge-control projection used by
+    the solver.  The returned object stores only reduced coordinates and the
+    affine map needed to decode the LCFS edge for VMEC force kernels.
+    """
+
+    if not bool(projection.get("enabled", False)):
+        raise ValueError("edge-control projection is not enabled")
+    control_map = _freeb_edge_control_reduced_map(projection)
+    edge_values = _freeb_edge_control_state_edge_values(state, projection)
+    step = control_map.encode(edge_values, ridge=ridge, trust_radius=trust_radius)
+    finite = step.residual_after[np.isfinite(step.residual_after)]
+    residual_linf = float(np.max(np.abs(finite))) if finite.size else 0.0
+    return FreeBoundaryReducedEdgeState(
+        control_state=ReducedControlState(
+            control_map=control_map,
+            control_delta=step.control_delta,
+        ),
+        fit_residual_linf=residual_linf,
+        fit_residual_rel=step.residual_rel,
+    )
+
+
+def free_boundary_reduced_edge_state_to_vmec_state(
+    reduced_edge_state: FreeBoundaryReducedEdgeState,
+    template_state: VMECState,
+    projection: dict[str, Any],
+    *,
+    host_update: bool,
+) -> VMECState:
+    """Decode a reduced LCFS edge state into a VMEC state edge row."""
+
+    if not isinstance(reduced_edge_state, FreeBoundaryReducedEdgeState):
+        raise TypeError("reduced_edge_state must be a FreeBoundaryReducedEdgeState")
+    edge_values = (
+        reduced_edge_state.decode_edge_values()
+        if bool(host_update)
+        else reduced_edge_state.decode_edge_values_jax()
+    )
+    return _freeb_edge_control_state_from_edge_values(
+        template_state,
+        projection,
+        edge_values,
+        host_update=bool(host_update),
+    )
+
+
 def _freeb_edge_control_apply_coordinate_update(
     state: VMECState,
     projection: dict[str, Any],
@@ -600,11 +738,7 @@ def _freeb_edge_control_reduced_state_from_state(
 ) -> ReducedControlState:
     """Encode the current LCFS edge as a reduced-control state."""
 
-    control_map = _freeb_edge_control_reduced_map(projection)
-    return ReducedControlState.from_full_values(
-        control_map,
-        _freeb_edge_control_state_edge_values(state, projection),
-    )
+    return free_boundary_reduced_edge_state_from_vmec_state(state, projection).control_state
 
 
 def _freeb_edge_control_pullback_force_np(force_deltas: Any, projection: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
