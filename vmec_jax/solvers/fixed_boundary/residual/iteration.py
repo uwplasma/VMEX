@@ -156,13 +156,17 @@ from vmec_jax.solvers.free_boundary.control import (
     FreeBoundaryNativeSplineState,
     _freeb_edge_control_apply_coordinate_update,
     _freeb_edge_control_control_delta_jax,
-    _freeb_edge_control_native_coordinate_step,
+    _freeb_edge_control_delta_tuple_target,
     _freeb_edge_control_project_vector_np,
     _freeb_edge_control_reduced_edge_state_from_coordinates,
     _prepare_freeb_edge_control_projection,
     _project_freeb_edge_control_delta_tuple,
     _project_freeb_edge_control_state,
     _zero_freeb_edge_control_velocity_blocks,
+)
+from vmec_jax.solvers.free_boundary.native_state import (
+    free_boundary_native_spline_unknown_vector_from_vmec_state,
+    free_boundary_native_spline_vector_edge_step,
 )
 from vmec_jax.field import TWOPI
 from vmec_jax.solvers.fixed_boundary.jit_cache import (
@@ -1244,6 +1248,7 @@ class _FreeBoundaryEdgeControlProjector:
         self.native_control_velocity = None
         self.native_reduced_edge_state = None
         self.native_spline_state = None
+        self.native_unknowns = None
         self.native_control_last_step = {}
         self.native_control_resync_count = 0
         self.use_scan = bool(use_scan)
@@ -1264,6 +1269,7 @@ class _FreeBoundaryEdgeControlProjector:
         self.info["update_mode"] = self.update_mode
         self.info["solver_native_spline_controls"] = False
         self.info["solver_native_spline_edge_controls"] = bool(self.update_mode == "native_coordinate")
+        self.info["native_vector_step_adapter"] = bool(self.update_mode == "native_coordinate")
         if self.enabled:
             self.info["zero_edge_velocity_memory"] = True
             self.jit_strict_update_enabled = False
@@ -1282,6 +1288,7 @@ class _FreeBoundaryEdgeControlProjector:
     @native_control_coordinates.setter
     def native_control_coordinates(self, coordinates) -> None:
         self.native_spline_state = None
+        self.native_unknowns = None
         if coordinates is None:
             self.native_reduced_edge_state = None
             return
@@ -1337,6 +1344,7 @@ class _FreeBoundaryEdgeControlProjector:
         self.native_control_velocity = None
         self.native_reduced_edge_state = None
         self.native_spline_state = None
+        self.native_unknowns = None
         self.native_velocity_reset_count += 1
 
     def apply_native_coordinate_update_from_force_tuple(
@@ -1356,30 +1364,49 @@ class _FreeBoundaryEdgeControlProjector:
         if not self.enabled or self.update_mode != "native_coordinate" or update_deltas is None:
             return state_candidate, update_deltas
         self.native_coordinate_update_count += 1
-        step = _freeb_edge_control_native_coordinate_step(
+        step = free_boundary_native_spline_vector_edge_step(
             state_current=state_in,
             state_candidate=state_candidate,
             update_deltas=update_deltas,
             force_deltas=force_deltas,
             projection=self.projection,
+            unknowns=self.native_unknowns,
             control_velocity=self.native_control_velocity,
-            edge_state=self.native_reduced_edge_state,
             dt_eff=float(dt_eff),
             b1=float(b1),
             fac=float(fac),
             force_scale=float(force_scale),
             flip_sign=float(flip_sign),
-            host_update=bool(host_update),
         )
         self.native_control_velocity = step.control_velocity
-        self.native_spline_state = step.native_state
-        self.native_reduced_edge_state = step.edge_state
-        control_coordinates = np.asarray(step.edge_state.control_delta, dtype=float)
+        self.native_unknowns = step.unknowns
+        self.native_reduced_edge_state = step.unknowns.edge_state
+        self.native_spline_state = FreeBoundaryNativeSplineState(
+            template_state=step.unknowns.template_state,
+            edge_state=step.unknowns.edge_state,
+            projection=self.projection,
+        )
+        control_coordinates = np.asarray(step.unknowns.control_delta, dtype=float)
+        decoded_edge_update = np.asarray(self.projection["jacobian_np"], dtype=float) @ np.asarray(
+            step.control_update, dtype=float
+        ).reshape(-1)
+        source_edge_update = _freeb_edge_control_delta_tuple_target(update_deltas, self.projection)
+        source_edge_update_l2 = float(np.linalg.norm(source_edge_update))
+        source_update_residual = source_edge_update - decoded_edge_update
+        finite_residual = source_update_residual[np.isfinite(source_update_residual)]
+        source_update_residual_l2 = float(np.linalg.norm(finite_residual)) if finite_residual.size else 0.0
+        source_update_residual_linf = (
+            float(np.max(np.abs(finite_residual))) if finite_residual.size else 0.0
+        )
         self.native_control_last_step = {
             "status": "applied",
+            "native_vector_step_adapter": True,
             "force_metric": str(step.force_metric),
             "target_l2": float(step.target_l2),
             "control_force_l2": float(step.control_force_l2),
+            "native_unknown_size": int(step.unknowns.native_unknown_size),
+            "full_vmec_size": int(step.unknowns.full_vmec_size),
+            "removed_fourier_edge_dofs": int(step.unknowns.removed_fourier_edge_dofs),
             "control_coordinate_l2": float(np.linalg.norm(control_coordinates)),
             "control_coordinate_linf": float(np.max(np.abs(control_coordinates)))
             if control_coordinates.size
@@ -1387,13 +1414,19 @@ class _FreeBoundaryEdgeControlProjector:
             "control_velocity_l2": float(step.control_velocity_l2),
             "control_update_l2": float(step.control_update_l2),
             "trust_scale": float(step.trust_scale),
-            "decoded_edge_update_l2": float(step.native_update.decoded_edge_update_l2),
-            "decoded_edge_update_linf": float(step.native_update.decoded_edge_update_linf),
-            "source_edge_update_l2": step.native_update.source_edge_update_l2,
-            "source_update_residual_l2": step.native_update.source_update_residual_l2,
-            "source_update_residual_linf": step.native_update.source_update_residual_linf,
-            "source_update_residual_rel": step.native_update.source_update_residual_rel,
-            "source_update_captured_fraction": step.native_update.source_update_captured_fraction,
+            "decoded_edge_update_l2": float(np.linalg.norm(decoded_edge_update)),
+            "decoded_edge_update_linf": float(np.max(np.abs(decoded_edge_update)))
+            if decoded_edge_update.size
+            else 0.0,
+            "source_edge_update_l2": source_edge_update_l2,
+            "source_update_residual_l2": source_update_residual_l2,
+            "source_update_residual_linf": source_update_residual_linf,
+            "source_update_residual_rel": None
+            if source_edge_update_l2 <= np.finfo(float).tiny
+            else float(source_update_residual_l2 / source_edge_update_l2),
+            "source_update_captured_fraction": None
+            if source_edge_update_l2 <= np.finfo(float).tiny
+            else float(np.linalg.norm(decoded_edge_update) / source_edge_update_l2),
         }
         return step.state, step.update_deltas
 
@@ -1412,6 +1445,10 @@ class _FreeBoundaryEdgeControlProjector:
             self.projection,
         )
         self.native_reduced_edge_state = self.native_spline_state.edge_state
+        self.native_unknowns = free_boundary_native_spline_unknown_vector_from_vmec_state(
+            state_in,
+            self.projection,
+        )
         control_coordinates = np.asarray(self.native_reduced_edge_state.control_delta, dtype=float)
         scale = float(velocity_scale)
         if self.native_control_velocity is not None and np.isfinite(scale):

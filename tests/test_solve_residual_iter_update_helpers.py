@@ -345,6 +345,7 @@ def test_free_boundary_edge_coordinate_mode_applies_reduced_update_once(monkeypa
     assert native.update_mode == "native_coordinate"
     assert native.info["solver_native_spline_controls"] is False
     assert native.info["solver_native_spline_edge_controls"] is True
+    assert native.info["native_vector_step_adapter"] is True
     assert callable(projected.delta_tuple_projector())
 
 
@@ -407,6 +408,95 @@ def test_free_boundary_native_projector_resyncs_fractional_backtracking(monkeypa
     assert projector.native_control_last_step["backtracking_alpha"] == pytest.approx(0.25)
     assert projector.native_control_last_step["control_coordinate_l2"] == pytest.approx(1.0)
     assert projector.native_control_last_step["control_velocity_l2"] == pytest.approx(1.0)
+
+
+def test_free_boundary_native_projector_uses_native_vector_step(monkeypatch) -> None:
+    def fake_prepare(payload, **_kwargs):
+        return {
+            "enabled": True,
+            "info": {
+                "enabled": True,
+                "basis_symmetry": "square",
+                "labels": ["R00"],
+                "rcond": 1.0e-12,
+            },
+            "mode_count": 1,
+            "mode_scale_np": np.ones(1),
+            "initial_np": {
+                "R_cos": np.asarray([1.0]),
+                "R_sin": np.zeros(1),
+                "Z_cos": np.zeros(1),
+                "Z_sin": np.zeros(1),
+            },
+            "jacobian_np": np.asarray([[1.0], [0.0], [0.0], [0.0]]),
+            "pinv_np": np.asarray([[1.0, 0.0, 0.0, 0.0]]),
+        }
+
+    monkeypatch.setattr(
+        "vmec_jax.solvers.fixed_boundary.residual.iteration._prepare_freeb_edge_control_projection",
+        fake_prepare,
+    )
+
+    projector = _FreeBoundaryEdgeControlProjector(
+        {"update_mode": "native_coordinate"},
+        indata=object(),
+        static=object(),
+        state0=object(),
+        free_boundary_enabled=True,
+        use_scan=False,
+        jit_strict_update_enabled=True,
+    )
+    layout = StateLayout(ns=2, K=1, lasym=False)
+    zeros = np.zeros((2, 1))
+    state_current = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[1.0], [2.0]]),
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+    state_candidate = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[5.0], [99.0]]),
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=np.asarray([[0.2], [0.3]]),
+        Lsin=np.asarray([[0.4], [0.5]]),
+    )
+    update_dR = zeros.copy()
+    update_dR[-1, 0] = 4.0
+    force_dR = zeros.copy()
+    force_dR[-1, 0] = 2.0
+
+    state_out, deltas_out = projector.apply_native_coordinate_update_from_force_tuple(
+        state_current,
+        state_candidate,
+        (update_dR, zeros.copy(), zeros.copy(), zeros.copy(), zeros.copy(), zeros.copy()),
+        (force_dR, zeros.copy(), zeros.copy(), zeros.copy(), zeros.copy(), zeros.copy()),
+        dt_eff=0.5,
+        b1=0.0,
+        fac=1.0,
+        force_scale=0.5,
+        flip_sign=1.0,
+        host_update=True,
+    )
+
+    assert projector.native_unknowns is not None
+    assert projector.native_unknowns.to_dict()["schema"] == "FreeBoundaryNativeSplineUnknownVector.v1"
+    assert projector.native_control_last_step["native_vector_step_adapter"] is True
+    assert projector.native_control_last_step["native_unknown_size"] == 9
+    assert projector.native_control_last_step["full_vmec_size"] == 12
+    assert projector.native_control_last_step["removed_fourier_edge_dofs"] == 3
+    assert projector.native_control_last_step["source_edge_update_l2"] == pytest.approx(4.0)
+    assert projector.native_control_last_step["decoded_edge_update_l2"] == pytest.approx(0.5)
+    assert projector.native_control_last_step["source_update_captured_fraction"] == pytest.approx(0.125)
+    np.testing.assert_allclose(state_out.Rcos[0], [5.0])
+    np.testing.assert_allclose(state_out.Rcos[-1], [2.5])
+    np.testing.assert_allclose(state_out.Lcos, state_candidate.Lcos)
+    np.testing.assert_allclose(deltas_out[0][-1], [0.5])
 
 
 def test_residual_iteration_control_sample_matches_vmec2000_edge_and_precond_rules() -> None:
