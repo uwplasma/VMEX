@@ -35,6 +35,13 @@ from .native_state import (
     free_boundary_native_spline_vector_to_vmec_state_jax,
     free_boundary_native_spline_vector_edge_step,
 )
+from .native_problem import (
+    FreeBoundaryNativeSplineDenseSolve,
+    FreeBoundaryNativeSplineDenseStep,
+    FreeBoundaryNativeSplineResidualProblem,
+    free_boundary_native_spline_dense_gauss_newton_solve_jax,
+    free_boundary_native_spline_dense_gauss_newton_step_jax,
+)
 
 __all__ = [
     "DEFAULT_FREE_BOUNDARY_DERIVATIVE_OUTPUTS",
@@ -44,6 +51,9 @@ __all__ = [
     "FreeBoundaryNativeSplineUpdate",
     "FreeBoundaryNativeSplineUnknownVector",
     "FreeBoundaryNativeSplineVectorStep",
+    "FreeBoundaryNativeSplineDenseSolve",
+    "FreeBoundaryNativeSplineDenseStep",
+    "FreeBoundaryNativeSplineResidualProblem",
     "FreeBoundaryReducedEdgeState",
     "ReducedControlMap",
     "ReducedControlState",
@@ -59,6 +69,8 @@ __all__ = [
     "free_boundary_native_spline_vector_residual_jax",
     "free_boundary_native_spline_vector_to_vmec_state_jax",
     "free_boundary_native_spline_vector_edge_step",
+    "free_boundary_native_spline_dense_gauss_newton_solve_jax",
+    "free_boundary_native_spline_dense_gauss_newton_step_jax",
     "free_boundary_reduced_edge_state_from_vmec_state",
     "free_boundary_reduced_edge_state_to_vmec_state",
     "reduced_control_decode",

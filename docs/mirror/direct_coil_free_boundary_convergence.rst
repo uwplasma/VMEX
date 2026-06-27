@@ -574,6 +574,11 @@ pullback by default. The square-coil profiler exposes this path through
 ``--freeb-edge-control-projection full`` to write a no-solve JSON/CSV row with
 native/full vector sizes, decode parity, projected-residual parity, and JVP
 timing for the selected ``MPOL``/``NTOR``/``NZETA`` deck.
+``FreeBoundaryNativeSplineResidualProblem`` and the dense
+``free_boundary_native_spline_dense_gauss_newton_*`` helpers are the first
+opt-in packed-native nonlinear-state prototype. They intentionally form dense
+Jacobians and are only for manufactured or tiny smoke problems; production
+strict profiles still need the matrix-free/preconditioned native loop.
 The same native-coordinate rows report source-update capture diagnostics in
 ``native_last_step``: ``decoded_edge_update_l2``,
 ``source_edge_update_l2``, ``source_update_residual_rel``, and

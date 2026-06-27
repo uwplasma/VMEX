@@ -5,7 +5,10 @@ import pytest
 
 from vmec_jax._compat import jnp
 from vmec_jax.solvers.free_boundary import (
+    FreeBoundaryNativeSplineDenseSolve,
+    FreeBoundaryNativeSplineDenseStep,
     FreeBoundaryNativeSplineForce,
+    FreeBoundaryNativeSplineResidualProblem,
     FreeBoundaryNativeSplineState,
     FreeBoundaryNativeSplineUpdate,
     FreeBoundaryNativeSplineUnknownVector,
@@ -15,6 +18,8 @@ from vmec_jax.solvers.free_boundary import (
     ReducedControlState,
     free_boundary_reduced_edge_state_from_vmec_state,
     free_boundary_reduced_edge_state_to_vmec_state,
+    free_boundary_native_spline_dense_gauss_newton_solve_jax,
+    free_boundary_native_spline_dense_gauss_newton_step_jax,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
     free_boundary_native_spline_project_vmec_delta_jax,
     free_boundary_native_spline_vector_projected_residual_jax,
@@ -41,13 +46,19 @@ def test_reduced_control_least_squares_step_is_public() -> None:
 
     assert vj.ReducedControlMap is ReducedControlMap
     assert vj.ReducedControlState is ReducedControlState
+    assert vj.FreeBoundaryNativeSplineDenseSolve is FreeBoundaryNativeSplineDenseSolve
+    assert vj.FreeBoundaryNativeSplineDenseStep is FreeBoundaryNativeSplineDenseStep
     assert vj.FreeBoundaryNativeSplineForce is FreeBoundaryNativeSplineForce
+    assert vj.FreeBoundaryNativeSplineResidualProblem is FreeBoundaryNativeSplineResidualProblem
     assert vj.FreeBoundaryNativeSplineState is FreeBoundaryNativeSplineState
     assert vj.FreeBoundaryNativeSplineUpdate is FreeBoundaryNativeSplineUpdate
     assert vj.FreeBoundaryReducedEdgeState is FreeBoundaryReducedEdgeState
     assert public_api.ReducedControlMap is ReducedControlMap
     assert public_api.ReducedControlState is ReducedControlState
+    assert public_api.FreeBoundaryNativeSplineDenseSolve is FreeBoundaryNativeSplineDenseSolve
+    assert public_api.FreeBoundaryNativeSplineDenseStep is FreeBoundaryNativeSplineDenseStep
     assert public_api.FreeBoundaryNativeSplineForce is FreeBoundaryNativeSplineForce
+    assert public_api.FreeBoundaryNativeSplineResidualProblem is FreeBoundaryNativeSplineResidualProblem
     assert public_api.FreeBoundaryNativeSplineState is FreeBoundaryNativeSplineState
     assert public_api.FreeBoundaryNativeSplineUpdate is FreeBoundaryNativeSplineUpdate
     assert public_api.FreeBoundaryNativeSplineUnknownVector is FreeBoundaryNativeSplineUnknownVector
@@ -60,6 +71,22 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert (
         public_api.free_boundary_native_spline_unknown_vector_from_vmec_state
         is free_boundary_native_spline_unknown_vector_from_vmec_state
+    )
+    assert (
+        vj.free_boundary_native_spline_dense_gauss_newton_step_jax
+        is free_boundary_native_spline_dense_gauss_newton_step_jax
+    )
+    assert (
+        public_api.free_boundary_native_spline_dense_gauss_newton_step_jax
+        is free_boundary_native_spline_dense_gauss_newton_step_jax
+    )
+    assert (
+        vj.free_boundary_native_spline_dense_gauss_newton_solve_jax
+        is free_boundary_native_spline_dense_gauss_newton_solve_jax
+    )
+    assert (
+        public_api.free_boundary_native_spline_dense_gauss_newton_solve_jax
+        is free_boundary_native_spline_dense_gauss_newton_solve_jax
     )
     assert (
         vj.free_boundary_native_spline_project_vmec_delta_jax
@@ -647,6 +674,102 @@ def test_native_spline_vector_edge_step_matches_existing_edge_bridge() -> None:
     np.testing.assert_allclose(np.asarray(vector_step.state.Zsin), np.asarray(legacy.state.Zsin))
     for actual, expected in zip(vector_step.update_deltas, legacy.update_deltas, strict=True):
         np.testing.assert_allclose(actual, expected)
+
+
+def test_native_spline_dense_gauss_newton_solves_manufactured_residual() -> None:
+    cfg = VMECConfig(
+        mpol=1,
+        ntor=0,
+        ns=3,
+        nfp=1,
+        lasym=False,
+        lthreed=False,
+        lconm1=True,
+        ntheta=8,
+        nzeta=1,
+    )
+    static = build_static(cfg)
+    layout = StateLayout(ns=3, K=static.modes.K, lasym=False)
+    zeros = np.zeros((3, static.modes.K), dtype=float)
+    state0 = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[1.0], [2.0], [3.5]]),
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+    indata = InData(
+        scalars={"MPOL": 1, "NTOR": 0, "NS_ARRAY": [3], "NFP": 1, "LASYM": False, "LCONM1": True},
+        indexed={"RBC": {(0, 0): 3.0}},
+    )
+    jacobian = np.zeros((4 * static.modes.K, 1), dtype=float)
+    jacobian[0, 0] = 2.0
+    projection = _prepare_freeb_edge_control_projection(
+        {
+            "enabled": True,
+            "basis_symmetry": "test",
+            "labels": ["edge_radius"],
+            "control_jacobian": jacobian,
+            "update_mode": "native_coordinate",
+        },
+        indata=indata,
+        static=static,
+        state0=state0,
+        free_boundary_enabled=True,
+    )
+    target = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[1.2], [1.8], [4.5]]),
+        Rsin=np.asarray([[0.1], [0.2], [0.0]]),
+        Zcos=np.asarray([[0.3], [0.4], [0.0]]),
+        Zsin=np.asarray([[0.5], [0.6], [0.0]]),
+        Lcos=np.asarray([[0.7], [0.8], [0.9]]),
+        Lsin=np.asarray([[1.0], [1.1], [1.2]]),
+    )
+    unknowns = free_boundary_native_spline_unknown_vector_from_vmec_state(state0, projection)
+
+    def residual_fn(decoded_state):
+        return VMECState(
+            layout=decoded_state.layout,
+            Rcos=decoded_state.Rcos - target.Rcos,
+            Rsin=decoded_state.Rsin - target.Rsin,
+            Zcos=decoded_state.Zcos - target.Zcos,
+            Zsin=decoded_state.Zsin - target.Zsin,
+            Lcos=decoded_state.Lcos - target.Lcos,
+            Lsin=decoded_state.Lsin - target.Lsin,
+        )
+
+    problem = FreeBoundaryNativeSplineResidualProblem(
+        template_state=state0,
+        projection=projection,
+        residual_fn=residual_fn,
+    )
+    step = free_boundary_native_spline_dense_gauss_newton_step_jax(
+        problem,
+        unknowns.vector,
+    )
+    solved = free_boundary_native_spline_dense_gauss_newton_solve_jax(
+        problem,
+        unknowns.vector,
+        max_iter=2,
+        ftol=1.0e-11,
+    )
+    decoded = problem.decode(solved.vector)
+
+    assert isinstance(step, FreeBoundaryNativeSplineDenseStep)
+    assert isinstance(solved, FreeBoundaryNativeSplineDenseSolve)
+    assert solved.converged is True
+    assert solved.n_iter == 1
+    assert solved.residual_l2 < 1.0e-11
+    assert len(solved.history) == 1
+    np.testing.assert_allclose(np.asarray(decoded.Rcos), target.Rcos, atol=1.0e-12)
+    np.testing.assert_allclose(np.asarray(decoded.Rsin), target.Rsin, atol=1.0e-12)
+    np.testing.assert_allclose(np.asarray(decoded.Zcos), target.Zcos, atol=1.0e-12)
+    np.testing.assert_allclose(np.asarray(decoded.Zsin), target.Zsin, atol=1.0e-12)
+    np.testing.assert_allclose(np.asarray(decoded.Lcos), target.Lcos, atol=1.0e-12)
+    np.testing.assert_allclose(np.asarray(decoded.Lsin), target.Lsin, atol=1.0e-12)
 
 
 def test_native_spline_vector_residual_jax_respects_mode_scale() -> None:

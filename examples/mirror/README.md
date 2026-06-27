@@ -677,6 +677,11 @@ Use ``--native-spline-vector-residual-profile`` with
 encode/decode/projected-residual/JVP cost on the selected deck without
 launching an equilibrium solve. The same summary table exposes the resulting
 ``native_spline_vector_residual_profile_*`` columns.
+``FreeBoundaryNativeSplineResidualProblem`` plus the dense
+``free_boundary_native_spline_dense_gauss_newton_*`` helpers provide a
+manufactured/tiny-case packed-native solve prototype. They form dense
+Jacobians, so they are a correctness bridge toward the matrix-free production
+solver rather than the strict square-coil equilibrium path itself.
 ``FreeBoundaryNativeSplineVectorStep`` is the parity adapter that currently
 expresses the LCFS edge update through that native vector while matching the
 existing edge-only bridge.

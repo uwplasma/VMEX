@@ -23,6 +23,9 @@ import types as _types
 from .namelist import minimal_fixed_boundary_indata, read_indata, write_indata
 from .solvers.free_boundary import (
     FreeBoundaryNativeSplineForce,
+    FreeBoundaryNativeSplineDenseSolve,
+    FreeBoundaryNativeSplineDenseStep,
+    FreeBoundaryNativeSplineResidualProblem,
     FreeBoundaryNativeSplineState,
     FreeBoundaryNativeSplineUpdate,
     FreeBoundaryNativeSplineUnknownVector,
@@ -32,6 +35,8 @@ from .solvers.free_boundary import (
     ReducedControlState,
     ReducedControlStep,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
+    free_boundary_native_spline_dense_gauss_newton_solve_jax,
+    free_boundary_native_spline_dense_gauss_newton_step_jax,
     free_boundary_native_spline_project_vmec_delta_jax,
     free_boundary_native_spline_vector_projected_residual_jax,
     free_boundary_native_spline_vector_residual_jax,
