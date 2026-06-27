@@ -545,6 +545,14 @@ spline-control LCFS edge alongside a VMEC template and decodes to a full
 ``VMECState`` before evaluating the existing residual. It makes the native
 edge state explicit and testable, but it is not yet the full nonlinear
 unknown-vector replacement needed to remove the Fourier straight-side burden.
+The next substrate is now explicit as
+``FreeBoundaryNativeSplineUnknownVector.v1``: it packs the VMEC interior
+``R``/``Z`` rows, all ``lambda`` rows, and the reduced LCFS spline-control
+coordinates while omitting the full Fourier LCFS ``R``/``Z`` edge rows. The
+prototype/preflight report lists the resulting native unknown size, removed
+Fourier edge degrees of freedom, and reduction fraction. This is the tested
+pack/unpack contract for the future full native-control residual loop; the
+current strict solve still runs through the edge-only bridge above.
 The same native-coordinate rows report source-update capture diagnostics in
 ``native_last_step``: ``decoded_edge_update_l2``,
 ``source_edge_update_l2``, ``source_update_residual_rel``, and

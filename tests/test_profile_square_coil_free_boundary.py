@@ -1501,9 +1501,16 @@ def test_square_coil_profile_native_spline_control_prototype_is_no_solve(tmp_pat
     prototype = data["native_spline_control_prototype"]
     assert prototype["prototype_only"] is True
     assert prototype["equilibrium_solve_performed"] is False
-    assert prototype["recommended_reduced_basis"] == "stellarator"
-    assert prototype["control_count"] == 9
+    assert prototype["recommended_reduced_basis"] == "full"
+    assert prototype["control_count"] == 16
     assert prototype["full_fourier_edge_size"] == 4 * data["boundary_projection"]["mode_count"]
+    assert prototype["full_vmec_unknown_size"] == 6 * data["configuration"]["ns"] * data["boundary_projection"]["mode_count"]
+    assert prototype["native_unknown_size"] == (
+        4 * (data["configuration"]["ns"] - 1) * data["boundary_projection"]["mode_count"]
+        + 2 * data["configuration"]["ns"] * data["boundary_projection"]["mode_count"]
+        + 16
+    )
+    assert prototype["removed_fourier_edge_dofs"] == prototype["full_fourier_edge_size"] - 16
     assert prototype["next_action"] == "repair_preflight_before_native_spline_solver_work"
     assert "projection_gate_disabled" in prototype["blockers"]
     assert "change vmec_jax's nonlinear state basis" in prototype["vmec2000_role"]

@@ -8,11 +8,13 @@ from vmec_jax.solvers.free_boundary import (
     FreeBoundaryNativeSplineForce,
     FreeBoundaryNativeSplineState,
     FreeBoundaryNativeSplineUpdate,
+    FreeBoundaryNativeSplineUnknownVector,
     FreeBoundaryReducedEdgeState,
     ReducedControlMap,
     ReducedControlState,
     free_boundary_reduced_edge_state_from_vmec_state,
     free_boundary_reduced_edge_state_to_vmec_state,
+    free_boundary_native_spline_unknown_vector_from_vmec_state,
     reduced_control_decode,
     reduced_control_least_squares_step,
     reduced_control_pullback,
@@ -39,7 +41,16 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert public_api.FreeBoundaryNativeSplineForce is FreeBoundaryNativeSplineForce
     assert public_api.FreeBoundaryNativeSplineState is FreeBoundaryNativeSplineState
     assert public_api.FreeBoundaryNativeSplineUpdate is FreeBoundaryNativeSplineUpdate
+    assert public_api.FreeBoundaryNativeSplineUnknownVector is FreeBoundaryNativeSplineUnknownVector
     assert public_api.FreeBoundaryReducedEdgeState is FreeBoundaryReducedEdgeState
+    assert (
+        vj.free_boundary_native_spline_unknown_vector_from_vmec_state
+        is free_boundary_native_spline_unknown_vector_from_vmec_state
+    )
+    assert (
+        public_api.free_boundary_native_spline_unknown_vector_from_vmec_state
+        is free_boundary_native_spline_unknown_vector_from_vmec_state
+    )
     assert (
         vj.free_boundary_reduced_edge_state_from_vmec_state
         is free_boundary_reduced_edge_state_from_vmec_state
@@ -317,6 +328,106 @@ def test_free_boundary_reduced_edge_state_encodes_vmec_lcfs_edge_and_pullback() 
         atol=1.0e-14,
     )
     np.testing.assert_allclose(reduced_edge.pullback(np.asarray(full_adjoint)), [2.0])
+
+
+def test_native_spline_unknown_vector_packs_edge_controls_not_fourier_edge() -> None:
+    cfg = VMECConfig(
+        mpol=1,
+        ntor=0,
+        ns=3,
+        nfp=1,
+        lasym=False,
+        lthreed=False,
+        lconm1=True,
+        ntheta=8,
+        nzeta=1,
+    )
+    static = build_static(cfg)
+    layout = StateLayout(ns=3, K=static.modes.K, lasym=False)
+    assert static.modes.K == 1
+    zeros = np.zeros((3, static.modes.K), dtype=float)
+    state0 = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[1.0], [2.0], [3.0]]),
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+    indata = InData(
+        scalars={"MPOL": 1, "NTOR": 0, "NS_ARRAY": [3], "NFP": 1, "LASYM": False, "LCONM1": True},
+        indexed={"RBC": {(0, 0): 3.0}},
+    )
+    jacobian = np.zeros((4 * static.modes.K, 1), dtype=float)
+    jacobian[0, 0] = 2.0
+    projection = _prepare_freeb_edge_control_projection(
+        {
+            "enabled": True,
+            "basis_symmetry": "test",
+            "labels": ["edge_radius"],
+            "control_jacobian": jacobian,
+            "update_mode": "native_coordinate",
+        },
+        indata=indata,
+        static=static,
+        state0=state0,
+        free_boundary_enabled=True,
+    )
+    state = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[1.0], [2.0], [3.5]]),
+        Rsin=np.asarray([[0.1], [0.2], [0.0]]),
+        Zcos=np.asarray([[0.3], [0.4], [0.0]]),
+        Zsin=np.asarray([[0.5], [0.6], [0.0]]),
+        Lcos=np.asarray([[0.7], [0.8], [0.9]]),
+        Lsin=np.asarray([[1.0], [1.1], [1.2]]),
+    )
+
+    unknowns = free_boundary_native_spline_unknown_vector_from_vmec_state(state, projection)
+    decoded = unknowns.to_vmec_state()
+    payload = unknowns.to_dict()
+
+    assert isinstance(unknowns, FreeBoundaryNativeSplineUnknownVector)
+    assert unknowns.full_vmec_size == 18
+    assert unknowns.native_unknown_size == 15
+    assert unknowns.removed_fourier_edge_dofs == 3
+    assert payload["schema"] == "FreeBoundaryNativeSplineUnknownVector.v1"
+    assert payload["edge_control_size"] == 1
+    assert payload["removed_fourier_edge_dofs"] == 3
+    assert payload["edge_reconstruction_residual_linf"] == pytest.approx(0.0)
+    np.testing.assert_allclose(unknowns.control_delta, [0.25])
+    np.testing.assert_allclose(np.asarray(decoded.Rcos), np.asarray(state.Rcos))
+    np.testing.assert_allclose(np.asarray(decoded.Rsin[:-1]), np.asarray(state.Rsin[:-1]))
+    np.testing.assert_allclose(np.asarray(decoded.Zcos[:-1]), np.asarray(state.Zcos[:-1]))
+    np.testing.assert_allclose(np.asarray(decoded.Zsin[:-1]), np.asarray(state.Zsin[:-1]))
+    np.testing.assert_allclose(np.asarray(decoded.Lcos), np.asarray(state.Lcos))
+    np.testing.assert_allclose(np.asarray(decoded.Lsin), np.asarray(state.Lsin))
+
+    dR = np.asarray([[10.0], [20.0], [8.0]])
+    dR_sin = np.asarray([[0.1], [0.2], [0.0]])
+    dZ_cos = np.asarray([[0.3], [0.4], [0.0]])
+    dZ = np.asarray([[0.5], [0.6], [0.0]])
+    dL_cos = np.asarray([[0.7], [0.8], [0.9]])
+    dL = np.asarray([[1.0], [1.1], [1.2]])
+    deltas = (dR, dR_sin, dZ_cos, dZ, dL_cos, dL)
+
+    projected_vector = unknowns.vector_from_delta_tuple(deltas, edge_metric="least_squares")
+    pullback_vector = unknowns.vector_from_delta_tuple(deltas, edge_metric="pullback")
+    decoded_deltas = unknowns.delta_tuple_from_vector(projected_vector)
+
+    np.testing.assert_allclose(projected_vector[-1:], [4.0])
+    np.testing.assert_allclose(pullback_vector[-1:], [16.0])
+    np.testing.assert_allclose(decoded_deltas[0][:-1], dR[:-1])
+    np.testing.assert_allclose(decoded_deltas[0][-1], dR[-1])
+    np.testing.assert_allclose(decoded_deltas[1][:-1], dR_sin[:-1])
+    np.testing.assert_allclose(decoded_deltas[2][:-1], dZ_cos[:-1])
+    np.testing.assert_allclose(decoded_deltas[3][:-1], dZ[:-1])
+    np.testing.assert_allclose(decoded_deltas[4], dL_cos)
+    np.testing.assert_allclose(decoded_deltas[5], dL)
+
+    with pytest.raises(ValueError, match="edge_metric"):
+        unknowns.vector_from_delta_tuple(deltas, edge_metric="bad")
 
 
 def test_reduced_control_decode_matches_host_map_and_jacobian() -> None:

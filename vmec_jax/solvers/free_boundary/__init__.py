@@ -25,6 +25,10 @@ from .control import (
     free_boundary_reduced_edge_state_from_vmec_state,
     free_boundary_reduced_edge_state_to_vmec_state,
 )
+from .native_state import (
+    FreeBoundaryNativeSplineUnknownVector,
+    free_boundary_native_spline_unknown_vector_from_vmec_state,
+)
 
 __all__ = [
     "DEFAULT_FREE_BOUNDARY_DERIVATIVE_OUTPUTS",
@@ -32,6 +36,7 @@ __all__ = [
     "FreeBoundaryNativeSplineForce",
     "FreeBoundaryNativeSplineState",
     "FreeBoundaryNativeSplineUpdate",
+    "FreeBoundaryNativeSplineUnknownVector",
     "FreeBoundaryReducedEdgeState",
     "ReducedControlMap",
     "ReducedControlState",
@@ -41,6 +46,7 @@ __all__ = [
     "contract_free_boundary_vjp",
     "free_boundary_value_and_jacobian",
     "free_boundary_value_and_jvp",
+    "free_boundary_native_spline_unknown_vector_from_vmec_state",
     "free_boundary_reduced_edge_state_from_vmec_state",
     "free_boundary_reduced_edge_state_to_vmec_state",
     "reduced_control_decode",

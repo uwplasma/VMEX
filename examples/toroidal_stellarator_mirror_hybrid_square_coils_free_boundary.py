@@ -1315,6 +1315,7 @@ def _spline_bridge_payload(config: ExampleConfig, *, resolution_deck: dict[str, 
     edge_enabled = bool(edge_control.get("enabled"))
     edge_update_mode = str(config.free_boundary_edge_control_update_mode).strip().lower()
     native_edge_controls = bool(uses_controls and edge_enabled and edge_update_mode == "native_coordinate")
+    full_control_count = None if not uses_controls else int(config.plasma_axis_spline_control_count)
     return {
         "real_space_axis_basis": "periodic_spline_controls" if uses_controls else "sampled_fourier_target",
         "nonlinear_solver_boundary_basis": (
@@ -1328,6 +1329,7 @@ def _spline_bridge_payload(config: ExampleConfig, *, resolution_deck: dict[str, 
         "solver_edge_control_projection_enabled": edge_enabled,
         "solver_edge_control_update_mode": edge_update_mode,
         "solver_edge_control_projection": edge_control,
+        "reduced_full_control_count": full_control_count,
         "requires_fourier_projection": True,
         "can_reduce_input_shape_dofs": bool(uses_controls),
         "can_project_free_boundary_edge_updates": edge_enabled,

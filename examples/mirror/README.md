@@ -662,6 +662,12 @@ Native-coordinate rows also report the decoded native edge-update norm and the
 source-update residual/captured fraction in ``native_last_step``. Use those
 fields to decide whether the selected reduced basis underfits the Fourier edge
 direction before spending a longer strict run.
+The native-spline prototype report now also includes the host-side
+``FreeBoundaryNativeSplineUnknownVector.v1`` layout: VMEC interior ``R``/``Z``
+rows, all ``lambda`` rows, and reduced LCFS spline controls, with the full
+Fourier LCFS edge rows removed. Its size and removed-DOF fields are a
+pack/unpack contract for the next solver tranche, not proof that the current
+strict loop has switched to a full native-control residual.
 The square-coil profile summary also reports
 ``boundary_control_projection_state_coordinate_linf`` and
 ``boundary_control_projection_state_reconstruction_residual_rel`` for this

@@ -2693,8 +2693,10 @@ def _spline_bridge_payload(
     bases = control_basis.get("bases", {}) if isinstance(control_basis, dict) else {}
     square_basis = bases.get("square", {}) if isinstance(bases, dict) else {}
     stellarator_basis = bases.get("stellarator", {}) if isinstance(bases, dict) else {}
+    full_basis = bases.get("full", {}) if isinstance(bases, dict) else {}
     square_count = square_basis.get("reduced_count")
     stellarator_count = stellarator_basis.get("reduced_count")
+    full_count = full_basis.get("reduced_count")
     status = "spline_control_to_fourier_bridge" if uses_controls else "fourier_boundary_only"
     edge_enabled = bool(edge_control_requested and uses_controls)
     edge_update_mode = str(edge_control_update_mode).strip().lower()
@@ -2724,6 +2726,7 @@ def _spline_bridge_payload(
         "requires_fourier_projection": True,
         "reduced_square_control_count": None if square_count is None else int(square_count),
         "reduced_stellarator_control_count": None if stellarator_count is None else int(stellarator_count),
+        "reduced_full_control_count": None if full_count is None else int(full_count),
         "fourier_mode_count": mode_count,
         "fourier_boundary_channel_count": 4 * mode_count,
         "projection_status": resolution_deck.get("status"),
@@ -2761,12 +2764,21 @@ def _native_spline_control_prototype_payload(
     axis_kind = str(config.plasma_axis_kind).strip().lower()
     uses_controls = bool(_square_axis_uses_spline_controls(config))
     candidate_bases = control_fourier_map.get("candidate_bases", {}) if isinstance(control_fourier_map, dict) else {}
+    full = candidate_bases.get("full", {}) if isinstance(candidate_bases, dict) else {}
     stellarator = candidate_bases.get("stellarator", {}) if isinstance(candidate_bases, dict) else {}
     square = candidate_bases.get("square", {}) if isinstance(candidate_bases, dict) else {}
-    preferred = stellarator if stellarator else square
+    preferred_name = "full" if full else "stellarator" if stellarator else "square" if square else None
+    preferred = full if full else stellarator if stellarator else square
     control_count = preferred.get("control_count")
     mode_count = int(resolution_deck.get("mode_count", projection.get("mode_count", 0)) or 0)
+    ns = int(config.ns)
     full_edge_size = 4 * mode_count
+    full_vmec_size = 6 * ns * mode_count
+    native_unknown_size = None
+    removed_edge_dofs = None
+    if control_count is not None and mode_count > 0 and ns > 0:
+        native_unknown_size = int(4 * max(ns - 1, 0) * mode_count + 2 * ns * mode_count + int(control_count))
+        removed_edge_dofs = int(full_edge_size - int(control_count))
     strict_ready = bool(
         uses_controls
         and resolution_deck.get("status") == "production_ready"
@@ -2787,9 +2799,17 @@ def _native_spline_control_prototype_payload(
         "equilibrium_solve_performed": False,
         "axis_kind": axis_kind,
         "real_space_axis_basis": "periodic_spline_controls" if uses_controls else "sampled_fourier_target",
-        "recommended_reduced_basis": "stellarator" if stellarator else "square" if square else None,
+        "recommended_reduced_basis": preferred_name,
         "control_count": None if control_count is None else int(control_count),
         "full_fourier_edge_size": int(full_edge_size),
+        "full_vmec_unknown_size": int(full_vmec_size),
+        "native_unknown_size": native_unknown_size,
+        "removed_fourier_edge_dofs": removed_edge_dofs,
+        "native_unknown_reduction_fraction": (
+            None
+            if native_unknown_size is None or full_vmec_size <= 0
+            else float(native_unknown_size / full_vmec_size)
+        ),
         "reduction_fraction": (
             None
             if control_count is None or full_edge_size <= 0
