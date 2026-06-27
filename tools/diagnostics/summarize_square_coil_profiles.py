@@ -1782,6 +1782,9 @@ def _summary_row(
     native_actual_vacuum_pressure = native_actual_force_profile.get("free_boundary_vacuum_pressure")
     if not isinstance(native_actual_vacuum_pressure, dict):
         native_actual_vacuum_pressure = {}
+    native_actual_readiness = native_actual_force_profile.get("native_solver_readiness")
+    if not isinstance(native_actual_readiness, dict):
+        native_actual_readiness = {}
     return {
         "case": case,
         "backend": backend_name,
@@ -2374,6 +2377,30 @@ def _summary_row(
             native_actual_line_search.get("final_residual_reduction_factor")
         ),
         "native_spline_actual_force_step_profile_next_action": native_actual_force_profile.get(
+            "next_action"
+        ),
+        "native_spline_actual_force_step_profile_readiness_status": native_actual_readiness.get(
+            "status"
+        ),
+        "native_spline_actual_force_step_profile_readiness_requested_vacuum_mode": (
+            native_actual_readiness.get("requested_vacuum_mode")
+        ),
+        "native_spline_actual_force_step_profile_readiness_jax_replay_ready": (
+            native_actual_readiness.get("jax_replay_ready")
+        ),
+        "native_spline_actual_force_step_profile_readiness_matrix_free_reduces": (
+            native_actual_readiness.get("matrix_free_reduces_projected_residual")
+        ),
+        "native_spline_actual_force_step_profile_readiness_line_search_reduces": (
+            native_actual_readiness.get("line_search_reduces_projected_residual")
+        ),
+        "native_spline_actual_force_step_profile_readiness_edge_bridge_reduces": (
+            native_actual_readiness.get("edge_bridge_reduces_projected_residual")
+        ),
+        "native_spline_actual_force_step_profile_readiness_edge_bridge_worse_than_matrix_free": (
+            native_actual_readiness.get("edge_bridge_worse_than_matrix_free")
+        ),
+        "native_spline_actual_force_step_profile_readiness_next_action": native_actual_readiness.get(
             "next_action"
         ),
         "native_spline_actual_force_step_profile_mapping_status": native_actual_force_mapping.get(
@@ -3096,6 +3123,14 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_actual_force_step_profile_line_search_final_l2",
         "native_spline_actual_force_step_profile_line_search_reduction_factor",
         "native_spline_actual_force_step_profile_next_action",
+        "native_spline_actual_force_step_profile_readiness_status",
+        "native_spline_actual_force_step_profile_readiness_requested_vacuum_mode",
+        "native_spline_actual_force_step_profile_readiness_jax_replay_ready",
+        "native_spline_actual_force_step_profile_readiness_matrix_free_reduces",
+        "native_spline_actual_force_step_profile_readiness_line_search_reduces",
+        "native_spline_actual_force_step_profile_readiness_edge_bridge_reduces",
+        "native_spline_actual_force_step_profile_readiness_edge_bridge_worse_than_matrix_free",
+        "native_spline_actual_force_step_profile_readiness_next_action",
         "native_spline_actual_force_step_profile_mapping_status",
         "native_spline_actual_force_step_profile_mapping_delta_linf",
         "native_spline_actual_force_step_profile_mapping_delta_rel",

@@ -228,6 +228,35 @@ strict tolerance, around the ``1e-6`` force scale in their current ``1e-10``
 stage, so they remain differentiable research rows rather than production
 evidence.
 
+Completed strict VMEC2000 reference rows now give the practical answer to the
+``mpol``/``ntor``/``nzeta`` robustness question. On the projection-gated
+``NS=9 -> 13 -> 17``, ``NZETA=64`` square-hybrid ladder, VMEC2000 generated
+``mgrid`` rows reached final component maxima of about ``1.12e-11`` for
+``MPOL=5, NTOR=28`` and about ``6.36e-12`` for ``MPOL=7, NTOR=28`` after long
+final stages. These rows are more robust and faster as CLI/reference runs than
+the current direct-coil JAX free-boundary path, but they still do not meet the
+requested component-wise ``FTOL=1e-12`` gate. A new ``DELT=0.02``/32k VMEC2000
+reference row is running as a follow-up; its early ``NS=9`` sidecar correctly
+reports that it is still in the loose ``1e-8`` stage, so it must not be
+interpreted as a failed final ``1e-12`` stage yet. The conclusion is therefore:
+VMEC2000 is the right fast reference backend and should remain in the benchmark
+loop, but it is not a representation fix for a square/linear-axis surface
+projected into global Fourier coefficients.
+
+The first JAX-replayed native-spline actual-force probe also gives a clear
+direction. On a tiny production-shaped square-coil deck with
+``--native-spline-actual-force-vacuum-mode jax_replay``, the profiler included
+differentiable direct-coil vacuum pressure through the JAX-NESTOR replay path
+and reduced the projected native residual from ``0.4841`` to ``0.3938`` in one
+accepted matrix-free line-search step. The current LCFS-edge bridge worsened
+the same projected residual by about ``1.1e3``. Summary rows now expose this as
+``native_spline_actual_force_step_profile_readiness_status``; the expected
+status for this evidence is ``ready_for_full_native_loop_not_converged``. This
+is the finite next implementation lane: promote the reducing native residual to
+a full solver-native spline nonlinear loop, then differentiate the converged
+reduced residual with implicit/adjoint solves rather than relying on raw
+reverse-mode through thousands of free-boundary iterations.
+
 The first reduced-control nonlinear-update prototype is now available as an
 opt-in ``vmec_jax`` path. ``run_free_boundary`` accepts a generic
 ``free_boundary_edge_control_projection`` payload whose Jacobian maps reduced

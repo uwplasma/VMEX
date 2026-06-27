@@ -786,6 +786,35 @@ def native_spline_actual_force_step_profile_payload(
         "gcz2": float(np.asarray(force_result.gcz2)),
         "gcl2": float(np.asarray(force_result.gcl2)),
     }
+    line_search_reduction = (
+        None
+        if before_norm["l2"] <= np.finfo(float).tiny
+        else float(line_search_solve.residual_l2 / before_norm["l2"])
+    )
+    differentiable_vacuum_pressure = bool(vacuum_pressure.get("differentiable_vacuum_pressure"))
+    matrix_free_reduces = bool(reduction is not None and float(reduction) < 1.0)
+    line_search_reduces = bool(
+        line_search_reduction is not None and float(line_search_reduction) < 1.0
+    )
+    edge_bridge_reduces = bool(
+        bridge_reduction is not None and float(bridge_reduction) < 1.0
+    )
+    edge_bridge_worse_than_matrix_free = bool(bridge_norm["l2"] > after_norm["l2"])
+    if vacuum_mode == "jax_replay" and not jax_replay_ready:
+        readiness_status = "blocked_jax_replay_setup"
+        readiness_next_action = "repair_jax_replay_vacuum_pressure_before_full_native_loop"
+    elif not matrix_free_reduces:
+        readiness_status = "matrix_free_step_not_reducing"
+        readiness_next_action = "tune_native_matrix_free_damping_preconditioner_or_residual_scaling"
+    elif not line_search_reduces:
+        readiness_status = "line_search_not_reducing"
+        readiness_next_action = "tighten_native_line_search_or_residual_merit"
+    elif bool(line_search_solve.converged):
+        readiness_status = "native_residual_probe_converged"
+        readiness_next_action = "promote_converged_native_residual_to_full_solver_loop"
+    else:
+        readiness_status = "ready_for_full_native_loop_not_converged"
+        readiness_next_action = "promote_reducing_native_residual_to_full_solver_loop"
 
     return {
         "status": "completed",
@@ -849,11 +878,7 @@ def native_spline_actual_force_step_profile_payload(
             "n_iter": int(line_search_solve.n_iter),
             "converged": bool(line_search_solve.converged),
             "final_residual_l2": float(line_search_solve.residual_l2),
-            "final_residual_reduction_factor": (
-                None
-                if before_norm["l2"] <= np.finfo(float).tiny
-                else float(line_search_solve.residual_l2 / before_norm["l2"])
-            ),
+            "final_residual_reduction_factor": line_search_reduction,
             "history": [dict(item) for item in line_search_solve.history],
         },
         "edge_bridge_comparison": {
@@ -920,6 +945,19 @@ def native_spline_actual_force_step_profile_payload(
             "sign_alignment_status": sign_alignment,
         },
         "next_action": "promote_matrix_free_native_spline_residual_with_vacuum_pressure_and_line_search",
+        "native_solver_readiness": {
+            "status": readiness_status,
+            "requested_vacuum_mode": vacuum_mode,
+            "jax_replay_ready": bool(jax_replay_ready),
+            "differentiable_vacuum_pressure": differentiable_vacuum_pressure,
+            "matrix_free_reduces_projected_residual": matrix_free_reduces,
+            "line_search_reduces_projected_residual": line_search_reduces,
+            "edge_bridge_reduces_projected_residual": edge_bridge_reduces,
+            "edge_bridge_worse_than_matrix_free": edge_bridge_worse_than_matrix_free,
+            "full_native_loop_required": True,
+            "recommended_derivative_mode": "implicit_or_adjoint_on_converged_native_residual",
+            "next_action": readiness_next_action,
+        },
     }
 
 

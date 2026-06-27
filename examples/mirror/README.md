@@ -784,6 +784,14 @@ regression profiles. On the tiny deck, ``jax_replay`` matches the frozen-mode
 one-step reduction to roundoff but costs about one minute for the first
 matrix-free step because the dense JAX-NESTOR replay is inside the linearized
 residual.
+The latest tiny ``jax_replay`` actual-force probe reduced the projected native
+residual from ``0.4841`` to ``0.3938`` in one accepted line-search step, while
+the current LCFS-edge bridge increased the same residual by about ``1.1e3``.
+Profile summaries expose this as
+``native_spline_actual_force_step_profile_readiness_status =
+ready_for_full_native_loop_not_converged``. That is the signal to promote the
+matrix-free native residual into a repeated nonlinear solve loop, not to keep
+tuning the edge-only bridge.
 Use ``free_boundary_native_spline_matrix_free_normal_*`` for the next prototype
 step: it applies ``J`` and ``J.T`` through JAX JVP/VJP products and solves the
 damped normal equations by conjugate gradient.
@@ -833,18 +841,18 @@ residuals, so local example runs can be reviewed without a second
 profile-summary pass.
 As of the active strict comparison, VMEC2000 is a useful generated-``mgrid``
 NESTOR reference but not a replacement for the square-axis parameterization
-work. A local ``MPOL=6, NTOR=23, NZETA=64, NS=17`` VMEC2000 row with a
-``9,13,17`` staged grid and 24k final-stage iterations reached
-``final_max_component=1.04e-11`` against the ``1e-12`` component target, with
-an oscillatory tail. This is close enough to validate the backend path, but it
-still misses the requested strict tolerance by about a factor of 10. The source
-audit is consistent with that result: VMEC2000, VMEC++, and DESC's NESTOR path
-all work with a Fourier plasma boundary plus an external field or ``mgrid``
-vacuum response, so they cannot remove Fourier representation pressure from a
-linear-axis square target. The next research-grade lane is a full solver-native
-spline/control nonlinear state; the current native-coordinate edge update is
-only an LCFS-edge bridge decoded back to VMEC Fourier coefficients for force
-evaluation.
+work. Local ``NS=9,13,17`` staged VMEC2000 rows with ``NZETA=64`` now reach
+``final_max_component`` values of about ``1.12e-11`` at
+``MPOL=5, NTOR=28`` and ``6.36e-12`` at ``MPOL=7, NTOR=28`` after long final
+stages. This validates VMEC2000 as the fastest generated-``mgrid`` reference
+backend, but it still misses the requested strict component tolerance. The
+source audit is consistent with that result: VMEC2000, VMEC++, and DESC's
+NESTOR path all work with a Fourier plasma boundary plus an external field or
+``mgrid`` vacuum response, so they cannot remove Fourier representation
+pressure from a linear-axis square target. The next research-grade lane is a
+full solver-native spline/control nonlinear state; the current
+native-coordinate edge update is only an LCFS-edge bridge decoded back to VMEC
+Fourier coefficients for force evaluation.
 To print the current strict VMEC2000 follow-up scan after such a plateau, use::
 
   python tools/diagnostics/square_coil_followup_commands.py

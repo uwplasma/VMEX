@@ -1814,6 +1814,30 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert native["next_action"] == (
         "promote_matrix_free_native_spline_residual_with_vacuum_pressure_and_line_search"
     )
+    readiness = native["native_solver_readiness"]
+    assert readiness["requested_vacuum_mode"] == "frozen_initial"
+    assert readiness["jax_replay_ready"] is False
+    assert readiness["differentiable_vacuum_pressure"] is False
+    assert readiness["matrix_free_reduces_projected_residual"] == (
+        native["projected_residual_reduction_factor"] < 1.0
+    )
+    assert readiness["line_search_reduces_projected_residual"] == (
+        line_search["final_residual_reduction_factor"] < 1.0
+    )
+    assert readiness["edge_bridge_reduces_projected_residual"] == (
+        bridge["projected_residual_reduction_factor"] < 1.0
+    )
+    assert readiness["edge_bridge_worse_than_matrix_free"] == (
+        bridge["projected_residual_l2_after_step"] > native["projected_residual_l2_after_step"]
+    )
+    assert readiness["full_native_loop_required"] is True
+    assert readiness["recommended_derivative_mode"] == "implicit_or_adjoint_on_converged_native_residual"
+    assert readiness["status"] in {
+        "matrix_free_step_not_reducing",
+        "line_search_not_reducing",
+        "native_residual_probe_converged",
+        "ready_for_full_native_loop_not_converged",
+    }
 
     row = summary.rows_from_profile(outdir / "square_coil_free_boundary_backend_profile.json")[0]
     assert row["native_spline_actual_force_step_profile_status"] == "completed"
@@ -1882,6 +1906,31 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
         row["native_spline_actual_force_step_profile_next_action"]
         == "promote_matrix_free_native_spline_residual_with_vacuum_pressure_and_line_search"
     )
+    assert row["native_spline_actual_force_step_profile_readiness_status"] == readiness[
+        "status"
+    ]
+    assert (
+        row["native_spline_actual_force_step_profile_readiness_requested_vacuum_mode"]
+        == "frozen_initial"
+    )
+    assert row[
+        "native_spline_actual_force_step_profile_readiness_jax_replay_ready"
+    ] is False
+    assert row[
+        "native_spline_actual_force_step_profile_readiness_matrix_free_reduces"
+    ] == readiness["matrix_free_reduces_projected_residual"]
+    assert row[
+        "native_spline_actual_force_step_profile_readiness_line_search_reduces"
+    ] == readiness["line_search_reduces_projected_residual"]
+    assert row[
+        "native_spline_actual_force_step_profile_readiness_edge_bridge_reduces"
+    ] == readiness["edge_bridge_reduces_projected_residual"]
+    assert row[
+        "native_spline_actual_force_step_profile_readiness_edge_bridge_worse_than_matrix_free"
+    ] == readiness["edge_bridge_worse_than_matrix_free"]
+    assert row["native_spline_actual_force_step_profile_readiness_next_action"] == readiness[
+        "next_action"
+    ]
     assert row["native_spline_actual_force_step_profile_edge_bridge_status"] == "completed"
     assert (
         row["native_spline_actual_force_step_profile_mapping_status"]
