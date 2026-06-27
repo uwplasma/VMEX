@@ -612,6 +612,10 @@ reported separately for every mode.
 Use ``--strict-trial-heartbeat`` only for diagnosing long strict rows that seem
 stuck inside a coupled trial; it prints opt-in ``[strict-trial]`` lines around
 trial vacuum sampling, force evaluation, and backtracking.
+For free-boundary strict backtracking, vmec_jax compares trial states against a
+current-state baseline evaluated with the same fresh trial-vacuum path. This
+keeps the ``alpha -> 0`` backtracking limit comparable after vacuum-pressure
+turn-on.
 ``vmec_jax.solvers.free_boundary.ReducedControlMap`` is the public host-side
 encode/decode primitive for that next lane: it maps full Fourier edge vectors
 to reduced controls and back without changing the current solve path.

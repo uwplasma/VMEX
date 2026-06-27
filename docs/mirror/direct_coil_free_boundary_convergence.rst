@@ -485,6 +485,10 @@ shipping full histories in the repository.
 For live diagnosis of rows that appear stuck inside the first coupled trial,
 add ``--strict-trial-heartbeat``. It prints opt-in ``[strict-trial]`` lines
 around trial vacuum sampling, force evaluation, and backtracking attempts.
+Free-boundary strict backtracking compares trial states against a current-state
+baseline evaluated through the same fresh trial-vacuum path; otherwise the
+``alpha -> 0`` trial can be rejected only because its vacuum pressure was
+resampled while the reference residual was stale.
 The summary table now reports the edge-control projection status, requested
 basis, control count, pseudo-inverse cutoff, update mode, coordinate-update
 count, native-update count, reduced native force/velocity/update norms,

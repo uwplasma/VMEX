@@ -686,6 +686,14 @@ class StrictTrialEvaluation(NamedTuple):
     alpha: float
 
 
+class StrictTrialBaseline(NamedTuple):
+    """Current-state merit evaluated with the same trial-vacuum path."""
+
+    w_curr: float
+    stale_w_curr: float
+    ratio_to_stale: float
+
+
 class StrictStepAcceptanceDecision(NamedTuple):
     """Host decision for accepting or rejecting one strict trial update."""
 
@@ -1377,6 +1385,40 @@ def strict_trial_evaluation(
         probe_bad_jacobian=bool(probe_bad_jacobian),
         alpha=float(alpha),
     )
+
+
+def strict_trial_current_residual_baseline(
+    *,
+    state: Any,
+    stale_w_curr: float,
+    freeb_bsqvac_half_for_trial_state: Any,
+    trial_residual_total: Any,
+    zero_m1_value: Any,
+    heartbeat: Any | None = None,
+) -> StrictTrialBaseline:
+    """Evaluate the current state with the same fresh-vacuum merit as trials."""
+
+    if heartbeat is not None:
+        heartbeat("current_bsqvac_start", alpha=0.0)
+    freeb_bsqvac_half = freeb_bsqvac_half_for_trial_state(state)
+    if heartbeat is not None:
+        heartbeat("current_force_start", alpha=0.0)
+    w_curr = trial_residual_total(
+        state,
+        freeb_bsqvac_half,
+        zero_m1_value=zero_m1_value,
+        timing_label="trial",
+    )
+    ratio = float(w_curr) / max(float(stale_w_curr), 1.0e-30) if np.isfinite(w_curr) else float("inf")
+    if heartbeat is not None:
+        heartbeat(
+            "current_force_done",
+            alpha=0.0,
+            w_curr=float(w_curr),
+            stale_w_curr=float(stale_w_curr),
+            ratio_to_stale=float(ratio),
+        )
+    return StrictTrialBaseline(w_curr=float(w_curr), stale_w_curr=float(stale_w_curr), ratio_to_stale=float(ratio))
 
 
 def host_catastrophic_restart_update(

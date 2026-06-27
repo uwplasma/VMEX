@@ -66,6 +66,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     strict_step_runtime_fields,
     strict_step_acceptance_decision,
     strict_momentum_update_proposal,
+    strict_trial_current_residual_baseline,
     strict_trial_evaluation,
     velocity_blocks_from_force_blocks,
     velocity_blocks_from_resume_state,
@@ -2046,6 +2047,32 @@ def test_strict_trial_evaluation_backtracks_and_scales_primary_velocities() -> N
     ]
     assert heartbeat_events[-1][1]["alpha"] == pytest.approx(0.5)
     assert heartbeat_events[-1][1]["w_try"] == pytest.approx(0.9)
+
+
+def test_strict_trial_current_baseline_uses_fresh_trial_vacuum_metric() -> None:
+    heartbeat_events = []
+
+    def heartbeat(event, **fields):
+        heartbeat_events.append((event, fields))
+
+    baseline = strict_trial_current_residual_baseline(
+        state=3.0,
+        stale_w_curr=2.0,
+        freeb_bsqvac_half_for_trial_state=lambda state: 10.0 * state,
+        trial_residual_total=lambda state, bsqvac, **_kwargs: state + bsqvac,
+        zero_m1_value=1.0,
+        heartbeat=heartbeat,
+    )
+
+    assert baseline.w_curr == pytest.approx(33.0)
+    assert baseline.stale_w_curr == pytest.approx(2.0)
+    assert baseline.ratio_to_stale == pytest.approx(16.5)
+    assert [event for event, _fields in heartbeat_events] == [
+        "current_bsqvac_start",
+        "current_force_start",
+        "current_force_done",
+    ]
+    assert heartbeat_events[-1][1]["ratio_to_stale"] == pytest.approx(16.5)
 
 
 def test_free_boundary_control_module_reexports_velocity_helpers() -> None:

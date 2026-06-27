@@ -138,6 +138,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     initial_residual_velocity_state as _initial_residual_velocity_state,
     jit_strict_momentum_update_proposal as _jit_strict_momentum_update_proposal,
     residual_evolve_coefficients as _residual_evolve_coefficients,
+    strict_trial_current_residual_baseline as _strict_trial_current_residual_baseline,
     strict_momentum_update_proposal as _strict_momentum_update_proposal,
     strict_step_branch_application as _strict_step_branch_application,
     strict_step_branch_result as _strict_step_branch_result,
@@ -3721,13 +3722,29 @@ def solve_fixed_boundary_residual_iter(
             )
             probe_bad_jacobian = False
             if need_trial_eval:
+                trial_heartbeat = (
+                    partial(_strict_trial_heartbeat_event, int(iter2))
+                    if bool(runtime_env.strict_trial_heartbeat)
+                    else None
+                )
+                w_curr_for_trial = float(w_curr)
+                if bool(backtracking) and bool(free_boundary_enabled):
+                    baseline = _strict_trial_current_residual_baseline(
+                        state=state,
+                        stale_w_curr=float(w_curr),
+                        freeb_bsqvac_half_for_trial_state=_freeb_bsqvac_half_for_trial_state,
+                        trial_residual_total=_trial_residual_total,
+                        zero_m1_value=zero_m1,
+                        heartbeat=trial_heartbeat,
+                    )
+                    w_curr_for_trial = float(baseline.w_curr)
                 trial_eval = _strict_trial_evaluation(
                     state_try=state_try,
                     velocities=velocity_blocks,
                     update_deltas=update_deltas,
                     update_rms=update_rms,
                     dt_eff=float(dt_eff),
-                    w_curr=float(w_curr),
+                    w_curr=float(w_curr_for_trial),
                     backtracking=bool(backtracking),
                     reference_mode=bool(reference_mode),
                     host_update_assembly=bool(host_update_assembly),
@@ -3737,10 +3754,9 @@ def solve_fixed_boundary_residual_iter(
                     candidate_state_from_delta_tuple=_candidate_state_from_delta_tuple,
                     freeb_bsqvac_half_for_trial_state=_freeb_bsqvac_half_for_trial_state,
                     trial_residual_total=_trial_residual_total,
-                    heartbeat=partial(_strict_trial_heartbeat_event, int(iter2))
-                    if bool(runtime_env.strict_trial_heartbeat)
-                    else None,
+                    heartbeat=trial_heartbeat,
                 )
+                w_curr = float(w_curr_for_trial)
                 state_try = trial_eval.state
                 velocity_blocks = trial_eval.velocities
                 dt_eff = trial_eval.dt_eff
