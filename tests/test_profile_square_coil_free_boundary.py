@@ -1327,6 +1327,16 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert projection["recommended_nzeta"] == 16
     assert projection["mode_count"] > 0
     assert np.isfinite(float(projection["max_abs_error"]))
+    guardrail = data["resolution_guardrail"]
+    assert guardrail["status"] == data["resolution_deck"]["status"]
+    assert guardrail["requested_deck"]["mpol"] == 3
+    assert guardrail["requested_deck"]["ntor"] == 4
+    assert guardrail["effective_deck"]["mpol"] == 3
+    assert guardrail["effective_deck"]["ntor"] == 4
+    assert guardrail["effective_deck"]["ntheta"] == profile.recommended_square_axis_ntheta(3)
+    assert guardrail["validated_minimum_production_deck"]["mpol"] == 5
+    assert guardrail["validated_minimum_production_deck"]["ntor"] == 28
+    assert guardrail["validated_minimum_production_deck"]["nzeta"] == profile.recommended_square_axis_nzeta(28)
     control_basis = data["control_basis"]
     assert control_basis["status"] == "available"
     assert data["configuration"]["axis_spline_control_count"] == 16
@@ -1591,6 +1601,15 @@ def test_square_coil_profile_production_gate_auto_bumps_underrecommended_nzeta(
     assert data["configuration"]["nzeta_auto_bumped_to_recommended"] is True
     assert data["configuration"]["nzeta_underrecommended"] is False
     assert data["resolution_deck"]["status"] == "production_ready"
+    guardrail = data["resolution_guardrail"]
+    assert guardrail["action"] == "run_effective_bumped_deck"
+    assert guardrail["requested_deck"]["ntheta"] == 16
+    assert guardrail["requested_deck"]["nzeta"] == 32
+    assert guardrail["effective_deck"]["ntheta"] == profile.recommended_square_axis_ntheta(5)
+    assert guardrail["effective_deck"]["nzeta"] == profile.recommended_square_axis_nzeta(28)
+    assert guardrail["auto_bumps"]["ntheta_auto_bumped_to_recommended"] is True
+    assert guardrail["auto_bumps"]["nzeta_auto_bumped_to_recommended"] is True
+    assert guardrail["requested_vs_effective_changed"] is True
 
 
 def test_square_coil_profile_aligns_grids_after_mode_deck_auto_bump(
@@ -1668,6 +1687,13 @@ def test_square_coil_profile_aligns_grids_after_mode_deck_auto_bump(
     assert data["configuration"]["nzeta_auto_bumped_to_recommended"] is True
     assert data["mgrid"]["nphi"] == profile.recommended_square_axis_nzeta(promoted_ntor)
     assert data["resolution_deck"]["status"] == "production_ready"
+    guardrail = data["resolution_guardrail"]
+    assert guardrail["action"] == "run_effective_bumped_deck"
+    assert guardrail["requested_deck"]["mpol"] == 3
+    assert guardrail["requested_deck"]["ntor"] == 4
+    assert guardrail["effective_deck"]["mpol"] == promoted_mpol
+    assert guardrail["effective_deck"]["ntor"] == promoted_ntor
+    assert guardrail["auto_bumps"]["mode_deck_auto_bumped_to_recommended"] is True
 
 
 def test_square_coil_profile_production_gate_rejects_underrecommended_nzeta_without_auto_bump(

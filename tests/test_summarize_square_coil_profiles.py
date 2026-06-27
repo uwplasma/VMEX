@@ -39,6 +39,35 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
                     "max_abs_component_error": 1.2e-4,
                     "max_abs_component_error_rel": 4.5e-4,
                 },
+                "resolution_guardrail": {
+                    "status": "production_ready",
+                    "action": "run_effective_bumped_deck",
+                    "requested_vs_effective_changed": True,
+                    "requested_deck": {
+                        "mpol": 3,
+                        "ntor": 4,
+                        "ntheta": 16,
+                        "nzeta": 16,
+                    },
+                    "effective_deck": {
+                        "mpol": 5,
+                        "ntor": 12,
+                        "ntheta": 64,
+                        "nzeta": 32,
+                        "mgrid_nphi": 32,
+                    },
+                    "auto_bumps": {
+                        "mode_deck_auto_bumped_to_recommended": True,
+                        "ntheta_auto_bumped_to_recommended": True,
+                        "nzeta_auto_bumped_to_recommended": True,
+                    },
+                    "validated_minimum_production_deck": {
+                        "mpol": 5,
+                        "ntor": 28,
+                        "ntheta": 64,
+                        "nzeta": 64,
+                    },
+                },
                 "vmec_free_boundary_scale": {
                     "status": "severe_scale_mismatch",
                     "phiedge": -0.04,
@@ -273,6 +302,24 @@ def test_square_coil_profile_summary_reads_jax_and_vmec2000_rows(tmp_path: Path)
     assert rows[1]["corner_power"] == pytest.approx(1.5)
     assert rows[1]["nzeta_auto"] is True
     assert rows[1]["recommended_nzeta"] == 32
+    assert rows[1]["resolution_guardrail_status"] == "production_ready"
+    assert rows[1]["resolution_guardrail_action"] == "run_effective_bumped_deck"
+    assert rows[1]["resolution_guardrail_requested_vs_effective_changed"] is True
+    assert rows[1]["requested_mpol"] == 3
+    assert rows[1]["requested_ntor"] == 4
+    assert rows[1]["requested_ntheta"] == 16
+    assert rows[1]["requested_nzeta"] == 16
+    assert rows[1]["effective_mpol"] == 5
+    assert rows[1]["effective_ntor"] == 12
+    assert rows[1]["effective_ntheta"] == 64
+    assert rows[1]["effective_nzeta"] == 32
+    assert rows[1]["resolution_guardrail_mode_deck_auto_bumped"] is True
+    assert rows[1]["resolution_guardrail_ntheta_auto_bumped"] is True
+    assert rows[1]["resolution_guardrail_nzeta_auto_bumped"] is True
+    assert rows[1]["validated_minimum_mpol"] == 5
+    assert rows[1]["validated_minimum_ntor"] == 28
+    assert rows[1]["validated_minimum_ntheta"] == 64
+    assert rows[1]["validated_minimum_nzeta"] == 64
     assert rows[1]["boundary_mode_count"] == 65
     assert rows[1]["boundary_recommended_nzeta"] == 32
     assert rows[1]["max_boundary_projection_error"] == pytest.approx(1.0e-4)

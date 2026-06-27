@@ -63,6 +63,8 @@ TINY = 1.0e-300
 STRICT_COMPONENT_FTOL = 1.0e-12
 LOOSE_COMPONENT_FTOL = 1.0e-8
 FORCE_COMPONENTS = ("fsqr", "fsqz", "fsql")
+VALIDATED_SQUARE_COIL_PRODUCTION_MPOL = 5
+VALIDATED_SQUARE_COIL_PRODUCTION_NTOR = 28
 
 
 def _ceil_tail_iteration_estimate(value: float) -> int | None:
@@ -2856,6 +2858,102 @@ def _resolution_deck_payload(
     return payload
 
 
+def _resolution_guardrail_payload(
+    *,
+    args: argparse.Namespace,
+    config: ExampleConfig,
+    boundary_projection: dict[str, Any],
+    resolution_deck: dict[str, Any],
+    resolution_flags: dict[str, bool],
+    mgrid_nphi: int,
+) -> dict[str, Any]:
+    """Return the requested/effective deck policy used before launching solves."""
+
+    mode_deck = _projection_mode_deck(boundary_projection)
+    requested_mpol = int(args.mpol)
+    requested_ntor = int(args.ntor)
+    requested_ntheta = None if args.ntheta is None else int(args.ntheta)
+    requested_nzeta = None if args.nzeta is None else int(args.nzeta)
+    effective_mpol = int(config.mpol)
+    effective_ntor = int(config.ntor)
+    effective_ntheta = int(config.ntheta)
+    effective_nzeta = int(config.nzeta)
+    mode_bumped = bool(mode_deck.get("mode_deck_auto_bumped_to_recommended", False))
+    grid_bumped = bool(
+        resolution_flags.get("ntheta_auto_bumped_to_recommended", False)
+        or resolution_flags.get("nzeta_auto_bumped_to_recommended", False)
+    )
+    production_ready = bool(resolution_deck.get("status") == "production_ready")
+    if production_ready:
+        action = "run_effective_bumped_deck" if (mode_bumped or grid_bumped) else "run_requested_deck"
+    elif resolution_deck.get("status") == "diagnostic_gate_disabled":
+        action = "diagnostic_only_gate_disabled"
+    else:
+        action = "repair_resolution_before_strict_solve"
+    baseline_mpol = int(VALIDATED_SQUARE_COIL_PRODUCTION_MPOL)
+    baseline_ntor = int(VALIDATED_SQUARE_COIL_PRODUCTION_NTOR)
+    baseline_ntheta = int(recommended_square_axis_ntheta(baseline_mpol))
+    baseline_nzeta = int(recommended_square_axis_nzeta(baseline_ntor))
+    return {
+        "status": resolution_deck.get("status"),
+        "action": action,
+        "reasons": list(resolution_deck.get("reasons", [])),
+        "strict_component_ftol_target": float(STRICT_COMPONENT_FTOL),
+        "requested_deck": {
+            "mpol": requested_mpol,
+            "ntor": requested_ntor,
+            "ntheta": requested_ntheta,
+            "nzeta": requested_nzeta,
+        },
+        "effective_deck": {
+            "mpol": effective_mpol,
+            "ntor": effective_ntor,
+            "ntheta": effective_ntheta,
+            "nzeta": effective_nzeta,
+            "mgrid_nphi": int(mgrid_nphi),
+        },
+        "recommended_for_effective_modes": {
+            "ntheta": int(recommended_square_axis_ntheta(effective_mpol)),
+            "nzeta": int(recommended_square_axis_nzeta(effective_ntor)),
+        },
+        "validated_minimum_production_deck": {
+            "mpol": baseline_mpol,
+            "ntor": baseline_ntor,
+            "ntheta": baseline_ntheta,
+            "nzeta": baseline_nzeta,
+            "mgrid_nphi": baseline_nzeta,
+            "max_boundary_projection_error": 5.0e-12,
+        },
+        "auto_bumps": {
+            "mode_deck_auto_bumped_to_recommended": mode_bumped,
+            "ntheta_auto_bumped_to_recommended": bool(
+                resolution_flags.get("ntheta_auto_bumped_to_recommended", False)
+            ),
+            "nzeta_auto_bumped_to_recommended": bool(
+                resolution_flags.get("nzeta_auto_bumped_to_recommended", False)
+            ),
+        },
+        "requested_vs_effective_changed": bool(
+            mode_bumped
+            or grid_bumped
+            or requested_ntheta != effective_ntheta
+            or (requested_nzeta is not None and requested_nzeta != effective_nzeta)
+        ),
+        "projection": {
+            "max_abs_component_error": boundary_projection.get("max_abs_component_error"),
+            "target_max_component_error": resolution_deck.get("projection_target_max_component_error"),
+            "meets_gate": resolution_deck.get("projection_meets_gate"),
+        },
+        "interpretation": (
+            "Strict square-coil hybrid profiles should use the effective deck shown here. "
+            "If the requested and effective decks differ, the run was auto-promoted before "
+            "launching the expensive solve. For robust strict FTOL=1e-12 profiling, start "
+            "from the validated minimum production deck unless a resolution matrix row proves "
+            "a cheaper deck is production-ready."
+        ),
+    }
+
+
 def _enforce_boundary_projection_gate(
     *,
     config: ExampleConfig,
@@ -3325,6 +3423,14 @@ def main(argv: list[str] | None = None) -> int:
         target_error=args.max_boundary_projection_error,
         include_recommendation=bool(args.resolution_diagnostics_only),
     )
+    resolution_guardrail = _resolution_guardrail_payload(
+        args=args,
+        config=config,
+        boundary_projection=boundary_projection,
+        resolution_deck=resolution_deck,
+        resolution_flags=resolution_flags,
+        mgrid_nphi=mgrid_nphi,
+    )
     edge_control_requested = str(args.freeb_edge_control_projection).strip().lower() not in {
         "",
         "none",
@@ -3492,6 +3598,7 @@ def main(argv: list[str] | None = None) -> int:
             "strict_schedule": strict_schedule,
             "strict_convergence_assessment": strict_convergence_assessment,
             "resolution_deck": resolution_deck,
+            "resolution_guardrail": resolution_guardrail,
             "vmec_free_boundary_scale": scale_payload,
             "provider_parity": None,
             "backends": {},
@@ -3691,6 +3798,7 @@ def main(argv: list[str] | None = None) -> int:
         "strict_schedule": strict_schedule,
         "strict_convergence_assessment": strict_convergence_assessment,
         "resolution_deck": resolution_deck,
+        "resolution_guardrail": resolution_guardrail,
         "vmec_free_boundary_scale": scale_payload,
         "provider_parity": None,
         "backends": {},

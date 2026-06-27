@@ -1435,6 +1435,7 @@ def _summary_row(
     cfg: dict[str, Any],
     projection: dict[str, Any],
     resolution_deck: dict[str, Any] | None = None,
+    resolution_guardrail: dict[str, Any] | None = None,
     strict_convergence_assessment: dict[str, Any] | None = None,
     spline_bridge: dict[str, Any] | None = None,
     vmec_free_boundary_scale: dict[str, Any] | None = None,
@@ -1647,6 +1648,15 @@ def _summary_row(
         ),
     )
     resolution = resolution_deck if isinstance(resolution_deck, dict) else {}
+    guardrail = resolution_guardrail if isinstance(resolution_guardrail, dict) else {}
+    guardrail_requested = guardrail.get("requested_deck")
+    guardrail_requested = guardrail_requested if isinstance(guardrail_requested, dict) else {}
+    guardrail_effective = guardrail.get("effective_deck")
+    guardrail_effective = guardrail_effective if isinstance(guardrail_effective, dict) else {}
+    guardrail_auto_bumps = guardrail.get("auto_bumps")
+    guardrail_auto_bumps = guardrail_auto_bumps if isinstance(guardrail_auto_bumps, dict) else {}
+    guardrail_baseline = guardrail.get("validated_minimum_production_deck")
+    guardrail_baseline = guardrail_baseline if isinstance(guardrail_baseline, dict) else {}
     strict_evidence = _strict_evidence_payload(
         status=status_value,
         backend_name=backend_name,
@@ -1695,6 +1705,32 @@ def _summary_row(
         "ntor": cfg.get("ntor"),
         "ns": cfg.get("ns"),
         "nzeta": cfg.get("nzeta"),
+        "resolution_guardrail_status": guardrail.get("status"),
+        "resolution_guardrail_action": guardrail.get("action"),
+        "resolution_guardrail_requested_vs_effective_changed": guardrail.get(
+            "requested_vs_effective_changed"
+        ),
+        "requested_mpol": guardrail_requested.get("mpol", cfg.get("requested_mpol")),
+        "requested_ntor": guardrail_requested.get("ntor", cfg.get("requested_ntor")),
+        "requested_ntheta": guardrail_requested.get("ntheta", cfg.get("requested_ntheta")),
+        "requested_nzeta": guardrail_requested.get("nzeta", cfg.get("requested_nzeta")),
+        "effective_mpol": guardrail_effective.get("mpol", cfg.get("mpol")),
+        "effective_ntor": guardrail_effective.get("ntor", cfg.get("ntor")),
+        "effective_ntheta": guardrail_effective.get("ntheta", cfg.get("ntheta")),
+        "effective_nzeta": guardrail_effective.get("nzeta", cfg.get("nzeta")),
+        "resolution_guardrail_mode_deck_auto_bumped": guardrail_auto_bumps.get(
+            "mode_deck_auto_bumped_to_recommended"
+        ),
+        "resolution_guardrail_ntheta_auto_bumped": guardrail_auto_bumps.get(
+            "ntheta_auto_bumped_to_recommended"
+        ),
+        "resolution_guardrail_nzeta_auto_bumped": guardrail_auto_bumps.get(
+            "nzeta_auto_bumped_to_recommended"
+        ),
+        "validated_minimum_mpol": guardrail_baseline.get("mpol"),
+        "validated_minimum_ntor": guardrail_baseline.get("ntor"),
+        "validated_minimum_ntheta": guardrail_baseline.get("ntheta"),
+        "validated_minimum_nzeta": guardrail_baseline.get("nzeta"),
         "nzeta_auto": cfg.get("nzeta_auto"),
         "recommended_nzeta": cfg.get("recommended_nzeta"),
         "nvacskip": cfg.get("nvacskip"),
@@ -2233,6 +2269,8 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
     projection = projection if isinstance(projection, dict) else {}
     resolution_deck = data.get("resolution_deck", {})
     resolution_deck = resolution_deck if isinstance(resolution_deck, dict) else {}
+    resolution_guardrail = data.get("resolution_guardrail", {})
+    resolution_guardrail = resolution_guardrail if isinstance(resolution_guardrail, dict) else {}
     strict_convergence_assessment = data.get("strict_convergence_assessment", {})
     strict_convergence_assessment = (
         strict_convergence_assessment if isinstance(strict_convergence_assessment, dict) else {}
@@ -2252,6 +2290,7 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                     cfg=cfg,
                     projection=projection,
                     resolution_deck=resolution_deck,
+                    resolution_guardrail=resolution_guardrail,
                     strict_convergence_assessment=strict_convergence_assessment,
                     spline_bridge=spline_bridge,
                     vmec_free_boundary_scale=scale,
@@ -2266,6 +2305,7 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                 cfg=cfg,
                 projection=projection,
                 resolution_deck=resolution_deck,
+                resolution_guardrail=resolution_guardrail,
                 strict_convergence_assessment=strict_convergence_assessment,
                 spline_bridge=spline_bridge,
                 vmec_free_boundary_scale=scale,
@@ -2448,6 +2488,24 @@ def main(argv: list[str] | None = None) -> int:
         "ntor",
         "ns",
         "nzeta",
+        "resolution_guardrail_status",
+        "resolution_guardrail_action",
+        "resolution_guardrail_requested_vs_effective_changed",
+        "requested_mpol",
+        "requested_ntor",
+        "requested_ntheta",
+        "requested_nzeta",
+        "effective_mpol",
+        "effective_ntor",
+        "effective_ntheta",
+        "effective_nzeta",
+        "resolution_guardrail_mode_deck_auto_bumped",
+        "resolution_guardrail_ntheta_auto_bumped",
+        "resolution_guardrail_nzeta_auto_bumped",
+        "validated_minimum_mpol",
+        "validated_minimum_ntor",
+        "validated_minimum_ntheta",
+        "validated_minimum_nzeta",
         "nzeta_auto",
         "recommended_nzeta",
         "nvacskip",
