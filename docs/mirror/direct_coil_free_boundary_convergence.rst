@@ -289,6 +289,15 @@ The preflight and final metrics now also include a combined
 ``NTHETA``/``NZETA`` values. Completed beta rows and the summary CSV repeat the
 same grid provenance, which makes ``MPOL``/``NTOR``/``NTHETA``/``NZETA`` edit
 experiments auditable without reading the generated input deck by hand.
+The square-coil profiler and summary table also expose
+``resolution_guardrail`` fields. These record the requested and effective mode
+deck, whether the deck or grids were auto-promoted, and the validated
+production minimum
+``MPOL=5, NTOR=28, NTHETA=64, NZETA=64`` with a
+``5e-12`` boundary-projection gate. This is the current answer to robustness
+questions after manual ``mpol``/``ntor``/``nzeta`` edits: strict rows should be
+interpreted by the effective production deck, while lower requested decks are
+diagnostic unless the guardrail explicitly promoted them.
 The profiler also rejects generated-mgrid plane counts that are not multiples
 of ``NZETA`` because the VMEC-plane mgrid sampler intentionally uses the
 discrete VMEC zeta planes without toroidal interpolation.
@@ -528,6 +537,13 @@ Fourier coefficients for force evaluation, while the interior
 ``R``/``Z``/``lambda`` state and force kernels remain on the existing VMEC
 radial/Fourier basis. A full native spline nonlinear state is still a separate
 solver lane.
+Completed native-coordinate rows also report
+``free_boundary.edge_control_projection.native_spline_state`` with schema
+``FreeBoundaryNativeSplineState.v1``. That state object carries the reduced
+spline-control LCFS edge alongside a VMEC template and decodes to a full
+``VMECState`` before evaluating the existing residual. It makes the native
+edge state explicit and testable, but it is not yet the full nonlinear
+unknown-vector replacement needed to remove the Fourier straight-side burden.
 The public helper
 ``vmec_jax.recommend_square_axis_stellarator_mirror_hybrid_resolution`` scans a
 small finite ``MPOL``/``NTOR`` ladder for the current spline-smoothed target and

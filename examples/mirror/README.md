@@ -375,6 +375,14 @@ Before launching a long solve after changing ``MPOL``, ``NTOR``, ``NZETA``, or
 The JSON report exits before coil, mgrid, or equilibrium work and writes a
 ``resolution_deck`` block with production-gate status, projection error,
 recommended ``NTHETA``/``NZETA``, and ``mgrid_nphi``/``NZETA`` compatibility.
+It also writes ``resolution_guardrail``. That compact block records the
+requested and effective ``MPOL``/``NTOR``/``NTHETA``/``NZETA`` deck, whether
+the mode deck or grids were auto-promoted, and the validated square-coil
+production minimum
+``MPOL=5, NTOR=28, NTHETA=64, NZETA=64`` with
+``MAX_BOUNDARY_PROJECTION_ERROR=5e-12``. Treat a lower requested deck as a
+diagnostic edit unless this guardrail reports that the actual backend run was
+promoted to a production-ready effective deck.
 If the projection gate auto-promotes the requested ``MPOL``/``NTOR`` pair, the
 profile now promotes the actual solve grids at the same time: the JSON
 ``configuration`` block keeps ``requested_mpol``/``requested_ntor`` and reports
@@ -669,6 +677,15 @@ reduced unknown vector used by the strict update. Summary rows include
 ``native_resync_count`` when strict backtracking accepts a fractional native
 edge-control step and the tracked reduced state is reconciled with the accepted
 LCFS.
+Newer rows also include
+``free_boundary.edge_control_projection.native_spline_state`` with schema
+``FreeBoundaryNativeSplineState.v1``. This object is the current native LCFS
+edge state: it stores the reduced spline-control edge coordinates plus a VMEC
+template state, decodes to Fourier coefficients for the existing force kernels,
+and reports the reduced unknown size and norm. It is stronger than a diagnostic
+projection, but it is still scoped to the LCFS edge; a full solver-native
+spline nonlinear state would also move the residual iteration and
+preconditioner onto reduced boundary unknowns.
 The root square-coil beta-scan example mirrors the same evidence in its
 ``square_coil_hybrid_free_boundary_solve_summary.csv`` rows, including state
 reconstruction residuals, reduced-unknown size, reduced-update size, and decoded
