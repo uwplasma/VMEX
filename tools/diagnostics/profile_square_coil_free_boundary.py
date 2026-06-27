@@ -56,6 +56,9 @@ from vmec_jax.toroidal_hybrid import (
     square_axis_strict_schedule_status,
 )
 from vmec_jax.vmec2000_exec import _parse_vmec2000_threed1, find_vmec2000_exec, run_xvmec2000
+from tools.diagnostics.native_spline_vector_profile import (
+    native_spline_vector_residual_profile_payload,
+)
 
 
 DEFAULT_OUTDIR = REPO_ROOT / "results" / "square_coil_freeb_backend_profile"
@@ -485,6 +488,14 @@ def _parser() -> argparse.ArgumentParser:
             "Write the native reduced spline-control solver design/readiness report, "
             "then exit before mgrid generation or equilibrium solves. This is a "
             "prototype gate, not an equilibrium solve."
+        ),
+    )
+    p.add_argument(
+        "--native-spline-vector-residual-profile",
+        action="store_true",
+        help=(
+            "Profile native spline-vector encode/decode/projected-residual/JVP cost on the "
+            "current square-coil deck, then exit before mgrid generation or equilibrium solves."
         ),
     )
     return p
@@ -3474,16 +3485,17 @@ def main(argv: list[str] | None = None) -> int:
         solver_native_spline_controls=bool(spline_bridge.get("solver_native_spline_controls", False)),
         target_ftol=STRICT_COMPONENT_FTOL,
     )
+    edge_control_projection_payload_for_summary = _freeb_edge_control_projection_solver_payload(
+        config,
+        symmetry=str(args.freeb_edge_control_projection),
+        rcond=float(args.freeb_edge_control_rcond),
+        ridge=float(args.freeb_edge_control_ridge),
+        trust_radius=args.freeb_edge_control_trust_radius,
+        update_mode=str(args.freeb_edge_control_update_mode),
+        native_force_metric=str(args.freeb_edge_control_native_force_metric),
+    )
     edge_control_projection_summary = _freeb_edge_control_projection_summary(
-        _freeb_edge_control_projection_solver_payload(
-            config,
-            symmetry=str(args.freeb_edge_control_projection),
-            rcond=float(args.freeb_edge_control_rcond),
-            ridge=float(args.freeb_edge_control_ridge),
-            trust_radius=args.freeb_edge_control_trust_radius,
-            update_mode=str(args.freeb_edge_control_update_mode),
-            native_force_metric=str(args.freeb_edge_control_native_force_metric),
-        ),
+        edge_control_projection_payload_for_summary,
         requested=str(args.freeb_edge_control_projection),
     )
     mode_deck = _projection_mode_deck(boundary_projection)
@@ -3491,6 +3503,7 @@ def main(argv: list[str] | None = None) -> int:
         bool(args.resolution_diagnostics_only)
         or bool(args.scale_diagnostics_only)
         or bool(args.native_spline_control_prototype)
+        or bool(args.native_spline_vector_residual_profile)
     ):
         scale_payload = {"status": "skipped_resolution_diagnostics_only"}
         if bool(args.scale_diagnostics_only):
@@ -3511,6 +3524,16 @@ def main(argv: list[str] | None = None) -> int:
                 strict_schedule=strict_schedule,
             )
             if bool(args.native_spline_control_prototype)
+            else {"status": "not_requested"}
+        )
+        native_vector_profile_payload = (
+            native_spline_vector_residual_profile_payload(
+                config=config,
+                beta_percent=float(args.beta_percent),
+                edge_control_projection_payload=edge_control_projection_payload_for_summary,
+                edge_control_requested=str(args.freeb_edge_control_projection),
+            )
+            if bool(args.native_spline_vector_residual_profile)
             else {"status": "not_requested"}
         )
         payload = {
@@ -3563,6 +3586,9 @@ def main(argv: list[str] | None = None) -> int:
                 "resolution_diagnostics_only": bool(args.resolution_diagnostics_only),
                 "scale_diagnostics_only": bool(args.scale_diagnostics_only),
                 "native_spline_control_prototype": bool(args.native_spline_control_prototype),
+                "native_spline_vector_residual_profile": bool(
+                    args.native_spline_vector_residual_profile
+                ),
                 "accepted_provider_parity": bool(args.accepted_provider_parity),
                 "freeb_anderson_pressure": bool(args.freeb_anderson_pressure),
                 "freeb_jax_nestor_operator": bool(args.freeb_jax_nestor_operator),
@@ -3615,6 +3641,7 @@ def main(argv: list[str] | None = None) -> int:
             "edge_control_projection": edge_control_projection_summary,
             "spline_bridge": spline_bridge,
             "native_spline_control_prototype": native_spline_payload,
+            "native_spline_vector_residual_profile": native_vector_profile_payload,
             "strict_schedule": strict_schedule,
             "strict_convergence_assessment": strict_convergence_assessment,
             "resolution_deck": resolution_deck,

@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from tools.diagnostics import profile_square_coil_free_boundary as profile
+from tools.diagnostics import summarize_square_coil_profiles as summary
 from vmec_jax.boundary import BoundaryCoeffs
 from vmec_jax.config import VMECConfig
 from vmec_jax.solvers.free_boundary.types import NestorRuntimeState
@@ -84,6 +85,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
             "1.0",
             "--resolution-diagnostics-only",
             "--native-spline-control-prototype",
+            "--native-spline-vector-residual-profile",
         ]
     )
 
@@ -125,6 +127,7 @@ def test_square_coil_profile_parser_accepts_control_spline_axis_kind(tmp_path: P
     assert args.strict_backtracking_accept_ratio == pytest.approx(1.0)
     assert args.resolution_diagnostics_only is True
     assert args.native_spline_control_prototype is True
+    assert args.native_spline_vector_residual_profile is True
 
 
 def test_square_coil_profile_residual_payload_keeps_solver_mode_and_history_tails():
@@ -1514,6 +1517,72 @@ def test_square_coil_profile_native_spline_control_prototype_is_no_solve(tmp_pat
     assert prototype["next_action"] == "repair_preflight_before_native_spline_solver_work"
     assert "projection_gate_disabled" in prototype["blockers"]
     assert "change vmec_jax's nonlinear state basis" in prototype["vmec2000_role"]
+
+
+def test_square_coil_profile_native_spline_vector_residual_profile_is_no_solve(tmp_path: Path):
+    outdir = tmp_path / "profile_native_spline_vector_residual"
+
+    assert (
+        profile.main(
+            [
+                "--outdir",
+                str(outdir),
+                "--mpol",
+                "3",
+                "--ntor",
+                "4",
+                "--ns",
+                "5",
+                "--nzeta",
+                "16",
+                "--mgrid-nphi",
+                "16",
+                "--freeb-edge-control-projection",
+                "full",
+                "--freeb-edge-control-update-mode",
+                "native_coordinate",
+                "--max-boundary-projection-error",
+                "none",
+                "--native-spline-vector-residual-profile",
+            ]
+        )
+        == 0
+    )
+
+    data = json.loads((outdir / "square_coil_free_boundary_backend_profile.json").read_text())
+    assert data["configuration"]["native_spline_vector_residual_profile"] is True
+    assert data["mgrid"]["created"] is False
+    assert data["backends"] == {}
+    native = data["native_spline_vector_residual_profile"]
+    assert native["status"] == "completed"
+    assert native["equilibrium_solve_performed"] is False
+    assert native["residual_surrogate"] == "linear_same_shape_state_delta"
+    assert native["native_state_schema"] == "FreeBoundaryNativeSplineUnknownVector.v1"
+    assert native["edge_control_projection_requested"] == "full"
+    assert native["native_unknown_size"] < native["full_vmec_size"]
+    assert native["removed_fourier_edge_dofs"] > 0
+    assert 0.0 < native["unknown_reduction_fraction"] < 1.0
+    assert native["decode_parity_linf"] == pytest.approx(0.0, abs=1.0e-12)
+    assert native["projected_residual_host_parity_linf"] == pytest.approx(0.0, abs=1.0e-12)
+    assert native["projected_residual_host_parity_rel"] == pytest.approx(0.0, abs=1.0e-12)
+    assert native["projected_residual_l2"] > 0.0
+    assert native["jvp_l2"] > 0.0
+    assert native["autodiff_method_profiled"] == "jax.jvp_forward_mode"
+    assert native["next_action"] == "promote_packed_native_vector_into_opt_in_solver_loop"
+    row = summary.rows_from_profile(outdir / "square_coil_free_boundary_backend_profile.json")[0]
+    assert row["native_spline_vector_residual_profile_status"] == "completed"
+    assert row["native_spline_vector_residual_profile_native_unknown_size"] == native[
+        "native_unknown_size"
+    ]
+    assert row["native_spline_vector_residual_profile_full_vmec_size"] == native["full_vmec_size"]
+    assert row["native_spline_vector_residual_profile_projected_residual_parity_linf"] == pytest.approx(
+        0.0,
+        abs=1.0e-12,
+    )
+    assert (
+        row["native_spline_vector_residual_profile_next_action"]
+        == "promote_packed_native_vector_into_opt_in_solver_loop"
+    )
 
 
 def test_square_coil_profile_projection_gate_fails_before_backend_work(monkeypatch, tmp_path: Path):

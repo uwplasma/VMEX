@@ -343,7 +343,7 @@ class FreeBoundaryNativeSplineUnknownVector:
         should be expressed as reduced edge coordinates.
         """
 
-        dR, dR_sin, dZ_cos, dZ, dL_cos, dL = deltas
+        dR, dR_sin, dZ_cos, dZ, dL_cos, dL = _delta_tuple_from_state_like(deltas)
         interior = _pack_vmec_interior_without_edge(
             VMECState(
                 layout=self.template_state.layout,

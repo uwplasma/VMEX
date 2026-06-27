@@ -1449,6 +1449,7 @@ def _summary_row(
     strict_convergence_assessment: dict[str, Any] | None = None,
     spline_bridge: dict[str, Any] | None = None,
     vmec_free_boundary_scale: dict[str, Any] | None = None,
+    native_spline_vector_residual_profile: dict[str, Any] | None = None,
     status: str | None = None,
 ) -> dict[str, Any]:
     case = _case_name(path)
@@ -1707,6 +1708,11 @@ def _summary_row(
     )
     spline_bridge = spline_bridge if isinstance(spline_bridge, dict) else {}
     scale = vmec_free_boundary_scale if isinstance(vmec_free_boundary_scale, dict) else {}
+    native_vector_profile = (
+        native_spline_vector_residual_profile
+        if isinstance(native_spline_vector_residual_profile, dict)
+        else {}
+    )
     return {
         "case": case,
         "backend": backend_name,
@@ -2145,6 +2151,37 @@ def _summary_row(
         "spline_bridge_requires_native_spline_state_for_reduced_nonlinear_dofs": spline_bridge.get(
             "requires_native_spline_state_for_reduced_nonlinear_dofs"
         ),
+        "native_spline_vector_residual_profile_status": native_vector_profile.get("status"),
+        "native_spline_vector_residual_profile_native_unknown_size": native_vector_profile.get(
+            "native_unknown_size"
+        ),
+        "native_spline_vector_residual_profile_full_vmec_size": native_vector_profile.get(
+            "full_vmec_size"
+        ),
+        "native_spline_vector_residual_profile_removed_edge_dofs": native_vector_profile.get(
+            "removed_fourier_edge_dofs"
+        ),
+        "native_spline_vector_residual_profile_reduction_fraction": _finite_float(
+            native_vector_profile.get("unknown_reduction_fraction")
+        ),
+        "native_spline_vector_residual_profile_decode_parity_linf": _finite_float(
+            native_vector_profile.get("decode_parity_linf")
+        ),
+        "native_spline_vector_residual_profile_projected_residual_parity_linf": _finite_float(
+            native_vector_profile.get("projected_residual_host_parity_linf")
+        ),
+        "native_spline_vector_residual_profile_projected_residual_parity_rel": _finite_float(
+            native_vector_profile.get("projected_residual_host_parity_rel")
+        ),
+        "native_spline_vector_residual_profile_projected_residual_jvp_wall_s": _finite_float(
+            native_vector_profile.get("projected_residual_jvp_wall_s")
+        ),
+        "native_spline_vector_residual_profile_jvp_linf": _finite_float(
+            native_vector_profile.get("jvp_linf")
+        ),
+        "native_spline_vector_residual_profile_next_action": native_vector_profile.get(
+            "next_action"
+        ),
         "resolution_deck_status": resolution.get("status"),
         "resolution_deck_reasons": ",".join(_as_text_list(resolution.get("reasons"))),
         "vmec_scale_status": scale.get("status"),
@@ -2379,6 +2416,8 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
     spline_bridge = spline_bridge if isinstance(spline_bridge, dict) else {}
     scale = data.get("vmec_free_boundary_scale", {})
     scale = scale if isinstance(scale, dict) else {}
+    native_vector_profile = data.get("native_spline_vector_residual_profile", {})
+    native_vector_profile = native_vector_profile if isinstance(native_vector_profile, dict) else {}
     rows: list[dict[str, Any]] = []
     for backend_name, backend in sorted((data.get("backends", {}) or {}).items()):
         if isinstance(backend, dict):
@@ -2394,9 +2433,10 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                     strict_convergence_assessment=strict_convergence_assessment,
                     spline_bridge=spline_bridge,
                     vmec_free_boundary_scale=scale,
+                    native_spline_vector_residual_profile=native_vector_profile,
                 )
             )
-    if not rows and (projection or resolution_deck or scale):
+    if not rows and (projection or resolution_deck or scale or native_vector_profile):
         rows.append(
             _summary_row(
                 path=path,
@@ -2409,6 +2449,7 @@ def rows_from_profile(path: Path) -> list[dict[str, Any]]:
                 strict_convergence_assessment=strict_convergence_assessment,
                 spline_bridge=spline_bridge,
                 vmec_free_boundary_scale=scale,
+                native_spline_vector_residual_profile=native_vector_profile,
             )
         )
     return rows
@@ -2682,6 +2723,17 @@ def main(argv: list[str] | None = None) -> int:
         "freeb_edge_control_projection_native_unknown_edge_control_linf",
         "freeb_edge_control_projection_native_unknown_reconstruction_residual_linf",
         "freeb_edge_control_projection_native_unknown_reconstruction_residual_rel",
+        "native_spline_vector_residual_profile_status",
+        "native_spline_vector_residual_profile_native_unknown_size",
+        "native_spline_vector_residual_profile_full_vmec_size",
+        "native_spline_vector_residual_profile_removed_edge_dofs",
+        "native_spline_vector_residual_profile_reduction_fraction",
+        "native_spline_vector_residual_profile_decode_parity_linf",
+        "native_spline_vector_residual_profile_projected_residual_parity_linf",
+        "native_spline_vector_residual_profile_projected_residual_parity_rel",
+        "native_spline_vector_residual_profile_projected_residual_jvp_wall_s",
+        "native_spline_vector_residual_profile_jvp_linf",
+        "native_spline_vector_residual_profile_next_action",
         "freeb_edge_control_projection_zero_velocity_count",
         "freeb_edge_control_projection_state_residual_status",
         "freeb_edge_control_projection_state_residual_linf",

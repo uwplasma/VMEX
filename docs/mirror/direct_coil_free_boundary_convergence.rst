@@ -566,6 +566,14 @@ state representation before it becomes the primary nonlinear solve state.
 ``free_boundary_native_spline_vector_residual_jax`` wraps that decode around an
 existing residual function, which is the first generic entry point for native
 coordinate JVP/VJP parity tests.
+``free_boundary_native_spline_vector_projected_residual_jax`` goes one step
+farther: it evaluates a decoded residual and packs it back into the intended
+native nonlinear coordinates, using the adjoint-compatible edge-control
+pullback by default. The square-coil profiler exposes this path through
+``--native-spline-vector-residual-profile``; pair it with
+``--freeb-edge-control-projection full`` to write a no-solve JSON/CSV row with
+native/full vector sizes, decode parity, projected-residual parity, and JVP
+timing for the selected ``MPOL``/``NTOR``/``NZETA`` deck.
 The same native-coordinate rows report source-update capture diagnostics in
 ``native_last_step``: ``decoded_edge_update_l2``,
 ``source_edge_update_l2``, ``source_update_residual_rel``, and

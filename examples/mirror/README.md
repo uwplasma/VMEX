@@ -672,6 +672,11 @@ The square-coil profile summary flattens this block into
 ``freeb_edge_control_projection_native_unknown_*`` columns so strict profile
 CSV/Markdown rows show the native unknown size, removed edge Fourier DOFs,
 reduction fraction, and edge reconstruction residual directly.
+Use ``--native-spline-vector-residual-profile`` with
+``--freeb-edge-control-projection full`` to measure native-vector
+encode/decode/projected-residual/JVP cost on the selected deck without
+launching an equilibrium solve. The same summary table exposes the resulting
+``native_spline_vector_residual_profile_*`` columns.
 ``FreeBoundaryNativeSplineVectorStep`` is the parity adapter that currently
 expresses the LCFS edge update through that native vector while matching the
 existing edge-only bridge.

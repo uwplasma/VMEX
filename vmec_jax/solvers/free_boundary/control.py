@@ -1356,7 +1356,10 @@ def _freeb_edge_control_delta_tuple_target(deltas: Any, projection: dict[str, An
 
     k = int(projection["mode_count"])
     scale = np.asarray(projection["mode_scale_np"], dtype=float)
-    dR, dR_sin, dZ_cos, dZ, _dL_cos, _dL = deltas
+    if isinstance(deltas, VMECState):
+        dR, dR_sin, dZ_cos, dZ = deltas.Rcos, deltas.Rsin, deltas.Zcos, deltas.Zsin
+    else:
+        dR, dR_sin, dZ_cos, dZ, _dL_cos, _dL = deltas
     target = np.concatenate(
         [
             np.asarray(dR, dtype=float)[-1] * scale,
