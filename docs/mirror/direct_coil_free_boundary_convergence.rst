@@ -579,6 +579,10 @@ timing for the selected ``MPOL``/``NTOR``/``NZETA`` deck.
 opt-in packed-native nonlinear-state prototype. They intentionally form dense
 Jacobians and are only for manufactured or tiny smoke problems; production
 strict profiles still need the matrix-free/preconditioned native loop.
+The adjacent ``free_boundary_native_spline_matrix_free_normal_*`` helpers use
+``jax.linearize``/``jax.vjp`` products and conjugate-gradient normal equations
+instead of forming the dense Jacobian. They are still prototypes, but they are
+the intended bridge toward a preconditioned native spline-control solve.
 The same native-coordinate rows report source-update capture diagnostics in
 ``native_last_step``: ``decoded_edge_update_l2``,
 ``source_edge_update_l2``, ``source_update_residual_rel``, and

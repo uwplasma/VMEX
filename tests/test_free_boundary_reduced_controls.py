@@ -8,6 +8,8 @@ from vmec_jax.solvers.free_boundary import (
     FreeBoundaryNativeSplineDenseSolve,
     FreeBoundaryNativeSplineDenseStep,
     FreeBoundaryNativeSplineForce,
+    FreeBoundaryNativeSplineMatrixFreeSolve,
+    FreeBoundaryNativeSplineMatrixFreeStep,
     FreeBoundaryNativeSplineResidualProblem,
     FreeBoundaryNativeSplineState,
     FreeBoundaryNativeSplineUpdate,
@@ -20,6 +22,8 @@ from vmec_jax.solvers.free_boundary import (
     free_boundary_reduced_edge_state_to_vmec_state,
     free_boundary_native_spline_dense_gauss_newton_solve_jax,
     free_boundary_native_spline_dense_gauss_newton_step_jax,
+    free_boundary_native_spline_matrix_free_normal_solve_jax,
+    free_boundary_native_spline_matrix_free_normal_step_jax,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
     free_boundary_native_spline_project_vmec_delta_jax,
     free_boundary_native_spline_vector_projected_residual_jax,
@@ -49,6 +53,8 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert vj.FreeBoundaryNativeSplineDenseSolve is FreeBoundaryNativeSplineDenseSolve
     assert vj.FreeBoundaryNativeSplineDenseStep is FreeBoundaryNativeSplineDenseStep
     assert vj.FreeBoundaryNativeSplineForce is FreeBoundaryNativeSplineForce
+    assert vj.FreeBoundaryNativeSplineMatrixFreeSolve is FreeBoundaryNativeSplineMatrixFreeSolve
+    assert vj.FreeBoundaryNativeSplineMatrixFreeStep is FreeBoundaryNativeSplineMatrixFreeStep
     assert vj.FreeBoundaryNativeSplineResidualProblem is FreeBoundaryNativeSplineResidualProblem
     assert vj.FreeBoundaryNativeSplineState is FreeBoundaryNativeSplineState
     assert vj.FreeBoundaryNativeSplineUpdate is FreeBoundaryNativeSplineUpdate
@@ -58,6 +64,8 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert public_api.FreeBoundaryNativeSplineDenseSolve is FreeBoundaryNativeSplineDenseSolve
     assert public_api.FreeBoundaryNativeSplineDenseStep is FreeBoundaryNativeSplineDenseStep
     assert public_api.FreeBoundaryNativeSplineForce is FreeBoundaryNativeSplineForce
+    assert public_api.FreeBoundaryNativeSplineMatrixFreeSolve is FreeBoundaryNativeSplineMatrixFreeSolve
+    assert public_api.FreeBoundaryNativeSplineMatrixFreeStep is FreeBoundaryNativeSplineMatrixFreeStep
     assert public_api.FreeBoundaryNativeSplineResidualProblem is FreeBoundaryNativeSplineResidualProblem
     assert public_api.FreeBoundaryNativeSplineState is FreeBoundaryNativeSplineState
     assert public_api.FreeBoundaryNativeSplineUpdate is FreeBoundaryNativeSplineUpdate
@@ -87,6 +95,22 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert (
         public_api.free_boundary_native_spline_dense_gauss_newton_solve_jax
         is free_boundary_native_spline_dense_gauss_newton_solve_jax
+    )
+    assert (
+        vj.free_boundary_native_spline_matrix_free_normal_step_jax
+        is free_boundary_native_spline_matrix_free_normal_step_jax
+    )
+    assert (
+        public_api.free_boundary_native_spline_matrix_free_normal_step_jax
+        is free_boundary_native_spline_matrix_free_normal_step_jax
+    )
+    assert (
+        vj.free_boundary_native_spline_matrix_free_normal_solve_jax
+        is free_boundary_native_spline_matrix_free_normal_solve_jax
+    )
+    assert (
+        public_api.free_boundary_native_spline_matrix_free_normal_solve_jax
+        is free_boundary_native_spline_matrix_free_normal_solve_jax
     )
     assert (
         vj.free_boundary_native_spline_project_vmec_delta_jax
@@ -756,20 +780,48 @@ def test_native_spline_dense_gauss_newton_solves_manufactured_residual() -> None
         max_iter=2,
         ftol=1.0e-11,
     )
+    matrix_free_step = free_boundary_native_spline_matrix_free_normal_step_jax(
+        problem,
+        unknowns.vector,
+        damping=0.0,
+        tol=1.0e-12,
+    )
+    matrix_free_solved = free_boundary_native_spline_matrix_free_normal_solve_jax(
+        problem,
+        unknowns.vector,
+        max_iter=2,
+        ftol=1.0e-11,
+        damping=0.0,
+        linear_tol=1.0e-12,
+    )
     decoded = problem.decode(solved.vector)
+    decoded_matrix_free = problem.decode(matrix_free_solved.vector)
 
     assert isinstance(step, FreeBoundaryNativeSplineDenseStep)
     assert isinstance(solved, FreeBoundaryNativeSplineDenseSolve)
+    assert isinstance(matrix_free_step, FreeBoundaryNativeSplineMatrixFreeStep)
+    assert isinstance(matrix_free_solved, FreeBoundaryNativeSplineMatrixFreeSolve)
     assert solved.converged is True
+    assert matrix_free_solved.converged is True
     assert solved.n_iter == 1
+    assert matrix_free_solved.n_iter == 1
     assert solved.residual_l2 < 1.0e-11
+    assert matrix_free_solved.residual_l2 < 1.0e-11
     assert len(solved.history) == 1
+    assert len(matrix_free_solved.history) == 1
+    np.testing.assert_allclose(np.asarray(matrix_free_step.step), np.asarray(step.step), atol=1.0e-11)
     np.testing.assert_allclose(np.asarray(decoded.Rcos), target.Rcos, atol=1.0e-12)
     np.testing.assert_allclose(np.asarray(decoded.Rsin), target.Rsin, atol=1.0e-12)
     np.testing.assert_allclose(np.asarray(decoded.Zcos), target.Zcos, atol=1.0e-12)
     np.testing.assert_allclose(np.asarray(decoded.Zsin), target.Zsin, atol=1.0e-12)
     np.testing.assert_allclose(np.asarray(decoded.Lcos), target.Lcos, atol=1.0e-12)
     np.testing.assert_allclose(np.asarray(decoded.Lsin), target.Lsin, atol=1.0e-12)
+    np.testing.assert_allclose(np.asarray(decoded_matrix_free.Rcos), target.Rcos, atol=1.0e-11)
+    np.testing.assert_allclose(np.asarray(decoded_matrix_free.Rsin), target.Rsin, atol=1.0e-11)
+    np.testing.assert_allclose(np.asarray(decoded_matrix_free.Zcos), target.Zcos, atol=1.0e-11)
+    np.testing.assert_allclose(np.asarray(decoded_matrix_free.Zsin), target.Zsin, atol=1.0e-11)
+    np.testing.assert_allclose(np.asarray(decoded_matrix_free.Lcos), target.Lcos, atol=1.0e-11)
+    np.testing.assert_allclose(np.asarray(decoded_matrix_free.Lsin), target.Lsin, atol=1.0e-11)
 
 
 def test_native_spline_vector_residual_jax_respects_mode_scale() -> None:

@@ -682,6 +682,9 @@ launching an equilibrium solve. The same summary table exposes the resulting
 manufactured/tiny-case packed-native solve prototype. They form dense
 Jacobians, so they are a correctness bridge toward the matrix-free production
 solver rather than the strict square-coil equilibrium path itself.
+Use ``free_boundary_native_spline_matrix_free_normal_*`` for the next prototype
+step: it applies ``J`` and ``J.T`` through JAX JVP/VJP products and solves the
+damped normal equations by conjugate gradient.
 ``FreeBoundaryNativeSplineVectorStep`` is the parity adapter that currently
 expresses the LCFS edge update through that native vector while matching the
 existing edge-only bridge.
