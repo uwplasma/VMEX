@@ -29,6 +29,11 @@ def test_square_coil_resolution_matrix_classifies_small_decks(tmp_path: Path):
     assert rows[0]["status"] == "diagnostic_gate_disabled"
     assert rows[0]["reasons"] == ["projection_gate_disabled"]
     assert rows[0]["recommended_nzeta"] == recommended_square_axis_nzeta(4)
+    assert rows[0]["strict_schedule_status"] == "strict_ready"
+    assert rows[0]["edge_control_projection"] == "stellarator"
+    assert rows[0]["strict_solver_native_spline_status"] == "edge_only_bridge"
+    assert rows[0]["strict_solver_native_spline_edge_controls"] is True
+    assert rows[0]["strict_full_native_spline_state_required"] is True
     assert rows[1]["status"] == "diagnostic_underresolved"
     assert "nzeta_below_square_axis_recommendation" in rows[1]["reasons"]
 
@@ -45,6 +50,7 @@ def test_square_coil_resolution_matrix_auto_nzeta_and_commands(tmp_path: Path):
             "--print-preflight-commands",
             "--print-scale-commands",
             "--print-vmec2000-commands",
+            "--print-jax-commands",
             "--include-control-map",
             "--vmec2000-exec",
             "/opt/xvmec",
@@ -58,15 +64,19 @@ def test_square_coil_resolution_matrix_auto_nzeta_and_commands(tmp_path: Path):
     assert rows[0]["mgrid_nphi"] == rows[0]["nzeta"]
     assert rows[0]["status"] == "production_ready"
     assert rows[0]["control_map_status"] == "available"
-    assert rows[0]["control_map_square_count"] == 2
+    assert rows[0]["control_map_square_count"] == 3
     assert rows[0]["control_map_square_condition"] is not None
-    assert rows[0]["control_map_stellarator_count"] == 5
+    assert rows[0]["control_map_stellarator_count"] == 9
     assert rows[0]["control_map_stellarator_condition"] is not None
     assert "--resolution-diagnostics-only" in rows[0]["preflight_command"]
     assert "--scale-diagnostics-only" in rows[0]["scale_command"]
     assert "--ntheta 64" in rows[0]["scale_command"]
     assert "--run-vmec2000" in rows[0]["vmec2000_command"]
     assert "--vmec2000-exec /opt/xvmec" in rows[0]["vmec2000_command"]
+    assert "--freeb-edge-control-projection stellarator" in rows[0]["jax_command"]
+    assert "--freeb-edge-control-update-mode native_coordinate" in rows[0]["jax_command"]
+    assert "--freeb-edge-control-native-force-metric least_squares" in rows[0]["jax_command"]
+    assert "--strict-backtracking-accept-ratio 1" in rows[0]["jax_command"]
     assert "square_coil_resolution_mpol5_ntor28_nzeta64" in rows[0]["preflight_command"]
     assert rows[1]["status"] == "diagnostic_underresolved"
     assert "mgrid_nphi_not_multiple_of_nzeta" in rows[1]["reasons"]

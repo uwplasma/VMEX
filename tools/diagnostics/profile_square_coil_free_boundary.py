@@ -2709,11 +2709,12 @@ def _spline_bridge_payload(
         "axis_kind": axis_kind,
         "real_space_axis_basis": "periodic_spline_controls" if uses_controls else "sampled_fourier_target",
         "nonlinear_solver_boundary_basis": (
-            "reduced_spline_edge_controls_with_vmec_fourier_decode"
+            "edge_reduced_spline_controls_decoded_to_vmec_fourier"
             if native_edge_controls
             else "vmec_fourier_coefficients"
         ),
-        "solver_native_spline_controls": native_edge_controls,
+        "solver_native_spline_controls": False,
+        "solver_native_spline_edge_controls": native_edge_controls,
         "solver_native_spline_scope": "lcfs_edge_only" if native_edge_controls else None,
         "optional_solver_edge_control_projection": uses_controls,
         "solver_edge_control_projection_enabled": edge_enabled,
@@ -2731,13 +2732,15 @@ def _spline_bridge_payload(
         "can_project_free_boundary_edge_updates": edge_enabled,
         "can_reduce_free_boundary_edge_dofs": edge_enabled,
         "can_reduce_nonlinear_solver_dofs": native_edge_controls,
-        "requires_native_spline_state_for_reduced_nonlinear_dofs": bool(uses_controls and not native_edge_controls),
+        "can_reduce_full_nonlinear_solver_dofs": False,
+        "requires_native_spline_state_for_reduced_nonlinear_dofs": bool(uses_controls),
         "recommended_next_action": next_action,
         "interpretation": (
             "The square-axis spline path still evaluates VMEC forces through Fourier coefficients. "
             "When native-coordinate edge updates are enabled, the accepted LCFS edge is advanced in "
             "reduced spline-control coordinates and decoded to VMEC Fourier coefficients for force "
-            "evaluation; the interior R/Z/lambda state remains on the existing VMEC basis."
+            "evaluation; the interior R/Z/lambda state and force evaluation remain on the existing "
+            "VMEC basis."
         ),
     }
 

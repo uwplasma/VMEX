@@ -342,7 +342,8 @@ def test_free_boundary_edge_coordinate_mode_applies_reduced_update_once(monkeypa
     assert coordinate.delta_tuple_projector() is None
     assert native.delta_tuple_projector() is None
     assert native.update_mode == "native_coordinate"
-    assert native.info["solver_native_spline_controls"] is True
+    assert native.info["solver_native_spline_controls"] is False
+    assert native.info["solver_native_spline_edge_controls"] is True
     assert callable(projected.delta_tuple_projector())
 
 

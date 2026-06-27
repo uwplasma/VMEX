@@ -1260,7 +1260,8 @@ class _FreeBoundaryEdgeControlProjector:
             mode = "projected_delta"
         self.update_mode = mode
         self.info["update_mode"] = self.update_mode
-        self.info["solver_native_spline_controls"] = bool(self.update_mode == "native_coordinate")
+        self.info["solver_native_spline_controls"] = False
+        self.info["solver_native_spline_edge_controls"] = bool(self.update_mode == "native_coordinate")
         if self.enabled:
             self.info["zero_edge_velocity_memory"] = True
             self.jit_strict_update_enabled = False

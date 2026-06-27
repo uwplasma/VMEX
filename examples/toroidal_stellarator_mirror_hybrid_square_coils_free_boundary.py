@@ -1316,11 +1316,12 @@ def _spline_bridge_payload(config: ExampleConfig, *, resolution_deck: dict[str, 
     return {
         "real_space_axis_basis": "periodic_spline_controls" if uses_controls else "sampled_fourier_target",
         "nonlinear_solver_boundary_basis": (
-            "reduced_spline_edge_controls_with_vmec_fourier_decode"
+            "edge_reduced_spline_controls_decoded_to_vmec_fourier"
             if native_edge_controls
             else "vmec_fourier_coefficients"
         ),
-        "solver_native_spline_controls": native_edge_controls,
+        "solver_native_spline_controls": False,
+        "solver_native_spline_edge_controls": native_edge_controls,
         "solver_native_spline_scope": "lcfs_edge_only" if native_edge_controls else None,
         "solver_edge_control_projection_enabled": edge_enabled,
         "solver_edge_control_update_mode": edge_update_mode,
@@ -1330,7 +1331,8 @@ def _spline_bridge_payload(config: ExampleConfig, *, resolution_deck: dict[str, 
         "can_project_free_boundary_edge_updates": edge_enabled,
         "can_reduce_free_boundary_edge_dofs": edge_enabled,
         "can_reduce_nonlinear_solver_dofs": native_edge_controls,
-        "requires_native_spline_state_for_reduced_nonlinear_dofs": bool(uses_controls and not native_edge_controls),
+        "can_reduce_full_nonlinear_solver_dofs": False,
+        "requires_native_spline_state_for_reduced_nonlinear_dofs": bool(uses_controls),
         "recommended_next_action": (
             "profile_native_spline_edge_control_strict_convergence"
             if native_edge_controls and resolution_deck.get("status") == "production_ready"
@@ -1342,7 +1344,7 @@ def _spline_bridge_payload(config: ExampleConfig, *, resolution_deck: dict[str, 
             "The control-spline path smooths and reduces the input target before projection. "
             "With native-coordinate edge updates, the LCFS edge is advanced in reduced spline "
             "coordinates and decoded to VMEC Fourier coefficients for force evaluation; the "
-            "interior VMEC state remains on the existing Fourier/radial basis."
+            "interior VMEC state and force evaluation remain on the existing Fourier/radial basis."
         ),
     }
 

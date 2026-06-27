@@ -1605,7 +1605,8 @@ def square_axis_strict_convergence_assessment(
     reduced_enabled = bool(edge_control_projection_enabled)
     edge_update_mode = str(edge_control_update_mode).strip().lower()
     coordinate_edge_update = bool(edge_update_mode == "coordinate")
-    native_spline = bool(solver_native_spline_controls or edge_update_mode == "native_coordinate")
+    native_edge_controls = bool(edge_update_mode == "native_coordinate")
+    native_spline = bool(solver_native_spline_controls)
 
     blockers: list[str] = []
     if not representation_ready:
@@ -1666,7 +1667,22 @@ def square_axis_strict_convergence_assessment(
             "full VMEC Fourier residual still reported separately",
         ],
         "solver_native_spline_controls": native_spline,
-        "solver_native_spline_status": "available" if native_spline else "not_implemented",
+        "solver_native_spline_edge_controls": native_edge_controls,
+        "solver_native_spline_scope": (
+            "full_nonlinear_state"
+            if native_spline
+            else "lcfs_edge_only"
+            if native_edge_controls
+            else None
+        ),
+        "solver_native_spline_status": (
+            "available"
+            if native_spline
+            else "edge_only_bridge"
+            if native_edge_controls
+            else "not_implemented"
+        ),
+        "full_native_spline_state_required_for_less_fourier_pressure": bool(native_edge_controls and not native_spline),
         "vmec2000_reference_role": (
             "generated-mgrid VMEC2000 is a backend/NESTOR/mgrid reference for the same Fourier deck; "
             "it cannot remove Fourier representation error from a linear-axis square target"

@@ -1393,13 +1393,15 @@ def test_square_coil_profile_spline_bridge_marks_native_edge_control_scope() -> 
         edge_control_update_mode="native_coordinate",
     )
 
-    assert bridge["solver_native_spline_controls"] is True
+    assert bridge["solver_native_spline_controls"] is False
+    assert bridge["solver_native_spline_edge_controls"] is True
     assert bridge["solver_native_spline_scope"] == "lcfs_edge_only"
     assert bridge["solver_edge_control_projection_enabled"] is True
     assert bridge["solver_edge_control_update_mode"] == "native_coordinate"
-    assert bridge["nonlinear_solver_boundary_basis"] == "reduced_spline_edge_controls_with_vmec_fourier_decode"
+    assert bridge["nonlinear_solver_boundary_basis"] == "edge_reduced_spline_controls_decoded_to_vmec_fourier"
     assert bridge["can_reduce_nonlinear_solver_dofs"] is True
-    assert bridge["requires_native_spline_state_for_reduced_nonlinear_dofs"] is False
+    assert bridge["can_reduce_full_nonlinear_solver_dofs"] is False
+    assert bridge["requires_native_spline_state_for_reduced_nonlinear_dofs"] is True
     assert bridge["recommended_next_action"] == "profile_native_spline_edge_control_strict_convergence"
 
 

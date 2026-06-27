@@ -27,6 +27,8 @@ from vmec_jax.toroidal_hybrid import (
     recommended_square_axis_ntheta,
     recommended_square_axis_nzeta,
     square_axis_resolution_deck_status,
+    square_axis_strict_convergence_assessment,
+    square_axis_strict_schedule_status,
     square_axis_spline_control_fourier_map_status,
     square_axis_stellarator_mirror_hybrid_projection_error,
 )
@@ -75,6 +77,35 @@ def _parser() -> argparse.ArgumentParser:
     p.add_argument("--print-preflight-commands", action="store_true")
     p.add_argument("--print-scale-commands", action="store_true")
     p.add_argument("--print-vmec2000-commands", action="store_true")
+    p.add_argument(
+        "--print-jax-commands",
+        action="store_true",
+        help="Also emit strict direct-GPU vmec_jax commands using reduced edge controls.",
+    )
+    p.add_argument(
+        "--edge-control-projection",
+        choices=("none", "square", "stellarator"),
+        default="stellarator",
+        help="Reduced edge-control basis used by --print-jax-commands and strict readiness diagnostics.",
+    )
+    p.add_argument(
+        "--edge-control-update-mode",
+        choices=("projected_delta", "coordinate", "native_coordinate"),
+        default="native_coordinate",
+        help="Reduced edge-control update mode used by --print-jax-commands and strict readiness diagnostics.",
+    )
+    p.add_argument(
+        "--edge-control-native-force-metric",
+        choices=("pullback", "least_squares"),
+        default="least_squares",
+        help="Native-coordinate reduced edge-force metric used by emitted JAX commands.",
+    )
+    p.add_argument(
+        "--strict-backtracking-accept-ratio",
+        type=float,
+        default=1.0,
+        help="Fresh-merit acceptance ratio used by emitted strict JAX commands.",
+    )
     p.add_argument(
         "--include-control-map",
         action="store_true",
@@ -154,6 +185,7 @@ def _profile_command(
     resolution_only: bool,
     vmec2000: bool,
     scale_only: bool = False,
+    jax_direct: bool = False,
 ) -> list[str]:
     ns_array = tuple(int(value) for value in row["ns_array"])
     niter_array = tuple(int(value) for value in row["niter_array"])
@@ -241,6 +273,44 @@ def _profile_command(
                 str(int(args.vmec2000_timeout)),
             ]
         )
+    if jax_direct:
+        edge_projection = str(args.edge_control_projection)
+        command.extend(
+            [
+                "--skip-mgrid",
+                "--skip-provider-parity",
+                "--freeb-anderson-pressure",
+                "--strict-backtracking",
+                "--strict-trial-heartbeat",
+                "--strict-backtracking-accept-ratio",
+                f"{float(args.strict_backtracking_accept_ratio):.16g}",
+                "--jax-hot-restart-count",
+                "2",
+                "--jax-hot-restart-iters",
+                str(int(niter_array[-1])),
+                "--jax-hot-restart-policy",
+                "freeb",
+                "--jit-forces",
+                "--jit-direct-sampler",
+                "--verbose-solver",
+                "--return-best-scored-state",
+            ]
+        )
+        if edge_projection != "none":
+            command.extend(
+                [
+                    "--freeb-edge-control-projection",
+                    edge_projection,
+                    "--freeb-edge-control-rcond",
+                    "1e-12",
+                    "--freeb-edge-control-ridge",
+                    "0",
+                    "--freeb-edge-control-update-mode",
+                    str(args.edge_control_update_mode),
+                    "--freeb-edge-control-native-force-metric",
+                    str(args.edge_control_native_force_metric),
+                ]
+            )
     return command
 
 
@@ -371,6 +441,22 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
             mgrid_nphi=effective_mgrid_nphi,
             target_max_component_error=target_error,
         )
+        strict_schedule = square_axis_strict_schedule_status(
+            ns_array=ns_array,
+            niter_array=niter_array,
+            ftol_array=ftol_array,
+            target_ftol=1.0e-12,
+        )
+        edge_projection = str(args.edge_control_projection).strip().lower()
+        edge_control_enabled = edge_projection not in {"", "none", "off", "false"}
+        strict_assessment = square_axis_strict_convergence_assessment(
+            resolution_deck=status,
+            strict_schedule=strict_schedule,
+            edge_control_projection_enabled=bool(edge_control_enabled),
+            edge_control_update_mode=str(args.edge_control_update_mode),
+            solver_native_spline_controls=False,
+            target_ftol=1.0e-12,
+        )
         row = {
             **status,
             "requested_mpol": requested_mpol,
@@ -406,6 +492,28 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
             "projection_max_abs_component_error_rel": float(
                 effective_projection["max_abs_component_error_rel"]
             ),
+            "strict_schedule_status": strict_schedule.get("status"),
+            "strict_schedule_reasons": strict_schedule.get("reasons"),
+            "requested_final_ftol": strict_schedule.get("requested_final_ftol"),
+            "requested_final_ftol_meets_target": strict_schedule.get("requested_final_ftol_meets_target"),
+            "total_iteration_budget": strict_schedule.get("total_iteration_budget"),
+            "edge_control_projection": edge_projection,
+            "edge_control_update_mode": str(args.edge_control_update_mode),
+            "edge_control_native_force_metric": str(args.edge_control_native_force_metric),
+            "strict_full_fourier_status": strict_assessment.get("full_fourier_strict_profile_status"),
+            "strict_reduced_control_status": strict_assessment.get("reduced_control_profile_status"),
+            "strict_solver_native_spline_status": strict_assessment.get("solver_native_spline_status"),
+            "strict_solver_native_spline_edge_controls": strict_assessment.get(
+                "solver_native_spline_edge_controls"
+            ),
+            "strict_full_native_spline_state_required": strict_assessment.get(
+                "full_native_spline_state_required_for_less_fourier_pressure"
+            ),
+            "strict_vmec2000_expected_to_fix_fourier_bottleneck": strict_assessment.get(
+                "vmec2000_expected_to_fix_fourier_bottleneck"
+            ),
+            "strict_assessment_blockers": strict_assessment.get("blockers"),
+            "strict_assessment_next_steps": strict_assessment.get("recommended_next_steps"),
         }
         if bool(args.include_control_map):
             row.update(_control_map_rows(effective_config))
@@ -419,6 +527,10 @@ def build_rows(args: argparse.Namespace) -> list[dict[str, Any]]:
             )
         if bool(args.print_vmec2000_commands):
             row["vmec2000_command"] = _shell_join(_profile_command(row, args, resolution_only=False, vmec2000=True))
+        if bool(args.print_jax_commands):
+            row["jax_command"] = _shell_join(
+                _profile_command(row, args, resolution_only=False, vmec2000=False, jax_direct=True)
+            )
         rows.append(row)
     return rows
 
@@ -455,6 +567,20 @@ def _print_table(rows: list[dict[str, Any]], *, markdown: bool) -> None:
         "requested_projection_max_abs_component_error",
         "projection_max_abs_component_error",
         "projection_target_max_component_error",
+        "strict_schedule_status",
+        "requested_final_ftol",
+        "requested_final_ftol_meets_target",
+        "total_iteration_budget",
+        "edge_control_projection",
+        "edge_control_update_mode",
+        "edge_control_native_force_metric",
+        "strict_full_fourier_status",
+        "strict_reduced_control_status",
+        "strict_solver_native_spline_status",
+        "strict_solver_native_spline_edge_controls",
+        "strict_full_native_spline_state_required",
+        "strict_vmec2000_expected_to_fix_fourier_bottleneck",
+        "strict_assessment_blockers",
     ]
     if any("preflight_command" in row for row in rows):
         keys.append("preflight_command")
@@ -462,6 +588,8 @@ def _print_table(rows: list[dict[str, Any]], *, markdown: bool) -> None:
         keys.append("scale_command")
     if any("vmec2000_command" in row for row in rows):
         keys.append("vmec2000_command")
+    if any("jax_command" in row for row in rows):
+        keys.append("jax_command")
     if any("control_map_status" in row for row in rows):
         keys.extend(
             [
