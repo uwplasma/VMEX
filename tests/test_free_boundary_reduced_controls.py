@@ -602,6 +602,80 @@ def test_native_spline_vector_edge_step_matches_existing_edge_bridge() -> None:
         np.testing.assert_allclose(actual, expected)
 
 
+def test_native_spline_vector_residual_jax_respects_mode_scale() -> None:
+    import jax
+
+    cfg = VMECConfig(
+        mpol=2,
+        ntor=0,
+        ns=3,
+        nfp=1,
+        lasym=False,
+        lthreed=False,
+        lconm1=True,
+        ntheta=8,
+        nzeta=1,
+    )
+    static = build_static(cfg)
+    layout = StateLayout(ns=3, K=static.modes.K, lasym=False)
+    assert static.modes.K >= 2
+    zeros = np.zeros((3, static.modes.K), dtype=float)
+    rcos = zeros.copy()
+    rcos[-1, 0] = 3.0
+    state0 = VMECState(
+        layout=layout,
+        Rcos=rcos,
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=zeros.copy(),
+        Lcos=zeros.copy(),
+        Lsin=zeros.copy(),
+    )
+    indata = InData(
+        scalars={"MPOL": 2, "NTOR": 0, "NS_ARRAY": [3], "NFP": 1, "LASYM": False, "LCONM1": True},
+        indexed={"RBC": {(0, 0): 3.0}},
+    )
+    jacobian = np.zeros((4 * static.modes.K, 1), dtype=float)
+    jacobian[1, 0] = 3.0
+    projection = _prepare_freeb_edge_control_projection(
+        {
+            "enabled": True,
+            "basis_symmetry": "test",
+            "labels": ["scaled_edge_mode"],
+            "control_jacobian": jacobian,
+            "update_mode": "native_coordinate",
+        },
+        indata=indata,
+        static=static,
+        state0=state0,
+        free_boundary_enabled=True,
+    )
+    unknowns = free_boundary_native_spline_unknown_vector_from_vmec_state(state0, projection)
+    vector = np.array(unknowns.vector, dtype=float, copy=True)
+    vector[-1] = 0.2
+    scale = float(projection["mode_scale_np"][1])
+
+    def residual(values):
+        return free_boundary_native_spline_vector_residual_jax(
+            values,
+            state0,
+            projection,
+            lambda decoded_state: decoded_state.Rcos[-1, 1],
+        )
+
+    grad = jax.grad(residual)(jnp.asarray(vector))
+    eps = 1.0e-6
+    vector_plus = vector.copy()
+    vector_minus = vector.copy()
+    vector_plus[-1] += eps
+    vector_minus[-1] -= eps
+    finite_difference = float((residual(vector_plus) - residual(vector_minus)) / (2.0 * eps))
+
+    np.testing.assert_allclose(np.asarray(grad[:-1]), np.zeros(unknowns.native_unknown_size - 1), atol=1.0e-14)
+    np.testing.assert_allclose(np.asarray(grad[-1]), 3.0 / scale, rtol=1.0e-12)
+    assert finite_difference == pytest.approx(3.0 / scale, rel=1.0e-8)
+
+
 def test_reduced_control_decode_matches_host_map_and_jacobian() -> None:
     import jax
 
