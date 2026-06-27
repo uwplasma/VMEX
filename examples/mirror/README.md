@@ -785,9 +785,12 @@ one-step reduction to roundoff but costs about one minute for the first
 matrix-free step because the dense JAX-NESTOR replay is inside the linearized
 residual.
 The latest tiny ``jax_replay`` actual-force probe reduced the projected native
-residual from ``0.4841`` to ``0.3938`` in one accepted line-search step, while
-the current LCFS-edge bridge increased the same residual by about ``1.1e3``.
-Profile summaries expose this as
+residual from ``0.4841`` to ``0.3938`` in one accepted line-search step and to
+``0.3429`` after two accepted native loop iterations. The loop status is
+``iteration_budget_exhausted_reducing``, so the stop is the diagnostic
+iteration budget rather than a line-search rejection. The current LCFS-edge
+bridge increased the same residual by about ``1.1e3``. Profile summaries expose
+this as ``native_spline_actual_force_step_profile_loop_status`` and
 ``native_spline_actual_force_step_profile_readiness_status =
 ready_for_full_native_loop_not_converged``. That is the signal to promote the
 matrix-free native residual into a repeated nonlinear solve loop, not to keep

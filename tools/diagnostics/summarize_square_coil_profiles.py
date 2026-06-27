@@ -1767,6 +1767,9 @@ def _summary_row(
     native_actual_line_search = native_actual_force_profile.get("matrix_free_line_search_solve")
     if not isinstance(native_actual_line_search, dict):
         native_actual_line_search = {}
+    native_actual_loop = native_actual_force_profile.get("native_matrix_free_loop")
+    if not isinstance(native_actual_loop, dict):
+        native_actual_loop = {}
     native_actual_preconditioner = native_actual_force_profile.get("matrix_free_preconditioner")
     if not isinstance(native_actual_preconditioner, dict):
         native_actual_preconditioner = {}
@@ -2376,6 +2379,30 @@ def _summary_row(
         "native_spline_actual_force_step_profile_line_search_reduction_factor": _finite_float(
             native_actual_line_search.get("final_residual_reduction_factor")
         ),
+        "native_spline_actual_force_step_profile_loop_status": native_actual_loop.get(
+            "status"
+        ),
+        "native_spline_actual_force_step_profile_loop_stop_reason": native_actual_loop.get(
+            "stop_reason"
+        ),
+        "native_spline_actual_force_step_profile_loop_attempted_iterations": native_actual_loop.get(
+            "attempted_iterations"
+        ),
+        "native_spline_actual_force_step_profile_loop_accepted_iterations": native_actual_loop.get(
+            "accepted_iterations"
+        ),
+        "native_spline_actual_force_step_profile_loop_rejected_iterations": native_actual_loop.get(
+            "rejected_iterations"
+        ),
+        "native_spline_actual_force_step_profile_loop_final_l2": _finite_float(
+            native_actual_loop.get("residual_l2_final")
+        ),
+        "native_spline_actual_force_step_profile_loop_reduction_factor": _finite_float(
+            native_actual_loop.get("residual_reduction_factor")
+        ),
+        "native_spline_actual_force_step_profile_loop_vector_delta_l2": _finite_float(
+            native_actual_loop.get("final_vector_delta_l2")
+        ),
         "native_spline_actual_force_step_profile_next_action": native_actual_force_profile.get(
             "next_action"
         ),
@@ -2393,6 +2420,15 @@ def _summary_row(
         ),
         "native_spline_actual_force_step_profile_readiness_line_search_reduces": (
             native_actual_readiness.get("line_search_reduces_projected_residual")
+        ),
+        "native_spline_actual_force_step_profile_readiness_loop_status": (
+            native_actual_readiness.get("native_matrix_free_loop_status")
+        ),
+        "native_spline_actual_force_step_profile_readiness_loop_accepted_iterations": (
+            native_actual_readiness.get("native_matrix_free_loop_accepted_iterations")
+        ),
+        "native_spline_actual_force_step_profile_readiness_loop_reduction_factor": _finite_float(
+            native_actual_readiness.get("native_matrix_free_loop_reduction_factor")
         ),
         "native_spline_actual_force_step_profile_readiness_edge_bridge_reduces": (
             native_actual_readiness.get("edge_bridge_reduces_projected_residual")
@@ -3122,12 +3158,23 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_actual_force_step_profile_line_search_converged",
         "native_spline_actual_force_step_profile_line_search_final_l2",
         "native_spline_actual_force_step_profile_line_search_reduction_factor",
+        "native_spline_actual_force_step_profile_loop_status",
+        "native_spline_actual_force_step_profile_loop_stop_reason",
+        "native_spline_actual_force_step_profile_loop_attempted_iterations",
+        "native_spline_actual_force_step_profile_loop_accepted_iterations",
+        "native_spline_actual_force_step_profile_loop_rejected_iterations",
+        "native_spline_actual_force_step_profile_loop_final_l2",
+        "native_spline_actual_force_step_profile_loop_reduction_factor",
+        "native_spline_actual_force_step_profile_loop_vector_delta_l2",
         "native_spline_actual_force_step_profile_next_action",
         "native_spline_actual_force_step_profile_readiness_status",
         "native_spline_actual_force_step_profile_readiness_requested_vacuum_mode",
         "native_spline_actual_force_step_profile_readiness_jax_replay_ready",
         "native_spline_actual_force_step_profile_readiness_matrix_free_reduces",
         "native_spline_actual_force_step_profile_readiness_line_search_reduces",
+        "native_spline_actual_force_step_profile_readiness_loop_status",
+        "native_spline_actual_force_step_profile_readiness_loop_accepted_iterations",
+        "native_spline_actual_force_step_profile_readiness_loop_reduction_factor",
         "native_spline_actual_force_step_profile_readiness_edge_bridge_reduces",
         "native_spline_actual_force_step_profile_readiness_edge_bridge_worse_than_matrix_free",
         "native_spline_actual_force_step_profile_readiness_next_action",

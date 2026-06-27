@@ -248,14 +248,19 @@ direction. On a tiny production-shaped square-coil deck with
 ``--native-spline-actual-force-vacuum-mode jax_replay``, the profiler included
 differentiable direct-coil vacuum pressure through the JAX-NESTOR replay path
 and reduced the projected native residual from ``0.4841`` to ``0.3938`` in one
-accepted matrix-free line-search step. The current LCFS-edge bridge worsened
-the same projected residual by about ``1.1e3``. Summary rows now expose this as
+accepted matrix-free line-search step. With a two-iteration budget, both native
+line-search steps were accepted and the residual fell to ``0.3429`` for a loop
+reduction factor of ``0.7084``; the loop stopped only because the small
+diagnostic iteration budget was exhausted. The current LCFS-edge bridge
+worsened the same projected residual by about ``1.1e3``. Summary rows now
+expose this as ``native_spline_actual_force_step_profile_loop_status`` and
 ``native_spline_actual_force_step_profile_readiness_status``; the expected
-status for this evidence is ``ready_for_full_native_loop_not_converged``. This
-is the finite next implementation lane: promote the reducing native residual to
-a full solver-native spline nonlinear loop, then differentiate the converged
-reduced residual with implicit/adjoint solves rather than relying on raw
-reverse-mode through thousands of free-boundary iterations.
+statuses for this evidence are ``iteration_budget_exhausted_reducing`` and
+``ready_for_full_native_loop_not_converged``. This is the finite next
+implementation lane: promote the reducing native residual to a full
+solver-native spline nonlinear loop, then differentiate the converged reduced
+residual with implicit/adjoint solves rather than relying on raw reverse-mode
+through thousands of free-boundary iterations.
 
 The first reduced-control nonlinear-update prototype is now available as an
 opt-in ``vmec_jax`` path. ``run_free_boundary`` accepts a generic

@@ -786,11 +786,39 @@ def native_spline_actual_force_step_profile_payload(
         "gcz2": float(np.asarray(force_result.gcz2)),
         "gcl2": float(np.asarray(force_result.gcl2)),
     }
+    line_search_history = [dict(item) for item in line_search_solve.history]
     line_search_reduction = (
         None
         if before_norm["l2"] <= np.finfo(float).tiny
         else float(line_search_solve.residual_l2 / before_norm["l2"])
     )
+    line_search_vector_delta = np.asarray(line_search_solve.vector) - np.asarray(vector)
+    line_search_vector_delta_norm = _norms(line_search_vector_delta)
+    loop_attempts = int(len(line_search_history))
+    loop_accepted = int(line_search_solve.n_iter)
+    loop_rejected = int(
+        sum(1 for item in line_search_history if not bool(item.get("accepted", False)))
+    )
+    loop_last = line_search_history[-1] if line_search_history else {}
+    if line_search_max_iter == 0:
+        loop_status = "not_run_zero_budget"
+        loop_stop_reason = "zero_iteration_budget"
+    elif bool(line_search_solve.converged):
+        loop_status = "converged"
+        loop_stop_reason = "ftol_met"
+    elif loop_accepted == 0 and loop_attempts > 0:
+        loop_status = "blocked_no_accepted_step"
+        loop_stop_reason = "first_step_rejected_or_zero"
+    elif loop_accepted >= line_search_max_iter:
+        loop_status = (
+            "iteration_budget_exhausted_reducing"
+            if line_search_reduction is not None and float(line_search_reduction) < 1.0
+            else "iteration_budget_exhausted_not_reducing"
+        )
+        loop_stop_reason = "max_iter_exhausted"
+    else:
+        loop_status = "stopped_after_rejection"
+        loop_stop_reason = "line_search_rejected_next_step"
     differentiable_vacuum_pressure = bool(vacuum_pressure.get("differentiable_vacuum_pressure"))
     matrix_free_reduces = bool(reduction is not None and float(reduction) < 1.0)
     line_search_reduces = bool(
@@ -879,7 +907,27 @@ def native_spline_actual_force_step_profile_payload(
             "converged": bool(line_search_solve.converged),
             "final_residual_l2": float(line_search_solve.residual_l2),
             "final_residual_reduction_factor": line_search_reduction,
-            "history": [dict(item) for item in line_search_solve.history],
+            "history": line_search_history,
+        },
+        "native_matrix_free_loop": {
+            "status": loop_status,
+            "stop_reason": loop_stop_reason,
+            "method": "matrix_free_normal_step_with_residual_line_search",
+            "max_iter": int(line_search_max_iter),
+            "attempted_iterations": loop_attempts,
+            "accepted_iterations": loop_accepted,
+            "rejected_iterations": loop_rejected,
+            "converged": bool(line_search_solve.converged),
+            "residual_l2_initial": before_norm["l2"],
+            "residual_l2_final": float(line_search_solve.residual_l2),
+            "residual_reduction_factor": line_search_reduction,
+            "final_vector_delta_l2": line_search_vector_delta_norm["l2"],
+            "final_vector_delta_linf": line_search_vector_delta_norm["linf"],
+            "last_alpha": _json_scalar(loop_last.get("alpha")),
+            "last_backtracks": _json_scalar(loop_last.get("backtracks")),
+            "last_step_accepted": (
+                None if "accepted" not in loop_last else bool(loop_last["accepted"])
+            ),
         },
         "edge_bridge_comparison": {
             "status": "completed",
@@ -952,6 +1000,9 @@ def native_spline_actual_force_step_profile_payload(
             "differentiable_vacuum_pressure": differentiable_vacuum_pressure,
             "matrix_free_reduces_projected_residual": matrix_free_reduces,
             "line_search_reduces_projected_residual": line_search_reduces,
+            "native_matrix_free_loop_status": loop_status,
+            "native_matrix_free_loop_accepted_iterations": loop_accepted,
+            "native_matrix_free_loop_reduction_factor": line_search_reduction,
             "edge_bridge_reduces_projected_residual": edge_bridge_reduces,
             "edge_bridge_worse_than_matrix_free": edge_bridge_worse_than_matrix_free,
             "full_native_loop_required": True,

@@ -5738,117 +5738,6 @@ Visual validation:
 
 No user input is needed.
 
-## M408 - Native actual-force readiness and strict reference interpretation
-
-### Steps taken
-
-- Re-checked PR #21 CI. The only non-green shard was a GitHub runner
-  cancellation in ``wout-booz-plot-profiles``; the job log showed no Python
-  assertion failure.
-- Verified the local native-spline actual-force readiness diagnostics and
-  square-coil profile summarizer fields.
-- Harvested active ``office`` status without launching competing heavy jobs.
-  Five strict direct GPU profiles and one generated-``mgrid`` VMEC2000
-  reference row are still running.
-- Parsed completed VMEC2000 rows and the active VMEC2000 sidecar so the
-  ``1e-8`` loose-stage status is not confused with a failed final
-  ``1e-12`` stage.
-- Ran a tiny production-shaped square-coil native actual-force profile with
-  ``--native-spline-actual-force-vacuum-mode jax_replay`` to verify the real
-  differentiable vacuum-pressure residual path.
-- Added machine-readable ``native_solver_readiness`` fields to the native
-  actual-force profile and flattened them into the profile summary table.
-- Updated the convergence plan docs and mirror example README with the current
-  VMEC2000-vs-native-spline conclusion.
-
-### Results obtained
-
-- ``ftol=1e-8`` remains diagnostic-only. Strict claims require a final staged
-  request of ``1e-12`` and component-wise ``fsqr``, ``fsqz``, and ``fsql`` to
-  pass on the accepted state.
-- Completed VMEC2000 generated-``mgrid`` references are close but not strict:
-  ``MPOL=5, NTOR=28, NZETA=64`` reached about ``1.12e-11`` max component and
-  ``MPOL=7, NTOR=28, NZETA=64`` reached about ``6.36e-12`` after long final
-  stages.
-- The active ``DELT=0.02``/32k VMEC2000 row is still in the first ``NS=9``
-  loose stage. Its sidecar reports residuals near ``1e-3`` and requested
-  latest-stage ``1e-8`` status, so it is live progress evidence rather than a
-  final ``1e-12`` failure.
-- VMEC2000 is currently the faster and more robust CLI/reference backend, but
-  it does not remove the square/linear-axis Fourier representation bottleneck.
-- The local JAX replay actual-force probe included differentiable direct-coil
-  vacuum pressure and reduced the projected native residual from ``0.4841`` to
-  ``0.3938`` in one accepted matrix-free line-search step.
-- The current LCFS-edge bridge worsened the same projected native residual by
-  about ``1.1e3``. This is strong evidence to promote the full native residual
-  loop rather than tune the edge-only bridge.
-- The new readiness status for the JAX replay probe is
-  ``ready_for_full_native_loop_not_converged`` with next action
-  ``promote_reducing_native_residual_to_full_solver_loop``.
-
-### How it was tested
-
-- ``python -m pytest -q tests/test_profile_square_coil_free_boundary.py -k native_spline_actual_force_step_profile_is_no_solve``
-  passed.
-- ``python -m pytest -q tests/test_profile_square_coil_free_boundary.py tests/test_summarize_square_coil_profiles.py``
-  passed with ``74 passed``.
-- ``ruff check`` passed for the touched diagnostics and test file.
-- ``python -m compileall`` passed for the touched diagnostics.
-- The local JAX replay smoke wrote
-  ``/tmp/vmec_native_jax_replay_m408/square_coil_free_boundary_backend_profile.json``
-  and the summary API reported ``jax_replay_ready=true``,
-  ``differentiable=true``, matrix-free reduction ``0.8134``, edge-bridge
-  reduction ``1096.98``, and readiness
-  ``ready_for_full_native_loop_not_converged``.
-
-### File structure and best-practice notes
-
-- ``tools/diagnostics/native_spline_vector_profile.py`` owns the readiness
-  classification beside the measured actual-force residual data.
-- ``tools/diagnostics/summarize_square_coil_profiles.py`` only flattens those
-  source diagnostics for CSV/Markdown comparisons.
-- ``tests/test_profile_square_coil_free_boundary.py`` locks the no-solve
-  readiness semantics and summary-row exposure.
-- ``docs/mirror/direct_coil_free_boundary_convergence.rst`` remains the
-  authoritative square-coil convergence narrative.
-- ``examples/mirror/README.md`` carries the user-facing commands and
-  interpretation. No raw WOUT, ``mgrid``, profile-output, or figure files were
-  committed.
-
-### Best next steps
-
-1. Promote the reducing ``jax_replay`` native residual into a repeated full
-   native nonlinear loop with line search and a VMEC-style/block
-   preconditioner.
-2. Keep VMEC2000 generated-``mgrid`` as the fast reference lane for
-   ``mpol``/``ntor``/``nzeta`` and ``mgrid`` parity, but do not treat it as the
-   reduced-geometry solution.
-3. Use implicit/adjoint differentiation of the converged native residual as the
-   production differentiability path; reserve raw forward/reverse AD for small
-   local derivative checks.
-4. Harvest the active ``office`` rows later instead of waiting on them now.
-
-### Completion percentages after M408
-
-- Geometry/grids/bases: `95%`.
-- Field/energy/residual kernels: `86%`.
-- Fixed-boundary axisymmetric solve: `80%`.
-- Residual Newton / preconditioning: `92%`.
-- Two-coil and manufactured validation: `74%`.
-- Finite-current pitch validation: `62%`.
-- Plotting and `vmec --plot` mirror support: `78%`.
-- I/O schema and docs: `98%`.
-- Differentiable solved-state API: `35%`.
-- Mirror-Boozer-like diagnostics: `15%`.
-- Free-boundary mirror lane: `66%`.
-- Stellarator-mirror hybrid lane: `77%`.
-- ESSOS circular-coil mirror beta scan: `0%`.
-- PR merge readiness overall: `93%`.
-
-### User input needed
-
-No user input is needed.
-
 ## M301 - VMEC Free-Boundary Scale Diagnostic For `PHIEDGE`
 
 ### Steps taken
@@ -25967,7 +25856,6 @@ Results:
 
 No user input is needed.
 
-
 ---
 ## 182. Matrix-Free Implicit-Parameter Gradient Example Coverage
 
@@ -26080,7 +25968,6 @@ Results:
 ### User input needed
 
 No user input is needed.
-
 
 ---
 ## 183. Toroidal Hybrid Standalone Plot Coverage
@@ -26210,7 +26097,6 @@ Results:
 
 No user input is needed.
 
-
 ---
 ## 184. Mirror-Boozer-Like Diagnostic Contract Coverage
 
@@ -26301,7 +26187,6 @@ Results:
 ### User input needed
 
 No user input is needed.
-
 
 ---
 ## 185. Free-Boundary Vector-LS Plot Coverage
@@ -26396,7 +26281,6 @@ Results:
 ### User input needed
 
 No user input is needed.
-
 
 ---
 ## 186. Residual-Newton Convergence-Grid Plot Coverage
@@ -26505,7 +26389,6 @@ Results:
 ### User input needed
 
 No user input is needed.
-
 
 ---
 ## 187. Two-Coil Benchmark Plot Coverage
@@ -31923,7 +31806,6 @@ Results:
 
 No user input is needed.
 
-
 ---
 ## 236. Replaced Nonproductive Direct Row With Chunked Verbose 5,28 Profile
 
@@ -36784,6 +36666,206 @@ columns.
 - True spline/control-basis hybrid lane: `84%`, native spline state remains
   open.
 - Overall toroidal stellarator-mirror hybrid production-readiness: `96%`.
+
+### User input needed
+
+No user input is needed.
+
+## M408 - Native actual-force readiness and strict reference interpretation
+
+### Steps taken
+
+- Re-checked PR #21 CI. The only non-green shard was a GitHub runner
+  cancellation in ``wout-booz-plot-profiles``; the job log showed no Python
+  assertion failure.
+- Verified the local native-spline actual-force readiness diagnostics and
+  square-coil profile summarizer fields.
+- Harvested active ``office`` status without launching competing heavy jobs.
+  Five strict direct GPU profiles and one generated-``mgrid`` VMEC2000
+  reference row are still running.
+- Parsed completed VMEC2000 rows and the active VMEC2000 sidecar so the
+  ``1e-8`` loose-stage status is not confused with a failed final
+  ``1e-12`` stage.
+- Ran a tiny production-shaped square-coil native actual-force profile with
+  ``--native-spline-actual-force-vacuum-mode jax_replay`` to verify the real
+  differentiable vacuum-pressure residual path.
+- Added machine-readable ``native_solver_readiness`` fields to the native
+  actual-force profile and flattened them into the profile summary table.
+- Updated the convergence plan docs and mirror example README with the current
+  VMEC2000-vs-native-spline conclusion.
+
+### Results obtained
+
+- ``ftol=1e-8`` remains diagnostic-only. Strict claims require a final staged
+  request of ``1e-12`` and component-wise ``fsqr``, ``fsqz``, and ``fsql`` to
+  pass on the accepted state.
+- Completed VMEC2000 generated-``mgrid`` references are close but not strict:
+  ``MPOL=5, NTOR=28, NZETA=64`` reached about ``1.12e-11`` max component and
+  ``MPOL=7, NTOR=28, NZETA=64`` reached about ``6.36e-12`` after long final
+  stages.
+- The active ``DELT=0.02``/32k VMEC2000 row is still in the first ``NS=9``
+  loose stage. Its sidecar reports residuals near ``1e-3`` and requested
+  latest-stage ``1e-8`` status, so it is live progress evidence rather than a
+  final ``1e-12`` failure.
+- VMEC2000 is currently the faster and more robust CLI/reference backend, but
+  it does not remove the square/linear-axis Fourier representation bottleneck.
+- The local JAX replay actual-force probe included differentiable direct-coil
+  vacuum pressure and reduced the projected native residual from ``0.4841`` to
+  ``0.3938`` in one accepted matrix-free line-search step.
+- The current LCFS-edge bridge worsened the same projected native residual by
+  about ``1.1e3``. This is strong evidence to promote the full native residual
+  loop rather than tune the edge-only bridge.
+- The new readiness status for the JAX replay probe is
+  ``ready_for_full_native_loop_not_converged`` with next action
+  ``promote_reducing_native_residual_to_full_solver_loop``.
+
+### How it was tested
+
+- ``python -m pytest -q tests/test_profile_square_coil_free_boundary.py -k native_spline_actual_force_step_profile_is_no_solve``
+  passed.
+- ``python -m pytest -q tests/test_profile_square_coil_free_boundary.py tests/test_summarize_square_coil_profiles.py``
+  passed with ``74 passed``.
+- ``ruff check`` passed for the touched diagnostics and test file.
+- ``python -m compileall`` passed for the touched diagnostics.
+- The local JAX replay smoke wrote
+  ``/tmp/vmec_native_jax_replay_m408/square_coil_free_boundary_backend_profile.json``
+  and the summary API reported ``jax_replay_ready=true``,
+  ``differentiable=true``, matrix-free reduction ``0.8134``, edge-bridge
+  reduction ``1096.98``, and readiness
+  ``ready_for_full_native_loop_not_converged``.
+
+### File structure and best-practice notes
+
+- ``tools/diagnostics/native_spline_vector_profile.py`` owns the readiness
+  classification beside the measured actual-force residual data.
+- ``tools/diagnostics/summarize_square_coil_profiles.py`` only flattens those
+  source diagnostics for CSV/Markdown comparisons.
+- ``tests/test_profile_square_coil_free_boundary.py`` locks the no-solve
+  readiness semantics and summary-row exposure.
+- ``docs/mirror/direct_coil_free_boundary_convergence.rst`` remains the
+  authoritative square-coil convergence narrative.
+- ``examples/mirror/README.md`` carries the user-facing commands and
+  interpretation. No raw WOUT, ``mgrid``, profile-output, or figure files were
+  committed.
+
+### Best next steps
+
+1. Promote the reducing ``jax_replay`` native residual into a repeated full
+   native nonlinear loop with line search and a VMEC-style/block
+   preconditioner.
+2. Keep VMEC2000 generated-``mgrid`` as the fast reference lane for
+   ``mpol``/``ntor``/``nzeta`` and ``mgrid`` parity, but do not treat it as the
+   reduced-geometry solution.
+3. Use implicit/adjoint differentiation of the converged native residual as the
+   production differentiability path; reserve raw forward/reverse AD for small
+   local derivative checks.
+4. Harvest the active ``office`` rows later instead of waiting on them now.
+
+### Completion percentages after M408
+
+- Geometry/grids/bases: `95%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `80%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `74%`.
+- Finite-current pitch validation: `62%`.
+- Plotting and `vmec --plot` mirror support: `78%`.
+- I/O schema and docs: `98%`.
+- Differentiable solved-state API: `35%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `66%`.
+- Stellarator-mirror hybrid lane: `77%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `93%`.
+
+### User input needed
+
+No user input is needed.
+
+## M409 - Repeated native actual-force loop observability
+
+### Steps taken
+
+- Read the existing native residual problem and matrix-free line-search helper
+  APIs instead of adding a second residual convention.
+- Added a ``native_matrix_free_loop`` block to the native actual-force profile.
+  It summarizes the repeated line-search solve with status, stop reason,
+  attempted/accepted/rejected iterations, final residual, reduction factor, and
+  final native-vector displacement.
+- Exposed the loop status and reduction in ``native_solver_readiness`` and in
+  the square-coil profile summary table.
+- Extended the existing native actual-force profile test to lock the loop block
+  and summary-row fields.
+- Ran a tiny differentiable ``jax_replay`` smoke with a two-iteration native
+  line-search budget.
+- Updated the convergence docs and mirror README with the repeated-loop
+  evidence.
+
+### Results obtained
+
+- The repeated native loop is now visible in CSV/Markdown summaries through
+  fields such as
+  ``native_spline_actual_force_step_profile_loop_status``,
+  ``native_spline_actual_force_step_profile_loop_accepted_iterations``, and
+  ``native_spline_actual_force_step_profile_loop_reduction_factor``.
+- On the tiny ``jax_replay`` square-coil deck, the one-step residual reduction
+  stayed ``0.4841 -> 0.3938``.
+- With ``line_search_max_iter=2``, both native matrix-free line-search steps
+  were accepted, with no backtracking, and the projected residual reached
+  ``0.3429`` for a loop reduction factor of ``0.7084``.
+- The loop status was ``iteration_budget_exhausted_reducing``. This is a good
+  diagnostic status: the loop did not stall; the small iteration budget ended
+  first.
+- The readiness status remains ``ready_for_full_native_loop_not_converged``.
+
+### How it was tested
+
+- ``python -m pytest -q tests/test_profile_square_coil_free_boundary.py -k native_spline_actual_force_step_profile_is_no_solve``
+  passed.
+- ``ruff check`` passed for the touched diagnostic and test files.
+- ``python -m compileall`` passed for the touched diagnostic files.
+- The differentiable smoke wrote
+  ``/tmp/vmec_native_jax_replay_m409/square_coil_free_boundary_backend_profile.json``
+  and reported loop status ``iteration_budget_exhausted_reducing``, accepted
+  iterations ``2``, and reduction ``0.7084``.
+
+### File structure and best-practice notes
+
+- The loop summary lives beside the raw line-search history in
+  ``tools/diagnostics/native_spline_vector_profile.py``.
+- The summary-table code in
+  ``tools/diagnostics/summarize_square_coil_profiles.py`` remains a flattening
+  layer only.
+- The test reuses the existing small actual-force fixture; no slower test file
+  was added.
+- No WOUT, ``mgrid``, figure, or raw profile-output files were committed.
+
+### Best next steps
+
+1. Promote the reducing loop from diagnostics into a bounded production
+   prototype that updates the native vector repeatedly and decodes accepted
+   states for WOUT/plot output.
+2. Add a VMEC-style/block preconditioner for the native residual, because the
+   one-probe diagonal preconditioner is not yet competitive.
+3. Harvest active ``office`` strict rows after they finish and compare loop
+   status against VMEC2000 reference tails.
+
+### Completion percentages after M409
+
+- Geometry/grids/bases: `95%`.
+- Field/energy/residual kernels: `86%`.
+- Fixed-boundary axisymmetric solve: `80%`.
+- Residual Newton / preconditioning: `92%`.
+- Two-coil and manufactured validation: `74%`.
+- Finite-current pitch validation: `62%`.
+- Plotting and `vmec --plot` mirror support: `78%`.
+- I/O schema and docs: `98%`.
+- Differentiable solved-state API: `36%`.
+- Mirror-Boozer-like diagnostics: `15%`.
+- Free-boundary mirror lane: `67%`.
+- Stellarator-mirror hybrid lane: `78%`.
+- ESSOS circular-coil mirror beta scan: `0%`.
+- PR merge readiness overall: `93%`.
 
 ### User input needed
 

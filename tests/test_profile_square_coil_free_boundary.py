@@ -1762,6 +1762,32 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert isinstance(line_search["history"], list)
     if line_search["history"]:
         assert line_search["history"][0]["accepted"] is True
+    loop = native["native_matrix_free_loop"]
+    assert loop["status"] in {
+        "blocked_no_accepted_step",
+        "converged",
+        "iteration_budget_exhausted_not_reducing",
+        "iteration_budget_exhausted_reducing",
+        "not_run_zero_budget",
+        "stopped_after_rejection",
+    }
+    assert loop["method"] == "matrix_free_normal_step_with_residual_line_search"
+    assert loop["max_iter"] == line_search["max_iter"]
+    assert loop["attempted_iterations"] == len(line_search["history"])
+    assert loop["accepted_iterations"] == line_search["n_iter"]
+    assert loop["rejected_iterations"] >= 0
+    assert loop["converged"] == line_search["converged"]
+    assert loop["residual_l2_initial"] == pytest.approx(
+        native["projected_residual_l2_before_step"]
+    )
+    assert loop["residual_l2_final"] == pytest.approx(line_search["final_residual_l2"])
+    assert loop["residual_reduction_factor"] == pytest.approx(
+        line_search["final_residual_reduction_factor"]
+    )
+    assert loop["final_vector_delta_l2"] >= 0.0
+    assert loop["final_vector_delta_linf"] >= 0.0
+    if line_search["history"]:
+        assert loop["last_step_accepted"] == line_search["history"][-1]["accepted"]
     mapping = native["force_block_mapping_audit"]
     assert mapping["status"] == "state_residual_matches_delta_tuple_from_blocks"
     assert mapping["reference_path"] == "delta_tuple_from_blocks_with_physical_delta_transforms"
@@ -1823,6 +1849,13 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     )
     assert readiness["line_search_reduces_projected_residual"] == (
         line_search["final_residual_reduction_factor"] < 1.0
+    )
+    assert readiness["native_matrix_free_loop_status"] == loop["status"]
+    assert readiness["native_matrix_free_loop_accepted_iterations"] == loop[
+        "accepted_iterations"
+    ]
+    assert readiness["native_matrix_free_loop_reduction_factor"] == pytest.approx(
+        loop["residual_reduction_factor"]
     )
     assert readiness["edge_bridge_reduces_projected_residual"] == (
         bridge["projected_residual_reduction_factor"] < 1.0
@@ -1902,6 +1935,29 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert row[
         "native_spline_actual_force_step_profile_line_search_reduction_factor"
     ] == pytest.approx(line_search["final_residual_reduction_factor"])
+    assert row["native_spline_actual_force_step_profile_loop_status"] == loop["status"]
+    assert (
+        row["native_spline_actual_force_step_profile_loop_stop_reason"]
+        == loop["stop_reason"]
+    )
+    assert row[
+        "native_spline_actual_force_step_profile_loop_attempted_iterations"
+    ] == loop["attempted_iterations"]
+    assert row[
+        "native_spline_actual_force_step_profile_loop_accepted_iterations"
+    ] == loop["accepted_iterations"]
+    assert row[
+        "native_spline_actual_force_step_profile_loop_rejected_iterations"
+    ] == loop["rejected_iterations"]
+    assert row["native_spline_actual_force_step_profile_loop_final_l2"] == pytest.approx(
+        loop["residual_l2_final"]
+    )
+    assert row[
+        "native_spline_actual_force_step_profile_loop_reduction_factor"
+    ] == pytest.approx(loop["residual_reduction_factor"])
+    assert row[
+        "native_spline_actual_force_step_profile_loop_vector_delta_l2"
+    ] == pytest.approx(loop["final_vector_delta_l2"])
     assert (
         row["native_spline_actual_force_step_profile_next_action"]
         == "promote_matrix_free_native_spline_residual_with_vacuum_pressure_and_line_search"
@@ -1922,6 +1978,15 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert row[
         "native_spline_actual_force_step_profile_readiness_line_search_reduces"
     ] == readiness["line_search_reduces_projected_residual"]
+    assert row["native_spline_actual_force_step_profile_readiness_loop_status"] == readiness[
+        "native_matrix_free_loop_status"
+    ]
+    assert row[
+        "native_spline_actual_force_step_profile_readiness_loop_accepted_iterations"
+    ] == readiness["native_matrix_free_loop_accepted_iterations"]
+    assert row[
+        "native_spline_actual_force_step_profile_readiness_loop_reduction_factor"
+    ] == pytest.approx(readiness["native_matrix_free_loop_reduction_factor"])
     assert row[
         "native_spline_actual_force_step_profile_readiness_edge_bridge_reduces"
     ] == readiness["edge_bridge_reduces_projected_residual"]
