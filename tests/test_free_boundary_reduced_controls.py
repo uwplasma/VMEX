@@ -22,6 +22,7 @@ from vmec_jax.solvers.free_boundary import (
     free_boundary_reduced_edge_state_to_vmec_state,
     free_boundary_native_spline_dense_gauss_newton_solve_jax,
     free_boundary_native_spline_dense_gauss_newton_step_jax,
+    free_boundary_native_spline_force_blocks_to_state_residual,
     free_boundary_native_spline_matrix_free_normal_solve_jax,
     free_boundary_native_spline_matrix_free_normal_step_jax,
     free_boundary_native_spline_unknown_vector_from_vmec_state,
@@ -35,11 +36,14 @@ from vmec_jax.solvers.free_boundary import (
     reduced_control_pullback,
 )
 from vmec_jax.config import VMECConfig
+from vmec_jax.kernels.residue import vmec_scalxc_from_s
+from vmec_jax.kernels.tomnsp import TomnspsRZL
 from vmec_jax.namelist import InData
 from vmec_jax.solvers.free_boundary.control import (
     _freeb_edge_control_native_coordinate_step,
     _prepare_freeb_edge_control_projection,
 )
+from vmec_jax.solvers.fixed_boundary.residual.mode_transform import build_mode_transform_context
 from vmec_jax.state import StateLayout, VMECState, pack_state
 from vmec_jax.static import build_static
 
@@ -95,6 +99,14 @@ def test_reduced_control_least_squares_step_is_public() -> None:
     assert (
         public_api.free_boundary_native_spline_dense_gauss_newton_solve_jax
         is free_boundary_native_spline_dense_gauss_newton_solve_jax
+    )
+    assert (
+        vj.free_boundary_native_spline_force_blocks_to_state_residual
+        is free_boundary_native_spline_force_blocks_to_state_residual
+    )
+    assert (
+        public_api.free_boundary_native_spline_force_blocks_to_state_residual
+        is free_boundary_native_spline_force_blocks_to_state_residual
     )
     assert (
         vj.free_boundary_native_spline_matrix_free_normal_step_jax
@@ -822,6 +834,178 @@ def test_native_spline_dense_gauss_newton_solves_manufactured_residual() -> None
     np.testing.assert_allclose(np.asarray(decoded_matrix_free.Zsin), target.Zsin, atol=1.0e-11)
     np.testing.assert_allclose(np.asarray(decoded_matrix_free.Lcos), target.Lcos, atol=1.0e-11)
     np.testing.assert_allclose(np.asarray(decoded_matrix_free.Lsin), target.Lsin, atol=1.0e-11)
+
+
+def test_native_spline_force_blocks_to_state_residual_uses_vmec_mode_mapping() -> None:
+    cfg = VMECConfig(
+        mpol=2,
+        ntor=1,
+        ns=3,
+        nfp=1,
+        lasym=False,
+        lthreed=True,
+        lconm1=True,
+        ntheta=8,
+        nzeta=4,
+    )
+    static = build_static(cfg)
+    layout = StateLayout(ns=3, K=static.modes.K, lasym=False)
+    zeros_state_block = np.zeros((3, static.modes.K), dtype=float)
+    template = VMECState(
+        layout=layout,
+        Rcos=zeros_state_block,
+        Rsin=zeros_state_block,
+        Zcos=zeros_state_block,
+        Zsin=zeros_state_block,
+        Lcos=zeros_state_block,
+        Lsin=zeros_state_block,
+    )
+    s = jnp.linspace(0.0, 1.0, cfg.ns)
+    mode_context = build_mode_transform_context(
+        static=static,
+        state0=template,
+        s=s,
+        host_update_assembly=False,
+        setup_host_enforce=False,
+        divide_by_scalxc_for_update=False,
+        mode_diag_exponent=0.0,
+        tree_has_tracer=lambda _value: False,
+        vmec_scalxc_from_s=vmec_scalxc_from_s,
+    )
+    shape = (cfg.ns, cfg.mpol, cfg.ntor + 1)
+    frcc = jnp.arange(np.prod(shape), dtype=float).reshape(shape) / 10.0
+    frss = frcc + 0.1
+    fzsc = frcc + 0.2
+    fzcs = frcc + 0.3
+    flsc = frcc + 0.4
+    flcs = frcc + 0.5
+    force_blocks = TomnspsRZL(
+        frcc=frcc,
+        frss=frss,
+        fzsc=fzsc,
+        fzcs=fzcs,
+        flsc=flsc,
+        flcs=flcs,
+    )
+
+    residual = free_boundary_native_spline_force_blocks_to_state_residual(
+        template_state=template,
+        force_blocks=force_blocks,
+        mode_context=mode_context,
+        lambda_update_scale=2.0,
+    )
+
+    np.testing.assert_allclose(
+        np.asarray(residual.Rcos),
+        np.asarray(mode_context.mn_cos_to_signed_physical(frcc, frss)),
+    )
+    np.testing.assert_allclose(
+        np.asarray(residual.Zsin),
+        np.asarray(mode_context.mn_sin_to_signed_physical(fzsc, fzcs)),
+    )
+    np.testing.assert_allclose(
+        np.asarray(residual.Lsin),
+        2.0 * np.asarray(mode_context.mn_sin_to_signed_physical_lambda(flsc, flcs)),
+    )
+    np.testing.assert_allclose(np.asarray(residual.Rsin), zeros_state_block)
+    np.testing.assert_allclose(np.asarray(residual.Zcos), zeros_state_block)
+    np.testing.assert_allclose(np.asarray(residual.Lcos), zeros_state_block)
+
+
+def test_native_spline_matrix_free_step_accepts_vmec_force_block_residual() -> None:
+    cfg = VMECConfig(
+        mpol=1,
+        ntor=0,
+        ns=3,
+        nfp=1,
+        lasym=False,
+        lthreed=False,
+        lconm1=True,
+        ntheta=8,
+        nzeta=1,
+    )
+    static = build_static(cfg)
+    layout = StateLayout(ns=3, K=static.modes.K, lasym=False)
+    zeros = np.zeros((3, static.modes.K), dtype=float)
+    state0 = VMECState(
+        layout=layout,
+        Rcos=np.asarray([[0.5], [0.25], [1.0]]),
+        Rsin=zeros.copy(),
+        Zcos=zeros.copy(),
+        Zsin=np.asarray([[0.0], [0.2], [0.0]]),
+        Lcos=zeros.copy(),
+        Lsin=np.asarray([[0.1], [0.2], [0.3]]),
+    )
+    indata = InData(
+        scalars={"MPOL": 1, "NTOR": 0, "NS_ARRAY": [3], "NFP": 1, "LASYM": False, "LCONM1": True},
+        indexed={"RBC": {(0, 0): 1.0}},
+    )
+    jacobian = np.zeros((4 * static.modes.K, 1), dtype=float)
+    jacobian[0, 0] = 1.0
+    projection = _prepare_freeb_edge_control_projection(
+        {
+            "enabled": True,
+            "basis_symmetry": "test",
+            "labels": ["edge_radius"],
+            "control_jacobian": jacobian,
+            "update_mode": "native_coordinate",
+        },
+        indata=indata,
+        static=static,
+        state0=state0,
+        free_boundary_enabled=True,
+    )
+    s = jnp.linspace(0.0, 1.0, cfg.ns)
+    mode_context = build_mode_transform_context(
+        static=static,
+        state0=state0,
+        s=s,
+        host_update_assembly=False,
+        setup_host_enforce=False,
+        divide_by_scalxc_for_update=False,
+        mode_diag_exponent=0.0,
+        tree_has_tracer=lambda _value: False,
+        vmec_scalxc_from_s=vmec_scalxc_from_s,
+    )
+    unknowns = free_boundary_native_spline_unknown_vector_from_vmec_state(state0, projection)
+
+    def residual_fn(decoded_state):
+        frcc = jnp.asarray(decoded_state.Rcos).reshape((cfg.ns, cfg.mpol, cfg.ntor + 1))
+        fzsc = jnp.asarray(decoded_state.Zsin).reshape((cfg.ns, cfg.mpol, cfg.ntor + 1))
+        flsc = jnp.asarray(decoded_state.Lsin).reshape((cfg.ns, cfg.mpol, cfg.ntor + 1))
+        z = jnp.zeros_like(frcc)
+        return free_boundary_native_spline_force_blocks_to_state_residual(
+            template_state=decoded_state,
+            force_blocks=TomnspsRZL(
+                frcc=frcc,
+                frss=None,
+                fzsc=fzsc,
+                fzcs=None,
+                flsc=flsc,
+                flcs=None,
+            ),
+            mode_context=mode_context,
+            lambda_update_scale=1.0 + 0.0 * jnp.sum(z),
+        )
+
+    problem = FreeBoundaryNativeSplineResidualProblem(
+        template_state=state0,
+        projection=projection,
+        residual_fn=residual_fn,
+    )
+    before = float(jnp.linalg.norm(problem.residual(unknowns.vector)))
+    step = free_boundary_native_spline_matrix_free_normal_step_jax(
+        problem,
+        unknowns.vector,
+        damping=1.0e-10,
+        tol=1.0e-12,
+        maxiter=8,
+    )
+    after = float(jnp.linalg.norm(problem.residual(step.next_vector)))
+
+    assert isinstance(step, FreeBoundaryNativeSplineMatrixFreeStep)
+    assert before > 0.0
+    assert after < before
 
 
 def test_native_spline_vector_residual_jax_respects_mode_scale() -> None:

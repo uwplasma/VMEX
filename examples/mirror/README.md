@@ -688,6 +688,9 @@ normal step on the local CPU.
 manufactured/tiny-case packed-native solve prototype. They form dense
 Jacobians, so they are a correctness bridge toward the matrix-free production
 solver rather than the strict square-coil equilibrium path itself.
+``free_boundary_native_spline_force_blocks_to_state_residual`` converts VMEC
+``TomnspsRZL`` force blocks into the signed ``VMECState`` residual basis used
+by that prototype, reusing the same mode transforms as the residual update.
 Use ``free_boundary_native_spline_matrix_free_normal_*`` for the next prototype
 step: it applies ``J`` and ``J.T`` through JAX JVP/VJP products and solves the
 damped normal equations by conjugate gradient.

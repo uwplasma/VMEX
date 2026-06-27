@@ -589,6 +589,12 @@ matrix-free loop.
 opt-in packed-native nonlinear-state prototype. They intentionally form dense
 Jacobians and are only for manufactured or tiny smoke problems; production
 strict profiles still need the matrix-free/preconditioned native loop.
+``free_boundary_native_spline_force_blocks_to_state_residual`` maps VMEC
+``TomnspsRZL`` R/Z/lambda force blocks into the signed ``VMECState`` residual
+basis used by that native problem. This is the bridge from the real VMEC force
+evaluator into the native spline-control residual loop: R blocks use the same
+cosine signed-mode transform as the residual update, while Z and lambda blocks
+use the sine signed-mode transform and the existing lambda update scale.
 The adjacent ``free_boundary_native_spline_matrix_free_normal_*`` helpers use
 ``jax.linearize``/``jax.vjp`` products and conjugate-gradient normal equations
 instead of forming the dense Jacobian. They are still prototypes, but they are

@@ -109,6 +109,88 @@ class FreeBoundaryNativeSplineMatrixFreeSolve(NamedTuple):
     history: tuple[dict[str, float | int], ...]
 
 
+def free_boundary_native_spline_force_blocks_to_state_residual(
+    *,
+    template_state: VMECState,
+    force_blocks: Any,
+    mode_context: Any,
+    lambda_update_scale: Any = 1.0,
+) -> VMECState:
+    """Map VMEC force blocks into the native residual state's signed basis.
+
+    ``force_blocks`` is normally a VMEC ``TomnspsRZL`` payload from the force
+    evaluator. The mode transform is supplied by the residual driver so this
+    helper follows the same R/Z/lambda block mapping used by VMEC-style updates.
+    """
+
+    if not isinstance(template_state, VMECState):
+        raise TypeError("template_state must be a VMECState")
+    required = ("frcc", "fzsc", "flsc")
+    missing = [name for name in required if not hasattr(force_blocks, name)]
+    if missing:
+        raise TypeError(f"force_blocks missing required fields: {', '.join(missing)}")
+    for name in ("mn_cos_to_signed_physical", "mn_sin_to_signed_physical"):
+        if not callable(getattr(mode_context, name, None)):
+            raise TypeError(f"mode_context must provide {name}")
+
+    zeros = jnp.zeros_like(jnp.asarray(template_state.Rcos))
+    rcos = mode_context.mn_cos_to_signed_physical(
+        getattr(force_blocks, "frcc"),
+        getattr(force_blocks, "frss", None),
+    )
+    zsin = mode_context.mn_sin_to_signed_physical(
+        getattr(force_blocks, "fzsc"),
+        getattr(force_blocks, "fzcs", None),
+    )
+    lambda_scale = jnp.asarray(lambda_update_scale, dtype=jnp.asarray(zsin).dtype)
+    lsin = (
+        mode_context.mn_sin_to_signed_physical_lambda(
+            getattr(force_blocks, "flsc"),
+            getattr(force_blocks, "flcs", None),
+        )
+        if callable(getattr(mode_context, "mn_sin_to_signed_physical_lambda", None))
+        else mode_context.mn_sin_to_signed_physical(
+            getattr(force_blocks, "flsc"),
+            getattr(force_blocks, "flcs", None),
+        )
+    )
+    lsin = lsin * lambda_scale
+    if bool(template_state.layout.lasym):
+        rsin = mode_context.mn_sin_to_signed_physical(
+            getattr(force_blocks, "frsc", None),
+            getattr(force_blocks, "frcs", None),
+        )
+        zcos = mode_context.mn_cos_to_signed_physical(
+            getattr(force_blocks, "fzcc", None),
+            getattr(force_blocks, "fzss", None),
+        )
+        lcos = (
+            mode_context.mn_cos_to_signed_physical_lambda(
+                getattr(force_blocks, "flcc", None),
+                getattr(force_blocks, "flss", None),
+            )
+            if callable(getattr(mode_context, "mn_cos_to_signed_physical_lambda", None))
+            else mode_context.mn_cos_to_signed_physical(
+                getattr(force_blocks, "flcc", None),
+                getattr(force_blocks, "flss", None),
+            )
+        )
+        lcos = lcos * lambda_scale
+    else:
+        rsin = zeros
+        zcos = zeros
+        lcos = zeros
+    return VMECState(
+        layout=template_state.layout,
+        Rcos=rcos,
+        Rsin=rsin,
+        Zcos=zcos,
+        Zsin=zsin,
+        Lcos=lcos,
+        Lsin=lsin,
+    )
+
+
 def free_boundary_native_spline_dense_gauss_newton_step_jax(
     problem: FreeBoundaryNativeSplineResidualProblem,
     vector: Any,
