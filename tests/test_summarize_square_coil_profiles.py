@@ -1067,7 +1067,7 @@ def test_square_coil_profile_summary_recommends_stellarator_basis_for_underfit_e
     assert row["freeb_edge_control_projection_force_capture_next_basis"] == "stellarator"
 
 
-def test_square_coil_profile_summary_recommends_native_coordinate_after_stellarator_underfit(
+def test_square_coil_profile_summary_recommends_full_basis_after_stellarator_underfit(
     tmp_path: Path,
 ):
     case_dir = tmp_path / "square_coil_freeb_backend_profile_stalled_stellarator_underfit"
@@ -1117,8 +1117,64 @@ def test_square_coil_profile_summary_recommends_native_coordinate_after_stellara
 
     row = summary.rows_from_profile(report)[0]
 
-    assert row["recommended_followup_profile_kind"] == "direct-gpu-edge-stellarator-native-polish"
+    assert row["recommended_followup_profile_kind"] == "direct-gpu-edge-full-polish"
     assert row["recommended_followup_reason"] == "stellarator_edge_basis_underfits_force_direction"
+    assert row["freeb_edge_control_projection_force_capture_status"] == "basis_underfit"
+    assert row["freeb_edge_control_projection_force_capture_next_basis"] == "full"
+
+
+def test_square_coil_profile_summary_recommends_native_coordinate_after_full_underfit(
+    tmp_path: Path,
+):
+    case_dir = tmp_path / "square_coil_freeb_backend_profile_stalled_full_underfit"
+    case_dir.mkdir()
+    report = case_dir / "square_coil_free_boundary_backend_profile.json"
+    report.write_text(
+        json.dumps(
+            {
+                "configuration": {"mpol": 5, "ntor": 28, "ns": 17, "nzeta": 64, "ftol": 1e-12},
+                "resolution_deck": {
+                    "status": "production_ready",
+                    "reasons": [],
+                    "mgrid_nphi_multiple_of_nzeta": True,
+                },
+                "backends": {
+                    "vmec_jax_direct": {
+                        "status": "completed",
+                        "n_iter": 1000,
+                        "final_fsqr": 2.0e-9,
+                        "final_fsqz": 3.0e-9,
+                        "final_fsql": 4.0e-10,
+                        "tail_plateau": {"status": "oscillatory"},
+                        "accepted_provider_parity": {"status": "completed"},
+                        "final_residual_recomputed_on_accepted_state": True,
+                        "free_boundary_edge_control_projection": {
+                            "force_direction": {
+                                "status": "measured",
+                                "residual_rel": 0.61,
+                                "captured_fraction": 0.81,
+                            },
+                        },
+                        "free_boundary_solver_overrides": {
+                            "freeb_edge_control_projection": {
+                                "requested": "full",
+                                "enabled": True,
+                                "status": "enabled",
+                                "basis_symmetry": "full",
+                                "control_count": 16,
+                                "update_mode": "coordinate",
+                            },
+                        },
+                    }
+                },
+            }
+        )
+    )
+
+    row = summary.rows_from_profile(report)[0]
+
+    assert row["recommended_followup_profile_kind"] == "direct-gpu-edge-full-native-polish"
+    assert row["recommended_followup_reason"] == "full_edge_basis_underfits_force_direction"
     assert row["freeb_edge_control_projection_force_capture_status"] == "basis_underfit"
     assert row["freeb_edge_control_projection_force_capture_next_basis"] == "native_spline_controls"
 

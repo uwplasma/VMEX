@@ -185,10 +185,12 @@ check whether the example auto-promoted an underfit mode/grid deck or rejected a
 diagnostic-only edit before spending hours on ``FTOL=1e-12`` profiles.
 The backend profiler can also constrain the nonlinear free-boundary edge
 motion to this same reduced spline-control subspace with
-``--freeb-edge-control-projection square`` or ``stellarator``. This is an
-opt-in A/B convergence path: VMEC still stores Fourier coefficients, but the
-LCFS edge update is projected through the spline-control Fourier map before
-vacuum-pressure sampling.
+``--freeb-edge-control-projection square``, ``stellarator``, or ``full``. This
+is an opt-in A/B convergence path: VMEC still stores Fourier coefficients, but
+the LCFS edge update is projected through the spline-control Fourier map before
+vacuum-pressure sampling. ``full`` keeps all 16 spline-control radii
+independent and is the diagnostic row to try when the square and
+stellarator-symmetric reductions underfit the edge force direction.
 The repo-root square-coil example now enables the square reduced-control
 projection by default with ``FREE_BOUNDARY_EDGE_CONTROL_PROJECTION = "square"``
 and pulls the LCFS edge force into reduced spline coordinates with
@@ -419,8 +421,8 @@ side/corner map. The summary table prints the projection status, relative
 residual, captured fraction, and fitted side/corner radius deltas, so a real
 solve can be checked before replacing Fourier boundary updates with reduced
 spline-control updates. The nested candidate-basis comparison also reports the
-nine-control stellarator-symmetric capture, which is the next basis to try if
-the three-control square capture is poor.
+nine-control stellarator-symmetric capture and the full 16-control capture,
+which are the next basis checks if the three-control square capture is poor.
 Strict free-boundary profile summaries also print
 ``freeb_edge_control_projection_force_capture_status`` and
 ``freeb_edge_control_projection_force_capture_next_basis``. If the square
@@ -656,6 +658,10 @@ vector: interior R/Z and lambda still follow the existing VMEC residual loop.
 Solver diagnostics include
 ``free_boundary.edge_control_projection.reduced_update_direction`` to compare
 the current full Fourier update direction against that reduced update vector.
+Native-coordinate rows also report the decoded native edge-update norm and the
+source-update residual/captured fraction in ``native_last_step``. Use those
+fields to decide whether the selected reduced basis underfits the Fourier edge
+direction before spending a longer strict run.
 The square-coil profile summary also reports
 ``boundary_control_projection_state_coordinate_linf`` and
 ``boundary_control_projection_state_reconstruction_residual_rel`` for this

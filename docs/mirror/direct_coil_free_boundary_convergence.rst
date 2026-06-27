@@ -516,9 +516,10 @@ rows that did not use the reduced edge projection recommend
 ``direct-gpu-edge-polish`` before additional kernel experiments; stalled rows
 whose square basis underfits the preconditioned force direction recommend
 ``direct-gpu-edge-stellarator-polish``; stalled rows that already use the
-stellarator basis and still underfit recommend the
-``direct-gpu-edge-stellarator-native-polish`` lane unless that native row has
-already been tried; otherwise edge-projected rows recommend the matching
+stellarator basis and still underfit recommend ``direct-gpu-edge-full-polish``;
+stalled rows that already use the full 16-control basis and still underfit
+recommend the matching native-coordinate full-basis lane unless that native row
+has already been tried; otherwise edge-projected rows recommend the matching
 edge-projected JAX-NESTOR profile next.
 The ``native-spline-control-prototype`` command is intentionally no-solve: it
 adds ``--native-spline-control-prototype`` to the profiler's
@@ -544,6 +545,13 @@ spline-control LCFS edge alongside a VMEC template and decodes to a full
 ``VMECState`` before evaluating the existing residual. It makes the native
 edge state explicit and testable, but it is not yet the full nonlinear
 unknown-vector replacement needed to remove the Fourier straight-side burden.
+The same native-coordinate rows report source-update capture diagnostics in
+``native_last_step``: ``decoded_edge_update_l2``,
+``source_edge_update_l2``, ``source_update_residual_rel``, and
+``source_update_captured_fraction``. A large residual ratio here means the
+chosen square-axis reduced basis is not representing the current Fourier edge
+update direction, so the next test is a richer basis rather than only more
+iterations.
 The public helper
 ``vmec_jax.recommend_square_axis_stellarator_mirror_hybrid_resolution`` scans a
 small finite ``MPOL``/``NTOR`` ladder for the current spline-smoothed target and

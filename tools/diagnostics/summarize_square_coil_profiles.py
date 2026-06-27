@@ -854,6 +854,8 @@ def _edge_force_capture_next_basis(
     basis_key = str(basis or "").strip().lower()
     if basis_key in {"", "square"}:
         return "stellarator"
+    if basis_key == "stellarator":
+        return "full"
     return "native_spline_controls"
 
 
@@ -1018,13 +1020,19 @@ def _recommended_followup_payload(
                     "recommended_followup_profile_kind": "direct-gpu-edge-stellarator-polish",
                     "recommended_followup_reason": "square_edge_basis_underfits_force_direction",
                 }
+            elif edge_capture == "basis_underfit" and edge_next_basis == "full":
+                return {
+                    "recommended_followup_profile_kind": "direct-gpu-edge-full-polish",
+                    "recommended_followup_reason": "stellarator_edge_basis_underfits_force_direction",
+                }
             elif edge_capture == "basis_underfit" and edge_next_basis == "native_spline_controls":
                 if edge_update_mode != "native_coordinate":
-                    native_kind = (
-                        "direct-gpu-edge-stellarator-native-polish"
-                        if edge_basis == "stellarator"
-                        else "direct-gpu-edge-native-polish"
-                    )
+                    if edge_basis == "full":
+                        native_kind = "direct-gpu-edge-full-native-polish"
+                    elif edge_basis == "stellarator":
+                        native_kind = "direct-gpu-edge-stellarator-native-polish"
+                    else:
+                        native_kind = "direct-gpu-edge-native-polish"
                     return {
                         "recommended_followup_profile_kind": native_kind,
                         "recommended_followup_reason": (
@@ -1051,6 +1059,8 @@ def _recommended_followup_payload(
                         "edge_control_and_jax_nestor_still_stalled_promote_native_spline_controls"
                     ),
                 }
+            elif edge_basis == "full":
+                kind = "direct-gpu-edge-full-jax-nestor-polish"
             elif edge_basis == "stellarator":
                 kind = "direct-gpu-edge-stellarator-jax-nestor-polish"
             else:
@@ -1596,12 +1606,16 @@ def _summary_row(
     if not isinstance(control_projection, dict):
         control_projection = {}
     stellarator_projection = _control_projection_candidate(control_projection, "stellarator")
+    full_projection = _control_projection_candidate(control_projection, "full")
     control_projection_state = control_projection.get("state_coordinates")
     if not isinstance(control_projection_state, dict):
         control_projection_state = {}
     stellarator_projection_state = stellarator_projection.get("state_coordinates")
     if not isinstance(stellarator_projection_state, dict):
         stellarator_projection_state = {}
+    full_projection_state = full_projection.get("state_coordinates")
+    if not isinstance(full_projection_state, dict):
+        full_projection_state = {}
     iters_to_target = _tail_projection(backend_for_projection, "", target=1.0e-12)
     component_values = _final_force_components(backend)
     limiting_component = _limiting_component(backend_for_projection, component_values)
@@ -2159,6 +2173,14 @@ def _summary_row(
         "boundary_control_projection_stellarator_control_count": stellarator_projection.get("control_count"),
         "boundary_control_projection_stellarator_state_reconstruction_residual_rel": _finite_float(
             stellarator_projection_state.get("reconstruction_residual_rel")
+        ),
+        "boundary_control_projection_full_residual_rel": _finite_float(full_projection.get("residual_rel")),
+        "boundary_control_projection_full_captured_fraction": _finite_float(
+            full_projection.get("captured_fraction")
+        ),
+        "boundary_control_projection_full_control_count": full_projection.get("control_count"),
+        "boundary_control_projection_full_state_reconstruction_residual_rel": _finite_float(
+            full_projection_state.get("reconstruction_residual_rel")
         ),
         "final_iter": final_iter,
         "final_total": final_total,
@@ -2739,6 +2761,10 @@ def main(argv: list[str] | None = None) -> int:
         "boundary_control_projection_stellarator_captured_fraction",
         "boundary_control_projection_stellarator_control_count",
         "boundary_control_projection_stellarator_state_reconstruction_residual_rel",
+        "boundary_control_projection_full_residual_rel",
+        "boundary_control_projection_full_captured_fraction",
+        "boundary_control_projection_full_control_count",
+        "boundary_control_projection_full_state_reconstruction_residual_rel",
         "final_iter",
         "final_total",
         "final_max_component",
