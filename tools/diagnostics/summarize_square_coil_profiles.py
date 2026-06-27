@@ -1751,6 +1751,9 @@ def _summary_row(
     native_actual_edge_bridge_opposite = native_actual_edge_bridge.get("opposite_flip_sign_comparison")
     if not isinstance(native_actual_edge_bridge_opposite, dict):
         native_actual_edge_bridge_opposite = {}
+    native_actual_edge_bridge_norm_matched = native_actual_edge_bridge.get("norm_matched_edge_only_comparison")
+    if not isinstance(native_actual_edge_bridge_norm_matched, dict):
+        native_actual_edge_bridge_norm_matched = {}
     native_actual_force_mapping = native_actual_force_profile.get("force_block_mapping_audit")
     if not isinstance(native_actual_force_mapping, dict):
         native_actual_force_mapping = {}
@@ -2307,6 +2310,9 @@ def _summary_row(
         "native_spline_actual_force_step_profile_edge_bridge_matrix_free_edge_update_l2": _finite_float(
             native_actual_edge_bridge.get("matrix_free_edge_update_l2")
         ),
+        "native_spline_actual_force_step_profile_edge_bridge_l2_ratio_to_matrix_free": _finite_float(
+            native_actual_edge_bridge.get("bridge_edge_to_matrix_free_l2_ratio")
+        ),
         "native_spline_actual_force_step_profile_edge_bridge_cosine_to_matrix_free": _finite_float(
             native_actual_edge_bridge.get("edge_update_cosine_to_matrix_free")
         ),
@@ -2321,6 +2327,15 @@ def _summary_row(
         ),
         "native_spline_actual_force_step_profile_edge_bridge_opposite_residual_reduction_factor": _finite_float(
             native_actual_edge_bridge_opposite.get("projected_residual_reduction_factor")
+        ),
+        "native_spline_actual_force_step_profile_edge_bridge_norm_matched_status": (
+            native_actual_edge_bridge_norm_matched.get("status")
+        ),
+        "native_spline_actual_force_step_profile_edge_bridge_norm_matched_best_direction": (
+            native_actual_edge_bridge_norm_matched.get("best_direction")
+        ),
+        "native_spline_actual_force_step_profile_edge_bridge_norm_matched_best_reduction_factor": _finite_float(
+            native_actual_edge_bridge_norm_matched.get("best_projected_residual_reduction_factor")
         ),
         "native_spline_actual_force_step_profile_edge_bridge_sign_alignment_status": (
             native_actual_edge_bridge.get("sign_alignment_status")
@@ -2974,11 +2989,15 @@ def main(argv: list[str] | None = None) -> int:
         "native_spline_actual_force_step_profile_edge_bridge_wall_s",
         "native_spline_actual_force_step_profile_edge_bridge_control_update_l2",
         "native_spline_actual_force_step_profile_edge_bridge_matrix_free_edge_update_l2",
+        "native_spline_actual_force_step_profile_edge_bridge_l2_ratio_to_matrix_free",
         "native_spline_actual_force_step_profile_edge_bridge_cosine_to_matrix_free",
         "native_spline_actual_force_step_profile_edge_bridge_residual_reduction_factor",
         "native_spline_actual_force_step_profile_edge_bridge_projected_l2_after",
         "native_spline_actual_force_step_profile_edge_bridge_opposite_cosine_to_matrix_free",
         "native_spline_actual_force_step_profile_edge_bridge_opposite_residual_reduction_factor",
+        "native_spline_actual_force_step_profile_edge_bridge_norm_matched_status",
+        "native_spline_actual_force_step_profile_edge_bridge_norm_matched_best_direction",
+        "native_spline_actual_force_step_profile_edge_bridge_norm_matched_best_reduction_factor",
         "native_spline_actual_force_step_profile_edge_bridge_sign_alignment_status",
         "freeb_edge_control_projection_zero_velocity_count",
         "freeb_edge_control_projection_state_residual_status",

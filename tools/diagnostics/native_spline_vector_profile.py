@@ -129,6 +129,50 @@ def _json_scalar(value: Any) -> float | int | str | None:
     return str(value)
 
 
+def _scaled_edge_update(
+    direction: Any,
+    *,
+    target_norm: float,
+) -> tuple[np.ndarray, float | None]:
+    """Return ``direction`` scaled to ``target_norm`` and the applied scale."""
+
+    values = np.asarray(direction, dtype=float).reshape(-1)
+    norm = float(np.linalg.norm(values))
+    if norm <= np.finfo(float).tiny:
+        return np.zeros_like(values), None
+    scale = float(target_norm) / norm
+    return values * scale, scale
+
+
+def _edge_only_update_residual_payload(
+    *,
+    problem: Any,
+    vector: Any,
+    edge_count: int,
+    edge_update: Any,
+    before_l2: float,
+) -> dict[str, Any]:
+    """Evaluate the projected residual after an edge-only native update."""
+
+    update = np.asarray(edge_update, dtype=float).reshape(-1)
+    if update.size != int(edge_count):
+        raise ValueError("edge_update must match edge_count")
+    candidate = np.array(np.asarray(vector, dtype=float), dtype=float, copy=True).reshape(-1)
+    candidate[-int(edge_count) :] += update
+    residual, wall_s = _time_call(lambda: problem.residual(candidate))
+    norm = _norms(np.asarray(residual, dtype=float))
+    reduction = None if float(before_l2) <= np.finfo(float).tiny else float(norm["l2"] / float(before_l2))
+    return {
+        "status": "completed",
+        "edge_update_l2": _norms(update)["l2"],
+        "edge_update_linf": _norms(update)["linf"],
+        "post_step_residual_wall_s": float(wall_s),
+        "projected_residual_l2_after_step": norm["l2"],
+        "projected_residual_linf_after_step": norm["linf"],
+        "projected_residual_reduction_factor": reduction,
+    }
+
+
 def _mode00_index(modes: Any) -> int:
     """Return the signed-mode index for ``m=0,n=0``."""
 
@@ -493,6 +537,45 @@ def native_spline_actual_force_step_profile_payload(
     opposite_bridge_edge_update = np.asarray(opposite_bridge_step.control_update, dtype=float).reshape(-1)
     bridge_cosine = _cosine(bridge_edge_update, matrix_free_edge_update)
     opposite_bridge_cosine = _cosine(opposite_bridge_edge_update, matrix_free_edge_update)
+    matrix_free_edge_update_norm = _norms(matrix_free_edge_update)
+    bridge_edge_update_norm = _norms(bridge_edge_update)
+    opposite_bridge_edge_update_norm = _norms(opposite_bridge_edge_update)
+    bridge_norm_matched_update, bridge_norm_match_scale = _scaled_edge_update(
+        bridge_edge_update,
+        target_norm=matrix_free_edge_update_norm["l2"],
+    )
+    bridge_norm_matched = _edge_only_update_residual_payload(
+        problem=problem,
+        vector=vector,
+        edge_count=edge_count,
+        edge_update=bridge_norm_matched_update,
+        before_l2=before_norm["l2"],
+    )
+    opposite_norm_matched_update, opposite_norm_match_scale = _scaled_edge_update(
+        opposite_bridge_edge_update,
+        target_norm=matrix_free_edge_update_norm["l2"],
+    )
+    opposite_norm_matched = _edge_only_update_residual_payload(
+        problem=problem,
+        vector=vector,
+        edge_count=edge_count,
+        edge_update=opposite_norm_matched_update,
+        before_l2=before_norm["l2"],
+    )
+    norm_matched_candidates = (
+        ("vmec_flip_sign", bridge_norm_matched),
+        ("opposite_flip_sign", opposite_norm_matched),
+    )
+    norm_matched_best_label, norm_matched_best_payload = min(
+        norm_matched_candidates,
+        key=lambda item: float(item[1].get("projected_residual_l2_after_step", np.inf)),
+    )
+    norm_matched_best_reduction = norm_matched_best_payload.get("projected_residual_reduction_factor")
+    norm_matched_status = (
+        "edge_direction_reduces_projected_residual"
+        if norm_matched_best_reduction is not None and float(norm_matched_best_reduction) < 1.0
+        else "edge_direction_does_not_reduce_projected_residual"
+    )
     if bridge_cosine is None and opposite_bridge_cosine is None:
         sign_alignment = "undetermined_zero_edge_update"
     elif opposite_bridge_cosine is not None and (bridge_cosine is None or opposite_bridge_cosine > bridge_cosine):
@@ -565,8 +648,13 @@ def native_spline_actual_force_step_profile_payload(
             "control_update_l2": float(bridge_step.control_update_l2),
             "trust_scale": float(bridge_step.trust_scale),
             "native_update_vector_l2": _norms(np.asarray(bridge_step.native_update_vector, dtype=float))["l2"],
-            "matrix_free_edge_update_l2": _norms(matrix_free_edge_update)["l2"],
-            "bridge_edge_update_l2": _norms(bridge_edge_update)["l2"],
+            "matrix_free_edge_update_l2": matrix_free_edge_update_norm["l2"],
+            "bridge_edge_update_l2": bridge_edge_update_norm["l2"],
+            "bridge_edge_to_matrix_free_l2_ratio": (
+                None
+                if matrix_free_edge_update_norm["l2"] <= np.finfo(float).tiny
+                else float(bridge_edge_update_norm["l2"] / matrix_free_edge_update_norm["l2"])
+            ),
             "edge_update_cosine_to_matrix_free": bridge_cosine,
             "projected_residual_l2_after_step": bridge_norm["l2"],
             "projected_residual_linf_after_step": bridge_norm["linf"],
@@ -576,14 +664,36 @@ def native_spline_actual_force_step_profile_payload(
                 "wall_s": float(opposite_bridge_s),
                 "post_step_residual_wall_s": float(opposite_bridge_residual_s),
                 "control_update_l2": float(opposite_bridge_step.control_update_l2),
+                "opposite_edge_to_matrix_free_l2_ratio": (
+                    None
+                    if matrix_free_edge_update_norm["l2"] <= np.finfo(float).tiny
+                    else float(opposite_bridge_edge_update_norm["l2"] / matrix_free_edge_update_norm["l2"])
+                ),
                 "edge_update_cosine_to_matrix_free": opposite_bridge_cosine,
                 "projected_residual_l2_after_step": opposite_bridge_norm["l2"],
                 "projected_residual_linf_after_step": opposite_bridge_norm["linf"],
                 "projected_residual_reduction_factor": opposite_bridge_reduction,
             },
+            "norm_matched_edge_only_comparison": {
+                "status": norm_matched_status,
+                "target_l2": matrix_free_edge_update_norm["l2"],
+                "best_direction": norm_matched_best_label,
+                "best_projected_residual_l2_after_step": norm_matched_best_payload.get(
+                    "projected_residual_l2_after_step"
+                ),
+                "best_projected_residual_reduction_factor": norm_matched_best_reduction,
+                "vmec_flip_sign": {
+                    "scale": bridge_norm_match_scale,
+                    **bridge_norm_matched,
+                },
+                "opposite_flip_sign": {
+                    "scale": opposite_norm_match_scale,
+                    **opposite_norm_matched,
+                },
+            },
             "sign_alignment_status": sign_alignment,
         },
-        "next_action": "resolve_native_force_sign_and_add_free_boundary_vacuum_pressure",
+        "next_action": "promote_matrix_free_native_spline_residual_with_vacuum_pressure_and_line_search",
     }
 
 

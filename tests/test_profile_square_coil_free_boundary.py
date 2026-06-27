@@ -1673,6 +1673,9 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert bridge["control_update_l2"] >= 0.0
     assert bridge["matrix_free_edge_update_l2"] >= 0.0
     assert bridge["bridge_edge_update_l2"] >= 0.0
+    assert bridge["bridge_edge_to_matrix_free_l2_ratio"] is None or (
+        bridge["bridge_edge_to_matrix_free_l2_ratio"] >= 0.0
+    )
     assert bridge["projected_residual_l2_after_step"] >= 0.0
     cosine = bridge["edge_update_cosine_to_matrix_free"]
     assert cosine is None or -1.0 <= cosine <= 1.0
@@ -1682,12 +1685,29 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert opposite["post_step_residual_wall_s"] >= 0.0
     opposite_cosine = opposite["edge_update_cosine_to_matrix_free"]
     assert opposite_cosine is None or -1.0 <= opposite_cosine <= 1.0
+    norm_matched = bridge["norm_matched_edge_only_comparison"]
+    assert norm_matched["status"] in {
+        "edge_direction_reduces_projected_residual",
+        "edge_direction_does_not_reduce_projected_residual",
+    }
+    assert norm_matched["target_l2"] == pytest.approx(bridge["matrix_free_edge_update_l2"])
+    assert norm_matched["best_direction"] in {"vmec_flip_sign", "opposite_flip_sign"}
+    assert norm_matched["best_projected_residual_l2_after_step"] >= 0.0
+    best_reduction = norm_matched["best_projected_residual_reduction_factor"]
+    assert best_reduction is None or best_reduction >= 0.0
+    for direction in ("vmec_flip_sign", "opposite_flip_sign"):
+        payload = norm_matched[direction]
+        assert payload["status"] == "completed"
+        assert payload["edge_update_l2"] == pytest.approx(norm_matched["target_l2"])
+        assert payload["projected_residual_l2_after_step"] >= 0.0
     assert bridge["sign_alignment_status"] in {
         "undetermined_zero_edge_update",
         "opposite_flip_sign_better_matches_matrix_free_edge_update",
         "vmec_flip_sign_better_matches_matrix_free_edge_update",
     }
-    assert native["next_action"] == "resolve_native_force_sign_and_add_free_boundary_vacuum_pressure"
+    assert native["next_action"] == (
+        "promote_matrix_free_native_spline_residual_with_vacuum_pressure_and_line_search"
+    )
 
     row = summary.rows_from_profile(outdir / "square_coil_free_boundary_backend_profile.json")[0]
     assert row["native_spline_actual_force_step_profile_status"] == "completed"
@@ -1703,7 +1723,7 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     )
     assert (
         row["native_spline_actual_force_step_profile_next_action"]
-        == "resolve_native_force_sign_and_add_free_boundary_vacuum_pressure"
+        == "promote_matrix_free_native_spline_residual_with_vacuum_pressure_and_line_search"
     )
     assert row["native_spline_actual_force_step_profile_edge_bridge_status"] == "completed"
     assert (
@@ -1720,9 +1740,32 @@ def test_square_coil_profile_native_spline_actual_force_step_profile_is_no_solve
     assert row["native_spline_actual_force_step_profile_edge_bridge_control_update_l2"] == pytest.approx(
         bridge["control_update_l2"]
     )
+    if bridge["bridge_edge_to_matrix_free_l2_ratio"] is None:
+        assert row["native_spline_actual_force_step_profile_edge_bridge_l2_ratio_to_matrix_free"] is None
+    else:
+        assert row[
+            "native_spline_actual_force_step_profile_edge_bridge_l2_ratio_to_matrix_free"
+        ] == pytest.approx(bridge["bridge_edge_to_matrix_free_l2_ratio"])
     assert row[
         "native_spline_actual_force_step_profile_edge_bridge_residual_reduction_factor"
     ] == pytest.approx(bridge["projected_residual_reduction_factor"])
+    assert row[
+        "native_spline_actual_force_step_profile_edge_bridge_norm_matched_status"
+    ] == norm_matched["status"]
+    assert row[
+        "native_spline_actual_force_step_profile_edge_bridge_norm_matched_best_direction"
+    ] == norm_matched["best_direction"]
+    if norm_matched["best_projected_residual_reduction_factor"] is None:
+        assert (
+            row[
+                "native_spline_actual_force_step_profile_edge_bridge_norm_matched_best_reduction_factor"
+            ]
+            is None
+        )
+    else:
+        assert row[
+            "native_spline_actual_force_step_profile_edge_bridge_norm_matched_best_reduction_factor"
+        ] == pytest.approx(norm_matched["best_projected_residual_reduction_factor"])
     assert row[
         "native_spline_actual_force_step_profile_edge_bridge_sign_alignment_status"
     ] == bridge["sign_alignment_status"]
