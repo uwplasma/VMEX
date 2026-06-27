@@ -380,7 +380,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--freeb-edge-control-projection",
-        choices=("none", "square", "stellarator"),
+        choices=("none", "square", "stellarator", "full"),
         default="none",
         help=(
             "Constrain vmec_jax free-boundary LCFS edge motion to the selected square-axis spline-control "
@@ -1237,7 +1237,7 @@ def _boundary_reduced_control_projection_payload(
             initial_boundary=initial_boundary,
             final_boundary=final_boundary,
         )
-        for symmetry in ("square", "stellarator")
+        for symmetry in ("square", "stellarator", "full")
     }
     return primary
 
@@ -2527,7 +2527,7 @@ def _freeb_edge_control_projection_solver_payload(
     symmetry = str(symmetry).strip().lower()
     if symmetry in {"", "none", "off", "false"}:
         return None
-    if symmetry not in {"square", "stellarator"}:
+    if symmetry not in {"square", "stellarator", "full"}:
         raise ValueError(f"unsupported free-boundary edge-control projection: {symmetry!r}")
     if not _square_axis_uses_spline_controls(config):
         raise ValueError("--freeb-edge-control-projection requires --axis-kind control_spline")
@@ -2602,7 +2602,7 @@ def _control_basis_payload(config: ExampleConfig) -> dict[str, Any]:
         }
     controls = _square_axis_controls(config)
     bases: dict[str, Any] = {}
-    for symmetry in ("square", "stellarator"):
+    for symmetry in ("square", "stellarator", "full"):
         basis = square_axis_spline_symmetric_control_basis(controls, symmetry=symmetry)
         reduced_radius = basis.project_radius(controls.radius)
         bases[symmetry] = {
@@ -2664,7 +2664,7 @@ def _control_fourier_map_payload(config: ExampleConfig) -> dict[str, Any]:
     if payload is not None:
         payload["candidate_bases"] = {
             symmetry: _control_fourier_map_for_symmetry(config, symmetry=symmetry)
-            for symmetry in ("square", "stellarator")
+            for symmetry in ("square", "stellarator", "full")
         }
     return payload
 

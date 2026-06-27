@@ -1193,7 +1193,7 @@ def _control_fourier_map_payload(config: ExampleConfig) -> dict[str, Any]:
         "status": "available",
         "axis_kind": str(solve_config.plasma_axis_kind),
     }
-    for symmetry in ("square", "stellarator"):
+    for symmetry in ("square", "stellarator", "full"):
         try:
             status = square_axis_spline_control_fourier_map_status(
                 controls=controls,
@@ -1228,8 +1228,10 @@ def _edge_control_projection_payload(config: ExampleConfig) -> dict[str, Any] | 
     symmetry = str(solve_config.free_boundary_edge_control_projection).strip().lower()
     if symmetry in {"", "none", "off", "false"}:
         return None
-    if symmetry not in {"square", "stellarator"}:
-        raise ValueError("free_boundary_edge_control_projection must be 'square', 'stellarator', or 'none'")
+    if symmetry not in {"square", "stellarator", "full"}:
+        raise ValueError(
+            "free_boundary_edge_control_projection must be 'square', 'stellarator', 'full', or 'none'"
+        )
     controls = _resolved_axis_spline_controls(solve_config)
     if controls is None:
         raise ValueError("free_boundary_edge_control_projection requires plasma_axis_kind='control_spline'")

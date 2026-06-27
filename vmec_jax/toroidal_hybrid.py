@@ -482,8 +482,8 @@ def square_axis_free_boundary_edge_control_projection_payload(
     symmetry_key = str(symmetry).strip().lower()
     if symmetry_key in {"", "none", "off", "false"}:
         return None
-    if symmetry_key not in {"square", "stellarator"}:
-        raise ValueError("symmetry must be 'square', 'stellarator', or 'none'")
+    if symmetry_key not in {"square", "stellarator", "full"}:
+        raise ValueError("symmetry must be 'square', 'stellarator', 'full', or 'none'")
     rcond_value = float(rcond)
     if not np.isfinite(rcond_value) or rcond_value <= 0.0:
         raise ValueError("rcond must be positive and finite")
@@ -555,6 +555,7 @@ def square_axis_spline_symmetric_control_basis(
 ) -> SquareAxisControlBasis:
     """Return a symmetry-preserving reduced basis for square-axis controls.
 
+    ``symmetry="full"`` leaves every spline radius as an independent control.
     ``symmetry="stellarator"`` enforces the usual even-radius condition
     ``r(zeta) = r(-zeta)``.  ``symmetry="square"`` additionally groups nodes
     related by quarter-turn rotations; the eight-control low-level default
@@ -574,13 +575,22 @@ def square_axis_spline_symmetric_control_basis(
         symmetry_key = "stellarator"
     if symmetry_key in {"fourfold", "dihedral", "d4"}:
         symmetry_key = "square"
-    if symmetry_key not in {"stellarator", "square"}:
-        raise ValueError("symmetry must be 'stellarator' or 'square'")
+    if symmetry_key in {"identity", "unreduced", "all_controls"}:
+        symmetry_key = "full"
+    if symmetry_key not in {"full", "stellarator", "square"}:
+        raise ValueError("symmetry must be 'full', 'stellarator', or 'square'")
     if not np.isfinite(float(angle_tol)) or float(angle_tol) <= 0.0:
         raise ValueError("angle_tol must be positive and finite")
 
     zeta = np.asarray(validated.zeta, dtype=float)
     n_control = int(zeta.size)
+    if symmetry_key == "full":
+        return SquareAxisControlBasis(
+            controls=validated,
+            symmetry="full",
+            labels=tuple(f"control_{idx:02d}" for idx in range(n_control)),
+            matrix=np.eye(n_control, dtype=float),
+        )
     unused = set(range(n_control))
     orbits: list[list[int]] = []
     while unused:

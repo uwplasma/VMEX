@@ -161,7 +161,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--freeb-edge-control-projection",
-        choices=("none", "square", "stellarator"),
+        choices=("none", "square", "stellarator", "full"),
         default=None,
         help=(
             "Add the vmec_jax reduced edge-control projection to JAX commands. "

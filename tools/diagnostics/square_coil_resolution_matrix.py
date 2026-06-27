@@ -84,7 +84,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--edge-control-projection",
-        choices=("none", "square", "stellarator"),
+        choices=("none", "square", "stellarator", "full"),
         default="stellarator",
         help="Reduced edge-control basis used by --print-jax-commands and strict readiness diagnostics.",
     )
@@ -343,7 +343,7 @@ def _control_map_rows(config: ExampleConfig) -> dict[str, Any]:
         "control_map_status": "available",
         "control_map_axis_kind": axis_kind,
     }
-    for symmetry in ("square", "stellarator"):
+    for symmetry in ("square", "stellarator", "full"):
         try:
             status = square_axis_spline_control_fourier_map_status(
                 controls=controls,

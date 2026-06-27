@@ -1347,6 +1347,8 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert control_basis["bases"]["square"]["reduced_count"] == 3
     assert control_basis["bases"]["square"]["expansion_matrix_shape"] == [16, 3]
     assert control_basis["bases"]["stellarator"]["reduced_count"] == 9
+    assert control_basis["bases"]["full"]["reduced_count"] == 16
+    assert control_basis["bases"]["full"]["expansion_matrix_shape"] == [16, 16]
     control_map = data["control_fourier_map"]
     assert control_map["status"] == "available"
     assert control_map["labels"] == ["side", "square_orbit_1", "corner"]
@@ -1359,6 +1361,9 @@ def test_square_coil_profile_records_boundary_projection_payload(monkeypatch, tm
     assert candidate_maps["stellarator"]["basis_symmetry"] == "stellarator"
     assert candidate_maps["stellarator"]["control_count"] == 9
     assert candidate_maps["stellarator"]["jacobian_shape"] == [4 * projection["mode_count"], 9]
+    assert candidate_maps["full"]["basis_symmetry"] == "full"
+    assert candidate_maps["full"]["control_count"] == 16
+    assert candidate_maps["full"]["jacobian_shape"] == [4 * projection["mode_count"], 16]
     edge_projection = data["edge_control_projection"]
     assert edge_projection["status"] == "disabled"
     spline_bridge = data["spline_bridge"]

@@ -259,6 +259,11 @@ def test_square_axis_symmetric_control_basis_expands_default_side_corner_control
     stellsym = square_axis_spline_symmetric_control_basis(controls, symmetry="stellarator")
     assert stellsym.matrix.shape[1] == 5
     np.testing.assert_allclose(stellsym.expand_radius(stellsym.project_radius(controls.radius)), controls.radius)
+    full = square_axis_spline_symmetric_control_basis(controls, symmetry="full")
+    assert full.symmetry == "full"
+    assert full.labels == tuple(f"control_{idx:02d}" for idx in range(controls.radius.size))
+    np.testing.assert_allclose(full.matrix, np.eye(controls.radius.size))
+    np.testing.assert_allclose(full.expand_radius(full.project_radius(controls.radius)), controls.radius)
 
     refined = SquareAxisSplineControls.rounded_square(
         axis_half_width=1.5,
@@ -267,10 +272,12 @@ def test_square_axis_symmetric_control_basis_expands_default_side_corner_control
     )
     refined_square = square_axis_spline_symmetric_control_basis(refined, symmetry="square")
     refined_stellsym = square_axis_spline_symmetric_control_basis(refined, symmetry="stellarator")
+    refined_full = square_axis_spline_symmetric_control_basis(refined, symmetry="full")
     assert refined.radius.size == 16
     assert refined_square.matrix.shape == (16, 3)
     assert refined_square.labels == ("side", "square_orbit_1", "corner")
     assert refined_stellsym.matrix.shape == (16, 9)
+    assert refined_full.matrix.shape == (16, 16)
     with pytest.raises(ValueError, match="control_count"):
         SquareAxisSplineControls.rounded_square(control_count=12)
 
@@ -553,6 +560,27 @@ def test_square_axis_free_boundary_edge_control_projection_payload():
     jacobian = np.asarray(payload["control_jacobian"], dtype=float)
     assert jacobian.shape == (4 * int(payload["mode_count"]), 2)
     assert np.all(np.isfinite(jacobian))
+    full_payload = square_axis_free_boundary_edge_control_projection_payload(
+        controls=controls,
+        symmetry="full",
+        mpol=4,
+        ntor=8,
+        ntheta_fit=32,
+        nzeta_fit=64,
+        minor_radius=0.03,
+        side_elongation=0.08,
+        side_minor_modulation=0.08,
+        corner_ellipticity=0.04,
+        corner_amplitude=0.004,
+        corner_rotation=0.30,
+    )
+    assert full_payload is not None
+    assert full_payload["basis_symmetry"] == "full"
+    assert full_payload["control_count"] == controls.radius.size
+    assert np.asarray(full_payload["control_jacobian"]).shape == (
+        4 * int(full_payload["mode_count"]),
+        controls.radius.size,
+    )
     assert square_axis_free_boundary_edge_control_projection_payload(symmetry="none") is None
     with pytest.raises(ValueError, match="symmetry must"):
         square_axis_free_boundary_edge_control_projection_payload(symmetry="bad")
