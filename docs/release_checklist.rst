@@ -154,7 +154,7 @@ Current repository release note
 -------------------------------
 
 The latest repository tag prepared from this checklist is
-`v0.0.15 <https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.15>`_, built
+`v0.0.16 <https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.16>`_, built
 from the matching release tag after the required CI gates passed.  Verify PyPI
 with a no-dependencies wheel download after each publication.
 Package-index descriptions are immutable for already-published files, so any

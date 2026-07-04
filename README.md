@@ -192,7 +192,7 @@ Full provenance and artifact-promotion rules live in the docs:
 - Performance notes: `docs/performance.rst`; validation, coverage, and release
   gates: `docs/validation.rst`, `docs/testing_strategy.rst`, and
   `docs/release_checklist.rst`.
-- Latest repository release tag: [`v0.0.15`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.15).
+- Latest repository release tag: [`v0.0.16`](https://github.com/uwplasma/vmec_jax/releases/tag/v0.0.16).
 
 ## CLI Reference
 
