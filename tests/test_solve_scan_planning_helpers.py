@@ -1,6 +1,7 @@
 from collections import OrderedDict, namedtuple
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from vmec_jax._compat import jnp
@@ -35,6 +36,7 @@ from vmec_jax.solvers.fixed_boundary.scan.runtime import (
     resolve_scan_runtime_hooks,
     resolve_scan_runtime_hooks_from_env,
     run_scan_preflight_step,
+    run_nonchunked_scan,
     scan_explicit_compile_enabled,
     scan_hlo_summary_enabled,
     scan_trace_context_or_null,
@@ -704,6 +706,64 @@ def test_run_scan_preflight_step_handles_jitted_sequence_history():
 
     assert result.carry.value == "jitted"
     assert result.history_row == ("fsqr0", "fsqz0", "fsql0")
+
+
+def test_run_nonchunked_scan_passes_compact_iteration_sequence_and_scalar_controls():
+    calls = []
+
+    class Runtime:
+        @staticmethod
+        def ready(*_args, **_kwargs):
+            pytest.fail("timing disabled should not synchronize device values")
+
+    def get_scan_runner(seq_len):
+        assert seq_len == 5
+
+        def runner(carry, it_seq, ftol, target):
+            calls.append((it_seq, ftol, target))
+            return carry + ("advanced",), (
+                jnp.ones((5,), dtype=jnp.float64),
+                2 * jnp.ones((5,), dtype=jnp.float64),
+                3 * jnp.ones((5,), dtype=jnp.float64),
+            )
+
+        return runner, "miss"
+
+    result = run_nonchunked_scan(
+        ("carry",),
+        max_iter_scan=5,
+        max_iter_tail=5,
+        preflight_iters=0,
+        iter_offset_preflight=0,
+        axis_reset_repeat=False,
+        iter_offset0=0,
+        get_scan_runner=get_scan_runner,
+        scan_step=lambda *_args: pytest.fail("no preflight should not call scan_step directly"),
+        runtime_scan_args=(jnp.asarray(1.0e-8), jnp.asarray(jnp.nan)),
+        scan_jit_preflight_enabled_func=lambda **_kwargs: pytest.fail("no preflight should not probe jit policy"),
+        scan_jit_preflight_env=None,
+        backend_name="cpu",
+        scan_differentiated=False,
+        scan_collect_print=False,
+        scan_timing_enabled=False,
+        scan_timing_stats={},
+        scan_device_runtime=Runtime(),
+        perf_counter=lambda: pytest.fail("timing disabled should not request time"),
+        state_only_scan=False,
+        scan_fallback_enabled_run=False,
+        scan_fallback_iters=0,
+        jnp_module=jnp,
+        jax_module=SimpleNamespace(tree_util=None),
+    )
+
+    assert result.carry_final == ("carry", "advanced")
+    assert len(calls) == 1
+    it_seq, ftol, target = calls[0]
+    assert tuple(np.asarray(it_seq)) == (0, 1, 2, 3, 4)
+    assert np.shape(ftol) == ()
+    assert np.shape(target) == ()
+    assert float(ftol) == pytest.approx(1.0e-8)
+    assert np.isnan(float(target))
 
 
 def test_run_flags_disable_fallback_for_state_only_and_chunking_for_traced_scan():

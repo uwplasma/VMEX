@@ -113,7 +113,7 @@ def _scan_iteration_input_sequence(
     dtype: Any,
     convergence_controls: ScanConvergenceControls,
 ) -> Any:
-    """Build scan iteration inputs with dynamic convergence tolerances."""
+    """Build legacy scan iteration inputs with dynamic convergence tolerances."""
 
     it_seq = jnp.arange(int(start), int(stop), dtype=jnp.int32)
     ftol_seq = jnp.full(it_seq.shape, convergence_controls.ftol, dtype=dtype)
@@ -121,6 +121,28 @@ def _scan_iteration_input_sequence(
         return it_seq, ftol_seq
     target_seq = jnp.full(it_seq.shape, convergence_controls.fsq_total_target, dtype=dtype)
     return it_seq, ftol_seq, target_seq
+
+
+def _scan_iteration_sequence_only(start: int, stop: int) -> Any:
+    """Build the compact VMEC scan iteration sequence used by cached runners."""
+
+    return jnp.arange(int(start), int(stop), dtype=jnp.int32)
+
+
+def _scan_runtime_controls_args(
+    controls: ScanConvergenceControls,
+    *,
+    dtype: Any,
+) -> tuple[Any, ...]:
+    """Return scalar runtime controls for cache-stable scan-runner calls."""
+
+    target = controls.fsq_total_target
+    if target is None:
+        target = jnp.asarray(jnp.nan, dtype=dtype)
+    return (
+        jnp.asarray(controls.ftol, dtype=dtype),
+        jnp.asarray(target, dtype=dtype),
+    )
 
 
 def _scan_step_iteration_and_controls(
@@ -137,6 +159,30 @@ def _scan_step_iteration_and_controls(
             iter_index, ftol, fsq_total_target = it
             return iter_index, ScanConvergenceControls(ftol=ftol, fsq_total_target=fsq_total_target)
     return it, step_ctx.convergence_controls
+
+
+def _scan_step_with_runtime_controls(
+    step_ctx: "ScanStepContext",
+    carry: _ScanCarry,
+    it: Any,
+    ftol: Any,
+    fsq_total_target_value: Any,
+) -> Any:
+    """Dispatch one scan step using scalar runtime convergence controls."""
+
+    has_target = step_ctx.convergence_controls.fsq_total_target is not None
+    controls = ScanConvergenceControls(
+        ftol=ftol,
+        fsq_total_target=fsq_total_target_value if has_target else None,
+    )
+    iter2_hold = jnp.asarray(it + 1, dtype=jnp.int32) + jnp.asarray(carry.iter_offset, dtype=jnp.int32)
+    hold_cond = carry.converged | carry.abort_scan | (iter2_hold > jnp.asarray(int(step_ctx.max_iter), dtype=jnp.int32))
+    return jax.lax.cond(
+        hold_cond,
+        lambda c: _hold_vmec2000_scan_step(step_ctx, c),
+        lambda c: _advance_vmec2000_scan_step(step_ctx, c, it, controls),
+        operand=carry,
+    )
 
 
 def _select_initial_rz_norm_func(
@@ -291,6 +337,7 @@ class ScanDispatchFinalizeInputs:
     ctx: Vmec2000ScanControllerContext
     state_init: VMECState
     carry0: Any
+    step_context: "ScanStepContext"
     scan_step: Any
     convergence_controls: ScanConvergenceControls
     scan_runtime_plan: Any
@@ -1038,8 +1085,17 @@ def _run_scan_dispatch_and_finalize(inputs: ScanDispatchFinalizeInputs) -> Solve
     scan_timing_enabled = bool(inputs.scan_timing_enabled)
     scan_timing_stats = inputs.scan_timing_stats
 
-    def _run_scan(carry_init, it_seq):
-        return jax.lax.scan(inputs.scan_step, carry_init, it_seq)
+    def _run_scan(carry_init, it_seq, ftol_dyn, fsq_total_target_dyn):
+        def _step(carry, it):
+            return _scan_step_with_runtime_controls(
+                inputs.step_context,
+                carry,
+                it,
+                ftol_dyn,
+                fsq_total_target_dyn,
+            )
+
+        return jax.lax.scan(_step, carry_init, it_seq)
 
     def _get_scan_runner(seq_len: int):
         key = scan_cache_key + (int(seq_len),)
@@ -1084,10 +1140,10 @@ def _run_scan_dispatch_and_finalize(inputs: ScanDispatchFinalizeInputs) -> Solve
         "iter_offset0": int(iter_offset0),
         "get_scan_runner": _get_scan_runner,
         "scan_step": inputs.scan_step,
-        "build_scan_it_seq": partial(
-            _scan_iteration_input_sequence,
+        "build_scan_it_seq": _scan_iteration_sequence_only,
+        "runtime_scan_args": _scan_runtime_controls_args(
+            inputs.convergence_controls,
             dtype=inputs.dtype,
-            convergence_controls=inputs.convergence_controls,
         ),
         "scan_timing_enabled": scan_timing_enabled,
         "scan_timing_stats": scan_timing_stats,
@@ -1451,6 +1507,7 @@ def run_vmec2000_scan(ctx: Vmec2000ScanControllerContext, state_init: VMECState)
             ctx=ctx,
             state_init=state_init,
             carry0=carry0,
+            step_context=step_context,
             scan_step=scan_step,
             convergence_controls=convergence_controls,
             scan_runtime_plan=scan_runtime_plan,

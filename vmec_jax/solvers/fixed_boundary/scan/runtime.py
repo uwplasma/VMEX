@@ -483,6 +483,7 @@ def run_scan_preflight_step(
     get_scan_runner: Callable[[int], tuple[Any, str]],
     scan_step: Callable[[Any, Any], tuple[Any, Any]],
     build_scan_it_seq: Callable[[int, int], Any] | None = None,
+    runtime_scan_args: tuple[Any, ...] = (),
     scan_timing_enabled: bool,
     scan_timing_stats: dict[str, Any],
     block_scan_value: Callable[[Any], Any],
@@ -498,7 +499,7 @@ def run_scan_preflight_step(
     if bool(jit_preflight):
         preflight_runner, _preflight_cache_status = get_scan_runner(1)
         it_seq = _scan_iteration_sequence(0, 1, jnp_module=jnp_module, build_scan_it_seq=build_scan_it_seq)
-        carry, hist_pre_seq = preflight_runner(carry, it_seq)
+        carry, hist_pre_seq = preflight_runner(carry, it_seq, *runtime_scan_args)
         hist_pre = jax_module.tree_util.tree_map(lambda a: a[0], hist_pre_seq)
     else:
         it0 = _scan_iteration_item(0, jnp_module=jnp_module, jax_module=jax_module, build_scan_it_seq=build_scan_it_seq)
@@ -567,6 +568,7 @@ def run_chunked_scan(
     get_scan_runner: Callable[[int], tuple[Any, str]],
     scan_step: Callable[[Any, Any], tuple[Any, Any]],
     build_scan_it_seq: Callable[[int, int], Any] | None = None,
+    runtime_scan_args: tuple[Any, ...] = (),
     scan_timing_enabled: bool,
     scan_timing_stats: dict[str, Any],
     scan_device_runtime: Any,
@@ -609,6 +611,7 @@ def run_chunked_scan(
             get_scan_runner=get_scan_runner,
             scan_step=scan_step,
             build_scan_it_seq=build_scan_it_seq,
+            runtime_scan_args=runtime_scan_args,
             scan_timing_enabled=bool(scan_timing_enabled),
             scan_timing_stats=scan_timing_stats,
             block_scan_value=scan_device_runtime.block_value,
@@ -647,14 +650,14 @@ def run_chunked_scan(
         runner, cache_status = get_scan_runner(int(chunk_len))
         runner = maybe_explicit_compile_scan_runner(
             runner,
-            (carry, it_seq),
+            (carry, it_seq, *runtime_scan_args),
             cache_status=cache_status,
             scan_timing_enabled=bool(scan_timing_enabled),
             scan_timing_stats=scan_timing_stats,
             perf_counter=perf_counter,
         )
         t_device = perf_counter() if bool(scan_timing_enabled) else None
-        carry, hist_chunk = runner(carry, it_seq)
+        carry, hist_chunk = runner(carry, it_seq, *runtime_scan_args)
         if bool(scan_timing_enabled) and t_device is not None:
             carry, hist_chunk = scan_device_runtime.ready(
                 t_device,
@@ -730,6 +733,7 @@ def run_nonchunked_scan(
     get_scan_runner: Callable[[int], tuple[Any, str]],
     scan_step: Callable[[Any, Any], tuple[Any, Any]],
     build_scan_it_seq: Callable[[int, int], Any] | None = None,
+    runtime_scan_args: tuple[Any, ...] = (),
     scan_jit_preflight_enabled_func: Callable[..., bool],
     scan_jit_preflight_env: str | None,
     backend_name: str,
@@ -762,6 +766,7 @@ def run_nonchunked_scan(
             get_scan_runner=get_scan_runner,
             scan_step=scan_step,
             build_scan_it_seq=build_scan_it_seq,
+            runtime_scan_args=runtime_scan_args,
             scan_timing_enabled=bool(scan_timing_enabled),
             scan_timing_stats=scan_timing_stats,
             block_scan_value=scan_device_runtime.block_value,
@@ -788,14 +793,14 @@ def run_nonchunked_scan(
                 carry_pre = carry_pre._replace(iter_offset=jnp_module.asarray(iter_offset0, dtype=jnp_module.int32))
             runner_call = maybe_explicit_compile_scan_runner(
                 runner,
-                (carry_pre, it_seq),
+                (carry_pre, it_seq, *runtime_scan_args),
                 cache_status=cache_status,
                 scan_timing_enabled=bool(scan_timing_enabled),
                 scan_timing_stats=scan_timing_stats,
                 perf_counter=perf_counter,
             )
             t_device = perf_counter() if bool(scan_timing_enabled) else None
-            carry_final, hist_tail = runner_call(carry_pre, it_seq)
+            carry_final, hist_tail = runner_call(carry_pre, it_seq, *runtime_scan_args)
             if bool(scan_timing_enabled) and t_device is not None:
                 carry_final, hist_tail = scan_device_runtime.ready(
                     t_device,
@@ -822,14 +827,14 @@ def run_nonchunked_scan(
         )
         runner_call = maybe_explicit_compile_scan_runner(
             runner,
-            (carry_init, it_seq),
+            (carry_init, it_seq, *runtime_scan_args),
             cache_status=cache_status,
             scan_timing_enabled=bool(scan_timing_enabled),
             scan_timing_stats=scan_timing_stats,
             perf_counter=perf_counter,
         )
         t_device = perf_counter() if bool(scan_timing_enabled) else None
-        carry_final, hist = runner_call(carry_init, it_seq)
+        carry_final, hist = runner_call(carry_init, it_seq, *runtime_scan_args)
         if bool(scan_timing_enabled) and t_device is not None:
             carry_final, hist = scan_device_runtime.ready(
                 t_device,
