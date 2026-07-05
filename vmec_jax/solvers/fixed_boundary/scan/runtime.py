@@ -374,6 +374,109 @@ def _scan_arg_group_key(path: tuple[str, ...], *, depth: int = 2) -> str:
     return "".join(ch if ch.isalnum() else "_" for ch in text).strip("_") or "root"
 
 
+_SCAN_CARRY_VELOCITY_FIELDS = frozenset(
+    {
+        "vRcc",
+        "vRss",
+        "vRsc",
+        "vRcs",
+        "vZsc",
+        "vZcs",
+        "vZcc",
+        "vZss",
+        "vLsc",
+        "vLcs",
+        "vLcc",
+        "vLss",
+    }
+)
+_SCAN_CARRY_PRECONDITIONER_FIELDS = frozenset(
+    {
+        "cache_precond_diag",
+        "cache_tcon",
+        "cache_norms",
+        "cache_rz_scale",
+        "cache_l_scale",
+        "cache_rz_norm",
+        "cache_f_norm1",
+        "cache_prec_rz_mats",
+        "cache_prec_lam_prec",
+    }
+)
+_SCAN_CARRY_BOUNDARY_FIELDS = frozenset({"edge_Rcos", "edge_Rsin", "edge_Zcos", "edge_Zsin"})
+_SCAN_CARRY_RESIDUAL_FIELDS = frozenset(
+    {
+        "fsq_prev",
+        "fsq0_prev",
+        "fsqz_prev",
+        "fsqr_prev_phys",
+        "fsqz_prev_phys",
+        "fsql_prev_phys",
+        "fsqr1_prev",
+        "fsqz1_prev",
+        "fsql1_prev",
+        "fsqr_checkpoint",
+        "fsqz_checkpoint",
+        "fsql_checkpoint",
+        "fsqr1_checkpoint",
+        "fsqz1_checkpoint",
+        "fsql1_checkpoint",
+        "res0",
+        "res1",
+        "w_mhd_prev",
+    }
+)
+_SCAN_CARRY_CONTROLLER_FIELDS = frozenset(
+    {
+        "time_step",
+        "inv_tau",
+        "accepted_count",
+        "probe_count",
+        "probe_bad_jac",
+        "probe_accept",
+        "probe_fsq_min",
+        "probe_fsq_max",
+        "probe_fsq_start",
+        "fallback_active",
+        "abort_scan",
+        "skip_timecontrol",
+        "flip_sign",
+        "iter_offset",
+        "iter1",
+        "cache_valid",
+        "ijacob",
+        "bad_resets",
+        "bad_growth",
+        "converged",
+        "r00_prev",
+        "z00_prev",
+    }
+)
+
+
+def _scan_arg_category_key(path: tuple[str, ...]) -> str:
+    """Return a physics-aware category for scan-runner argument leaves."""
+
+    if not path:
+        return "root"
+    if path[0] != "arg0":
+        return "iteration_input" if path[0] == "arg1" else "runtime_input"
+    field = path[1] if len(path) > 1 else ""
+    if field in ("state", "state_checkpoint"):
+        return "state"
+    if field in _SCAN_CARRY_VELOCITY_FIELDS:
+        return "velocity"
+    if field in _SCAN_CARRY_PRECONDITIONER_FIELDS:
+        return "preconditioner"
+    if field in _SCAN_CARRY_BOUNDARY_FIELDS:
+        return "boundary"
+    if field in _SCAN_CARRY_RESIDUAL_FIELDS:
+        return "residual"
+    if field in _SCAN_CARRY_CONTROLLER_FIELDS:
+        return "controller"
+    return "other"
+
+
 def record_scan_runner_arg_summary(
     args: tuple[Any, ...],
     *,
@@ -391,22 +494,29 @@ def record_scan_runner_arg_summary(
     group_counts: dict[str, int] = {}
     group_array_counts: dict[str, int] = {}
     group_nbytes: dict[str, int] = {}
+    category_counts: dict[str, int] = {}
+    category_array_counts: dict[str, int] = {}
+    category_nbytes: dict[str, int] = {}
     for index, arg in enumerate(args):
         for path, leaf in _scan_runner_arg_path_leaves(arg, (f"arg{index}",)):
             group_key = _scan_arg_group_key(path)
+            category_key = _scan_arg_category_key(path)
             group_counts[group_key] = int(group_counts.get(group_key, 0)) + 1
+            category_counts[category_key] = int(category_counts.get(category_key, 0)) + 1
             leaf_count += 1
             shape = getattr(leaf, "shape", None)
             nbytes = getattr(leaf, "nbytes", None)
             if shape is not None:
                 array_leaf_count += 1
                 group_array_counts[group_key] = int(group_array_counts.get(group_key, 0)) + 1
+                category_array_counts[category_key] = int(category_array_counts.get(category_key, 0)) + 1
                 try:
                     nbytes_int = int(nbytes)
                 except Exception:
                     nbytes_int = 0
                 array_nbytes += nbytes_int
                 group_nbytes[group_key] = int(group_nbytes.get(group_key, 0)) + nbytes_int
+                category_nbytes[category_key] = int(category_nbytes.get(category_key, 0)) + nbytes_int
             else:
                 scalar_leaf_count += 1
     scan_timing_stats["scan_runner_arg_leaf_count"] = int(leaf_count)
@@ -418,6 +528,11 @@ def record_scan_runner_arg_summary(
         scan_timing_stats[f"{prefix}_leaf_count"] = int(count)
         scan_timing_stats[f"{prefix}_array_leaf_count"] = int(group_array_counts.get(group_key, 0))
         scan_timing_stats[f"{prefix}_array_nbytes"] = int(group_nbytes.get(group_key, 0))
+    for category_key, count in category_counts.items():
+        prefix = f"scan_runner_arg_category_{category_key}"
+        scan_timing_stats[f"{prefix}_leaf_count"] = int(count)
+        scan_timing_stats[f"{prefix}_array_leaf_count"] = int(category_array_counts.get(category_key, 0))
+        scan_timing_stats[f"{prefix}_array_nbytes"] = int(category_nbytes.get(category_key, 0))
 
 
 def maybe_record_scan_runner_arg_summary(

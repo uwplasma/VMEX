@@ -161,6 +161,7 @@ def build_scan_timing_report(
                 str(key).startswith("scan_runner_explicit_compile_")
                 or str(key).startswith("scan_runner_explicit_hlo_op_")
                 or str(key).startswith("scan_runner_arg_path_")
+                or str(key).startswith("scan_runner_arg_category_")
             )
             and (
                 str(key).endswith("_count")

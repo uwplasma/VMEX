@@ -121,9 +121,17 @@ def test_scan_timing_snapshot_extracts_hit_miss_dispatch_fields() -> None:
                 "scan_runner_arg_scalar_leaf_count": 4,
                 "scan_runner_arg_array_nbytes": 4096,
                 "scan_runner_arg_path_arg0_state_array_nbytes": 2048,
+                "scan_runner_arg_path_arg0_state_array_leaf_count": 20,
                 "scan_runner_arg_path_arg0_cache_prec_rz_mats_array_nbytes": 1024,
+                "scan_runner_arg_path_arg0_cache_prec_rz_mats_array_leaf_count": 8,
                 "scan_runner_arg_path_arg0_state_leaf_count": 20,
                 "scan_runner_arg_path_arg0_cache_prec_rz_mats_leaf_count": 8,
+                "scan_runner_arg_category_state_array_nbytes": 2048,
+                "scan_runner_arg_category_state_array_leaf_count": 20,
+                "scan_runner_arg_category_preconditioner_array_nbytes": 1024,
+                "scan_runner_arg_category_preconditioner_array_leaf_count": 8,
+                "scan_runner_arg_category_state_leaf_count": 20,
+                "scan_runner_arg_category_preconditioner_leaf_count": 8,
                 "scan_runner_explicit_compile_count": 1,
                 "scan_runner_explicit_hlo_instruction_count": 99,
                 "scan_runner_explicit_hlo_op_multiply_count": 12,
@@ -153,6 +161,14 @@ def test_scan_timing_snapshot_extracts_hit_miss_dispatch_fields() -> None:
     assert timing["scan_runner_arg_top_nbytes_paths"] == [
         {"path": "arg0_state", "value": 2048},
         {"path": "arg0_cache_prec_rz_mats", "value": 1024},
+    ]
+    assert timing["scan_runner_arg_top_leaf_categories"] == [
+        {"category": "state", "value": 20},
+        {"category": "preconditioner", "value": 8},
+    ]
+    assert timing["scan_runner_arg_top_nbytes_categories"] == [
+        {"category": "state", "value": 2048},
+        {"category": "preconditioner", "value": 1024},
     ]
     assert timing["scan_runner_explicit_hlo_top_ops"] == [
         {"op": "multiply", "value": 12},

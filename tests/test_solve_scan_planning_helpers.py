@@ -483,6 +483,12 @@ def test_record_scan_runner_arg_summary_counts_leaves_and_array_bytes():
     assert stats["scan_runner_arg_path_arg0_right_array_nbytes"] == 0
     assert stats["scan_runner_arg_path_arg1_0_leaf_count"] == 1
     assert stats["scan_runner_arg_path_arg1_0_array_nbytes"] == small.nbytes
+    assert stats["scan_runner_arg_category_other_leaf_count"] == 2
+    assert stats["scan_runner_arg_category_other_array_leaf_count"] == 1
+    assert stats["scan_runner_arg_category_other_array_nbytes"] == arr.nbytes
+    assert stats["scan_runner_arg_category_iteration_input_leaf_count"] == 1
+    assert stats["scan_runner_arg_category_iteration_input_array_leaf_count"] == 1
+    assert stats["scan_runner_arg_category_iteration_input_array_nbytes"] == small.nbytes
 
 
 def test_scan_arg_summary_is_independent_from_explicit_compile():

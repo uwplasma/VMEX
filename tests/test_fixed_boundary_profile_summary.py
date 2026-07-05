@@ -41,6 +41,10 @@ def test_summarize_profile_extracts_compile_and_scan_metrics(tmp_path) -> None:
                     "scan_runner_arg_path_arg0_state_array_nbytes": 2048,
                     "scan_runner_arg_path_arg0_cache_prec_rz_mats_leaf_count": 8,
                     "scan_runner_arg_path_arg0_cache_prec_rz_mats_array_nbytes": 1024,
+                    "scan_runner_arg_category_state_leaf_count": 20,
+                    "scan_runner_arg_category_state_array_nbytes": 2048,
+                    "scan_runner_arg_category_preconditioner_leaf_count": 8,
+                    "scan_runner_arg_category_preconditioner_array_nbytes": 1024,
                     "scan_runner_cache_hit_count": 3,
                     "scan_runner_cache_miss_count": 1,
                     "scan_runner_cache_bypass_count": 0,
@@ -92,6 +96,10 @@ def test_summarize_profile_extracts_compile_and_scan_metrics(tmp_path) -> None:
     assert "arg0_cache_prec_rz_mats:8" in row["scan_runner_arg_top_leaf_paths"]
     assert row["scan_runner_arg_top_nbytes_paths"].startswith("arg0_state:2048")
     assert "arg0_cache_prec_rz_mats:1024" in row["scan_runner_arg_top_nbytes_paths"]
+    assert row["scan_runner_arg_top_leaf_categories"].startswith("state:20")
+    assert "preconditioner:8" in row["scan_runner_arg_top_leaf_categories"]
+    assert row["scan_runner_arg_top_nbytes_categories"].startswith("state:2048")
+    assert "preconditioner:1024" in row["scan_runner_arg_top_nbytes_categories"]
     assert row["scan_runner_cache_hit_count"] == 3.0
     assert row["scan_runner_cache_miss_count"] == 1.0
     assert row["scan_runner_cache_bypass_count"] == 0.0
