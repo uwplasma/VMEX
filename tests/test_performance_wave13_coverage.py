@@ -169,6 +169,12 @@ def test_state_only_scan_key_ignores_disabled_fallback_integer_policy():
         scan_fallback_iters=200,
         scan_fallback_badjac_limit=99,
     ) == base
+    assert _scan_cache_key(
+        state_only_scan=True,
+        scan_light=True,
+        scan_minimal=False,
+        nstep_screen=200,
+    ) == base
     assert _scan_cache_key(scan_fallback_iters=21) != _scan_cache_key(scan_fallback_iters=22)
 
 

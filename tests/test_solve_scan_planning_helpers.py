@@ -1126,9 +1126,13 @@ def test_scan_cache_key_is_stable_and_tracks_behavioral_toggles():
         scan_minimal=True,
         scan_fallback_iters=99,
         scan_fallback_badjac_limit=50,
+        nstep_screen=200,
     )
     assert state_only == state_only_tuned
+    assert state_only == _cache_key(state_only_scan=True, scan_light=True, scan_minimal=False)
     assert state_only[-2:] == (0, 0)
+    assert state_only[12] == 0
+    assert state_only[20:23] == (True, False, True)
 
 
 def test_scan_iteration_runtime_plan_resolves_offsets_and_cache_key():

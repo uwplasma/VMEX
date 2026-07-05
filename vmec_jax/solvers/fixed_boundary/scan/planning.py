@@ -469,12 +469,20 @@ def build_vmec2000_scan_cache_key(
     # the fallback integer gates must not fragment the cache.  Normal scan
     # runners keep these fields structural because they affect abort/fallback
     # semantics and VMEC2000-parity diagnostics.
-    fallback_iters_key = 0 if bool(state_only_scan) else int(scan_fallback_iters)
+    state_only_key = bool(state_only_scan)
+    fallback_iters_key = 0 if state_only_key else int(scan_fallback_iters)
     fallback_badjac_key = (
         0
-        if bool(state_only_scan) or int(fallback_iters_key) <= 0
+        if state_only_key or int(fallback_iters_key) <= 0
         else int(scan_fallback_badjac_limit)
     )
+    # State-only scans return only the final state.  They explicitly disable
+    # screen-output scalar sampling and history materialization in
+    # ``apply_state_only_scan_options``, so display/history settings must not
+    # split the compiled runner cache for optimizer trial solves.
+    nstep_screen_key = 0 if state_only_key else int(nstep_screen)
+    scan_light_key = False if state_only_key else bool(scan_light)
+    scan_minimal_key = True if state_only_key else bool(scan_minimal)
     return (
         "vmec2000_scan_v10",
         static_key,
@@ -488,7 +496,7 @@ def build_vmec2000_scan_cache_key(
         float(initial_flip_sign),
         float(lambda_update_scale),
         fsq_total_target is not None,
-        int(nstep_screen),
+        int(nstep_screen_key),
         bool(use_restart_triggers),
         bool(vmecpp_restart),
         bool(scan_use_precomputed),
@@ -496,9 +504,9 @@ def build_vmec2000_scan_cache_key(
         bool(scan_use_restart_payload),
         stage_prev_fsq is not None,
         bool(jit_forces_scan),
-        bool(state_only_scan),
-        bool(scan_light),
-        bool(scan_minimal),
+        state_only_key,
+        scan_light_key,
+        scan_minimal_key,
         int(fallback_iters_key),
         int(fallback_badjac_key),
     )
