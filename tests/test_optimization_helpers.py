@@ -1200,6 +1200,33 @@ def test_fixed_boundary_optimizer_exact_residual_reuses_jacobian_primal():
     np.testing.assert_allclose(opt._exact_residual_after_jacobian(), [3.0, 4.0])
 
 
+def test_fixed_boundary_optimizer_exact_callback_metadata_reports_shapes():
+    """Exact-callback metadata exposes shape/backend provenance without arrays."""
+
+    opt = object.__new__(FixedBoundaryExactOptimizer)
+    opt._solver_device_name = "cpu"
+    opt._specs = [object(), object()]
+    opt._layout = SimpleNamespace(size=17)
+    opt._last_residual_size = 31
+    opt._last_jacobian_shape = (31, 2)
+    opt._last_jacobian_source = "exact_tape_replay"
+    opt._scan_exact_path = "tape"
+    opt._trial_solver_kwargs = {"use_scan": False}
+    opt._static = SimpleNamespace(cfg=SimpleNamespace(lasym=True))
+
+    assert opt.exact_callback_metadata() == {
+        "backend": "cpu",
+        "n_parameters": 2,
+        "packed_state_size": 17,
+        "residual_size": 31,
+        "jacobian_shape": (31, 2),
+        "last_jacobian_source": "exact_tape_replay",
+        "scan_exact_path": "tape",
+        "trial_solver_use_scan": False,
+        "lasym": True,
+    }
+
+
 def test_lbfgs_adjoint_respects_scalar_evaluation_budget(monkeypatch):
     import scipy.optimize
 

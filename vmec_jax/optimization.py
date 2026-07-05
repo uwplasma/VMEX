@@ -877,6 +877,27 @@ class FixedBoundaryExactOptimizer:
             packed = pack_state(state)
         return jnp.asarray(packed, dtype=jnp.float64)
 
+    def exact_callback_metadata(self) -> dict[str, object]:
+        """Return compact shape/backend metadata for the last exact callback.
+
+        Optimization histories use this record to explain performance without
+        storing large residual/Jacobian arrays.  The dimensions distinguish
+        parameter-count growth from residual-projection growth in high-mode or
+        Boozer-heavy objectives.
+        """
+
+        return {
+            "backend": self._exact_tape_backend_name(),
+            "n_parameters": int(len(self._specs)),
+            "packed_state_size": int(getattr(self._layout, "size")),
+            "residual_size": self._last_residual_size,
+            "jacobian_shape": self._last_jacobian_shape,
+            "last_jacobian_source": self._last_jacobian_source,
+            "scan_exact_path": str(self._scan_exact_path),
+            "trial_solver_use_scan": bool(self._trial_solver_kwargs.get("use_scan", False)),
+            "lasym": bool(getattr(getattr(self._static, "cfg", None), "lasym", False)),
+        }
+
     def _store_jacobian_result(self, exact_param_key, residuals, jac=None, *, source=None, t_total: float):
         """Materialize, profile, and cache an exact Jacobian result."""
 
@@ -2157,6 +2178,7 @@ class FixedBoundaryExactOptimizer:
             target_aspect=target_aspect,
             callback_trace=(self._callback_trace_dump() if self._callback_trace_enabled else None),
         )
+        history_dump["exact_callback_metadata"] = self.exact_callback_metadata()
 
         return self._attach_run_private_payload(
             result,
