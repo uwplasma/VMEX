@@ -256,6 +256,8 @@ class FixedBoundaryExactOptimizer:
         self._initial_tangent_direction_cache: dict = {}
         self._initial_tangent_jacfwd_helper_cache: dict = {}
         self._last_jacobian_residual: np.ndarray | None = None
+        self._last_residual_size: int | None = None
+        self._last_jacobian_shape: tuple[int, int] | None = None
         self._last_jacobian_source = "exact_tape_replay"
         self._trial_residual_cache: OrderedDict[bytes, np.ndarray] = OrderedDict()
         self._trial_residual_cache_max = 8
@@ -879,6 +881,7 @@ class FixedBoundaryExactOptimizer:
         """Materialize, profile, and cache an exact Jacobian result."""
 
         self._last_jacobian_residual = np.asarray(residuals, dtype=float)
+        self._last_residual_size = int(self._last_jacobian_residual.size)
         self._remember_exact_residual(exact_param_key, self._last_jacobian_residual)
         if jac is None:
             out = np.zeros((int(self._last_jacobian_residual.size), 0), dtype=float)
@@ -890,6 +893,7 @@ class FixedBoundaryExactOptimizer:
             if source:
                 self._profile_add(f"jacobian_host_materialize_{source}", host_wall)
             self._last_jacobian_source = source
+        self._last_jacobian_shape = tuple(int(dim) for dim in out.shape)
         self._remember_exact_jacobian(exact_param_key, out, self._last_jacobian_residual)
         self._profile_add("jacobian_total", time.perf_counter() - t_total)
         return out
@@ -1512,6 +1516,7 @@ class FixedBoundaryExactOptimizer:
             t0 = time.perf_counter()
             residuals, jac = helpers["residual_and_jacobian"](jnp.asarray(params, dtype=jnp.float64))
             self._last_jacobian_residual = np.asarray(residuals, dtype=float)
+            self._last_residual_size = int(self._last_jacobian_residual.size)
             self._remember_exact_residual(exact_param_key, self._last_jacobian_residual)
             # Avoid a second accepted-point scan solve when the history metrics
             # can be reconstructed from the residual vector.  This is the common
@@ -1520,6 +1525,7 @@ class FixedBoundaryExactOptimizer:
             if not self._can_build_history_from_residuals():
                 self._solve_scan_exact_state(params)
             out = np.asarray(jac, dtype=float)
+            self._last_jacobian_shape = tuple(int(dim) for dim in out.shape)
             self._last_jacobian_source = "scan_exact_replay"
             self._profile_add("scan_jacobian_total", time.perf_counter() - t0)
             return out
@@ -1530,6 +1536,8 @@ class FixedBoundaryExactOptimizer:
         if cached_jacobian is not None:
             jac_cached, residual_cached = cached_jacobian
             self._last_jacobian_residual = np.asarray(residual_cached, dtype=float).reshape(-1)
+            self._last_residual_size = int(self._last_jacobian_residual.size)
+            self._last_jacobian_shape = tuple(int(dim) for dim in np.asarray(jac_cached).shape)
             self._remember_exact_residual(exact_param_key, self._last_jacobian_residual)
             self._last_jacobian_source = "jacobian_cache_hit"
             self._profile_add("jacobian_cache_hit", 0.0)
@@ -1675,6 +1683,8 @@ class FixedBoundaryExactOptimizer:
     def _jacobian_fun_tracked(self, params):
         self._last_jacobian_key[0] = self._exact_cache_key(params)
         self._last_jacobian_residual = None
+        self._last_residual_size = None
+        self._last_jacobian_shape = None
         self._last_jacobian_source = "exact_tape_replay"
         jac = self.jacobian_fun(params)
         key = self._last_jacobian_key[0]
