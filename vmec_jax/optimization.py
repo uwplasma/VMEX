@@ -222,9 +222,9 @@ class FixedBoundaryExactOptimizer:
         self._trial_solver_kwargs = dict(
             _base,
             # Trial-point residuals do not need an adjoint tape. The run method
-            # refreshes this default once the stage budget is known: very short
-            # stages cannot amortize scan-runner setup, while longer QA/QH
-            # stages may still reuse the scan runner across accepted points.
+            # refreshes this default once the stage budget is known: CPU probes
+            # favor the VMEC-control loop, while accelerator QA/QH probes may
+            # use scan runners when the stage is long enough to amortize setup.
             # VMEC_JAX_OPT_TRIAL_SCAN overrides this for diagnostics.
             jit_forces="auto",
             use_scan=self._use_scan_for_trial_solves(),
@@ -456,13 +456,14 @@ class FixedBoundaryExactOptimizer:
         Exact-optimizer trial residuals are short VMEC solves called repeatedly
         by SciPy's trust-region line search.  They do not need an adjoint tape.
         The VMEC2000-compatible scan path can reuse compiled runners across
-        boundary updates, but it has a cold setup cost.  If a stage budget
-        permits at most one trial residual call, the scan path cannot amortize
-        that setup, so the VMEC-control loop is the conservative default.  QP/QI
-        probes still spend more time in cold scan-runner setup than they save in
-        the device loop, so those families use loop trials unless explicitly
-        overridden.  Environment overrides always win so regressions can be
-        isolated per machine/problem.
+        boundary updates, but it has a cold setup cost and can perturb SciPy's
+        accepted trust-region trajectory by changing trial convergence details.
+        CPU QA/QH probes through max_nfev=6 were equal or slower than the
+        VMEC-control loop, or reached a weaker endpoint, so CPU defaults to the
+        loop.  Accelerator QA/QH probes may still use scan once the stage budget
+        can amortize setup; QP/QI probes stay on the loop until family-specific
+        evidence shows a scan win.  Environment overrides always win so
+        regressions can be isolated per machine/problem.
         """
         forced = os.getenv("VMEC_JAX_OPT_TRIAL_SCAN", "").strip().lower()
         if forced in ("1", "true", "yes", "on", "scan"):
@@ -482,7 +483,7 @@ class FixedBoundaryExactOptimizer:
             helicity_n = None
         if family == "qs" and helicity_m == 0 and helicity_n not in (None, 0):
             return False
-        return self._exact_tape_backend_name() in ("cpu", "gpu", "cuda", "tpu", "rocm")
+        return self._exact_tape_backend_name() in ("gpu", "cuda", "tpu", "rocm")
 
     def _exact_tape_backend_name(self) -> str:
         """Return the backend name used for exact-tape optimization policy."""
