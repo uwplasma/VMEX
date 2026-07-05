@@ -607,21 +607,26 @@ def test_projected_replay_residuals_env_and_backend_branches(monkeypatch) -> Non
     opt._static = SimpleNamespace(cfg=SimpleNamespace(lasym=False))
     assert opt._projected_replay_residuals_enabled(24) is False
     assert opt._projected_replay_residuals_enabled(48) is True
+    assert opt._projected_replay_residuals_enabled(8) is False
 
     opt._static = SimpleNamespace(cfg=SimpleNamespace(lasym=True))
     assert opt._projected_replay_residuals_enabled(48) is False
 
     opt._static = SimpleNamespace(cfg=SimpleNamespace(lasym=False))
     opt._solver_device_name = "cpu"
-    assert opt._projected_replay_residuals_enabled(24) is False
-    assert opt._projected_replay_residuals_enabled(48) is False
+    assert opt._projected_replay_residuals_enabled(7) is False
+    assert opt._projected_replay_residuals_enabled(8) is True
+    assert opt._projected_replay_residuals_enabled(24) is True
+    assert opt._projected_replay_residuals_enabled(48) is True
 
     opt._solver_device_name = None
     monkeypatch.setattr(compat, "jax", SimpleNamespace(default_backend=lambda: "cuda"))
     assert opt._projected_replay_residuals_enabled(48) is True
     assert opt._projected_replay_residuals_enabled(24) is False
     monkeypatch.setattr(compat, "jax", SimpleNamespace(default_backend=lambda: "cpu"))
-    assert opt._projected_replay_residuals_enabled(48) is False
+    assert opt._projected_replay_residuals_enabled(7) is False
+    assert opt._projected_replay_residuals_enabled(8) is True
+    assert opt._projected_replay_residuals_enabled(48) is True
     monkeypatch.setattr(
         compat,
         "jax",

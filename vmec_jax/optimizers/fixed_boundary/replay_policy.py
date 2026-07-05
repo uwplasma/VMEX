@@ -154,18 +154,19 @@ def projected_replay_residuals_enabled(optimizer, n_params: int | None = None) -
             return False
     else:
         backend = optimizer_backend_name(solver_device_name)
-    if backend not in ("gpu", "cuda", "rocm"):
+    if backend not in ("cpu", "gpu", "cuda", "rocm"):
         return False
     if n_params is None:
         return False
     static = getattr(optimizer, "_static", None)
     if bool(getattr(getattr(static, "cfg", None), "lasym", False)):
         return False
-    # Projected replay only pays off for larger non-LASYM dense Jacobians on
-    # accelerator backends.  Current CPU profile shards are neutral to slightly
-    # faster on the simpler standard replay path, so leave CPU opt-in through
-    # VMEC_JAX_OPT_PROJECTED_REPLAY_RESIDUALS instead of widening the default.
-    return int(n_params) >= 48
+    # Projected replay avoids materializing full state tangent columns on the
+    # host before residual projection.  Recent QA/QH/QP budget probes show this
+    # pays off on CPU as well as accelerators once the exact callback has a
+    # multi-column dense Jacobian.
+    min_params = 8 if backend == "cpu" else 48
+    return int(n_params) >= min_params
 
 
 def fused_projected_replay_enabled() -> bool:
