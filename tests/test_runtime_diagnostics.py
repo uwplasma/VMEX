@@ -178,6 +178,59 @@ def test_runtime_matrix_scan_profile_env_flags_are_explicit() -> None:
     assert env["VMEC_JAX_SCAN_ARG_SUMMARY"] == "1"
 
 
+def test_scan_fallback_parity_probe_state_metrics_and_payload_compare(tmp_path):
+    mod = _load_tool("scan_fallback_parity_probe")
+
+    ref = np.asarray([1.0, 2.0, 0.0])
+    cand = np.asarray([1.0, 2.1, 0.2])
+    metrics = mod.state_vector_metrics(ref, cand)
+
+    assert metrics["shape_match"] is True
+    assert metrics["reference_size"] == 3
+    assert metrics["candidate_size"] == 3
+    np.testing.assert_allclose(metrics["rms_abs"], np.sqrt((0.0**2 + 0.1**2 + 0.2**2) / 3.0))
+    np.testing.assert_allclose(metrics["max_abs"], 0.2)
+    np.testing.assert_allclose(metrics["max_rel"], 0.2)
+
+    default_state = tmp_path / "state_default.npz"
+    forced_state = tmp_path / "state_forced.npz"
+    np.savez_compressed(default_state, state=ref)
+    np.savez_compressed(forced_state, state=cand)
+    default = {
+        "ok": True,
+        "runtime_s": 10.0,
+        "n_iter": 20,
+        "state_path": str(default_state),
+        "diagnostics": {
+            "final_fsqr": 1.0e-8,
+            "final_fsqz": 2.0e-8,
+            "final_fsql": 3.0e-8,
+        },
+    }
+    forced = {
+        "ok": True,
+        "runtime_s": 5.0,
+        "n_iter": 18,
+        "state_path": str(forced_state),
+        "diagnostics": {
+            "final_fsqr": 1.5e-8,
+            "final_fsqz": 2.5e-8,
+            "final_fsql": 3.5e-8,
+        },
+    }
+
+    comparison = mod.compare_policy_payloads(default, forced)
+
+    assert comparison["default_ok"] is True
+    assert comparison["forced_ok"] is True
+    assert comparison["runtime_ratio_forced_vs_default"] == 0.5
+    assert comparison["n_iter_delta_forced_minus_default"] == -2
+    np.testing.assert_allclose(comparison["state_metrics"]["max_abs"], 0.2)
+    np.testing.assert_allclose(comparison["diagnostic_deltas"]["final_fsqr"], 0.5e-8)
+    np.testing.assert_allclose(comparison["diagnostic_deltas"]["final_fsqz"], 0.5e-8)
+    np.testing.assert_allclose(comparison["diagnostic_deltas"]["final_fsql"], 0.5e-8)
+
+
 def test_runtime_memory_comparator_applies_classification_sidecar(tmp_path):
     mod = _load_tool("compare_runtime_memory_matrix")
     current = {
