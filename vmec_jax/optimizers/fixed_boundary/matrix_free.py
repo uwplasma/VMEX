@@ -101,11 +101,14 @@ def build_residual_linear_operator(owner: Any, params):
     if state_cotangent_from_packed is None:
         _, residual_vjp = jax.vjp(_residuals_from_packed, packed_final)
     residuals_np = np.asarray(residuals, dtype=float)
-    owner._remember_exact_residual(owner._exact_cache_key(params), residuals_np)
-    owner._profile_add("linear_operator_setup", time.perf_counter() - t_setup)
-
     n_res = int(residuals_np.size)
     n_params = int(params.size)
+    owner._last_jacobian_residual = residuals_np
+    owner._last_residual_size = n_res
+    owner._last_jacobian_shape = (n_res, n_params)
+    owner._last_jacobian_source = "matrix_free_linear_operator"
+    owner._remember_exact_residual(owner._exact_cache_key(params), residuals_np)
+    owner._profile_add("linear_operator_setup", time.perf_counter() - t_setup)
 
     def _matvec(direction):
         t_mv = time.perf_counter()
@@ -209,4 +212,3 @@ def build_residual_linear_operator(owner: Any, params):
         matmat=_matmat,
         dtype=np.dtype(float),
     )
-

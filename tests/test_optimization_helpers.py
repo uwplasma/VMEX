@@ -2260,6 +2260,9 @@ def test_residual_linear_operator_matvec_and_matmat_are_shape_checked(monkeypatc
     op = opt.residual_linear_operator(np.asarray([0.0, 0.0]))
 
     assert op.shape == (2, 2)
+    assert opt._last_residual_size == 2
+    assert opt._last_jacobian_shape == (2, 2)
+    assert opt._last_jacobian_source == "matrix_free_linear_operator"
     np.testing.assert_allclose(op.matvec(np.asarray([1.0, 2.0])), [9.0, 0.0])
     np.testing.assert_allclose(op.matmat(np.asarray([[1.0, 0.0], [0.0, 1.0]])), [[3.0, 3.0], [6.0, -3.0]])
     np.testing.assert_allclose(opt._exact_residual_cache[b"operator"], [7.0, 2.0])

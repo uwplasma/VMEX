@@ -1111,6 +1111,9 @@ def test_residual_linear_operator_products_use_tape_and_residual_transposes(monk
     np.testing.assert_allclose(op.matmat(np.asarray([[1.0, 2.0], [3.0, 4.0]])), [[4.0, 6.0], [-1.0, 0.0]])
     np.testing.assert_allclose(op.rmatvec(np.asarray([5.0, 7.0])), [19.0, -2.0])
     assert op.shape == (2, 2)
+    assert opt._last_residual_size == 2
+    assert opt._last_jacobian_shape == (2, 2)
+    assert opt._last_jacobian_source == "matrix_free_linear_operator"
     assert opt._profile["linear_operator_matvec"]["count"] == 1
     assert opt._profile["linear_operator_matmat"]["count"] == 1
     assert opt._profile["linear_operator_rmatvec"]["count"] == 1
