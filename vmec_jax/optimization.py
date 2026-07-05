@@ -883,9 +883,12 @@ class FixedBoundaryExactOptimizer:
         Optimization histories use this record to explain performance without
         storing large residual/Jacobian arrays.  The dimensions distinguish
         parameter-count growth from residual-projection growth in high-mode or
-        Boozer-heavy objectives.
+        Boozer-heavy objectives, while the policy fields record whether the
+        callback used state-only/minimal-history solves.
         """
 
+        trial_solver_use_scan = bool(self._trial_solver_kwargs.get("use_scan", False))
+        exact_solver_use_scan = bool(self._exact_solver_kwargs.get("use_scan", False))
         return {
             "backend": self._exact_tape_backend_name(),
             "n_parameters": int(len(self._specs)),
@@ -894,7 +897,13 @@ class FixedBoundaryExactOptimizer:
             "jacobian_shape": self._last_jacobian_shape,
             "last_jacobian_source": self._last_jacobian_source,
             "scan_exact_path": str(self._scan_exact_path),
-            "trial_solver_use_scan": bool(self._trial_solver_kwargs.get("use_scan", False)),
+            "exact_solver_use_scan": exact_solver_use_scan,
+            "exact_solver_light_history": bool(self._exact_solver_kwargs.get("light_history", False)),
+            "exact_solver_resume_state_mode": str(self._exact_solver_kwargs.get("resume_state_mode", "full")),
+            "trial_solver_use_scan": trial_solver_use_scan,
+            "trial_solver_state_only": bool(self._trial_solver_kwargs.get("state_only", trial_solver_use_scan)),
+            "trial_solver_light_history": bool(self._trial_solver_kwargs.get("light_history", False)),
+            "trial_solver_resume_state_mode": str(self._trial_solver_kwargs.get("resume_state_mode", "full")),
             "lasym": bool(getattr(getattr(self._static, "cfg", None), "lasym", False)),
         }
 
