@@ -247,10 +247,21 @@ def test_initialize_scan_resume_state_can_compact_inactive_stellsym_velocities()
         assert float(value) == pytest.approx(0.0)
 
 
-def test_initialize_scan_resume_state_resume_payload_overrides_compact_inactive_velocities():
+def test_initialize_scan_resume_state_resume_payload_preserves_compact_inactive_velocities():
     shape = (2, 2, 1)
     payload = {"vRcc": np.ones(shape), "vRsc": np.full(shape, 3.0)}
     out = _init(payload, shape=shape, compact_inactive_asym_velocity=True)
+
+    np.testing.assert_allclose(np.asarray(out.vRcc), np.ones(shape))
+    value = np.asarray(out.vRsc)
+    assert value.shape == ()
+    assert float(value) == pytest.approx(0.0)
+
+
+def test_initialize_scan_resume_state_resume_payload_keeps_inactive_velocities_when_not_compact():
+    shape = (2, 2, 1)
+    payload = {"vRcc": np.ones(shape), "vRsc": np.full(shape, 3.0)}
+    out = _init(payload, shape=shape, compact_inactive_asym_velocity=False)
 
     np.testing.assert_allclose(np.asarray(out.vRcc), np.ones(shape))
     np.testing.assert_allclose(np.asarray(out.vRsc), np.full(shape, 3.0))

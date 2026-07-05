@@ -168,12 +168,21 @@ def initialize_scan_resume_state(
             vZcs0 = asarray(resume_state.get("vZcs", vZcs0), dtype=dtype)
             vLsc0 = asarray(resume_state.get("vLsc", vLsc0), dtype=dtype)
             vLcs0 = asarray(resume_state.get("vLcs", vLcs0), dtype=dtype)
-            vRsc0 = asarray(resume_state.get("vRsc", vRsc0), dtype=dtype)
-            vRcs0 = asarray(resume_state.get("vRcs", vRcs0), dtype=dtype)
-            vZcc0 = asarray(resume_state.get("vZcc", vZcc0), dtype=dtype)
-            vZss0 = asarray(resume_state.get("vZss", vZss0), dtype=dtype)
-            vLcc0 = asarray(resume_state.get("vLcc", vLcc0), dtype=dtype)
-            vLss0 = asarray(resume_state.get("vLss", vLss0), dtype=dtype)
+            if bool(compact_inactive_asym_velocity):
+                inactive_zero = asarray(0.0, dtype=dtype)
+                vRsc0 = inactive_zero
+                vRcs0 = inactive_zero
+                vZcc0 = inactive_zero
+                vZss0 = inactive_zero
+                vLcc0 = inactive_zero
+                vLss0 = inactive_zero
+            else:
+                vRsc0 = asarray(resume_state.get("vRsc", vRsc0), dtype=dtype)
+                vRcs0 = asarray(resume_state.get("vRcs", vRcs0), dtype=dtype)
+                vZcc0 = asarray(resume_state.get("vZcc", vZcc0), dtype=dtype)
+                vZss0 = asarray(resume_state.get("vZss", vZss0), dtype=dtype)
+                vLcc0 = asarray(resume_state.get("vLcc", vLcc0), dtype=dtype)
+                vLss0 = asarray(resume_state.get("vLss", vLss0), dtype=dtype)
         try:
             force_bcovar0 = asarray(bool(resume_state.get("force_bcovar_update", bool(force_bcovar0))), dtype=bool)
         except Exception:
