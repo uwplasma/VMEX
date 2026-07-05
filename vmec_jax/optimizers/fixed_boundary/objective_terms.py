@@ -11,6 +11,21 @@ from vmec_jax._compat import jnp
 from vmec_jax.optimizers.fixed_boundary.parameterization import BoundaryParamSpec
 
 
+_SCALAR_BLOCK_NAMES = {
+    "aspect",
+    "iota",
+    "abs_iota_floor",
+    "abs_iota_ceiling",
+}
+_ENGINEERING_BLOCK_NAMES = {
+    "mirror_ratio",
+    "mirror_ratio_constraint",
+    "max_elongation",
+    "max_elongation_constraint",
+    "LgradB",
+}
+
+
 @dataclass(frozen=True)
 class StageContext:
     """Objects needed by objective callbacks for one mode-continuation stage."""
@@ -89,6 +104,7 @@ def residuals_from_objectives(objectives: Sequence[ObjectiveTerm], ctx: StageCon
     """Create the state residual callback consumed by ``FixedBoundaryExactOptimizer``."""
 
     bound_objectives = tuple(term.bind(ctx) for term in objectives)
+    block_summary = tuple(objective_block_summary(term, index=i) for i, term in enumerate(bound_objectives))
 
     def residuals_from_state(state, *, ctx=ctx, objectives=bound_objectives):
         """Evaluate residuals from state for fixed-boundary VMEC solve and implicit differentiation."""
@@ -125,7 +141,39 @@ def residuals_from_objectives(objectives: Sequence[ObjectiveTerm], ctx: StageCon
         residuals_from_state._helicity_m = int(helicity_m)
     if helicity_n is not None:
         residuals_from_state._helicity_n = int(helicity_n)
+    residuals_from_state._residual_block_summary = block_summary
     return attach_packed_state_autodiff_hooks(residuals_from_state)
+
+
+def objective_block_summary(term: ObjectiveTerm, *, index: int) -> dict[str, object]:
+    """Return non-array metadata for one least-squares residual block.
+
+    The exact optimizer uses this to explain Jacobian cost.  It deliberately
+    avoids evaluating the objective, so it is safe to include in histories and
+    diagnostic JSON without triggering extra VMEC/Boozer work.
+    """
+
+    metadata = dict(term.metadata)
+    name = str(term.name)
+    if "residual_block_kind" in metadata:
+        kind = str(metadata["residual_block_kind"])
+    elif name in _SCALAR_BLOCK_NAMES:
+        kind = "scalar"
+    elif name in _ENGINEERING_BLOCK_NAMES:
+        kind = "engineering"
+    elif metadata.get("objective_family") == "qs" or name == "qs":
+        kind = "field"
+    elif term.total is not None:
+        kind = "vector"
+    else:
+        kind = "scalar"
+    return {
+        "index": int(index),
+        "name": name,
+        "kind": kind,
+        "has_total": term.total is not None,
+        "track_iota": bool(term.track_iota),
+    }
 
 
 def attach_packed_state_autodiff_hooks(residuals_from_state: Callable) -> Callable:
@@ -186,5 +234,6 @@ __all__ = [
     "ObjectiveTerm",
     "QIObjectiveTerm",
     "StageContext",
+    "objective_block_summary",
     "residuals_from_objectives",
 ]

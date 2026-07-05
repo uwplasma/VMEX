@@ -889,12 +889,14 @@ class FixedBoundaryExactOptimizer:
 
         trial_solver_use_scan = bool(self._trial_solver_kwargs.get("use_scan", False))
         exact_solver_use_scan = bool(self._exact_solver_kwargs.get("use_scan", False))
+        residual_blocks = getattr(self._residuals_fn, "_residual_block_summary", None)
         return {
             "backend": self._exact_tape_backend_name(),
             "n_parameters": int(len(self._specs)),
             "packed_state_size": int(getattr(self._layout, "size")),
             "residual_size": self._last_residual_size,
             "jacobian_shape": self._last_jacobian_shape,
+            "residual_blocks": residual_blocks,
             "last_jacobian_source": self._last_jacobian_source,
             "scan_exact_path": str(self._scan_exact_path),
             "exact_solver_use_scan": exact_solver_use_scan,

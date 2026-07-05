@@ -1211,6 +1211,7 @@ def test_fixed_boundary_optimizer_exact_callback_metadata_reports_shapes():
     opt._last_jacobian_shape = (31, 2)
     opt._last_jacobian_source = "exact_tape_replay"
     opt._scan_exact_path = "tape"
+    opt._residuals_fn = object()
     opt._exact_solver_kwargs = {"use_scan": False, "light_history": True, "resume_state_mode": "none"}
     opt._trial_solver_kwargs = {"use_scan": False, "light_history": True, "resume_state_mode": "none"}
     opt._static = SimpleNamespace(cfg=SimpleNamespace(lasym=True))
@@ -1221,6 +1222,7 @@ def test_fixed_boundary_optimizer_exact_callback_metadata_reports_shapes():
         "packed_state_size": 17,
         "residual_size": 31,
         "jacobian_shape": (31, 2),
+        "residual_blocks": None,
         "last_jacobian_source": "exact_tape_replay",
         "scan_exact_path": "tape",
         "exact_solver_use_scan": False,

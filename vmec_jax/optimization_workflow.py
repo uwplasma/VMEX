@@ -300,8 +300,30 @@ class LeastSquaresProblem:
             "scalar_objectives": self.scalar_objective_names,
             "qi_objectives": self.qi_objective_names,
             "is_qi": self.is_qi,
+            "residual_blocks": self.residual_block_summary,
             "metadata": dict(self.metadata),
         }
+
+    @property
+    def residual_block_summary(self) -> tuple[dict[str, object], ...]:
+        """Non-array residual-block metadata for diagnostics and performance planning."""
+
+        scalar_blocks = tuple(
+            _objective_terms.objective_block_summary(term, index=i)
+            for i, term in enumerate(self.objective_terms)
+        )
+        qi_offset = len(scalar_blocks)
+        qi_blocks = tuple(
+            {
+                "index": int(qi_offset + i),
+                "name": str(term.name),
+                "kind": "qi_field" if str(term.name) == "qi" else "qi_engineering",
+                "has_total": True,
+                "track_iota": False,
+            }
+            for i, term in enumerate(self.qi_objective_terms)
+        )
+        return scalar_blocks + qi_blocks
 
 
 @dataclass(frozen=True)
