@@ -2064,9 +2064,12 @@ def test_fixed_boundary_optimizer_trial_scan_default_and_env_override(monkeypatc
 
     monkeypatch.delenv("VMEC_JAX_OPT_TRIAL_SCAN", raising=False)
     assert opt._use_scan_for_trial_solves() is True
+    assert opt._use_scan_for_trial_solves(max_nfev=2) is False
+    assert opt._use_scan_for_trial_solves(max_nfev=3) is True
 
     opt._solver_device_name = "gpu"
     assert opt._use_scan_for_trial_solves() is True
+    assert opt._use_scan_for_trial_solves(max_nfev=2) is False
 
     opt._helicity_m = 0
     opt._helicity_n = -1
@@ -2080,6 +2083,7 @@ def test_fixed_boundary_optimizer_trial_scan_default_and_env_override(monkeypatc
 
     monkeypatch.setenv("VMEC_JAX_OPT_TRIAL_SCAN", "1")
     assert opt._use_scan_for_trial_solves() is True
+    assert opt._use_scan_for_trial_solves(max_nfev=2) is True
 
 
 def test_fixed_boundary_optimizer_exact_path_is_device_aware(monkeypatch):

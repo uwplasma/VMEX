@@ -221,12 +221,11 @@ class FixedBoundaryExactOptimizer:
         )
         self._trial_solver_kwargs = dict(
             _base,
-            # Trial-point residuals do not need an adjoint tape. The default
-            # policy is objective-aware: QS/QP probes benefit from scan-runner
-            # cache reuse, while QI probes currently keep the VMEC-control loop
-            # because compact QP->QI timings showed different trust-region
-            # basins when scan trials were used. VMEC_JAX_OPT_TRIAL_SCAN
-            # overrides this for diagnostics.
+            # Trial-point residuals do not need an adjoint tape. The run method
+            # refreshes this default once the stage budget is known: very short
+            # stages cannot amortize scan-runner setup, while longer QA/QH
+            # stages may still reuse the scan runner across accepted points.
+            # VMEC_JAX_OPT_TRIAL_SCAN overrides this for diagnostics.
             jit_forces="auto",
             use_scan=self._use_scan_for_trial_solves(),
         )
@@ -451,15 +450,17 @@ class FixedBoundaryExactOptimizer:
             return False
         return True if len(self._specs) <= max_dofs else None
 
-    def _use_scan_for_trial_solves(self) -> bool:
+    def _use_scan_for_trial_solves(self, *, max_nfev: int | None = None) -> bool:
         """Return whether trial residual solves should use the scan loop.
 
         Exact-optimizer trial residuals are short VMEC solves called repeatedly
         by SciPy's trust-region line search.  They do not need an adjoint tape.
-        Same-shape QA/QH probes show the VMEC2000-compatible scan path reuses
-        compiled runners across boundary updates.  QP/QI high-DOF probes still
-        spend more time in cold scan-runner setup than they save in the device
-        loop, so those families use conservative loop trials unless explicitly
+        The VMEC2000-compatible scan path can reuse compiled runners across
+        boundary updates, but it has a cold setup cost.  If a stage budget
+        permits at most one trial residual call, the scan path cannot amortize
+        that setup, so the VMEC-control loop is the conservative default.  QP/QI
+        probes still spend more time in cold scan-runner setup than they save in
+        the device loop, so those families use loop trials unless explicitly
         overridden.  Environment overrides always win so regressions can be
         isolated per machine/problem.
         """
@@ -467,6 +468,8 @@ class FixedBoundaryExactOptimizer:
         if forced in ("1", "true", "yes", "on", "scan"):
             return True
         if forced in ("0", "false", "no", "off", "loop", "none"):
+            return False
+        if max_nfev is not None and int(max_nfev) <= 2:
             return False
         family = str(getattr(self, "_objective_family", "")).strip().lower()
         if family == "qi":
@@ -2014,6 +2017,13 @@ class FixedBoundaryExactOptimizer:
 
         params0_arr = np.asarray(params0, dtype=float)
         scalar_cost_only_trials_used: bool | None = None
+        self._trial_solver_kwargs["use_scan"] = self._use_scan_for_trial_solves(
+            max_nfev=max_nfev,
+        )
+        self._profile_add(
+            f"trial_solver_scan_policy_{'scan' if self._trial_solver_kwargs['use_scan'] else 'loop'}",
+            0.0,
+        )
 
         state0, entry0, cost0, qs_total0, aspect0 = self._initial_run_evaluation(params0_arr)
 

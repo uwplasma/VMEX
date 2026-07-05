@@ -449,8 +449,10 @@ def test_solver_device_context_and_trial_scan_env_branches(monkeypatch) -> None:
     opt._helicity_n = 0
     opt._solver_device_name = "gpu"
     assert opt._use_scan_for_trial_solves() is True
+    assert opt._use_scan_for_trial_solves(max_nfev=2) is False
     opt._solver_device_name = "cpu"
     assert opt._use_scan_for_trial_solves() is True
+    assert opt._use_scan_for_trial_solves(max_nfev=3) is True
     opt._helicity_m = 0
     opt._helicity_n = 1
     assert opt._use_scan_for_trial_solves() is False
