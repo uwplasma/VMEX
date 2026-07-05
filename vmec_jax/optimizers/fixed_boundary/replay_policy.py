@@ -5,6 +5,15 @@ from __future__ import annotations
 import os
 
 
+def _env_flag(name: str) -> bool | None:
+    """Return a boolean environment override without mutating optimizer state."""
+
+    value = os.getenv(name)
+    if value is None:
+        return None
+    return value.strip().lower() not in ("", "0", "false", "no", "off")
+
+
 def optimizer_backend_name(solver_device_name: str | None) -> str:
     """Return the active optimizer backend name without changing device policy."""
 
@@ -160,3 +169,59 @@ def chunked_projected_replay_projection_enabled(
     if bool(getattr(getattr(optimizer._static, "cfg", None), "lasym", False)):
         return False
     return True
+
+
+def exact_replay_policy_metadata(optimizer, n_params: int | None = None) -> dict[str, object]:
+    """Summarize exact-callback replay policy choices without changing them.
+
+    The exact callback has several mathematically equivalent replay routes:
+    dense tangent replay, projected replay, chunked projection, scalar-adjoint
+    gradients, and accelerator-oriented JVP-only tapes.  This diagnostic record
+    exposes the chosen route and its controlling backend/shape conditions so
+    optimization histories and benchmark summaries can classify performance
+    regressions without storing large Jacobians or mutating profile counters.
+    """
+
+    n_params_int = None if n_params is None else int(n_params)
+    backend = optimizer_backend_name(getattr(optimizer, "_solver_device_name", None))
+    static = getattr(optimizer, "_static", None)
+    lasym = bool(getattr(getattr(static, "cfg", None), "lasym", False))
+    accelerator = backend in ("gpu", "cuda", "rocm", "tpu", "metal")
+    gpu_like = backend in ("gpu", "cuda", "rocm", "tpu", "metal")
+
+    jvp_only_override = _env_flag("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE")
+    basepoint_override = _env_flag("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES")
+    column_chunk = None
+    projected = False
+    chunked_projection = False
+    scalar_initial_tangents = False
+    linear_operator_initial_tangents = False
+    if n_params_int is not None:
+        column_chunk = lasym_replay_column_chunk(optimizer, n_params_int)
+        projected = projected_replay_residuals_enabled(optimizer, n_params_int)
+        chunked_projection = chunked_projected_replay_projection_enabled(
+            optimizer,
+            column_chunk,
+            n_params_int,
+        )
+        scalar_initial_tangents = scalar_gradient_initial_tangents_enabled(optimizer, n_params_int)
+        linear_operator_initial_tangents = precompute_linear_operator_initial_tangents_enabled(
+            optimizer,
+            n_params_int,
+        )
+
+    return {
+        "backend": backend,
+        "n_parameters": n_params_int,
+        "lasym": lasym,
+        "projected_replay": bool(projected),
+        "projected_replay_reason": "enabled" if projected else "disabled_or_below_threshold",
+        "fused_projected_replay": fused_projected_replay_enabled(),
+        "column_chunk": None if column_chunk is None else int(column_chunk),
+        "chunked_projected_replay_projection": bool(chunked_projection),
+        "scalar_gradient_initial_tangents": bool(scalar_initial_tangents),
+        "linear_operator_initial_tangents": bool(linear_operator_initial_tangents),
+        "jvp_only_exact_tape": bool(gpu_like if jvp_only_override is None else jvp_only_override),
+        "jvp_only_basepoint_carries": bool(gpu_like if basepoint_override is None else basepoint_override),
+        "accelerator_backend": bool(accelerator),
+    }

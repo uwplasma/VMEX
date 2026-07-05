@@ -170,3 +170,8 @@ def test_scalar_trust_run_records_auto_scalar_production_defaults(method, expect
     assert result["method_auto_reason"] == expected_reason
     assert result["_history_dump"]["scalar_cost_only_trials"] is expected_cost_only
     assert result["_history_dump"]["exact_callback_metadata"]["scalar_cost_only_trials"] is expected_cost_only
+    replay_policy = result["_history_dump"]["exact_callback_metadata"]["exact_replay_policy"]
+    assert replay_policy["backend"] == "cpu"
+    assert replay_policy["n_parameters"] == 1
+    assert replay_policy["projected_replay"] is False
+    assert replay_policy["jvp_only_exact_tape"] is False

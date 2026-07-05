@@ -55,7 +55,7 @@ from .optimizers.fixed_boundary.qs_residuals import (
 )
 from .optimizers.fixed_boundary.replay_policy import (
     chunked_projected_replay_projection_enabled, fused_projected_replay_enabled,
-    lasym_replay_column_chunk, optimizer_backend_name,
+    exact_replay_policy_metadata, lasym_replay_column_chunk, optimizer_backend_name,
     precompute_linear_operator_initial_tangents_enabled, projected_replay_residuals_enabled,
     scalar_gradient_initial_tangents_enabled,
 )
@@ -947,6 +947,10 @@ class FixedBoundaryExactOptimizer:
             "trial_solver_state_only": bool(self._trial_solver_kwargs.get("state_only", trial_solver_use_scan)),
             "trial_solver_light_history": bool(self._trial_solver_kwargs.get("light_history", False)),
             "trial_solver_resume_state_mode": str(self._trial_solver_kwargs.get("resume_state_mode", "full")),
+            "exact_replay_policy": exact_replay_policy_metadata(
+                self,
+                int(len(getattr(self, "_specs", ()))),
+            ),
             "lasym": bool(getattr(getattr(getattr(self, "_static", None), "cfg", None), "lasym", False)),
         }
 

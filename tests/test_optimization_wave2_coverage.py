@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import vmec_jax.optimization as opt_module
+from vmec_jax.optimizers.fixed_boundary.replay_policy import exact_replay_policy_metadata
 from vmec_jax.optimization import (
     BoundaryParamSpec,
     FixedBoundaryExactOptimizer,
@@ -664,6 +665,50 @@ def test_chunked_projected_replay_projection_policy_branches(monkeypatch) -> Non
     assert opt._chunked_projected_replay_projection_enabled(40, 80) is False
     monkeypatch.setenv("VMEC_JAX_OPT_CHUNKED_PROJECTED_REPLAY_PROJECTION", "yes")
     assert opt._chunked_projected_replay_projection_enabled(40, 80) is True
+
+
+def test_exact_replay_policy_metadata_is_side_effect_free(monkeypatch) -> None:
+    opt = object.__new__(FixedBoundaryExactOptimizer)
+    opt._static = SimpleNamespace(cfg=SimpleNamespace(lasym=False))
+    opt._solver_device_name = "gpu"
+    opt._has_stellarator_asymmetric_configuration = lambda: False
+
+    for name in (
+        "VMEC_JAX_OPT_PROJECTED_REPLAY_RESIDUALS",
+        "VMEC_JAX_OPT_FUSED_PROJECTED_REPLAY",
+        "VMEC_JAX_OPT_CHUNKED_PROJECTED_REPLAY_PROJECTION",
+        "VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE",
+        "VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    meta = exact_replay_policy_metadata(opt, 80)
+
+    assert meta["backend"] == "gpu"
+    assert meta["n_parameters"] == 80
+    assert meta["lasym"] is False
+    assert meta["projected_replay"] is True
+    assert meta["fused_projected_replay"] is False
+    assert meta["column_chunk"] == 40
+    assert meta["chunked_projected_replay_projection"] is True
+    assert meta["scalar_gradient_initial_tangents"] is True
+    assert meta["linear_operator_initial_tangents"] is False
+    assert meta["jvp_only_exact_tape"] is True
+    assert meta["jvp_only_basepoint_carries"] is True
+    assert not hasattr(opt, "_profile")
+
+    opt._solver_device_name = "cpu"
+    opt._static = SimpleNamespace(cfg=SimpleNamespace(lasym=True))
+    opt._has_stellarator_asymmetric_configuration = lambda: True
+    meta = exact_replay_policy_metadata(opt, 64)
+
+    assert meta["backend"] == "cpu"
+    assert meta["lasym"] is True
+    assert meta["projected_replay"] is False
+    assert meta["column_chunk"] == 8
+    assert meta["chunked_projected_replay_projection"] is False
+    assert meta["scalar_gradient_initial_tangents"] is False
+    assert meta["jvp_only_exact_tape"] is False
 
 
 def test_projected_replay_jacobian_path_projects_without_intermediate_sync(monkeypatch) -> None:
