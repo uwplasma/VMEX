@@ -452,6 +452,29 @@ _SCAN_CARRY_CONTROLLER_FIELDS = frozenset(
         "z00_prev",
     }
 )
+_SCAN_RZ_CARRY_APPLY_KEYS = frozenset(
+    {
+        "ar",
+        "br",
+        "dr",
+        "az",
+        "bz",
+        "dz",
+        "cr",
+        "ir",
+        "cz",
+        "iz",
+        "dlr_t",
+        "dr_t",
+        "dur_t",
+        "dlz_t",
+        "dz_t",
+        "duz_t",
+    }
+)
+_SCAN_RZ_CARRY_DERIVED_KEYS = frozenset({"m1_fac_r", "m1_fac_z"})
+_SCAN_RZ_CARRY_ALLOWED_KEYS = _SCAN_RZ_CARRY_APPLY_KEYS | _SCAN_RZ_CARRY_DERIVED_KEYS
+_SCAN_RZ_CARRY_MANDATORY_KEYS = frozenset({"ar", "br", "dr", "az", "bz", "dz", "m1_fac_r", "m1_fac_z"})
 
 
 def _scan_arg_category_key(path: tuple[str, ...]) -> str:
@@ -497,10 +520,13 @@ def record_scan_runner_arg_summary(
     category_counts: dict[str, int] = {}
     category_array_counts: dict[str, int] = {}
     category_nbytes: dict[str, int] = {}
+    rz_mat_keys: set[str] = set()
     for index, arg in enumerate(args):
         for path, leaf in _scan_runner_arg_path_leaves(arg, (f"arg{index}",)):
             group_key = _scan_arg_group_key(path)
             category_key = _scan_arg_category_key(path)
+            if len(path) > 2 and path[0] == "arg0" and path[1] == "cache_prec_rz_mats":
+                rz_mat_keys.add(str(path[2]))
             group_counts[group_key] = int(group_counts.get(group_key, 0)) + 1
             category_counts[category_key] = int(category_counts.get(category_key, 0)) + 1
             leaf_count += 1
@@ -533,6 +559,19 @@ def record_scan_runner_arg_summary(
         scan_timing_stats[f"{prefix}_leaf_count"] = int(count)
         scan_timing_stats[f"{prefix}_array_leaf_count"] = int(category_array_counts.get(category_key, 0))
         scan_timing_stats[f"{prefix}_array_nbytes"] = int(category_nbytes.get(category_key, 0))
+    if rz_mat_keys:
+        unexpected_keys = rz_mat_keys - _SCAN_RZ_CARRY_ALLOWED_KEYS
+        missing_mandatory_keys = _SCAN_RZ_CARRY_MANDATORY_KEYS - rz_mat_keys
+        scan_timing_stats["scan_runner_arg_preconditioner_rz_mats_key_count"] = int(len(rz_mat_keys))
+        scan_timing_stats["scan_runner_arg_preconditioner_rz_mats_unexpected_key_count"] = int(
+            len(unexpected_keys)
+        )
+        scan_timing_stats["scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count"] = int(
+            len(missing_mandatory_keys)
+        )
+        scan_timing_stats["scan_runner_arg_preconditioner_rz_mats_compact_ok_count"] = int(
+            (not unexpected_keys) and (not missing_mandatory_keys)
+        )
 
 
 def maybe_record_scan_runner_arg_summary(

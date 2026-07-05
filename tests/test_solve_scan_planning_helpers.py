@@ -491,6 +491,62 @@ def test_record_scan_runner_arg_summary_counts_leaves_and_array_bytes():
     assert stats["scan_runner_arg_category_iteration_input_array_nbytes"] == small.nbytes
 
 
+def test_record_scan_runner_arg_summary_reports_compact_rz_preconditioner_carry():
+    """Preconditioner carry diagnostics should flag apply-only R/Z matrices."""
+
+    carry = namedtuple("Carry", "cache_prec_rz_mats")
+    mats = {
+        "ar": jnp.ones((2, 2), dtype=jnp.float64),
+        "br": jnp.ones((2, 2), dtype=jnp.float64),
+        "dr": jnp.ones((2, 2), dtype=jnp.float64),
+        "az": jnp.ones((2, 2), dtype=jnp.float64),
+        "bz": jnp.ones((2, 2), dtype=jnp.float64),
+        "dz": jnp.ones((2, 2), dtype=jnp.float64),
+        "m1_fac_r": jnp.ones((2,), dtype=jnp.float64),
+        "m1_fac_z": jnp.ones((2,), dtype=jnp.float64),
+    }
+    stats = {}
+
+    record_scan_runner_arg_summary(
+        (carry(cache_prec_rz_mats=mats), jnp.arange(3)),
+        scan_timing_enabled=True,
+        scan_timing_stats=stats,
+    )
+
+    assert stats["scan_runner_arg_preconditioner_rz_mats_key_count"] == 8
+    assert stats["scan_runner_arg_preconditioner_rz_mats_unexpected_key_count"] == 0
+    assert stats["scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count"] == 0
+    assert stats["scan_runner_arg_preconditioner_rz_mats_compact_ok_count"] == 1
+
+
+def test_record_scan_runner_arg_summary_flags_reassembly_rz_preconditioner_carry():
+    """Reassembly coefficients in the scan carry should be visible as regressions."""
+
+    carry = namedtuple("Carry", "cache_prec_rz_mats")
+    mats = {
+        "ar": jnp.ones((2, 2), dtype=jnp.float64),
+        "br": jnp.ones((2, 2), dtype=jnp.float64),
+        "dr": jnp.ones((2, 2), dtype=jnp.float64),
+        "az": jnp.ones((2, 2), dtype=jnp.float64),
+        "bz": jnp.ones((2, 2), dtype=jnp.float64),
+        "dz": jnp.ones((2, 2), dtype=jnp.float64),
+        "m1_fac_r": jnp.ones((2,), dtype=jnp.float64),
+        "arm_parity": jnp.ones((2, 2), dtype=jnp.float64),
+    }
+    stats = {}
+
+    record_scan_runner_arg_summary(
+        (carry(cache_prec_rz_mats=mats), jnp.arange(3)),
+        scan_timing_enabled=True,
+        scan_timing_stats=stats,
+    )
+
+    assert stats["scan_runner_arg_preconditioner_rz_mats_key_count"] == 8
+    assert stats["scan_runner_arg_preconditioner_rz_mats_unexpected_key_count"] == 1
+    assert stats["scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count"] == 1
+    assert stats["scan_runner_arg_preconditioner_rz_mats_compact_ok_count"] == 0
+
+
 def test_scan_arg_summary_is_independent_from_explicit_compile():
     stats = {}
     arr = jnp.ones((4,), dtype=jnp.float64)

@@ -37,6 +37,10 @@ def test_summarize_profile_extracts_compile_and_scan_metrics(tmp_path) -> None:
                     "scan_runner_arg_array_leaf_count": 35,
                     "scan_runner_arg_scalar_leaf_count": 5,
                     "scan_runner_arg_array_nbytes": 4096,
+                    "scan_runner_arg_preconditioner_rz_mats_key_count": 8,
+                    "scan_runner_arg_preconditioner_rz_mats_unexpected_key_count": 0,
+                    "scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count": 0,
+                    "scan_runner_arg_preconditioner_rz_mats_compact_ok_count": 1,
                     "scan_runner_arg_path_arg0_state_leaf_count": 20,
                     "scan_runner_arg_path_arg0_state_array_nbytes": 2048,
                     "scan_runner_arg_path_arg0_cache_prec_rz_mats_leaf_count": 8,
@@ -92,6 +96,10 @@ def test_summarize_profile_extracts_compile_and_scan_metrics(tmp_path) -> None:
     assert row["scan_runner_arg_array_leaf_count"] == 35.0
     assert row["scan_runner_arg_scalar_leaf_count"] == 5.0
     assert row["scan_runner_arg_array_nbytes"] == 4096.0
+    assert row["scan_runner_arg_preconditioner_rz_mats_key_count"] == 8.0
+    assert row["scan_runner_arg_preconditioner_rz_mats_unexpected_key_count"] == 0.0
+    assert row["scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count"] == 0.0
+    assert row["scan_runner_arg_preconditioner_rz_mats_compact_ok_count"] == 1.0
     assert row["scan_runner_arg_top_leaf_paths"].startswith("arg0_state:20")
     assert "arg0_cache_prec_rz_mats:8" in row["scan_runner_arg_top_leaf_paths"]
     assert row["scan_runner_arg_top_nbytes_paths"].startswith("arg0_state:2048")
@@ -153,6 +161,10 @@ def test_render_markdown_includes_blank_missing_values() -> None:
                 "scan_runner_arg_array_leaf_count": None,
                 "scan_runner_arg_scalar_leaf_count": None,
                 "scan_runner_arg_array_nbytes": None,
+                "scan_runner_arg_preconditioner_rz_mats_key_count": None,
+                "scan_runner_arg_preconditioner_rz_mats_unexpected_key_count": None,
+                "scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count": None,
+                "scan_runner_arg_preconditioner_rz_mats_compact_ok_count": None,
                 "scan_runner_arg_top_leaf_paths": "",
                 "scan_runner_arg_top_nbytes_paths": "",
                 "scan_runner_cache_hit_count": None,

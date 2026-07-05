@@ -120,6 +120,10 @@ def test_scan_timing_snapshot_extracts_hit_miss_dispatch_fields() -> None:
                 "scan_runner_arg_array_leaf_count": 40,
                 "scan_runner_arg_scalar_leaf_count": 4,
                 "scan_runner_arg_array_nbytes": 4096,
+                "scan_runner_arg_preconditioner_rz_mats_key_count": 8,
+                "scan_runner_arg_preconditioner_rz_mats_unexpected_key_count": 0,
+                "scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count": 0,
+                "scan_runner_arg_preconditioner_rz_mats_compact_ok_count": 1,
                 "scan_runner_arg_path_arg0_state_array_nbytes": 2048,
                 "scan_runner_arg_path_arg0_state_array_leaf_count": 20,
                 "scan_runner_arg_path_arg0_cache_prec_rz_mats_array_nbytes": 1024,
@@ -151,6 +155,10 @@ def test_scan_timing_snapshot_extracts_hit_miss_dispatch_fields() -> None:
     assert timing["scan_runner_arg_array_leaf_count"] == 40
     assert timing["scan_runner_arg_scalar_leaf_count"] == 4
     assert timing["scan_runner_arg_array_nbytes"] == 4096
+    assert timing["scan_runner_arg_preconditioner_rz_mats_key_count"] == 8
+    assert timing["scan_runner_arg_preconditioner_rz_mats_unexpected_key_count"] == 0
+    assert timing["scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count"] == 0
+    assert timing["scan_runner_arg_preconditioner_rz_mats_compact_ok_count"] == 1
     assert timing["scan_runner_explicit_compile_count"] == 1
     assert timing["scan_runner_explicit_hlo_instruction_count"] == 99
     assert timing["scan_runner_explicit_lower_s"] == 0.3

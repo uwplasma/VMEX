@@ -49,6 +49,10 @@ SCAN_TIMING_COUNT_KEYS: tuple[str, ...] = (
     "scan_runner_arg_array_leaf_count",
     "scan_runner_arg_scalar_leaf_count",
     "scan_runner_arg_array_nbytes",
+    "scan_runner_arg_preconditioner_rz_mats_key_count",
+    "scan_runner_arg_preconditioner_rz_mats_unexpected_key_count",
+    "scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count",
+    "scan_runner_arg_preconditioner_rz_mats_compact_ok_count",
 )
 
 
