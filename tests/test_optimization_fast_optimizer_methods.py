@@ -200,6 +200,20 @@ def test_fixed_boundary_exact_optimizer_init_uses_profiled_trial_scan_policy(mon
     assert opt_forced_scan._trial_solver_kwargs["use_scan"] is True
     assert opt_forced_scan._exact_solver_kwargs["use_scan"] is False
 
+    monkeypatch.delenv("VMEC_JAX_OPT_TRIAL_SCAN", raising=False)
+    residuals_fn._objective_family = "qi"
+    opt_qi = FixedBoundaryExactOptimizer(
+        static,
+        indata,
+        boundary,
+        [BoundaryParamSpec("rc10", "rc", 0, 1, 0)],
+        residuals_fn,
+        inner_max_iter=7,
+        inner_ftol=2.0e-9,
+        solver_device="gpu",
+    )
+    assert opt_qi._trial_solver_kwargs["use_scan"] is False
+
 
 def test_auto_method_resolver_keeps_dense_for_high_mode_cpu_cases(monkeypatch):
     opt = _run_ready_optimizer()

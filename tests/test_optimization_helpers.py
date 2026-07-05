@@ -2053,12 +2053,16 @@ def test_fixed_boundary_optimizer_solver_device_noops_on_active_gpu(monkeypatch)
 def test_fixed_boundary_optimizer_trial_scan_default_and_env_override(monkeypatch):
     opt = object.__new__(FixedBoundaryExactOptimizer)
     opt._solver_device_name = "cpu"
+    opt._objective_family = "qs"
 
     monkeypatch.delenv("VMEC_JAX_OPT_TRIAL_SCAN", raising=False)
     assert opt._use_scan_for_trial_solves() is True
 
     opt._solver_device_name = "gpu"
     assert opt._use_scan_for_trial_solves() is True
+
+    opt._objective_family = "qi"
+    assert opt._use_scan_for_trial_solves() is False
 
     monkeypatch.setenv("VMEC_JAX_OPT_TRIAL_SCAN", "0")
     assert opt._use_scan_for_trial_solves() is False

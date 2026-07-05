@@ -221,11 +221,12 @@ class FixedBoundaryExactOptimizer:
         )
         self._trial_solver_kwargs = dict(
             _base,
-            # Trial-point residuals do not need an adjoint tape.  Use a
-            # backend-aware policy: CPU stays on the VMEC-control loop for
-            # convergence/control parity, while accelerator backends use scan
-            # to reduce launch overhead. VMEC_JAX_OPT_TRIAL_SCAN overrides this
-            # for diagnostics.
+            # Trial-point residuals do not need an adjoint tape. The default
+            # policy is objective-aware: QS/QP probes benefit from scan-runner
+            # cache reuse, while QI probes currently keep the VMEC-control loop
+            # because compact QP->QI timings showed different trust-region
+            # basins when scan trials were used. VMEC_JAX_OPT_TRIAL_SCAN
+            # overrides this for diagnostics.
             jit_forces="auto",
             use_scan=self._use_scan_for_trial_solves(),
         )
@@ -464,6 +465,8 @@ class FixedBoundaryExactOptimizer:
         if forced in ("1", "true", "yes", "on", "scan"):
             return True
         if forced in ("0", "false", "no", "off", "loop", "none"):
+            return False
+        if str(getattr(self, "_objective_family", "")).strip().lower() == "qi":
             return False
         return self._exact_tape_backend_name() in ("cpu", "gpu", "cuda", "tpu", "rocm")
 

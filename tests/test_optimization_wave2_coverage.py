@@ -444,10 +444,13 @@ def test_solver_device_context_and_trial_scan_env_branches(monkeypatch) -> None:
     monkeypatch.setenv("VMEC_JAX_OPT_TRIAL_SCAN", "scan")
     assert opt._use_scan_for_trial_solves() is True
     monkeypatch.delenv("VMEC_JAX_OPT_TRIAL_SCAN")
+    opt._objective_family = "qs"
     opt._solver_device_name = "gpu"
     assert opt._use_scan_for_trial_solves() is True
     opt._solver_device_name = "cpu"
     assert opt._use_scan_for_trial_solves() is True
+    opt._objective_family = "qi"
+    assert opt._use_scan_for_trial_solves() is False
 
 
 def test_exact_tape_precomputed_tridi_policy_backend_and_env(monkeypatch) -> None:
