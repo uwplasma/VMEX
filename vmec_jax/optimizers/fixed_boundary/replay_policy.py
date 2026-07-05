@@ -28,6 +28,34 @@ def optimizer_backend_name(solver_device_name: str | None) -> str:
         return "cpu"
 
 
+def _optimizer_lasym(optimizer) -> bool:
+    """Return LASYM status for real optimizers and lightweight test doubles."""
+
+    static = getattr(optimizer, "_static", None)
+    return bool(getattr(getattr(static, "cfg", None), "lasym", False))
+
+
+def _optimizer_has_stellarator_asymmetry(optimizer) -> bool:
+    """Return whether replay policy should use LASYM/asymmetric safeguards.
+
+    The production optimizer exposes ``_has_stellarator_asymmetric_configuration``.
+    Some unit tests intentionally use minimal objects to exercise metadata paths
+    without constructing a full VMEC static state; for those, fall back to the
+    parameter-spec kinds and static ``cfg.lasym`` flag.
+    """
+
+    checker = getattr(optimizer, "_has_stellarator_asymmetric_configuration", None)
+    if callable(checker):
+        try:
+            return bool(checker())
+        except AttributeError:
+            pass
+    specs = getattr(optimizer, "_specs", ())
+    if any(str(getattr(spec, "kind", "")).lower() in ("rs", "zc") for spec in specs):
+        return True
+    return _optimizer_lasym(optimizer)
+
+
 def lasym_replay_column_chunk(optimizer, n_params: int) -> int | None:
     """Replay-column chunk heuristic for dense exact Jacobians."""
 
@@ -53,7 +81,7 @@ def lasym_replay_column_chunk(optimizer, n_params: int) -> int | None:
     if backend_name in ("gpu", "cuda", "rocm"):
         if int(n_params) < 24:
             return None
-        if bool(getattr(optimizer._static.cfg, "lasym", False)):
+        if _optimizer_lasym(optimizer):
             # LASYM doubles the boundary columns and remains more memory
             # sensitive on GPU; keep the older conservative replay chunks.
             return 8
@@ -64,7 +92,7 @@ def lasym_replay_column_chunk(optimizer, n_params: int) -> int | None:
         return 64
     if backend_name == "tpu":
         return None
-    if not bool(getattr(optimizer._static.cfg, "lasym", False)):
+    if not _optimizer_lasym(optimizer):
         return None
     if int(n_params) >= 64:
         return 8
@@ -84,7 +112,7 @@ def precompute_linear_operator_initial_tangents_enabled(optimizer, n_params: int
     backend = optimizer_backend_name(getattr(optimizer, "_solver_device_name", None))
     if backend in ("gpu", "cuda", "rocm", "tpu", "metal"):
         return False
-    if optimizer._has_stellarator_asymmetric_configuration():
+    if _optimizer_has_stellarator_asymmetry(optimizer):
         return False
     min_dofs = int(os.getenv("VMEC_JAX_OPT_LINEAR_OPERATOR_INITIAL_TANGENT_MIN_DOFS", "64"))
     max_dofs = int(os.getenv("VMEC_JAX_OPT_LINEAR_OPERATOR_INITIAL_TANGENT_MAX_DOFS", "128"))
@@ -102,7 +130,7 @@ def scalar_gradient_initial_tangents_enabled(optimizer, n_params: int) -> bool:
     backend = optimizer_backend_name(getattr(optimizer, "_solver_device_name", None))
     if backend not in ("cpu", "gpu", "cuda", "rocm", "tpu", "metal"):
         return False
-    if optimizer._has_stellarator_asymmetric_configuration():
+    if _optimizer_has_stellarator_asymmetry(optimizer):
         return False
     min_dofs = int(os.getenv("VMEC_JAX_OPT_SCALAR_GRADIENT_INITIAL_TANGENT_MIN_DOFS", "24"))
     default_max_dofs = "128" if backend == "cpu" else "256"
@@ -166,7 +194,7 @@ def chunked_projected_replay_projection_enabled(
     backend = optimizer_backend_name(getattr(optimizer, "_solver_device_name", None))
     if backend not in ("gpu", "cuda", "rocm"):
         return False
-    if bool(getattr(getattr(optimizer._static, "cfg", None), "lasym", False)):
+    if _optimizer_lasym(optimizer):
         return False
     return True
 
@@ -185,7 +213,7 @@ def exact_replay_policy_metadata(optimizer, n_params: int | None = None) -> dict
     n_params_int = None if n_params is None else int(n_params)
     backend = optimizer_backend_name(getattr(optimizer, "_solver_device_name", None))
     static = getattr(optimizer, "_static", None)
-    lasym = bool(getattr(getattr(static, "cfg", None), "lasym", False))
+    lasym = _optimizer_lasym(optimizer)
     accelerator = backend in ("gpu", "cuda", "rocm", "tpu", "metal")
     gpu_like = backend in ("gpu", "cuda", "rocm", "tpu", "metal")
 

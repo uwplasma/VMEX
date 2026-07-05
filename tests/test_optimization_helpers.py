@@ -1240,6 +1240,21 @@ def test_fixed_boundary_optimizer_exact_callback_metadata_reports_shapes():
         "trial_solver_state_only": False,
         "trial_solver_light_history": True,
         "trial_solver_resume_state_mode": "none",
+        "exact_replay_policy": {
+            "backend": "cpu",
+            "n_parameters": 2,
+            "lasym": True,
+            "projected_replay": False,
+            "projected_replay_reason": "disabled_or_below_threshold",
+            "fused_projected_replay": False,
+            "column_chunk": None,
+            "chunked_projected_replay_projection": False,
+            "scalar_gradient_initial_tangents": False,
+            "linear_operator_initial_tangents": False,
+            "jvp_only_exact_tape": False,
+            "jvp_only_basepoint_carries": False,
+            "accelerator_backend": False,
+        },
         "lasym": True,
     }
 
