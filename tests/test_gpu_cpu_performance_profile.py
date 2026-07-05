@@ -70,6 +70,7 @@ def _fixed_profiler_args(fixed_tool, **overrides):
         "no_jit_forces": False,
         "auto_cli_policy": False,
         "dynamic_scan": False,
+        "scan_arg_summary": False,
         "require_scan": False,
         "require_no_scan": False,
         "phase_timing": {},
@@ -221,6 +222,7 @@ def test_performance_matrix_fixed_command_uses_backend_solver_device(tmp_path):
             "--no-warmup",
             "--use-input-niter",
             "--vmec-timing-detail",
+            "--scan-arg-summary",
         ]
     )
     report = tmp_path / "report.json"
@@ -245,6 +247,7 @@ def test_performance_matrix_fixed_command_uses_backend_solver_device(tmp_path):
     assert "--no-auto-cli-policy" in command
     assert "--no-multigrid" in command
     assert "--vmec-timing-detail" in command
+    assert "--scan-arg-summary" in command
 
 
 def test_performance_matrix_fixed_report_stem_uses_iter_budget_by_default():
@@ -333,6 +336,7 @@ def test_performance_matrix_exact_command_can_request_memory_profile(tmp_path):
             "--trace",
             "--device-memory-profile",
             "--vmec-timing-detail",
+            "--scan-arg-summary",
             "--sync-replay-timing",
             "--jvp-only-exact-tape",
         ]
@@ -359,6 +363,7 @@ def test_performance_matrix_exact_command_can_request_memory_profile(tmp_path):
     assert command[command.index("--lsmr-maxiter") + 1] == "5"
     assert command[command.index("--trial-scan") + 1] == "off"
     assert "--vmec-timing-detail" in command
+    assert "--scan-arg-summary" in command
     assert "--sync-replay-timing" in command
     assert "--jvp-only-exact-tape" in command
     assert command[command.index("--trace-outdir") + 1] == str(trace)
