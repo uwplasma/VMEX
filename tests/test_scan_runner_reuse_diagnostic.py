@@ -35,6 +35,32 @@ def test_replace_ftol_requires_a_tolerance_line() -> None:
         reuse._replace_ftol("&INDATA\n  NITER = 3\n/\n", 1.0e-9)
 
 
+def test_env_override_helpers_restore_existing_and_missing_values(monkeypatch) -> None:
+    """Fallback-threshold diagnostics must not leak process environment changes."""
+
+    monkeypatch.setenv("VMEC_JAX_SCAN_FALLBACK_FSQ_FACTOR", "50")
+    monkeypatch.delenv("VMEC_JAX_SCAN_FALLBACK_IMPROVE", raising=False)
+
+    previous = reuse._set_env_overrides(
+        {
+            "VMEC_JAX_SCAN_FALLBACK_FSQ_FACTOR": "17",
+            "VMEC_JAX_SCAN_FALLBACK_IMPROVE": "0.03",
+        }
+    )
+
+    assert previous == {
+        "VMEC_JAX_SCAN_FALLBACK_FSQ_FACTOR": "50",
+        "VMEC_JAX_SCAN_FALLBACK_IMPROVE": None,
+    }
+    assert reuse.os.environ["VMEC_JAX_SCAN_FALLBACK_FSQ_FACTOR"] == "17"
+    assert reuse.os.environ["VMEC_JAX_SCAN_FALLBACK_IMPROVE"] == "0.03"
+
+    reuse._restore_env(previous)
+
+    assert reuse.os.environ["VMEC_JAX_SCAN_FALLBACK_FSQ_FACTOR"] == "50"
+    assert "VMEC_JAX_SCAN_FALLBACK_IMPROVE" not in reuse.os.environ
+
+
 def test_cache_counts_missing_timing_defaults_to_zero() -> None:
     """Diagnostic reports should be stable even if timing is absent."""
 
