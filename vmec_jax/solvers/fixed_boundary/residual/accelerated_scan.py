@@ -37,7 +37,7 @@ def _accelerated_scan_cache_key(
     *,
     static_key: Any,
     wout_key: Any,
-    edge_value_key: Any,
+    edge_signature_key: Any,
     max_iter: int,
     has_fsq_total_target: bool,
     precond_radial_alpha: float,
@@ -47,17 +47,17 @@ def _accelerated_scan_cache_key(
 ) -> tuple[Any, ...]:
     """Return the structural cache key for the compiled accelerated scan runner.
 
-    Numerical scalar controls such as time step, flip sign, lambda scaling, and
-    convergence tolerances are runtime operands of the compiled runner.  Keeping
-    them out of this key lets same-shape solves reuse one executable instead of
-    compiling again for routine optimizer or input-deck tolerance changes.
+    Numerical scalar controls and fixed-boundary edge values are runtime
+    operands of the compiled runner.  Keeping them out of this key lets
+    same-shape solves reuse one executable instead of compiling again for
+    routine optimizer, boundary, or input-deck tolerance changes.
     """
 
     return (
         "scan_v2",
         static_key,
         wout_key,
-        edge_value_key,
+        edge_signature_key,
         int(max_iter),
         bool(has_fsq_total_target),
         float(precond_radial_alpha),
@@ -227,7 +227,7 @@ def run_accelerated_residual_scan(
     free_boundary_enabled: bool,
     static_key: Any,
     wout_key: Any,
-    edge_value_key: Any,
+    edge_signature_key: Any,
     edge_Rcos: Any,
     edge_Rsin: Any,
     edge_Zcos: Any,
@@ -295,7 +295,7 @@ def run_accelerated_residual_scan(
     scan_cache_key = _accelerated_scan_cache_key(
         static_key=static_key,
         wout_key=wout_key,
-        edge_value_key=edge_value_key,
+        edge_signature_key=edge_signature_key,
         max_iter=int(max_iter),
         has_fsq_total_target=bool(has_fsq_total_target),
         precond_radial_alpha=float(precond_radial_alpha),
@@ -308,7 +308,18 @@ def run_accelerated_residual_scan(
 
     def _scan_step(carry, it_and_controls):
         it, time_step_dyn, flip_sign_dyn, lambda_update_scale_dyn, ftol_dyn, fsq_total_target_dyn = it_and_controls
-        state_i, converged, converged_iter, last_fsqr, last_fsqz, last_fsql = carry
+        (
+            state_i,
+            converged,
+            converged_iter,
+            last_fsqr,
+            last_fsqz,
+            last_fsql,
+            edge_Rcos_dyn,
+            edge_Rsin_dyn,
+            edge_Zcos_dyn,
+            edge_Zsin_dyn,
+        ) = carry
         it = jnp_module.asarray(it, dtype=jnp_module.int32)
 
         def _hold_step(_):
@@ -347,10 +358,10 @@ def run_accelerated_residual_scan(
                 time_step_j=time_step_dyn,
                 flip_sign_j=flip_sign_dyn,
                 free_boundary_enabled=bool(free_boundary_enabled),
-                edge_Rcos=edge_Rcos,
-                edge_Rsin=edge_Rsin,
-                edge_Zcos=edge_Zcos,
-                edge_Zsin=edge_Zsin,
+                edge_Rcos=edge_Rcos_dyn,
+                edge_Rsin=edge_Rsin_dyn,
+                edge_Zcos=edge_Zcos_dyn,
+                edge_Zsin=edge_Zsin_dyn,
                 idx00=int(idx00),
                 mode_context=mode_context,
                 mn_cos_to_signed_physical=mn_cos_to_signed_physical,
@@ -378,6 +389,10 @@ def run_accelerated_residual_scan(
                 fsqr,
                 fsqz,
                 fsql,
+                edge_Rcos_dyn,
+                edge_Rsin_dyn,
+                edge_Zcos_dyn,
+                edge_Zsin_dyn,
             )
             return carry_new, (fsqr, fsqz, fsql)
 
@@ -390,6 +405,10 @@ def run_accelerated_residual_scan(
         lambda_update_scale_dyn,
         ftol_dyn,
         fsq_total_target_dyn,
+        edge_Rcos_dyn,
+        edge_Rsin_dyn,
+        edge_Zcos_dyn,
+        edge_Zsin_dyn,
     ):
         carry0 = (
             state_init,
@@ -398,6 +417,10 @@ def run_accelerated_residual_scan(
             jnp_module.asarray(jnp_module.inf, dtype=dtype),
             jnp_module.asarray(jnp_module.inf, dtype=dtype),
             jnp_module.asarray(jnp_module.inf, dtype=dtype),
+            edge_Rcos_dyn,
+            edge_Rsin_dyn,
+            edge_Zcos_dyn,
+            edge_Zsin_dyn,
         )
         controls = (
             jnp_module.arange(max_iter, dtype=jnp_module.int32),
@@ -434,6 +457,10 @@ def run_accelerated_residual_scan(
         lambda_update_scale_j,
         ftol_j,
         fsq_total_target_j,
+        edge_Rcos,
+        edge_Rsin,
+        edge_Zcos,
+        edge_Zsin,
     )
     if scan_timing_enabled and scan_device_start is not None:
         carry_final, hist = scan_device_runtime.ready(
@@ -442,7 +469,7 @@ def run_accelerated_residual_scan(
             cache_status=scan_runner_cache_status,
         )
     scan_materialize_start = perf_counter() if scan_timing_enabled else None
-    state_final, converged_final, converged_iter_final, _, _, _ = carry_final
+    state_final, converged_final, converged_iter_final, _, _, _, *_edge = carry_final
     fsqr_hist, fsqz_hist, fsql_hist = hist
     w_hist = fsqr_hist + fsqz_hist + fsql_hist
     w_hist_np = np.asarray(w_hist)

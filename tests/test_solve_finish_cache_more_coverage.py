@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -553,8 +554,13 @@ def test_accelerated_scan_runner_cache_reports_timing_hit_and_miss(monkeypatch) 
         verbose_vmec2000_table=False,
     )
 
-    first = solve.solve_fixed_boundary_residual_iter(_state(), _static(), **params)
-    second = solve.solve_fixed_boundary_residual_iter(_state(), _static(), **params)
+    state_first = _state()
+    rcos_second = np.asarray(state_first.Rcos).copy()
+    rcos_second[-1, 1] += 0.03
+    state_second = replace(state_first, Rcos=rcos_second)
+
+    first = solve.solve_fixed_boundary_residual_iter(state_first, _static(), **params)
+    second = solve.solve_fixed_boundary_residual_iter(state_second, _static(), **params)
 
     assert first.diagnostics["accelerated_scan"] is True
     assert first.diagnostics["scan_path"] == "accelerated"

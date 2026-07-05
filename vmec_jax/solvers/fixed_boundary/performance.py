@@ -150,7 +150,7 @@ SCAN_FAST_CACHE_KEY_FIELDS: tuple[str, ...] = (
     "schema",
     "static_key",
     "wout_key",
-    "edge_value_key",
+    "edge_signature_key",
     "max_iter",
     "has_fsq_total_target",
     "precond_radial_alpha",

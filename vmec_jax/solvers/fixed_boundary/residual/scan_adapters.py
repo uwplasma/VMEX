@@ -610,7 +610,7 @@ def _dispatch_accelerated_residual_scan(
         free_boundary_enabled=bool(namespace["free_boundary_enabled"]),
         static_key=namespace["static_key"],
         wout_key=namespace["wout_key"],
-        edge_value_key=namespace["edge_value_key"],
+        edge_signature_key=namespace["edge_signature_key"],
         edge_Rcos=namespace["edge_Rcos"],
         edge_Rsin=namespace["edge_Rsin"],
         edge_Zcos=namespace["edge_Zcos"],

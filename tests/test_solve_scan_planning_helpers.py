@@ -115,7 +115,7 @@ def test_accelerated_scan_cache_key_excludes_dynamic_scalar_controls():
     base = dict(
         static_key=("static", 16, 4, 4),
         wout_key=("wout", "float64"),
-        edge_value_key=("edge", (4,)),
+        edge_signature_key=("edge", (4,)),
         max_iter=50,
         has_fsq_total_target=False,
         precond_radial_alpha=0.5,
@@ -131,6 +131,26 @@ def test_accelerated_scan_cache_key_excludes_dynamic_scalar_controls():
     assert key1 == key2
     assert key1 != key3
     assert "scan_v2" in key1
+
+
+def test_accelerated_scan_cache_key_excludes_dynamic_edge_values():
+    base = dict(
+        static_key=("static", 16, 4, 4),
+        wout_key=("wout", "float64"),
+        edge_signature_key=(((4,), "float64"),),
+        max_iter=50,
+        has_fsq_total_target=False,
+        precond_radial_alpha=0.5,
+        precond_lambda_alpha=0.25,
+        apply_m1_constraints=True,
+        jit_forces=True,
+    )
+
+    same_shape_new_boundary = {**base, "edge_signature_key": (((4,), "float64"),)}
+    changed_shape = {**base, "edge_signature_key": (((5,), "float64"),)}
+
+    assert _accelerated_scan_cache_key(**base) == _accelerated_scan_cache_key(**same_shape_new_boundary)
+    assert _accelerated_scan_cache_key(**base) != _accelerated_scan_cache_key(**changed_shape)
 
 
 @pytest.mark.parametrize("value", ["", "0", "false", "no", " FALSE "])

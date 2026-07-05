@@ -180,7 +180,7 @@ def test_accelerated_scan_v2_cache_key_labels_runtime_target_policy():
         "schema",
         "static_key",
         "wout_key",
-        "edge_value_key",
+        "edge_signature_key",
         "max_iter",
         "has_fsq_total_target",
         "precond_radial_alpha",
