@@ -164,6 +164,19 @@ def test_profile_guided_scan_decision_uses_measured_profile_without_size_thresho
     assert default_use_scan_for_backend(indata, "gpu", "accelerated") is True
 
 
+def test_profile_guided_scan_decision_uses_bundled_profile_and_opt_out(monkeypatch):
+    indata = _Input()
+    indata.source_path = "input.LandremanSengupta2019_section5.4_B2_A80"
+
+    monkeypatch.delenv("VMEC_JAX_ACCELERATED_SCAN_PROFILE", raising=False)
+    assert profile_guided_scan_decision_for_indata(indata) is False
+    assert default_use_scan_for_backend(indata, "cpu", "accelerated") is False
+
+    monkeypatch.setenv("VMEC_JAX_ACCELERATED_SCAN_PROFILE", "off")
+    assert profile_guided_scan_decision_for_indata(indata) is None
+    assert default_use_scan_for_backend(indata, "cpu", "accelerated") is True
+
+
 def test_dynamic_scan_probe_settings_helper_uses_backend_and_env_dict():
     env = {"VMEC_JAX_DYNAMIC_SCAN_ITERS": "7", "VMEC_JAX_DYNAMIC_SCAN_TIMED": "on"}
 

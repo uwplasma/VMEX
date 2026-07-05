@@ -19,6 +19,7 @@ import numpy as np
 VALID_SOLVER_MODES = frozenset(("default", "parity", "accelerated"))
 VALID_FIXED_BOUNDARY_FINISH_POLICIES = frozenset(("auto", "none", "converge"))
 FSQ_COMPONENT_NAMES = ("fsqr", "fsqz", "fsql")
+_BUNDLED_ACCELERATED_SCAN_PROFILE = Path(__file__).resolve().parents[1] / "resources" / "accelerated_scan_profile.json"
 
 
 @dataclass(frozen=True)
@@ -619,21 +620,28 @@ def profile_guided_scan_decision_for_indata(indata, *, getenv=os.getenv) -> bool
 
     This is the no-probe dynamic selector hook for accelerated fixed-boundary
     solves.  It does not inspect pressure, current, spectral size, or radial
-    grid size.  Instead, a deployment can set
-    ``VMEC_JAX_ACCELERATED_SCAN_PROFILE`` to a benchmark/provenance JSON with
-    per-case ``recommended_use_scan`` or ``prefer_use_scan`` values.  That keeps
-    cold-short-row policy decisions measured and reproducible without spending
-    more time probing than solving.
+    grid size.  By default it consults the small bundled benchmark profile.
+    Deployments can set ``VMEC_JAX_ACCELERATED_SCAN_PROFILE`` to another
+    benchmark/provenance JSON with per-case ``recommended_use_scan`` or
+    ``prefer_use_scan`` values, or set it to ``off`` to disable profile-guided
+    selection.  That keeps cold-short-row policy decisions measured and
+    reproducible without spending more time probing than solving.
     """
 
     profile_path = str(getenv("VMEC_JAX_ACCELERATED_SCAN_PROFILE", "")).strip()
-    if not profile_path:
+    if profile_path.lower() in ("0", "false", "no", "off", "none"):
         return None
+    if profile_path:
+        profile = Path(profile_path).expanduser()
+    else:
+        profile = _BUNDLED_ACCELERATED_SCAN_PROFILE
+        if not profile.exists():
+            return None
     candidate_ids = _profile_candidate_case_ids(getattr(indata, "source_path", None))
     if not candidate_ids:
         return None
     try:
-        payload = json.loads(Path(profile_path).expanduser().read_text(encoding="utf-8"))
+        payload = json.loads(profile.read_text(encoding="utf-8"))
     except Exception:
         return None
     for record in _iter_profile_records(payload):

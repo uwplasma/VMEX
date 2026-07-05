@@ -1,0 +1,19 @@
+{
+  "metadata": {
+    "purpose": "Measured scan/non-scan recommendations for bundled fixed-boundary examples. These records drive the fast-first selector without inspecting input physics or size.",
+    "runtime_regression_ratio": 1.1,
+    "memory_regression_ratio": 1.15
+  },
+  "overrides": [
+    {
+      "case_id": "LandremanSengupta2019_section5.4_B2_A80",
+      "backend": "vmec_jax",
+      "regression": true,
+      "requires_action": false,
+      "recommended_use_scan": false,
+      "cold_latency_prefer_noscan": true,
+      "classification": "classified:cold_scan_compile_amortization,peak_xla_executable_memory",
+      "note": "Focused profile: scan cold 3.08 s vs non-scan cold 1.11 s with matching convergence; warm runtime is much faster with scan once the runner is cached."
+    }
+  ]
+}
