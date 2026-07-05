@@ -55,6 +55,12 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
                 "runtime_warm_s": 1.0,
                 "peak_footprint_bytes": 200,
                 "fixed_boundary_execution_classification": "scan_cache_hit",
+                "scan_cache_miss_categories": {
+                    "total_count": 3,
+                    "largest_category": "iteration_budget",
+                    "largest_category_count": 2,
+                    "categories": {"cold_empty": 1, "iteration_budget": 2},
+                },
             },
             {"case_id": "case_a", "backend": "vmecpp", "runtime_s": 0.5, "max_rss_bytes": 50},
         ],
@@ -69,6 +75,12 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
                 "runtime_warm_s": 0.25,
                 "peak_footprint_bytes": 300,
                 "fixed_boundary_execution_classification": "scan_cold_compile",
+                "scan_cache_miss_categories": {
+                    "total_count": 1,
+                    "largest_category": "cold_empty",
+                    "largest_category_count": 1,
+                    "categories": {"cold_empty": 1},
+                },
             }
         ],
     }
@@ -83,6 +95,8 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
     assert rows[0]["vmecpp_runtime_s"] == 0.5
     assert rows[0]["cpu_execution_classification"] == "scan_cache_hit"
     assert rows[0]["gpu_execution_classification"] == "scan_cold_compile"
+    assert rows[0]["cpu_scan_cache_miss_categories"]["total_count"] == 3
+    assert rows[0]["gpu_scan_cache_miss_categories"]["largest_category"] == "cold_empty"
 
     csv_path = tmp_path / "runtime.csv"
     json_path = tmp_path / "runtime.json"
@@ -103,6 +117,9 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
     assert "vmec_jax_cold_speedup_vs_vmec2000" in csv_text
     assert "vmec_jax_gpu_warm_speedup_vs_cpu_warm" in csv_text
     assert "vmec_jax_cpu_execution_classification" in csv_text
+    assert "vmec_jax_cpu_scan_cache_miss_largest_category" in csv_text
+    assert "cold_empty" in csv_text
+    assert "iteration_budget" in csv_text
     assert "2.0" in csv_text
     payload = json.loads(json_path.read_text())
     record = payload["records"][0]
@@ -114,6 +131,11 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
     assert record["vmecpp_speedup_vs_vmec2000"] == 8.0
     assert record["vmec_jax_cpu_execution_classification"] == "scan_cache_hit"
     assert record["vmec_jax_gpu_execution_classification"] == "scan_cold_compile"
+    assert record["vmec_jax_cpu_scan_cache_miss_total_count"] == 3
+    assert record["vmec_jax_cpu_scan_cache_miss_largest_category"] == "iteration_budget"
+    assert record["vmec_jax_cpu_scan_cache_miss_categories"] == '{"cold_empty":1,"iteration_budget":2}'
+    assert record["vmec_jax_gpu_scan_cache_miss_total_count"] == 1
+    assert record["vmec_jax_gpu_scan_cache_miss_largest_category"] == "cold_empty"
     assert figure_path.exists()
 
 
