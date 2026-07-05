@@ -81,6 +81,7 @@ def test_run_probe_reports_cache_reuse_with_same_shape_boundary_update(monkeypat
         jit_forces=True,
         precond_radial_alpha=0.0,
         precond_lambda_alpha=0.0,
+        state_only=False,
         jax_platforms=None,
     )
 
