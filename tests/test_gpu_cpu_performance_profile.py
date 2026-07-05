@@ -944,6 +944,8 @@ def test_fixed_boundary_profiler_summary_exposes_scan_timing_fields():
         "scan_runner_cache_hit_count": 1,
         "scan_runner_cache_miss_count": 2,
         "scan_runner_cache_bypass_count": 0,
+        "scan_runner_cache_miss_category_cold_empty_count": 1,
+        "scan_runner_cache_miss_category_iteration_budget_count": 2,
         "scan_runner_arg_leaf_count": 15,
         "scan_runner_arg_array_nbytes": 700,
         "scan_runner_arg_category_velocity_leaf_count": 6,
@@ -975,6 +977,9 @@ def test_fixed_boundary_profiler_summary_exposes_scan_timing_fields():
     assert summary["scan_arg_categories"]["largest_category"] == "velocity"
     assert summary["scan_arg_categories"]["categories"]["velocity"]["array_nbytes"] == 480
     assert summary["scan_arg_categories"]["categories"]["preconditioner"]["array_leaf_count"] == 3
+    assert summary["scan_cache_miss_categories"]["total_count"] == 3
+    assert summary["scan_cache_miss_categories"]["largest_category"] == "iteration_budget"
+    assert summary["scan_cache_miss_categories"]["categories"]["cold_empty"] == 1
     assert summary["args"]["use_scan"] is True
     json.dumps(fixed_tool._json_safe(summary))
 
@@ -984,6 +989,8 @@ def test_fixed_boundary_profiler_scan_arg_category_summary_handles_empty_timing(
 
     assert fixed_tool._scan_arg_category_summary(None) == {}
     assert fixed_tool._scan_arg_category_summary({"iterations": 2}) == {}
+    assert fixed_tool._scan_cache_miss_category_summary(None) == {}
+    assert fixed_tool._scan_cache_miss_category_summary({"iterations": 2}) == {}
 
 
 def test_fixed_boundary_profiler_compile_summary_extracts_jax_rows():
