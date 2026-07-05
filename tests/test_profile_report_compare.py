@@ -809,6 +809,62 @@ def test_exact_optimizer_patch_target_ignores_container_timers() -> None:
     assert target["share_of_total"] == pytest.approx(0.25)
 
 
+def test_profile_summary_promotes_exact_replay_policy_metadata() -> None:
+    payload = {
+        "report_kind": "exact_optimizer_callback_profile",
+        "total_wall_time_s": 2.0,
+        "exact_callback_metadata": {
+            "exact_replay_policy": {
+                "backend": "gpu",
+                "n_parameters": 80,
+                "projected_replay": True,
+                "column_chunk": 40,
+            }
+        },
+        "profile": {
+            "jacobian_projected_replay_total": {"count": 1, "wall_time_s": 1.0},
+        },
+    }
+
+    summary = compare_tool.summarize_payload(payload, label="profile")
+
+    assert summary["metadata"]["exact_replay_policy"] == {
+        "backend": "gpu",
+        "n_parameters": 80,
+        "projected_replay": True,
+        "column_chunk": 40,
+    }
+
+
+def test_profile_summary_promotes_sample_exact_replay_policy_metadata() -> None:
+    payload = {
+        "report_kind": "exact_optimizer_run_repeats",
+        "total_wall_time_s": 2.0,
+        "samples": [
+            {
+                "repeat": 0,
+                "wall_time_s": 2.0,
+                "exact_callback_metadata": {
+                    "exact_replay_policy": {
+                        "backend": "cpu",
+                        "n_parameters": 24,
+                        "projected_replay": False,
+                    }
+                },
+            }
+        ],
+        "profile": {},
+    }
+
+    summary = compare_tool.summarize_payload(payload, label="profile")
+
+    assert summary["metadata"]["exact_replay_policy"] == {
+        "backend": "cpu",
+        "n_parameters": 24,
+        "projected_replay": False,
+    }
+
+
 def test_exact_optimizer_patch_target_skips_broad_tape_build_when_unattributed_absent() -> None:
     payload = {
         "report_kind": "exact_optimizer_callback_profile",
