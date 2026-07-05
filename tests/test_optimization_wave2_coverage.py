@@ -74,6 +74,37 @@ def test_linear_operator_arg_helpers_validate_vectors_and_matrix_edges() -> None
         _linear_operator_matrix_arg(np.ones((2, 2)), rows=3, name="rows")
 
 
+def test_initial_tangent_cache_branch_profile_is_bounded() -> None:
+    opt = _bare_optimizer_for_state_ops()
+    opt._profile_initial_tangent_cache_branch("jacobian_projected", (4, False, True, False, 35, 8))
+    opt._profile_initial_tangent_cache_branch("jacobian_projected", (4, True, True, False, 35, 8))
+    opt._profile_initial_tangent_cache_branch("jacobian_projected", None)
+    opt._profile_initial_tangent_cache_branch(
+        "jacobian_projected",
+        (4, False, True, False, 35, 8),
+        event="miss",
+    )
+    opt._profile_initial_tangent_cache_branch(
+        "jacobian_projected",
+        (4, True, True, False, 35, 8),
+        event="hit",
+    )
+    opt._profile_initial_tangent_cache_branch("jacobian_projected", None, event="miss")
+
+    for key in (
+        "jacobian_projected_initial_tangents_cache_key_available",
+        "jacobian_projected_initial_tangents_cache_key_lflip_false",
+        "jacobian_projected_initial_tangents_cache_key_lflip_true",
+        "jacobian_projected_initial_tangents_cache_key_boundary_input_true",
+        "jacobian_projected_initial_tangents_cache_key_lasym_false",
+        "jacobian_projected_initial_tangents_cache_miss_lflip_false",
+        "jacobian_projected_initial_tangents_cache_hit_lflip_true",
+        "jacobian_projected_initial_tangents_cache_key_unavailable",
+        "jacobian_projected_initial_tangents_cache_miss_key_unavailable",
+    ):
+        assert opt._profile[key]["count"] >= 1
+
+
 def test_initial_state_from_params_uses_jit_helper_and_cache(monkeypatch) -> None:
     opt = object.__new__(FixedBoundaryExactOptimizer)
     opt._initial_state_cache = OrderedDict()

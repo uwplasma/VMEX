@@ -956,6 +956,48 @@ class FixedBoundaryExactOptimizer:
     _jvp_only_exact_tape_enabled = jvp_only_exact_tape_enabled
     _jvp_only_basepoint_carries_enabled = jvp_only_basepoint_carries_enabled
 
+    def _profile_initial_tangent_cache_branch(self, profile_prefix: str, cache_key, *, event: str | None = None) -> None:
+        """Record bounded branch metadata for initial-state tangent cache use.
+
+        The packed initial-state tangent map is affine only within a VMEC setup
+        branch.  In practice the important branch bit is ``lflip``: reusing
+        tangents across a sign flip can give the wrong replay derivative.  These
+        counters let performance reports distinguish required branch misses from
+        accidental cache churn without storing full parameter-dependent keys.
+        """
+
+        record_key_metadata = event is None
+        if cache_key is None:
+            if record_key_metadata:
+                self._profile_add(f"{profile_prefix}_initial_tangents_cache_key_unavailable", 0.0)
+            if event is not None:
+                self._profile_add(f"{profile_prefix}_initial_tangents_cache_{event}_key_unavailable", 0.0)
+            return
+
+        if record_key_metadata:
+            self._profile_add(f"{profile_prefix}_initial_tangents_cache_key_available", 0.0)
+        if not isinstance(cache_key, tuple):
+            if event is not None:
+                self._profile_add(f"{profile_prefix}_initial_tangents_cache_{event}_branch_unclassified", 0.0)
+            return
+
+        def _bool_suffix(index: int, label: str) -> str | None:
+            if len(cache_key) <= index or not isinstance(cache_key[index], (bool, np.bool_)):
+                return None
+            suffix = f"{label}_{'true' if bool(cache_key[index]) else 'false'}"
+            if record_key_metadata:
+                self._profile_add(f"{profile_prefix}_initial_tangents_cache_key_{suffix}", 0.0)
+            return suffix
+
+        lflip_suffix = _bool_suffix(1, "lflip")
+        _bool_suffix(2, "boundary_input")
+        _bool_suffix(3, "lasym")
+        if event is not None:
+            if lflip_suffix is None:
+                self._profile_add(f"{profile_prefix}_initial_tangents_cache_{event}_branch_unclassified", 0.0)
+            else:
+                self._profile_add(f"{profile_prefix}_initial_tangents_cache_{event}_{lflip_suffix}", 0.0)
+
     def _initial_tangent_columns(self, params, axis_override, *, profile_prefix: str):
         """Return cached packed initial-state tangents for boundary parameters."""
 
@@ -970,9 +1012,11 @@ class FixedBoundaryExactOptimizer:
             f"{profile_prefix}_initial_tangents_cache_key",
             time.perf_counter() - t_key,
         )
+        self._profile_initial_tangent_cache_branch(profile_prefix, cache_key)
         initial_tangents = self._initial_tangent_cache.get(cache_key) if cache_key is not None else None
         if initial_tangents is None:
             self._profile_add(f"{profile_prefix}_initial_tangents_cache_miss", 0.0)
+            self._profile_initial_tangent_cache_branch(profile_prefix, cache_key, event="miss")
             axis_override = {
                 key: jnp.asarray(value, dtype=params.dtype) for key, value in axis_override.items()
             }
@@ -1012,6 +1056,7 @@ class FixedBoundaryExactOptimizer:
                 )
         else:
             self._profile_add(f"{profile_prefix}_initial_tangents_cache_hit", 0.0)
+            self._profile_initial_tangent_cache_branch(profile_prefix, cache_key, event="hit")
         self._profile_add(
             f"{profile_prefix}_initial_tangents",
             time.perf_counter() - t_initial,
