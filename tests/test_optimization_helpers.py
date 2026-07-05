@@ -1867,10 +1867,14 @@ def test_tape_jacobian_remembers_residual_under_parameter_cache_key(monkeypatch)
     opt._last_jacobian_residual = None
     opt._profile = {}
     opt._exact_cache_key = lambda _params: b"accepted"
-    opt._state_and_tangent_columns = lambda _params, profile_prefix: (
-        SimpleNamespace(),
-        jnp.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=jnp.float64),
-    )
+    def fake_state_and_tangent_columns(_params, profile_prefix, return_packed_final=False):
+        state = SimpleNamespace()
+        tangents = jnp.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=jnp.float64)
+        if return_packed_final:
+            return state, tangents, jnp.asarray([3.0, 4.0], dtype=jnp.float64)
+        return state, tangents
+
+    opt._state_and_tangent_columns = fake_state_and_tangent_columns
     opt._residuals_fn = lambda state: jnp.asarray(
         [state.foo + 1.0, 2.0 * state.bar],
         dtype=jnp.float64,
@@ -1907,12 +1911,13 @@ def test_tape_jacobian_cache_skips_same_point_replay(monkeypatch):
     opt._exact_cache_key = lambda _params: b"accepted"
     replay_calls = []
 
-    def fake_state_and_tangent_columns(_params, profile_prefix):
+    def fake_state_and_tangent_columns(_params, profile_prefix, return_packed_final=False):
         replay_calls.append(profile_prefix)
-        return (
-            SimpleNamespace(),
-            jnp.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=jnp.float64),
-        )
+        state = SimpleNamespace()
+        tangents = jnp.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=jnp.float64)
+        if return_packed_final:
+            return state, tangents, jnp.asarray([3.0, 4.0], dtype=jnp.float64)
+        return state, tangents
 
     opt._state_and_tangent_columns = fake_state_and_tangent_columns
     opt._residuals_fn = lambda state: jnp.asarray(

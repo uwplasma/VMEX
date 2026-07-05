@@ -881,7 +881,10 @@ class FixedBoundaryExactOptimizer:
         else:
             t_host = time.perf_counter()
             out = np.asarray(jac, dtype=float)
-            self._profile_add("jacobian_host_materialize", time.perf_counter() - t_host)
+            host_wall = time.perf_counter() - t_host
+            self._profile_add("jacobian_host_materialize", host_wall)
+            if source:
+                self._profile_add(f"jacobian_host_materialize_{source}", host_wall)
             self._last_jacobian_source = source
         self._remember_exact_jacobian(exact_param_key, out, self._last_jacobian_residual)
         self._profile_add("jacobian_total", time.perf_counter() - t_total)
@@ -933,14 +936,21 @@ class FixedBoundaryExactOptimizer:
         self._remember_trial_residual(params, out)
         return out
 
-    def _state_and_tangent_columns(self, params, *, profile_prefix: str):
+    def _state_and_tangent_columns(self, params, *, profile_prefix: str, return_packed_final: bool = False):
         """Return accepted-point state and packed tangent columns as JAX arrays."""
         from .discrete_adjoint import checkpoint_tape_state_jvp_columns
 
         params = jnp.asarray(params, dtype=jnp.float64)
         state, payload = self._solve_exact_with_tape_for_jvp(params)
+        packed_final = None
+        if return_packed_final:
+            t_pack = time.perf_counter()
+            packed_final = self._packed_final_from_exact_payload(state, payload)
+            self._profile_add(f"{profile_prefix}_packed_final_from_tape", time.perf_counter() - t_pack)
         if int(params.size) == 0:
             empty = jnp.zeros((0, int(self._layout.size)), dtype=jnp.float64)
+            if return_packed_final:
+                return state, empty, packed_final
             return state, empty
 
         initial_tangents = self._initial_tangent_columns(
@@ -964,6 +974,8 @@ class FixedBoundaryExactOptimizer:
             t_replay,
             final_tangents,
         )
+        if return_packed_final:
+            return state, final_tangents, packed_final
         return state, final_tangents
 
     _solve_exact_with_tape_for_jvp = solve_exact_with_tape_for_jvp
@@ -1507,7 +1519,7 @@ class FixedBoundaryExactOptimizer:
             self._last_jacobian_source = "scan_exact_replay"
             self._profile_add("scan_jacobian_total", time.perf_counter() - t0)
             return out
-        from .state import pack_state, unpack_state
+        from .state import unpack_state
 
         t_total = time.perf_counter()
         cached_jacobian = getattr(self, "_exact_jacobian_cache", {}).get(exact_param_key)
@@ -1524,11 +1536,11 @@ class FixedBoundaryExactOptimizer:
         if self._projected_replay_residuals_enabled(int(params.size)):
             return self._jacobian_fun_projected_replay(params, exact_param_key, t_total=t_total)
 
-        state, final_tangents = self._state_and_tangent_columns(
+        state, final_tangents, packed_final = self._state_and_tangent_columns(
             params,
             profile_prefix="jacobian",
+            return_packed_final=True,
         )
-        packed_final = jnp.asarray(pack_state(state), dtype=jnp.float64)
 
         def _residuals_from_packed(packed):
             return self._residuals_fn(unpack_state(packed, self._layout))
