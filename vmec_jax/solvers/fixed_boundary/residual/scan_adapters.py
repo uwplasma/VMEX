@@ -154,10 +154,16 @@ class ScanTimeControlDumper:
 
 
 class ScanConvergenceControls(NamedTuple):
-    """Runtime residual tolerances for one VMEC scan convergence check."""
+    """Runtime scalar controls for one VMEC scan body.
+
+    These controls are JIT operands rather than cache-key fields, so repeated
+    solves with the same structural shape can reuse the compiled scan runner
+    while changing convergence tolerances or continuation-stage residuals.
+    """
 
     ftol: Any
     fsq_total_target: Any | None
+    stage_prev_fsq: Any | None = None
 
 
 @dataclass(frozen=True)

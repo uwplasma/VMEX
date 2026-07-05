@@ -79,7 +79,7 @@ SCAN_CACHE_KEY_FIELDS_V6: tuple[str, ...] = (
     "scan_fallback_fsq_abs",
 )
 
-SCAN_CACHE_KEY_FIELDS: tuple[str, ...] = (
+SCAN_CACHE_KEY_FIELDS_V7: tuple[str, ...] = (
     "schema",
     "static_key",
     "wout_key",
@@ -112,7 +112,12 @@ SCAN_CACHE_KEY_FIELDS: tuple[str, ...] = (
     "scan_fallback_fsq_abs",
 )
 
+SCAN_CACHE_KEY_FIELDS: tuple[str, ...] = tuple(
+    "has_stage_prev_fsq" if field == "stage_prev_fsq" else field for field in SCAN_CACHE_KEY_FIELDS_V7
+)
+
 SCAN_CACHE_KEY_FIELDS_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS + ("seq_len",)
+SCAN_CACHE_KEY_FIELDS_V7_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS_V7 + ("seq_len",)
 
 SCAN_FAST_CACHE_KEY_FIELDS_V1: tuple[str, ...] = (
     "schema",
@@ -173,6 +178,7 @@ SCAN_CACHE_KEY_CATEGORIES: dict[str, str] = {
     "scan_use_lax_tridi": "scan_policy",
     "scan_use_restart_payload": "restart_policy",
     "stage_prev_fsq": "stage_transition",
+    "has_stage_prev_fsq": "stage_transition",
     "stage_transition_factor": "stage_transition",
     "stage_transition_scale": "stage_transition",
     "jit_forces_scan": "execution_policy",
@@ -281,6 +287,10 @@ def scan_cache_key_field_names(key: tuple[Any, ...]) -> tuple[str, ...]:
             return SCAN_CACHE_KEY_FIELDS_V6 + ("seq_len",)
         return SCAN_CACHE_KEY_FIELDS_V6
     if schema == "vmec2000_scan_v7":
+        if len(key) == len(SCAN_CACHE_KEY_FIELDS_V7_WITH_SEQ_LEN):
+            return SCAN_CACHE_KEY_FIELDS_V7_WITH_SEQ_LEN
+        return SCAN_CACHE_KEY_FIELDS_V7
+    if schema == "vmec2000_scan_v8":
         if len(key) == len(SCAN_CACHE_KEY_FIELDS_WITH_SEQ_LEN):
             return SCAN_CACHE_KEY_FIELDS_WITH_SEQ_LEN
         return SCAN_CACHE_KEY_FIELDS

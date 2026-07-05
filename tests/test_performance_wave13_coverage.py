@@ -82,12 +82,12 @@ def test_scan_cache_key_delta_labels_behavioral_toggles():
         (5, "max_iter_tail"),
         (15, "scan_use_precomputed"),
         (16, "scan_use_lax_tridi"),
-        (18, "stage_prev_fsq"),
+        (18, "has_stage_prev_fsq"),
         (23, "scan_light"),
         (24, "scan_minimal"),
     ]
-    assert deltas[3].before is None
-    assert deltas[3].after == 3.0
+    assert deltas[3].before is False
+    assert deltas[3].after is True
 
 
 def test_scan_cache_key_delta_summary_groups_cache_miss_causes():
@@ -139,7 +139,7 @@ def test_vmec2000_scan_key_keeps_only_structural_scalar_controls_after_operand_r
         "initial_flip_sign": {"initial_flip_sign": 1.0},
         "lambda_update_scale": {"lambda_update_scale": 0.8},
         "has_fsq_total_target": {"fsq_total_target": 5.0e-11},
-        "stage_prev_fsq": {"stage_prev_fsq": 2.0e-4},
+        "has_stage_prev_fsq": {"stage_prev_fsq": 2.0e-4},
         "stage_transition_scale": {"stage_transition_scale": 0.25},
     }.items():
         summary = scan_cache_key_delta_summary(base, _scan_cache_key(**overrides))
@@ -148,6 +148,7 @@ def test_vmec2000_scan_key_keeps_only_structural_scalar_controls_after_operand_r
         assert field in summary["fields"]
     assert _scan_cache_key(ftol=1.0e-10) == base
     assert _scan_cache_key(fsq_total_target=5.0e-11) == _scan_cache_key(fsq_total_target=6.0e-11)
+    assert _scan_cache_key(stage_prev_fsq=2.0e-4) == _scan_cache_key(stage_prev_fsq=3.0e-4)
 
 
 def test_accelerated_scan_v2_cache_key_labels_runtime_target_policy():

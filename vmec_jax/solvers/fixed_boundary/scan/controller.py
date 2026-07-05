@@ -139,9 +139,13 @@ def _scan_runtime_controls_args(
     target = controls.fsq_total_target
     if target is None:
         target = jnp.asarray(jnp.nan, dtype=dtype)
+    stage_prev_fsq = controls.stage_prev_fsq
+    if stage_prev_fsq is None:
+        stage_prev_fsq = jnp.asarray(jnp.nan, dtype=dtype)
     return (
         jnp.asarray(controls.ftol, dtype=dtype),
         jnp.asarray(target, dtype=dtype),
+        jnp.asarray(stage_prev_fsq, dtype=dtype),
     )
 
 
@@ -154,10 +158,18 @@ def _scan_step_iteration_and_controls(
     if isinstance(it, tuple):
         if len(it) == 2:
             iter_index, ftol = it
-            return iter_index, ScanConvergenceControls(ftol=ftol, fsq_total_target=None)
+            return iter_index, ScanConvergenceControls(
+                ftol=ftol,
+                fsq_total_target=None,
+                stage_prev_fsq=step_ctx.convergence_controls.stage_prev_fsq,
+            )
         if len(it) == 3:
             iter_index, ftol, fsq_total_target = it
-            return iter_index, ScanConvergenceControls(ftol=ftol, fsq_total_target=fsq_total_target)
+            return iter_index, ScanConvergenceControls(
+                ftol=ftol,
+                fsq_total_target=fsq_total_target,
+                stage_prev_fsq=step_ctx.convergence_controls.stage_prev_fsq,
+            )
     return it, step_ctx.convergence_controls
 
 
@@ -167,13 +179,16 @@ def _scan_step_with_runtime_controls(
     it: Any,
     ftol: Any,
     fsq_total_target_value: Any,
+    stage_prev_fsq_value: Any,
 ) -> Any:
     """Dispatch one scan step using scalar runtime convergence controls."""
 
     has_target = step_ctx.convergence_controls.fsq_total_target is not None
+    has_stage_reset = step_ctx.convergence_controls.stage_prev_fsq is not None
     controls = ScanConvergenceControls(
         ftol=ftol,
         fsq_total_target=fsq_total_target_value if has_target else None,
+        stage_prev_fsq=stage_prev_fsq_value if has_stage_reset else None,
     )
     iter2_hold = jnp.asarray(it + 1, dtype=jnp.int32) + jnp.asarray(carry.iter_offset, dtype=jnp.int32)
     hold_cond = carry.converged | carry.abort_scan | (iter2_hold > jnp.asarray(int(step_ctx.max_iter), dtype=jnp.int32))
@@ -745,7 +760,7 @@ def _advance_vmec2000_scan_step(
         use_restart_triggers=bool(ctx.startup_policy.use_restart_triggers),
         vmecpp_restart=bool(ctx.vmecpp_restart),
         k_preconditioner_update_interval=constants.preconditioner_update_interval,
-        stage_prev_fsq=ctx.stage_prev_fsq_j,
+        stage_prev_fsq=convergence_controls.stage_prev_fsq,
         stage_transition_factor=ctx.stage_transition_factor,
         restart_badjac_factor=constants.restart_badjac_factor,
         restart_badprog_factor=constants.restart_badprog_factor,
@@ -1085,7 +1100,7 @@ def _run_scan_dispatch_and_finalize(inputs: ScanDispatchFinalizeInputs) -> Solve
     scan_timing_enabled = bool(inputs.scan_timing_enabled)
     scan_timing_stats = inputs.scan_timing_stats
 
-    def _run_scan(carry_init, it_seq, ftol_dyn, fsq_total_target_dyn):
+    def _run_scan(carry_init, it_seq, ftol_dyn, fsq_total_target_dyn, stage_prev_fsq_dyn):
         def _step(carry, it):
             return _scan_step_with_runtime_controls(
                 inputs.step_context,
@@ -1093,6 +1108,7 @@ def _run_scan_dispatch_and_finalize(inputs: ScanDispatchFinalizeInputs) -> Solve
                 it,
                 ftol_dyn,
                 fsq_total_target_dyn,
+                stage_prev_fsq_dyn,
             )
 
         return jax.lax.scan(_step, carry_init, it_seq)
@@ -1415,6 +1431,7 @@ def run_vmec2000_scan(ctx: Vmec2000ScanControllerContext, state_init: VMECState)
     convergence_controls = ScanConvergenceControls(
         ftol=scan_converged.ftol,
         fsq_total_target=scan_converged.fsq_total_target,
+        stage_prev_fsq=ctx.stage_prev_fsq_j,
     )
 
     step_context = ScanStepContext(
