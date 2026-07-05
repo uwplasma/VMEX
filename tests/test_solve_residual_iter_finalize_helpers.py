@@ -281,6 +281,17 @@ def test_finalize_residual_iter_from_namespace_builds_diagnostics_and_result() -
         "grad_rms_history": [4.0e-8],
         "step_history": [0.1],
         "k": payload,
+        "use_scan": False,
+        "scan_fallback_diagnostics": {
+            "scan_fallback_to_loop": True,
+            "scan_fallback_reason": "accepted_frac=0.00 < 0.50",
+            "scan_fallback_reasons": ("accepted_frac=0.00 < 0.50",),
+            "scan_fallback_bad_jac_count": 0,
+            "scan_fallback_accepted_frac": 0.0,
+            "scan_fallback_fsq_min": 1.0,
+            "scan_fallback_fsq_max": 100.0,
+            "scan_fallback_fsq_all_finite": True,
+        },
     }
 
     result = finalize_residual_iter_from_namespace(
@@ -303,6 +314,10 @@ def test_finalize_residual_iter_from_namespace_builds_diagnostics_and_result() -
     assert result.diagnostics["setup_axis_reset_done"] is True
     assert result.diagnostics["setup_axis_force_probe_available"] is True
     assert result.diagnostics["setup_axis_force_probe_reused"] is True
+    assert result.diagnostics["use_scan"] is False
+    assert result.diagnostics["scan_fallback_to_loop"] is True
+    assert result.diagnostics["scan_fallback_reason"] == "accepted_frac=0.00 < 0.50"
+    assert result.diagnostics["scan_fallback_fsq_max"] == pytest.approx(100.0)
     assert result.diagnostics["free_boundary"]["enabled"] is False
     assert result.diagnostics["resume_state"] is None
     assert getattr(result, "_final_force_payload") is payload

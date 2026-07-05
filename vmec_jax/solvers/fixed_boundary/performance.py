@@ -410,6 +410,8 @@ def fixed_boundary_execution_classification(diagnostics: Mapping[str, Any]) -> s
         or diagnostics.get("accelerated_scan")
     )
     if not uses_scan:
+        if bool(diagnostics.get("scan_fallback_to_loop", False)):
+            return f"{dynamic_prefix}scan_fallback_loop"
         if source == "profile":
             return f"{dynamic_prefix}loop_profile_selected"
         if source == "solver_mode" and "parity" in detail:

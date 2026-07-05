@@ -1263,6 +1263,7 @@ def solve_fixed_boundary_residual_iter(
     _record_setup_timing("setup_update_constants", _t_setup_update_constants)
 
 
+    scan_fallback_diagnostics = None
     if use_scan:
         scan_outcome = dispatch_residual_scan_path(
             namespace=locals(),
@@ -1296,6 +1297,7 @@ def solve_fixed_boundary_residual_iter(
         )
         if scan_outcome.handled:
             return scan_outcome.result
+        scan_fallback_diagnostics = scan_outcome.diagnostics
         use_scan = scan_outcome.use_scan
         state = scan_outcome.state
         resume_state = scan_outcome.resume_state

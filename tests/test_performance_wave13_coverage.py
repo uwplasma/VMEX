@@ -66,6 +66,17 @@ def test_exact_parameter_cache_key_flattens_to_float64_bytes():
     assert fingerprint["cache_key"] == exact_parameter_cache_key(vector_params)
 
 
+def test_fixed_boundary_execution_classification_labels_scan_fallback_loop():
+    diagnostics = {
+        "use_scan": False,
+        "scan_fallback_to_loop": True,
+        "use_scan_policy_source": "backend_default",
+        "use_scan_policy_detail": "cpu_supports_scan",
+    }
+
+    assert fixed_boundary_execution_classification(diagnostics) == "scan_fallback_loop"
+
+
 def test_scan_cache_key_delta_labels_behavioral_toggles():
     base = _scan_cache_key()
     changed = _scan_cache_key(

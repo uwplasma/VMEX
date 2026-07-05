@@ -58,6 +58,8 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
                 "peak_footprint_bytes": 200,
                 "fixed_boundary_execution_classification": "scan_cache_hit",
                 "fixed_boundary_execution_classification_cold": "scan_cold_compile",
+                "scan_fallback_to_loop": True,
+                "scan_fallback_reason": "abort_scan",
                 "scan_cache_miss_categories": {
                     "total_count": 0,
                     "largest_category": None,
@@ -105,6 +107,8 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
     assert rows[0]["vmecpp_runtime_s"] == 0.5
     assert rows[0]["cpu_execution_classification"] == "scan_cache_hit"
     assert rows[0]["cpu_cold_execution_classification"] == "scan_cold_compile"
+    assert rows[0]["cpu_scan_fallback_to_loop"] is True
+    assert rows[0]["cpu_scan_fallback_reason"] == "abort_scan"
     assert rows[0]["gpu_execution_classification"] == "scan_cold_compile"
     assert rows[0]["cpu_cold_scan_cache_miss_categories"]["total_count"] == 3
     assert rows[0]["gpu_scan_cache_miss_categories"]["largest_category"] == "cold_empty"
@@ -128,6 +132,7 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
     assert "vmec_jax_cold_speedup_vs_vmec2000" in csv_text
     assert "vmec_jax_gpu_warm_speedup_vs_cpu_warm" in csv_text
     assert "vmec_jax_cpu_execution_classification" in csv_text
+    assert "vmec_jax_cpu_scan_fallback_reason" in csv_text
     assert "vmec_jax_cpu_scan_cache_miss_largest_category" in csv_text
     assert "vmec_jax_cpu_cold_scan_cache_miss_largest_category" in csv_text
     assert "cold_empty" in csv_text
@@ -143,6 +148,8 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
     assert record["vmecpp_speedup_vs_vmec2000"] == 8.0
     assert record["vmec_jax_cpu_execution_classification"] == "scan_cache_hit"
     assert record["vmec_jax_cpu_cold_execution_classification"] == "scan_cold_compile"
+    assert record["vmec_jax_cpu_scan_fallback_to_loop"] is True
+    assert record["vmec_jax_cpu_scan_fallback_reason"] == "abort_scan"
     assert record["vmec_jax_gpu_execution_classification"] == "scan_cold_compile"
     assert record["vmec_jax_cpu_scan_cache_miss_total_count"] == 0
     assert record["vmec_jax_cpu_cold_scan_cache_miss_total_count"] == 3

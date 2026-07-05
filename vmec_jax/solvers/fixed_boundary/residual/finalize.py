@@ -349,6 +349,7 @@ def finalize_residual_iter_from_namespace(
         "numpy_force_fast_path_active": ns.get("_compute_forces_np") is not None,
         "numpy_force_fast_path_max_iter": int(ns.get("numpy_force_max_iter", 0)),
         "reference_mode": bool(ns["reference_mode"]),
+        "use_scan": bool(ns.get("use_scan", False)),
         "use_restart_triggers": bool(_policy_attr("use_restart_triggers")),
         "use_direct_fallback": bool(ns["use_direct_fallback"]),
         "max_update_rms": float(ns["max_update_rms"]),
@@ -400,6 +401,9 @@ def finalize_residual_iter_from_namespace(
             "final_nestor_solve_time_s": float(final_freeb["final_nestor_solve_time_s"]),
         },
     }
+    scan_fallback_diagnostics = ns.get("scan_fallback_diagnostics")
+    if isinstance(scan_fallback_diagnostics, Mapping):
+        diag.update(dict(scan_fallback_diagnostics))
     diag = attach_residual_iter_timing_diagnostics(
         diag,
         ns["timing_stats"],

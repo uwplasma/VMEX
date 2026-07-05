@@ -295,6 +295,26 @@ class ResidualScanPathResult:
     use_scan: bool
     state: Any
     resume_state: dict[str, Any] | None
+    diagnostics: dict[str, Any] | None = None
+
+
+def _scan_fallback_diagnostics(decision: Any) -> dict[str, Any]:
+    """Return JSON-friendly diagnostics for a scan-to-loop fallback decision."""
+
+    accepted_frac = getattr(decision, "accepted_frac", None)
+    fsq_min = getattr(decision, "fsq_min_full", None)
+    fsq_max = getattr(decision, "fsq_max_full", None)
+    return {
+        "scan_fallback_to_loop": True,
+        "scan_fallback_reason": str(getattr(decision, "reason_text", "")),
+        "scan_fallback_reasons": tuple(str(reason) for reason in getattr(decision, "reasons", ())),
+        "scan_fallback_probe_message": str(getattr(decision, "probe_message", "")),
+        "scan_fallback_bad_jac_count": int(getattr(decision, "bad_jac_count", 0)),
+        "scan_fallback_accepted_frac": None if accepted_frac is None else float(accepted_frac),
+        "scan_fallback_fsq_min": None if fsq_min is None else float(fsq_min),
+        "scan_fallback_fsq_max": None if fsq_max is None else float(fsq_max),
+        "scan_fallback_fsq_all_finite": bool(getattr(decision, "fsq_all_finite", False)),
+    }
 
 
 def build_vmec2000_scan_runtime_setup(
@@ -573,6 +593,7 @@ def _dispatch_vmec2000_residual_scan(
                 use_scan=False,
                 state=namespace["state0"],
                 resume_state=None,
+                diagnostics=_scan_fallback_diagnostics(fallback_decision),
             )
     return ResidualScanPathResult(
         handled=True,
