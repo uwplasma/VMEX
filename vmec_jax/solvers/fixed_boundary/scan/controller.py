@@ -142,10 +142,45 @@ def _scan_runtime_controls_args(
     stage_prev_fsq = controls.stage_prev_fsq
     if stage_prev_fsq is None:
         stage_prev_fsq = jnp.asarray(jnp.nan, dtype=dtype)
+    accept_frac = controls.scan_fallback_accept_frac
+    if accept_frac is None:
+        accept_frac = jnp.asarray(jnp.nan, dtype=dtype)
+    fsq_factor = controls.scan_fallback_fsq_factor
+    if fsq_factor is None:
+        fsq_factor = jnp.asarray(jnp.nan, dtype=dtype)
+    fsq_abs = controls.scan_fallback_fsq_abs
+    if fsq_abs is None:
+        fsq_abs = jnp.asarray(jnp.nan, dtype=dtype)
+    improve = controls.scan_fallback_improve
+    if improve is None:
+        improve = jnp.asarray(jnp.nan, dtype=dtype)
     return (
         jnp.asarray(controls.ftol, dtype=dtype),
         jnp.asarray(target, dtype=dtype),
         jnp.asarray(stage_prev_fsq, dtype=dtype),
+        jnp.asarray(accept_frac, dtype=dtype),
+        jnp.asarray(fsq_factor, dtype=dtype),
+        jnp.asarray(fsq_abs, dtype=dtype),
+        jnp.asarray(improve, dtype=dtype),
+    )
+
+
+def _scan_controls_with_runtime_tolerances(
+    base: ScanConvergenceControls,
+    *,
+    ftol: Any,
+    fsq_total_target: Any | None,
+) -> ScanConvergenceControls:
+    """Return scan controls with updated tolerances and preserved runtime gates."""
+
+    return ScanConvergenceControls(
+        ftol=ftol,
+        fsq_total_target=fsq_total_target,
+        stage_prev_fsq=base.stage_prev_fsq,
+        scan_fallback_accept_frac=base.scan_fallback_accept_frac,
+        scan_fallback_fsq_factor=base.scan_fallback_fsq_factor,
+        scan_fallback_fsq_abs=base.scan_fallback_fsq_abs,
+        scan_fallback_improve=base.scan_fallback_improve,
     )
 
 
@@ -158,17 +193,17 @@ def _scan_step_iteration_and_controls(
     if isinstance(it, tuple):
         if len(it) == 2:
             iter_index, ftol = it
-            return iter_index, ScanConvergenceControls(
+            return iter_index, _scan_controls_with_runtime_tolerances(
+                step_ctx.convergence_controls,
                 ftol=ftol,
                 fsq_total_target=None,
-                stage_prev_fsq=step_ctx.convergence_controls.stage_prev_fsq,
             )
         if len(it) == 3:
             iter_index, ftol, fsq_total_target = it
-            return iter_index, ScanConvergenceControls(
+            return iter_index, _scan_controls_with_runtime_tolerances(
+                step_ctx.convergence_controls,
                 ftol=ftol,
                 fsq_total_target=fsq_total_target,
-                stage_prev_fsq=step_ctx.convergence_controls.stage_prev_fsq,
             )
     return it, step_ctx.convergence_controls
 
@@ -180,6 +215,10 @@ def _scan_step_with_runtime_controls(
     ftol: Any,
     fsq_total_target_value: Any,
     stage_prev_fsq_value: Any,
+    scan_fallback_accept_frac: Any,
+    scan_fallback_fsq_factor: Any,
+    scan_fallback_fsq_abs: Any,
+    scan_fallback_improve: Any,
 ) -> Any:
     """Dispatch one scan step using scalar runtime convergence controls."""
 
@@ -189,6 +228,10 @@ def _scan_step_with_runtime_controls(
         ftol=ftol,
         fsq_total_target=fsq_total_target_value if has_target else None,
         stage_prev_fsq=stage_prev_fsq_value if has_stage_reset else None,
+        scan_fallback_accept_frac=scan_fallback_accept_frac,
+        scan_fallback_fsq_factor=scan_fallback_fsq_factor,
+        scan_fallback_fsq_abs=scan_fallback_fsq_abs,
+        scan_fallback_improve=scan_fallback_improve,
     )
     iter2_hold = jnp.asarray(it + 1, dtype=jnp.int32) + jnp.asarray(carry.iter_offset, dtype=jnp.int32)
     hold_cond = carry.converged | carry.abort_scan | (iter2_hold > jnp.asarray(int(step_ctx.max_iter), dtype=jnp.int32))
@@ -707,7 +750,14 @@ def _advance_vmec2000_scan_step(
     scan_runtime = step_ctx.scan_runtime
     scan_options = step_ctx.scan_options
     constants = step_ctx.controller_constants
-    fallback_controls = step_ctx.fallback_controls
+    fallback_controls = ScanFallbackControlArrays(
+        iters=step_ctx.fallback_controls.iters,
+        badjac_limit=step_ctx.fallback_controls.badjac_limit,
+        accept_frac=convergence_controls.scan_fallback_accept_frac,
+        fsq_factor=convergence_controls.scan_fallback_fsq_factor,
+        fsq_abs=convergence_controls.scan_fallback_fsq_abs,
+        improve=convergence_controls.scan_fallback_improve,
+    )
     prepared = _prepare_vmec2000_scan_step_payload(step_ctx, carry_adv, it, convergence_controls)
     force_eval = prepared.force_eval
     current_payload_pre = prepared.current_payload
@@ -1100,7 +1150,17 @@ def _run_scan_dispatch_and_finalize(inputs: ScanDispatchFinalizeInputs) -> Solve
     scan_timing_enabled = bool(inputs.scan_timing_enabled)
     scan_timing_stats = inputs.scan_timing_stats
 
-    def _run_scan(carry_init, it_seq, ftol_dyn, fsq_total_target_dyn, stage_prev_fsq_dyn):
+    def _run_scan(
+        carry_init,
+        it_seq,
+        ftol_dyn,
+        fsq_total_target_dyn,
+        stage_prev_fsq_dyn,
+        fallback_accept_frac_dyn,
+        fallback_fsq_factor_dyn,
+        fallback_fsq_abs_dyn,
+        fallback_improve_dyn,
+    ):
         def _step(carry, it):
             return _scan_step_with_runtime_controls(
                 inputs.step_context,
@@ -1109,6 +1169,10 @@ def _run_scan_dispatch_and_finalize(inputs: ScanDispatchFinalizeInputs) -> Solve
                 ftol_dyn,
                 fsq_total_target_dyn,
                 stage_prev_fsq_dyn,
+                fallback_accept_frac_dyn,
+                fallback_fsq_factor_dyn,
+                fallback_fsq_abs_dyn,
+                fallback_improve_dyn,
             )
 
         return jax.lax.scan(_step, carry_init, it_seq)
@@ -1432,6 +1496,10 @@ def run_vmec2000_scan(ctx: Vmec2000ScanControllerContext, state_init: VMECState)
         ftol=scan_converged.ftol,
         fsq_total_target=scan_converged.fsq_total_target,
         stage_prev_fsq=ctx.stage_prev_fsq_j,
+        scan_fallback_accept_frac=scan_fallback_controls.accept_frac,
+        scan_fallback_fsq_factor=scan_fallback_controls.fsq_factor,
+        scan_fallback_fsq_abs=scan_fallback_controls.fsq_abs,
+        scan_fallback_improve=scan_fallback_controls.improve,
     )
 
     step_context = ScanStepContext(

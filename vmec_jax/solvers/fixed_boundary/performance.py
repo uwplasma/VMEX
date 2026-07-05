@@ -112,12 +112,19 @@ SCAN_CACHE_KEY_FIELDS_V7: tuple[str, ...] = (
     "scan_fallback_fsq_abs",
 )
 
-SCAN_CACHE_KEY_FIELDS: tuple[str, ...] = tuple(
+SCAN_CACHE_KEY_FIELDS_V8: tuple[str, ...] = tuple(
     "has_stage_prev_fsq" if field == "stage_prev_fsq" else field for field in SCAN_CACHE_KEY_FIELDS_V7
+)
+
+SCAN_CACHE_KEY_FIELDS: tuple[str, ...] = tuple(
+    field
+    for field in SCAN_CACHE_KEY_FIELDS_V8
+    if field not in {"scan_fallback_accept_frac", "scan_fallback_fsq_factor", "scan_fallback_fsq_abs"}
 )
 
 SCAN_CACHE_KEY_FIELDS_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS + ("seq_len",)
 SCAN_CACHE_KEY_FIELDS_V7_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS_V7 + ("seq_len",)
+SCAN_CACHE_KEY_FIELDS_V8_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS_V8 + ("seq_len",)
 
 SCAN_FAST_CACHE_KEY_FIELDS_V1: tuple[str, ...] = (
     "schema",
@@ -291,6 +298,10 @@ def scan_cache_key_field_names(key: tuple[Any, ...]) -> tuple[str, ...]:
             return SCAN_CACHE_KEY_FIELDS_V7_WITH_SEQ_LEN
         return SCAN_CACHE_KEY_FIELDS_V7
     if schema == "vmec2000_scan_v8":
+        if len(key) == len(SCAN_CACHE_KEY_FIELDS_V8_WITH_SEQ_LEN):
+            return SCAN_CACHE_KEY_FIELDS_V8_WITH_SEQ_LEN
+        return SCAN_CACHE_KEY_FIELDS_V8
+    if schema == "vmec2000_scan_v9":
         if len(key) == len(SCAN_CACHE_KEY_FIELDS_WITH_SEQ_LEN):
             return SCAN_CACHE_KEY_FIELDS_WITH_SEQ_LEN
         return SCAN_CACHE_KEY_FIELDS

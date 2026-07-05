@@ -164,6 +164,10 @@ class ScanConvergenceControls(NamedTuple):
     ftol: Any
     fsq_total_target: Any | None
     stage_prev_fsq: Any | None = None
+    scan_fallback_accept_frac: Any | None = None
+    scan_fallback_fsq_factor: Any | None = None
+    scan_fallback_fsq_abs: Any | None = None
+    scan_fallback_improve: Any | None = None
 
 
 @dataclass(frozen=True)

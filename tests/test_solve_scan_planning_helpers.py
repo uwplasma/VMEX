@@ -1072,7 +1072,7 @@ def test_scan_chunk_settings_match_quiet_and_printing_modes():
 
 def test_scan_cache_key_is_stable_and_tracks_behavioral_toggles():
     base = _cache_key()
-    assert base[0] == "vmec2000_scan_v8"
+    assert base[0] == "vmec2000_scan_v9"
     equivalent = _cache_key(
         max_iter_tail=9.0,
         preflight_iters=True,

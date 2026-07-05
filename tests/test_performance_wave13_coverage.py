@@ -149,6 +149,9 @@ def test_vmec2000_scan_key_keeps_only_structural_scalar_controls_after_operand_r
     assert _scan_cache_key(ftol=1.0e-10) == base
     assert _scan_cache_key(fsq_total_target=5.0e-11) == _scan_cache_key(fsq_total_target=6.0e-11)
     assert _scan_cache_key(stage_prev_fsq=2.0e-4) == _scan_cache_key(stage_prev_fsq=3.0e-4)
+    assert _scan_cache_key(scan_fallback_accept_frac=0.25) == base
+    assert _scan_cache_key(scan_fallback_fsq_factor=10.0) == base
+    assert _scan_cache_key(scan_fallback_fsq_abs=1.0e-4) == base
 
 
 def test_accelerated_scan_v2_cache_key_labels_runtime_target_policy():

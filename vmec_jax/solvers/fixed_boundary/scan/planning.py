@@ -465,7 +465,7 @@ def build_vmec2000_scan_cache_key(
 ) -> tuple[Any, ...]:
     """Construct the JIT-cache key for the VMEC2000 scan runner."""
     return (
-        "vmec2000_scan_v8",
+        "vmec2000_scan_v9",
         static_key,
         wout_key,
         edge_signature_key,
@@ -491,10 +491,7 @@ def build_vmec2000_scan_cache_key(
         bool(scan_light),
         bool(scan_minimal),
         int(scan_fallback_iters),
-        float(scan_fallback_accept_frac),
-        float(scan_fallback_fsq_factor),
         int(scan_fallback_badjac_limit),
-        float(scan_fallback_fsq_abs),
     )
 
 
