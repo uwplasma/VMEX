@@ -719,9 +719,15 @@ def test_projected_replay_jacobian_path_can_fuse_dynamic_basepoint(monkeypatch) 
         dtype=jnp.float64,
     )
     stacked = {"active": jnp.asarray([True])}
-    stacked_base_carries = (jnp.zeros((1, layout_size), dtype=jnp.float64),) + tuple(
-        jnp.zeros((1, 1), dtype=jnp.float64) for _ in range(14)
-    )
+    stacked_base_carries = (
+        jnp.zeros((1, layout_size), dtype=jnp.float64),
+        {
+            "constraint": jnp.zeros((1, 1), dtype=jnp.float64),
+            "preconditioner": {
+                "diag": jnp.ones((1, 2), dtype=jnp.float64),
+            },
+        },
+    ) + tuple(jnp.zeros((1, 1), dtype=jnp.float64) for _ in range(13))
     static_flags = {
         "apply_lforbal": False,
         "include_edge_residual": True,

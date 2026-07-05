@@ -1271,6 +1271,7 @@ class FixedBoundaryExactOptimizer:
             return None
 
         from .discrete_adjoint import (
+            _carry_tangents_with_zero_aux,
             _checkpoint_tape_dynamic_basepoint_scan_runner,
             _dynamic_basepoint_payload_shapes_match,
             _replay_column_chunk_default,
@@ -1332,18 +1333,20 @@ class FixedBoundaryExactOptimizer:
         @jax.jit
         def _fused_project(initial_tangents, packed_state, stacked_base_carries_in, stacked_traces_in):
             tangents = jnp.asarray(initial_tangents)
-            carry0 = jax.tree_util.tree_map(lambda x: x[0], stacked_base_carries_in)
-
-            def _zeros_like(arr):
-                arr = jnp.asarray(arr)
-                return jnp.zeros((tangents.shape[0],) + arr.shape, dtype=arr.dtype)
-
-            carry_tangents0 = (tangents,) + tuple(_zeros_like(arr) for arr in carry0[1:])
-            final_carry_tangents = run_scan(
-                carry_tangents0,
-                stacked_base_carries_in,
-                stacked_traces_in,
-            )
+            if hasattr(run_scan, "zero_aux"):
+                final_carry_tangents = run_scan.zero_aux(
+                    tangents,
+                    stacked_base_carries_in,
+                    stacked_traces_in,
+                )
+            else:
+                carry0 = jax.tree_util.tree_map(lambda x: x[0], stacked_base_carries_in)
+                carry_tangents0 = _carry_tangents_with_zero_aux(tangents, carry0)
+                final_carry_tangents = run_scan(
+                    carry_tangents0,
+                    stacked_base_carries_in,
+                    stacked_traces_in,
+                )
             residuals, residual_linear = jax.linearize(residuals_from_packed, packed_state)
             return residuals, jax.vmap(residual_linear)(final_carry_tangents[0]).T
 
