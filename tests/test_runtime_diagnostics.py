@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -16,6 +17,7 @@ def _load_tool(name: str):
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -137,6 +139,24 @@ def test_runtime_compare_exports_vmec2000_vmec_jax_and_vmecpp_rows(tmp_path):
     assert record["vmec_jax_gpu_scan_cache_miss_total_count"] == 1
     assert record["vmec_jax_gpu_scan_cache_miss_largest_category"] == "cold_empty"
     assert figure_path.exists()
+
+
+def test_runtime_matrix_scan_profile_env_flags_are_explicit() -> None:
+    mod = _load_tool("example_runtime_memory_matrix")
+
+    env: dict[str, str] = {}
+    mod._apply_vmec_jax_profile_env(env, scan_timing=False, scan_arg_summary=False)
+    assert "VMEC_JAX_TIMING" not in env
+    assert "VMEC_JAX_SCAN_ARG_SUMMARY" not in env
+
+    mod._apply_vmec_jax_profile_env(env, scan_timing=True, scan_arg_summary=False)
+    assert env["VMEC_JAX_TIMING"] == "1"
+    assert "VMEC_JAX_SCAN_ARG_SUMMARY" not in env
+
+    env = {}
+    mod._apply_vmec_jax_profile_env(env, scan_timing=False, scan_arg_summary=True)
+    assert env["VMEC_JAX_TIMING"] == "1"
+    assert env["VMEC_JAX_SCAN_ARG_SUMMARY"] == "1"
 
 
 def test_runtime_memory_comparator_applies_classification_sidecar(tmp_path):
