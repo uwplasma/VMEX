@@ -105,6 +105,8 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
     assert "Projected replay / JVP details:" in output
     assert "jvp_tape" in output
     assert "base_carries" in output
+    assert "init_miss_lflip_f" in output
+    assert "init_miss_lflip_t" in output
     assert "proj_replay_s" in output
     assert "proj_resid_tangent_s" in output
     assert "qh_m2_gpu_jacobian.json" in output

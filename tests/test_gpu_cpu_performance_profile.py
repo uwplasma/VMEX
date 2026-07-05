@@ -693,6 +693,9 @@ def test_performance_matrix_loaded_summary_adds_scan_cache_and_jvp_sections(tmp_
                     "exact_tape_build_jvp_only": {"count": 1, "wall_time_s": 4.5},
                     "jacobian_initial_tangents_vmap_dispatch": {"count": 1, "wall_time_s": 0.4},
                     "jacobian_initial_tangents_vmap_ready": {"count": 1, "wall_time_s": 0.8},
+                    "jacobian_initial_tangents_cache_miss_lflip_false": {"count": 1, "wall_time_s": 0.0},
+                    "jacobian_initial_tangents_cache_miss_lflip_true": {"count": 2, "wall_time_s": 0.0},
+                    "jacobian_initial_tangents_cache_hit_lflip_false": {"count": 3, "wall_time_s": 0.0},
                     "jacobian_projected_replay_total": {"count": 2, "wall_time_s": 3.0},
                     "jacobian_projected_tape_replay_dispatch": {"count": 2, "wall_time_s": 0.5},
                     "jacobian_projected_replay_residual_tangents": {"count": 2, "wall_time_s": 2.5},
@@ -728,6 +731,9 @@ def test_performance_matrix_loaded_summary_adds_scan_cache_and_jvp_sections(tmp_
     assert projected_jvp["jvp"]["basepoint_carries"] is True
     assert projected_jvp["jvp"]["exact_solve_with_tape_s"] == 5.0
     assert projected_jvp["jvp"]["tape_build_s"] == 4.5
+    assert projected_jvp["initial_tangent_cache"]["miss_lflip_false"] == 1
+    assert projected_jvp["initial_tangent_cache"]["miss_lflip_true"] == 2
+    assert projected_jvp["initial_tangent_cache"]["hit_lflip_false"] == 3
     assert projected_jvp["projected_replay"]["total_s"] == 3.0
     assert projected_jvp["projected_replay"]["dispatch_s"] == 0.5
     assert projected_jvp["projected_replay"]["residual_tangents_s"] == 2.5
