@@ -17,8 +17,10 @@ from vmec_jax.drivers import runtime as driver_runtime
 from vmec_jax.drivers import solve as driver_solve
 from vmec_jax.drivers.policy import (
     dynamic_scan_probe_settings,
+    default_scan_decision_for_backend,
     default_use_scan_for_backend,
     profile_guided_scan_decision_for_indata,
+    profile_guided_scan_decision_with_detail_for_indata,
     resolve_fixed_boundary_solver_dispatch,
     resolve_fixed_boundary_stage_policy,
     resolve_driver_signgs,
@@ -159,8 +161,15 @@ def test_profile_guided_scan_decision_uses_measured_profile_without_size_thresho
     getenv = lambda key, default="": str(profile) if key == "VMEC_JAX_ACCELERATED_SCAN_PROFILE" else default
 
     assert profile_guided_scan_decision_for_indata(indata, getenv=getenv) is False
+    detailed = profile_guided_scan_decision_with_detail_for_indata(indata, getenv=getenv)
+    assert detailed is not None
+    assert detailed.use_scan is False
+    assert detailed.source == "profile"
+    assert "tiny_case" in detailed.detail
+    assert "cold_scan_compile_amortization" in detailed.detail
     monkeypatch.setenv("VMEC_JAX_ACCELERATED_SCAN_PROFILE", str(profile))
     assert default_use_scan_for_backend(indata, "cpu", "accelerated") is False
+    assert default_scan_decision_for_backend(indata, "cpu", "accelerated").source == "profile"
     assert default_use_scan_for_backend(indata, "gpu", "accelerated") is True
 
 
@@ -170,11 +179,17 @@ def test_profile_guided_scan_decision_uses_bundled_profile_and_opt_out(monkeypat
 
     monkeypatch.delenv("VMEC_JAX_ACCELERATED_SCAN_PROFILE", raising=False)
     assert profile_guided_scan_decision_for_indata(indata) is False
+    bundled = profile_guided_scan_decision_with_detail_for_indata(indata)
+    assert bundled is not None
+    assert bundled.source == "profile"
+    assert bundled.detail.startswith("bundled:")
     assert default_use_scan_for_backend(indata, "cpu", "accelerated") is False
 
     monkeypatch.setenv("VMEC_JAX_ACCELERATED_SCAN_PROFILE", "off")
     assert profile_guided_scan_decision_for_indata(indata) is None
+    assert profile_guided_scan_decision_with_detail_for_indata(indata) is None
     assert default_use_scan_for_backend(indata, "cpu", "accelerated") is True
+    assert default_scan_decision_for_backend(indata, "cpu", "accelerated").source == "backend_default"
 
 
 def test_dynamic_scan_probe_settings_helper_uses_backend_and_env_dict():
@@ -702,6 +717,8 @@ def test_resolve_initial_fixed_boundary_policy_preserves_interactive_cpu_cli_def
     assert policy.performance_mode is True
     assert policy.accelerated_mode is True
     assert policy.use_scan is True
+    assert policy.use_scan_policy_source == "backend_default"
+    assert policy.use_scan_policy_detail == "cpu_supports_scan"
     assert policy.cli_fixed_boundary_mode is True
 
 
@@ -726,6 +743,8 @@ def test_resolve_initial_fixed_boundary_policy_honors_explicit_solver_mode_and_s
     assert policy.performance_mode is False
     assert policy.accelerated_mode is False
     assert policy.use_scan is True
+    assert policy.use_scan_policy_source == "solver_mode_explicit"
+    assert policy.use_scan_policy_detail == "explicit_solver_mode_defaults_to_scan"
     assert policy.cli_fixed_boundary_mode is False
 
 

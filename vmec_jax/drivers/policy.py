@@ -33,7 +33,18 @@ class InitialFixedBoundaryPolicy:
     performance_mode: bool
     accelerated_mode: bool
     use_scan: bool
+    use_scan_policy_source: str
+    use_scan_policy_detail: str
     cli_fixed_boundary_mode: bool
+
+
+@dataclass(frozen=True)
+class ScanDefaultDecision:
+    """Default scan-loop decision and provenance for accelerated VMEC solves."""
+
+    use_scan: bool
+    source: str
+    detail: str
 
 
 @dataclass(frozen=True)
@@ -239,6 +250,7 @@ def resolve_initial_fixed_boundary_policy(
     cli_fixed_boundary_mode: bool,
     auto_cli_fixed_boundary_mode: bool,
     default_non_autodiff_policy_func=None,
+    default_scan_decision_func=None,
     default_use_scan_func=None,
 ) -> InitialFixedBoundaryPolicy:
     """Resolve the initial run policy shared by CLI and API entry points.
@@ -254,6 +266,8 @@ def resolve_initial_fixed_boundary_policy(
     solver_mode_input = solver_mode
     if default_non_autodiff_policy_func is None:
         default_non_autodiff_policy_func = default_non_autodiff_solver_policy_for_backend
+    if default_scan_decision_func is None:
+        default_scan_decision_func = default_scan_decision_for_backend
     if default_use_scan_func is None:
         default_use_scan_func = default_use_scan_for_backend
     if solver_mode_input is None and performance_mode_eff:
@@ -269,10 +283,22 @@ def resolve_initial_fixed_boundary_policy(
     if use_scan is None:
         if bool(solver_mode_explicit):
             use_scan_eff = True
+            use_scan_policy_source = "solver_mode_explicit"
+            use_scan_policy_detail = "explicit_solver_mode_defaults_to_scan"
         else:
-            use_scan_eff = default_use_scan_func(indata, policy_backend, solver_mode_eff)
+            try:
+                scan_decision = default_scan_decision_func(indata, policy_backend, solver_mode_eff)
+                use_scan_eff = bool(scan_decision.use_scan)
+                use_scan_policy_source = str(scan_decision.source)
+                use_scan_policy_detail = str(scan_decision.detail)
+            except Exception:
+                use_scan_eff = bool(default_use_scan_func(indata, policy_backend, solver_mode_eff))
+                use_scan_policy_source = "default_callback"
+                use_scan_policy_detail = "boolean_default_use_scan_func"
     else:
         use_scan_eff = bool(use_scan)
+        use_scan_policy_source = "explicit"
+        use_scan_policy_detail = "user_supplied_use_scan"
 
     accelerated_mode = solver_mode_eff == "accelerated"
     performance_mode_eff = solver_mode_eff != "parity"
@@ -293,6 +319,8 @@ def resolve_initial_fixed_boundary_policy(
         performance_mode=bool(performance_mode_eff),
         accelerated_mode=bool(accelerated_mode),
         use_scan=bool(use_scan_eff),
+        use_scan_policy_source=str(use_scan_policy_source),
+        use_scan_policy_detail=str(use_scan_policy_detail),
         cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode_eff),
     )
 
@@ -628,13 +656,33 @@ def profile_guided_scan_decision_for_indata(indata, *, getenv=os.getenv) -> bool
     reproducible without spending more time probing than solving.
     """
 
+    decision = profile_guided_scan_decision_with_detail_for_indata(indata, getenv=getenv)
+    return None if decision is None else bool(decision.use_scan)
+
+
+def profile_guided_scan_decision_with_detail_for_indata(
+    indata,
+    *,
+    getenv=os.getenv,
+) -> ScanDefaultDecision | None:
+    """Return a measured scan decision with provenance, or ``None``.
+
+    The selector is intentionally profile-based instead of physics- or
+    size-threshold based: benchmark provenance says whether a known cold row
+    should use the fused scan runner, while unknown rows keep the backend
+    default.  This makes the startup policy easy to audit in result
+    diagnostics without paying for a runtime probe.
+    """
+
     profile_path = str(getenv("VMEC_JAX_ACCELERATED_SCAN_PROFILE", "")).strip()
     if profile_path.lower() in ("0", "false", "no", "off", "none"):
         return None
     if profile_path:
         profile = Path(profile_path).expanduser()
+        profile_label = str(profile)
     else:
         profile = _BUNDLED_ACCELERATED_SCAN_PROFILE
+        profile_label = "bundled"
         if not profile.exists():
             return None
     candidate_ids = _profile_candidate_case_ids(getattr(indata, "source_path", None))
@@ -653,7 +701,13 @@ def profile_guided_scan_decision_for_indata(indata, *, getenv=os.getenv) -> bool
             continue
         decision = _profile_record_scan_decision(record)
         if decision is not None:
-            return bool(decision)
+            detail = str(record.get("classification", "")).strip()
+            suffix = f":{detail}" if detail else ""
+            return ScanDefaultDecision(
+                use_scan=bool(decision),
+                source="profile",
+                detail=f"{profile_label}:{case_id}{suffix}",
+            )
     return None
 
 
@@ -716,16 +770,24 @@ def default_non_autodiff_solver_policy_for_backend(indata, backend: str) -> tupl
 def default_use_scan_for_backend(indata, backend: str, solver_mode: str | None) -> bool:
     """Choose the fused scan loop when the selected backend can execute it."""
 
+    return bool(default_scan_decision_for_backend(indata, backend, solver_mode).use_scan)
+
+
+def default_scan_decision_for_backend(indata, backend: str, solver_mode: str | None) -> ScanDefaultDecision:
+    """Choose scan/non-scan and report why the default was selected."""
+
     mode = normalize_solver_mode(solver_mode=solver_mode, performance_mode=True)
-    if mode == "parity" and str(backend).strip().lower() == "cpu":
-        return False
-    _ = indata
     backend_l = str(backend).strip().lower()
+    if mode == "parity" and str(backend).strip().lower() == "cpu":
+        return ScanDefaultDecision(False, "solver_mode", "cpu_parity_uses_loop")
+    _ = indata
     if backend_l == "cpu":
-        profile_decision = profile_guided_scan_decision_for_indata(indata)
+        profile_decision = profile_guided_scan_decision_with_detail_for_indata(indata)
         if profile_decision is not None:
-            return bool(profile_decision)
-    return backend_l in ("cpu", "gpu", "cuda", "rocm", "tpu")
+            return profile_decision
+    use_scan = backend_l in ("cpu", "gpu", "cuda", "rocm", "tpu")
+    detail = f"{backend_l or 'unknown'}_{'supports_scan' if use_scan else 'uses_loop'}"
+    return ScanDefaultDecision(bool(use_scan), "backend_default", detail)
 
 
 def resolve_jit_forces_auto_policy(flag: bool | str, static_i, niter_i: int) -> bool:

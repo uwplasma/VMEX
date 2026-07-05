@@ -50,6 +50,7 @@ _as_list_like = _driver_policy_helpers.as_list_like
 _default_non_autodiff_solver_policy_for_backend = _driver_policy_helpers.default_non_autodiff_solver_policy_for_backend
 _default_preconditioner_use_lax_tridi = _driver_policy_helpers.default_preconditioner_use_lax_tridi
 _default_preconditioner_use_precomputed_tridi = _driver_policy_helpers.default_preconditioner_use_precomputed_tridi
+_default_scan_decision_for_backend = _driver_policy_helpers.default_scan_decision_for_backend
 _default_use_scan_for_backend = _driver_policy_helpers.default_use_scan_for_backend
 _distribute_stage_iters = _driver_policy_helpers.distribute_stage_iters
 _dynamic_scan_probe_settings_for_backend = _driver_policy_helpers.dynamic_scan_probe_settings
@@ -174,6 +175,8 @@ class _FixedBoundaryStartupContext:
     accelerated_mode: bool
     performance_mode: bool
     use_scan: bool
+    use_scan_policy_source: str
+    use_scan_policy_detail: str
     cli_fixed_boundary_mode: bool
     restart_state: Any | None
     restart_wout: Any | None
@@ -475,6 +478,7 @@ def _resolve_fixed_boundary_startup_context(
         cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
         auto_cli_fixed_boundary_mode=bool(auto_cli_fixed_boundary_mode),
         default_non_autodiff_policy_func=_default_non_autodiff_solver_policy_for_backend,
+        default_scan_decision_func=_default_scan_decision_for_backend,
         default_use_scan_func=_default_use_scan_for_backend,
     )
     restart_context = _driver_runtime_helpers.resolve_restart_context(
@@ -562,6 +566,8 @@ def _resolve_fixed_boundary_startup_context(
         accelerated_mode=accelerated_mode,
         performance_mode=performance_mode_eff,
         use_scan=bool(initial_policy.use_scan),
+        use_scan_policy_source=str(initial_policy.use_scan_policy_source),
+        use_scan_policy_detail=str(initial_policy.use_scan_policy_detail),
         cli_fixed_boundary_mode=cli_fixed_boundary_mode_eff,
         restart_state=restart_state_eff,
         restart_wout=restart_context.restart_wout,
@@ -645,6 +651,8 @@ def _finalize_fixed_boundary_solver_run(
     verbose: bool,
     finish_policy_eff: str,
     cli_fixed_boundary_finish_enabled: bool,
+    use_scan_policy_source: str,
+    use_scan_policy_detail: str,
     multigrid: bool,
     ns_stages: list[int],
     maybe_finish_cli_fixed_boundary_run,
@@ -681,6 +689,8 @@ def _finalize_fixed_boundary_solver_run(
                 run_out.result,
                 fixed_boundary_finish_policy=str(finish_policy_eff),
                 cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
+                use_scan_policy_source=str(use_scan_policy_source),
+                use_scan_policy_detail=str(use_scan_policy_detail),
             ),
         )
     cli_initial_policy = "multigrid" if bool(multigrid) and (len(ns_stages) > 1) else "single_grid"
@@ -1073,6 +1083,8 @@ def run_fixed_boundary(
     accelerated_mode = startup.accelerated_mode
     performance_mode = startup.performance_mode
     use_scan = startup.use_scan
+    use_scan_policy_source = startup.use_scan_policy_source
+    use_scan_policy_detail = startup.use_scan_policy_detail
     cli_fixed_boundary_mode = startup.cli_fixed_boundary_mode
     restart_state_eff = startup.restart_state
     restart_solver_state = startup.restart_solver_state
@@ -1384,6 +1396,8 @@ def run_fixed_boundary(
         verbose=bool(verbose),
         finish_policy_eff=str(finish_policy_eff),
         cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
+        use_scan_policy_source=str(use_scan_policy_source),
+        use_scan_policy_detail=str(use_scan_policy_detail),
         multigrid=bool(multigrid),
         ns_stages=list(ns_stages),
         maybe_finish_cli_fixed_boundary_run=_maybe_finish_cli_fixed_boundary_run,
