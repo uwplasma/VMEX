@@ -455,16 +455,17 @@ class FixedBoundaryExactOptimizer:
 
         Exact-optimizer trial residuals are short VMEC solves called repeatedly
         by SciPy's trust-region line search.  They do not need an adjoint tape.
-        CPU and current ``office`` GPU/CUDA profiles showed the non-scan loop is
-        materially faster for high-mode QS trial points because scan pays a
-        large cold compile/dispatch cost.  Environment overrides always win.
+        Same-shape QA/QH/QP mode-4 probes showed the VMEC2000-compatible scan
+        path now reuses compiled runners across boundary updates and is modestly
+        faster than the Python loop with identical trial metrics.  Environment
+        overrides always win so regressions can be isolated per machine/problem.
         """
         forced = os.getenv("VMEC_JAX_OPT_TRIAL_SCAN", "").strip().lower()
         if forced in ("1", "true", "yes", "on", "scan"):
             return True
         if forced in ("0", "false", "no", "off", "loop", "none"):
             return False
-        return self._exact_tape_backend_name() in ("tpu",)
+        return self._exact_tape_backend_name() in ("cpu", "gpu", "cuda", "tpu", "rocm")
 
     def _exact_tape_backend_name(self) -> str:
         """Return the backend name used for exact-tape optimization policy."""

@@ -428,11 +428,14 @@ def test_exact_optimizer_profiler_trial_scan_flag_normalization(monkeypatch):
     legacy = exact_tool._normalize_callback_args(
         exact_tool._parse_args(["--trial-use-scan", "--method", "auto"])
     )
-    explicit_off = exact_tool._normalize_callback_args(exact_tool._parse_args(["--trial-scan", "off"]))
+    explicit_off = exact_tool._normalize_callback_args(
+        exact_tool._parse_args(["--trial-scan", "off", "--trial-state-only", "off"])
+    )
 
     assert legacy.trial_scan == "on"
     assert legacy.method == "auto"
     assert explicit_off.trial_scan == "off"
+    assert explicit_off.trial_state_only == "off"
 
 
 def test_exact_optimizer_profiler_accepts_qp_problem():
