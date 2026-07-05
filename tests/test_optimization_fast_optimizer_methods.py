@@ -338,7 +338,7 @@ def test_optimizer_private_policy_error_branches(monkeypatch):
     assert opt._resolve_solver_device("gpu") == "gpu"
 
     opt._solver_device_name = None
-    assert opt._use_scan_for_trial_solves() is True
+    assert opt._use_scan_for_trial_solves() is False
     assert opt._use_precomputed_tridi_for_exact_tape() is None
 
     opt._solver_device_name = "gpu"

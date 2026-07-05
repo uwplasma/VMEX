@@ -219,6 +219,11 @@ class FixedBoundaryExactOptimizer:
             _base,
             preconditioner_use_precomputed_tridi=self._use_precomputed_tridi_for_exact_tape(),
         )
+        (
+            trial_scan_default,
+            self._trial_solver_scan_policy_source,
+            self._trial_solver_scan_policy_detail,
+        ) = self._trial_solver_scan_policy()
         self._trial_solver_kwargs = dict(
             _base,
             # Trial-point residuals do not need an adjoint tape. The run method
@@ -227,7 +232,7 @@ class FixedBoundaryExactOptimizer:
             # use scan runners when the stage is long enough to amortize setup.
             # VMEC_JAX_OPT_TRIAL_SCAN overrides this for diagnostics.
             jit_forces="auto",
-            use_scan=self._use_scan_for_trial_solves(),
+            use_scan=trial_scan_default,
         )
         self._trial_max_iter = min(self._inner_max_iter, 800)
         if trial_max_iter is not None:
@@ -454,8 +459,8 @@ class FixedBoundaryExactOptimizer:
             return False
         return True if len(self._specs) <= max_dofs else None
 
-    def _use_scan_for_trial_solves(self, *, max_nfev: int | None = None) -> bool:
-        """Return whether trial residual solves should use the scan loop.
+    def _trial_solver_scan_policy(self, *, max_nfev: int | None = None) -> tuple[bool, str, str]:
+        """Return the optimization trial-solve scan decision and provenance.
 
         Exact-optimizer trial residuals are short VMEC solves called repeatedly
         by SciPy's trust-region line search.  They do not need an adjoint tape.
@@ -471,14 +476,14 @@ class FixedBoundaryExactOptimizer:
         """
         forced = os.getenv("VMEC_JAX_OPT_TRIAL_SCAN", "").strip().lower()
         if forced in ("1", "true", "yes", "on", "scan"):
-            return True
+            return True, "environment", "VMEC_JAX_OPT_TRIAL_SCAN=scan"
         if forced in ("0", "false", "no", "off", "loop", "none"):
-            return False
+            return False, "environment", "VMEC_JAX_OPT_TRIAL_SCAN=loop"
         if max_nfev is not None and int(max_nfev) <= 2:
-            return False
+            return False, "stage_budget", "max_nfev<=2"
         family = str(getattr(self, "_objective_family", "")).strip().lower()
         if family == "qi":
-            return False
+            return False, "objective_family", "qi_trial_loop_default"
         try:
             helicity_m = None if self._helicity_m is None else int(self._helicity_m)
             helicity_n = None if self._helicity_n is None else int(self._helicity_n)
@@ -486,8 +491,36 @@ class FixedBoundaryExactOptimizer:
             helicity_m = None
             helicity_n = None
         if family == "qs" and helicity_m == 0 and helicity_n not in (None, 0):
-            return False
-        return self._exact_tape_backend_name() in ("gpu", "cuda", "tpu", "rocm")
+            return False, "objective_family", "quasi_poloidal_trial_loop_default"
+        backend = self._exact_tape_backend_name()
+        use_scan = backend in ("gpu", "cuda", "tpu", "rocm")
+        detail = f"{backend}_trial_{'scan' if use_scan else 'loop'}_default"
+        return use_scan, "backend_default", detail
+
+    def _use_scan_for_trial_solves(self, *, max_nfev: int | None = None) -> bool:
+        """Return whether trial residual solves should use the scan loop."""
+
+        return bool(self._trial_solver_scan_policy(max_nfev=max_nfev)[0])
+
+    def _ensure_solver_policy_defaults(self) -> None:
+        """Install minimal solve-policy dictionaries for test stubs.
+
+        Normal optimizers build these dictionaries in ``__init__`` from the
+        VMEC input deck.  Some focused optimizer tests construct instances with
+        ``object.__new__`` to exercise optimizer control flow without a full
+        VMEC solve.  Keeping this guard at the run boundary prevents those
+        stubs from carrying unrelated setup burden while preserving production
+        defaults for real optimizers.
+        """
+
+        if not isinstance(getattr(self, "_exact_solver_kwargs", None), dict):
+            self._exact_solver_kwargs = {"use_scan": False, "light_history": True, "resume_state_mode": "none"}
+        if not isinstance(getattr(self, "_trial_solver_kwargs", None), dict):
+            self._trial_solver_kwargs = {"use_scan": False, "light_history": True, "resume_state_mode": "none"}
+        if not hasattr(self, "_trial_solver_scan_policy_source"):
+            self._trial_solver_scan_policy_source = "stub_default"
+        if not hasattr(self, "_trial_solver_scan_policy_detail"):
+            self._trial_solver_scan_policy_detail = "optimizer_run_default"
 
     def _exact_tape_backend_name(self) -> str:
         """Return the backend name used for exact-tape optimization policy."""
@@ -889,28 +922,32 @@ class FixedBoundaryExactOptimizer:
         callback used state-only/minimal-history solves.
         """
 
+        self._ensure_solver_policy_defaults()
         trial_solver_use_scan = bool(self._trial_solver_kwargs.get("use_scan", False))
         exact_solver_use_scan = bool(self._exact_solver_kwargs.get("use_scan", False))
-        residual_blocks = getattr(self._residuals_fn, "_residual_block_summary", None)
+        residual_blocks = getattr(getattr(self, "_residuals_fn", None), "_residual_block_summary", None)
+        layout = getattr(self, "_layout", None)
         return {
             "backend": self._exact_tape_backend_name(),
-            "n_parameters": int(len(self._specs)),
-            "packed_state_size": int(getattr(self._layout, "size")),
-            "residual_size": self._last_residual_size,
-            "jacobian_shape": self._last_jacobian_shape,
+            "n_parameters": int(len(getattr(self, "_specs", ()))),
+            "packed_state_size": None if layout is None else int(getattr(layout, "size")),
+            "residual_size": getattr(self, "_last_residual_size", None),
+            "jacobian_shape": getattr(self, "_last_jacobian_shape", None),
             "residual_blocks": residual_blocks,
-            "last_jacobian_source": self._last_jacobian_source,
-            "last_scalar_gradient_source": self._last_scalar_gradient_source,
-            "scalar_cost_only_trials": self._last_scalar_cost_only_trials,
-            "scan_exact_path": str(self._scan_exact_path),
+            "last_jacobian_source": getattr(self, "_last_jacobian_source", None),
+            "last_scalar_gradient_source": getattr(self, "_last_scalar_gradient_source", None),
+            "scalar_cost_only_trials": getattr(self, "_last_scalar_cost_only_trials", None),
+            "scan_exact_path": str(getattr(self, "_scan_exact_path", None)),
             "exact_solver_use_scan": exact_solver_use_scan,
             "exact_solver_light_history": bool(self._exact_solver_kwargs.get("light_history", False)),
             "exact_solver_resume_state_mode": str(self._exact_solver_kwargs.get("resume_state_mode", "full")),
             "trial_solver_use_scan": trial_solver_use_scan,
+            "trial_solver_scan_policy_source": str(getattr(self, "_trial_solver_scan_policy_source", "unknown")),
+            "trial_solver_scan_policy_detail": str(getattr(self, "_trial_solver_scan_policy_detail", "unknown")),
             "trial_solver_state_only": bool(self._trial_solver_kwargs.get("state_only", trial_solver_use_scan)),
             "trial_solver_light_history": bool(self._trial_solver_kwargs.get("light_history", False)),
             "trial_solver_resume_state_mode": str(self._trial_solver_kwargs.get("resume_state_mode", "full")),
-            "lasym": bool(getattr(getattr(self._static, "cfg", None), "lasym", False)),
+            "lasym": bool(getattr(getattr(getattr(self, "_static", None), "cfg", None), "lasym", False)),
         }
 
     def _store_jacobian_result(self, exact_param_key, residuals, jac=None, *, source=None, t_total: float):
@@ -2062,12 +2099,18 @@ class FixedBoundaryExactOptimizer:
         """
         self._reset_run_state(trace_callbacks=trace_callbacks, iota_fn=iota_fn)
         self._last_scalar_cost_only_trials = None
+        self._ensure_solver_policy_defaults()
 
         params0_arr = np.asarray(params0, dtype=float)
         scalar_cost_only_trials_used: bool | None = None
-        self._trial_solver_kwargs["use_scan"] = self._use_scan_for_trial_solves(
+        (
+            trial_solver_use_scan,
+            self._trial_solver_scan_policy_source,
+            self._trial_solver_scan_policy_detail,
+        ) = self._trial_solver_scan_policy(
             max_nfev=max_nfev,
         )
+        self._trial_solver_kwargs["use_scan"] = trial_solver_use_scan
         self._profile_add(
             f"trial_solver_scan_policy_{'scan' if self._trial_solver_kwargs['use_scan'] else 'loop'}",
             0.0,

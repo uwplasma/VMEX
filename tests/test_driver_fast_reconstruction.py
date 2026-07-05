@@ -548,6 +548,8 @@ def test_finalize_fixed_boundary_solver_run_attaches_public_diagnostics(monkeypa
         verbose=True,
         finish_policy_eff="converge",
         cli_fixed_boundary_finish_enabled=True,
+        use_scan_policy_source="backend_default",
+        use_scan_policy_detail="cpu_supports_scan",
         multigrid=True,
         ns_stages=[5, 9],
         maybe_finish_cli_fixed_boundary_run=fake_finish,
@@ -566,5 +568,7 @@ def test_finalize_fixed_boundary_solver_run_attaches_public_diagnostics(monkeypa
     assert run.result.diagnostics["existing"] == "diag"
     assert run.result.diagnostics["fixed_boundary_finish_policy"] == "converge"
     assert run.result.diagnostics["cli_fixed_boundary_finish_enabled"] is True
+    assert run.result.diagnostics["use_scan_policy_source"] == "backend_default"
+    assert run.result.diagnostics["use_scan_policy_detail"] == "cpu_supports_scan"
     assert calls["finish"][0] is run
     assert calls["finish"][1:] == ("multigrid", True)
