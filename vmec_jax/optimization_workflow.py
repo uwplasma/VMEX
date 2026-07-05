@@ -1195,6 +1195,21 @@ def build_quasi_isodynamic_objective_stage(
         )
 
     bound_scalar_objectives = tuple(term.bind(ctx) for term in scalar_objectives)
+    scalar_block_summary = tuple(
+        _objective_terms.objective_block_summary(term, index=i)
+        for i, term in enumerate(bound_scalar_objectives)
+    )
+    qi_offset = len(scalar_block_summary)
+    qi_block_summary = tuple(
+        {
+            "index": int(qi_offset + i),
+            "name": str(term.name),
+            "kind": "qi_field" if str(term.name) == "qi" else "qi_engineering",
+            "has_total": True,
+            "track_iota": False,
+        }
+        for i, term in enumerate(qi_objectives)
+    )
 
     def residuals_from_state(state, *, ctx=ctx, scalar_objectives=bound_scalar_objectives):
         """Evaluate residuals from state for VMEC optimization residual assembly and solve orchestration."""
@@ -1204,10 +1219,12 @@ def build_quasi_isodynamic_objective_stage(
         return jnp.concatenate([*scalar_parts, *qi_parts])
 
     residuals_from_state._n_non_qs = len(bound_scalar_objectives)
+
     def _qs_total_from_state(state, *, ctx=ctx):
         field = field_eval(state)
         return float(sum(float(term.residual_and_total(ctx, state, field)[1]) for term in qi_objectives))
 
+    residuals_from_state._residual_block_summary = scalar_block_summary + qi_block_summary
     residuals_from_state._qs_total_from_state = _qs_total_from_state
     residuals_from_state._objective_family = "qi"
     _attach_packed_state_autodiff_hooks(residuals_from_state)
