@@ -797,6 +797,53 @@ def test_run_auto_method_records_resolved_dense_policy(monkeypatch):
     assert opt._profile["method_auto_scipy"]["count"] == 1
 
 
+def test_run_scipy_dense_sanitizes_nonfinite_trial_residuals_and_jacobian(monkeypatch):
+    pytest.importorskip("scipy.optimize")
+    import scipy.optimize
+
+    def fake_least_squares(residuals, y0, *, jac, **kwargs):
+        np.testing.assert_allclose(residuals(y0), [1.0, 2.0])
+        bad_trial = residuals(y0 + 1.0)
+        assert bad_trial.shape == (2,)
+        assert np.all(np.isfinite(bad_trial))
+        assert np.max(np.abs(bad_trial)) >= 1.0e11
+        np.testing.assert_allclose(jac(y0), [[0.0], [0.0]])
+        return SimpleNamespace(
+            x=np.asarray(y0, dtype=float),
+            cost=0.5,
+            nfev=2,
+            njev=1,
+            success=True,
+            status=1,
+            message="dense finite guard ok",
+        )
+
+    monkeypatch.setattr(scipy.optimize, "least_squares", fake_least_squares)
+    opt = _run_ready_optimizer(residual=np.asarray([1.0, 2.0]))
+    x0_key = opt._exact_cache_key(np.asarray([0.0]))
+
+    def cached_residual(*args, **kwargs):
+        cache_key = kwargs.get("cache_key")
+        return np.asarray([1.0, 2.0], dtype=float) if cache_key == x0_key else None
+
+    opt._cached_exact_residual = cached_residual
+    opt._cached_exact_state = lambda _x: None
+    opt._cached_trial_residual = lambda _x: None
+    opt.forward_residual_fun = lambda _x: np.asarray([np.nan, np.inf], dtype=float)
+    opt._jacobian_fun_tracked = lambda _x: np.asarray([[np.nan], [-np.inf]], dtype=float)
+
+    result = opt.run(
+        np.asarray([0.0]),
+        method="scipy",
+        x_scale=np.asarray([2.0]),
+        verbose=0,
+    )
+
+    assert result["success"] is True
+    assert opt._profile["dense_nonfinite_residual"]["count"] == 1
+    assert opt._profile["dense_nonfinite_jacobian"]["count"] == 1
+
+
 def test_run_scipy_matrix_free_scales_multi_parameter_linear_operator(monkeypatch):
     pytest.importorskip("scipy.optimize")
     import scipy.optimize

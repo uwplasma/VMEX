@@ -206,6 +206,18 @@ def run_scipy_dense_exact_optimizer(
         raise ImportError("method='scipy' requires scipy.optimize.least_squares") from exc
 
     scale, base_params, y0 = scaled_optimizer_space(owner, params0_arr, x_scale)
+    dense_residual_size = [None]
+
+    def _finite_dense_residual(raw_residual):
+        residual = finite_residual_vector(
+            raw_residual,
+            profile_add=owner._profile_add,
+            profile_name="dense_nonfinite_residual",
+            expected_size=dense_residual_size[0],
+        )
+        if dense_residual_size[0] is None:
+            dense_residual_size[0] = int(residual.size)
+        return residual
 
     def _residuals_y(y):
         x = np.asarray(y, dtype=float) * scale - base_params
@@ -219,7 +231,7 @@ def run_scipy_dense_exact_optimizer(
                 source="exact_residual_cache",
                 wall_time_s=time.perf_counter() - t_cb,
             )
-            return cached_residual
+            return _finite_dense_residual(cached_residual)
         cached_state = owner._cached_exact_state(x)
         if cached_state is not None:
             out = owner._evaluate_residuals_from_state(cached_state)
@@ -229,7 +241,7 @@ def run_scipy_dense_exact_optimizer(
                 source="exact_state_cache",
                 wall_time_s=time.perf_counter() - t_cb,
             )
-            return out
+            return _finite_dense_residual(out)
         cached_trial = owner._cached_trial_residual(x)
         if cached_trial is not None:
             owner._trace_callback_event(
@@ -238,7 +250,7 @@ def run_scipy_dense_exact_optimizer(
                 source="trial_residual_cache",
                 wall_time_s=time.perf_counter() - t_cb,
             )
-            return cached_trial
+            return _finite_dense_residual(cached_trial)
         out = owner.forward_residual_fun(x)
         owner._trace_callback_event(
             "residual",
@@ -246,13 +258,18 @@ def run_scipy_dense_exact_optimizer(
             source="trial_solve",
             wall_time_s=time.perf_counter() - t_cb,
         )
-        return out
+        return _finite_dense_residual(out)
 
     def _jacobian_y(y):
         x = np.asarray(y, dtype=float) * scale - base_params
         t_cb = time.perf_counter()
         owner._last_jacobian_source = "exact_tape_replay"
         jac = np.asarray(owner._jacobian_fun_tracked(x), dtype=float) * scale[None, :]
+        jac = finite_linear_operator_output(
+            jac,
+            profile_add=owner._profile_add,
+            profile_name="dense_nonfinite_jacobian",
+        )
         owner._trace_callback_event(
             "jacobian",
             x,
@@ -288,4 +305,3 @@ def run_scipy_dense_exact_optimizer(
             message="scipy least_squares failed",
             exc=exc,
         )
-
