@@ -35,7 +35,13 @@ def exact_objective_and_gradient(owner: Any, params) -> tuple[float, np.ndarray]
     )
     cotangent_source = "residual_vjp"
     if objective_cotangent_factory is not None:
-        cotangent_source = "objective_cotangent_factory"
+        cotangent_source = str(
+            getattr(
+                objective_cotangent_factory,
+                "_vmec_jax_cotangent_source",
+                "objective_cotangent_factory",
+            )
+        )
         helper_key = (
             "objective_value_and_cotangent",
             int(owner._layout.size),

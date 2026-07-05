@@ -1253,6 +1253,10 @@ def test_workflow_residuals_attach_packed_state_cotangent_hooks() -> None:
 
     assert hasattr(combined, "_state_cotangent_from_packed")
     assert hasattr(combined, "_state_objective_value_and_cotangent_from_packed")
+    assert (
+        combined._state_objective_value_and_cotangent_from_packed._vmec_jax_cotangent_source
+        == "objective_block_sum"
+    )
 
     cotangent = jnp.asarray([0.25], dtype=jnp.float64)
     hook_cotangent = combined._state_cotangent_from_packed(packed, state.layout, cotangent)
