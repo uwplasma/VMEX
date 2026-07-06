@@ -14,7 +14,7 @@ def exact_objective_and_gradient(owner: Any, params) -> tuple[float, np.ndarray]
     if owner._solver_device_name is not None and not owner._inside_solver_device_context:
         return owner._run_in_solver_device_context(owner.objective_and_gradient_fun, params)
     from vmec_jax._compat import jax, jnp as _jnp
-    from vmec_jax.discrete_adjoint import checkpoint_tape_state_vjp
+    from vmec_jax.discrete_adjoint import checkpoint_tape_state_vjp, replay_scan_cache_diagnostics
     from vmec_jax.state import unpack_state
 
     t_total = time.perf_counter()
@@ -92,11 +92,16 @@ def exact_objective_and_gradient(owner: Any, params) -> tuple[float, np.ndarray]
     owner._profile_add("gradient_residual_vjp", time.perf_counter() - t_res_vjp)
 
     t_replay = time.perf_counter()
+    replay_scan_cache_diagnostics(reset=True)
     initial_cotangent = checkpoint_tape_state_vjp(
         tape=tape,
         static=owner._static,
         final_cotangent=final_cotangent,
         rebuild_preconditioner=True,
+    )
+    owner._profile_replay_scan_diagnostics(
+        "gradient",
+        replay_scan_cache_diagnostics(reset=True),
     )
     initial_cotangent = owner._profile_async_phase(
         "gradient_tape_replay",

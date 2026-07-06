@@ -45,6 +45,7 @@ from vmec_jax.solvers.fixed_boundary.adjoint.replay_policy import (
     _record_dynamic_basepoint_initial_carry_size,
     _record_replay_jvp_columns_chunking,
     _record_replay_jvp_columns_path,
+    _record_replay_vjp_path,
     _replay_column_chunk_override,
     _trace_preconditioner_use_lax_tridi,
     _trace_preconditioner_use_precomputed_tridi,
@@ -656,6 +657,7 @@ def checkpoint_tape_state_vjp(
 
         _, vjp_fun = jax.vjp(_run, carry0)
         initial_carry_cotangents = vjp_fun(final_carry_cotangents)[0]
+        _record_replay_vjp_path("dynamic_scan")
         return initial_carry_cotangents[0]
 
     if (
@@ -679,6 +681,7 @@ def checkpoint_tape_state_vjp(
             tape.dynamic_base_carries_stacked,
             tape.stacked_step_traces,
         )
+        _record_replay_vjp_path("dynamic_basepoint")
         return initial_carry_cotangents[0]
 
     if not tape.step_traces:
@@ -729,6 +732,7 @@ def checkpoint_tape_state_vjp(
 
         _, vjp_fun = jax.vjp(_step_map, x0)
         cotangent = vjp_fun(cotangent)[0]
+    _record_replay_vjp_path("generic_per_trace")
     return cotangent
 
 

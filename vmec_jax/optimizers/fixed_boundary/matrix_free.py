@@ -27,6 +27,7 @@ def build_residual_linear_operator(owner: Any, params):
         checkpoint_tape_state_jvp,
         checkpoint_tape_state_jvp_columns,
         checkpoint_tape_state_vjp,
+        replay_scan_cache_diagnostics,
     )
     from vmec_jax.state import unpack_state
 
@@ -175,11 +176,16 @@ def build_residual_linear_operator(owner: Any, params):
         owner._profile_add("linear_operator_residual_vjp", time.perf_counter() - t_res_cot)
         final_cotangent = _jnp.nan_to_num(final_cotangent, nan=0.0, posinf=0.0, neginf=0.0)
         t_tape_vjp = time.perf_counter()
+        replay_scan_cache_diagnostics(reset=True)
         initial_cotangent = checkpoint_tape_state_vjp(
             tape=tape,
             static=owner._static,
             final_cotangent=final_cotangent,
             rebuild_preconditioner=True,
+        )
+        owner._profile_replay_scan_diagnostics(
+            "linear_operator",
+            replay_scan_cache_diagnostics(reset=True),
         )
         initial_cotangent = owner._profile_async_phase(
             "linear_operator_tape_vjp",

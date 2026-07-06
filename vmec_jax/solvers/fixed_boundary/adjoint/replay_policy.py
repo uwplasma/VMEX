@@ -108,9 +108,15 @@ _REPLAY_JVP_COLUMN_PATH_LABELS: tuple[str, ...] = (
     "generic_per_trace",
     "generic_scan",
 )
+_REPLAY_VJP_PATH_LABELS: tuple[str, ...] = (
+    "dynamic_scan",
+    "dynamic_basepoint",
+    "generic_per_trace",
+)
 _REPLAY_SCAN_CACHE_DIAGNOSTICS.update(
     {
         **{f"replay_jvp_columns_{label}_count": 0 for label in _REPLAY_JVP_COLUMN_PATH_LABELS},
+        **{f"replay_vjp_{label}_count": 0 for label in _REPLAY_VJP_PATH_LABELS},
         "replay_jvp_columns_leaf_call_count": 0,
         "replay_jvp_columns_input_column_count": 0,
         "replay_jvp_columns_chunked_call_count": 0,
@@ -265,6 +271,17 @@ def _record_replay_jvp_columns_path(label: str, *, n_columns: int) -> None:
     _add_replay_diag(key)
     _add_replay_diag("replay_jvp_columns_leaf_call_count")
     _add_replay_diag("replay_jvp_columns_input_column_count", n_columns)
+
+
+def _record_replay_vjp_path(label: str) -> None:
+    """Record which reverse replay path was used for scalar/matrix-free VJPs."""
+
+    if not _replay_scan_cache_diagnostics_enabled():
+        return
+    key = f"replay_vjp_{label}_count"
+    if key not in _REPLAY_SCAN_CACHE_DIAGNOSTICS:
+        return
+    _add_replay_diag(key)
 
 
 def _record_replay_jvp_columns_chunking(*, n_chunks: int, chunk_size: int) -> None:
