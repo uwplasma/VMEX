@@ -612,6 +612,20 @@ def test_profile_exact_supplements_scan_cache_status_timing_on_older_optimizer()
                 "scan_runner_cache_miss_device_run_s": 1.20,
                 "scan_runner_cache_miss_dispatch_s": 0.10,
                 "scan_runner_cache_miss_ready_s": 1.10,
+                "scan_runner_arg_leaf_count": 15,
+                "scan_runner_arg_array_leaf_count": 12,
+                "scan_runner_arg_scalar_leaf_count": 3,
+                "scan_runner_arg_array_nbytes": 2048,
+                "scan_runner_arg_category_state_leaf_count": 6,
+                "scan_runner_arg_category_state_array_leaf_count": 6,
+                "scan_runner_arg_category_state_array_nbytes": 1536,
+                "scan_runner_arg_path_arg0_state_leaf_count": 6,
+                "scan_runner_arg_path_arg0_state_array_leaf_count": 6,
+                "scan_runner_arg_path_arg0_state_array_nbytes": 1536,
+                "scan_runner_arg_preconditioner_rz_mats_key_count": 8,
+                "scan_runner_arg_preconditioner_rz_mats_unexpected_key_count": 0,
+                "scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count": 0,
+                "scan_runner_arg_preconditioner_rz_mats_compact_ok_count": 1,
                 "iteration_control_fsq1_payload_get_s": 0.06,
                 "iteration_control_badjac_state_jacobian_s": 0.07,
             }
@@ -628,6 +642,12 @@ def test_profile_exact_supplements_scan_cache_status_timing_on_older_optimizer()
     assert opt._profile["trial_solver_scan_runner_cache_miss_category_iteration_budget_count"]["wall_time_s"] == 1
     assert opt._profile["trial_solver_scan_runner_cache_hit_ready"]["wall_time_s"] == 0.35
     assert opt._profile["trial_solver_scan_runner_cache_miss_ready"]["wall_time_s"] == 1.10
+    assert opt._profile["trial_solver_scan_runner_arg_leaf_count"]["wall_time_s"] == 15
+    assert opt._profile["trial_solver_scan_runner_arg_array_nbytes"]["wall_time_s"] == 2048
+    assert opt._profile["trial_solver_scan_runner_arg_category_state_array_nbytes"]["wall_time_s"] == 1536
+    assert opt._profile["trial_solver_scan_runner_arg_path_arg0_state_array_nbytes"]["wall_time_s"] == 1536
+    assert opt._profile["trial_solver_scan_runner_arg_preconditioner_rz_mats_key_count"]["wall_time_s"] == 8
+    assert opt._profile["trial_solver_scan_runner_arg_preconditioner_rz_mats_compact_ok_count"]["wall_time_s"] == 1
     assert opt._profile["trial_solver_iteration_control_fsq1_payload_get"]["wall_time_s"] == 0.06
     assert opt._profile["trial_solver_iteration_control_badjac_state_jacobian"]["wall_time_s"] == 0.07
 

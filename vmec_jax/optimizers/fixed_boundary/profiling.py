@@ -24,6 +24,20 @@ _EXACT_TAPE_BUILD_TIMING_PROFILE_NAMES = (
 )
 
 
+def _is_dynamic_scan_counter_key(key: str) -> bool:
+    """Return true for scan counters whose names are produced dynamically."""
+
+    if key.startswith("scan_runner_cache_miss_category_") and key.endswith("_count"):
+        return True
+    if key.startswith("scan_runner_explicit_compile_") and key.endswith("_count"):
+        return True
+    if key.startswith("scan_runner_explicit_hlo_") and key.endswith("_count"):
+        return True
+    if not key.startswith("scan_runner_arg_"):
+        return False
+    return key.endswith("_count") or key.endswith("_array_nbytes")
+
+
 def trace_callback_event(
     optimizer,
     kind: str,
@@ -200,6 +214,28 @@ def profile_solver_timing(
         ("scan_runner_cache_hit_count", "scan_runner_cache_hit_count"),
         ("scan_runner_cache_miss_count", "scan_runner_cache_miss_count"),
         ("scan_runner_cache_bypass_count", "scan_runner_cache_bypass_count"),
+        ("scan_runner_explicit_compile_count", "scan_runner_explicit_compile_count"),
+        ("scan_runner_explicit_compile_failure_count", "scan_runner_explicit_compile_failure_count"),
+        ("scan_runner_explicit_hlo_line_count", "scan_runner_explicit_hlo_line_count"),
+        ("scan_runner_explicit_hlo_instruction_count", "scan_runner_explicit_hlo_instruction_count"),
+        ("scan_runner_explicit_hlo_failure_count", "scan_runner_explicit_hlo_failure_count"),
+        ("scan_runner_arg_leaf_count", "scan_runner_arg_leaf_count"),
+        ("scan_runner_arg_array_leaf_count", "scan_runner_arg_array_leaf_count"),
+        ("scan_runner_arg_scalar_leaf_count", "scan_runner_arg_scalar_leaf_count"),
+        ("scan_runner_arg_array_nbytes", "scan_runner_arg_array_nbytes"),
+        ("scan_runner_arg_preconditioner_rz_mats_key_count", "scan_runner_arg_preconditioner_rz_mats_key_count"),
+        (
+            "scan_runner_arg_preconditioner_rz_mats_unexpected_key_count",
+            "scan_runner_arg_preconditioner_rz_mats_unexpected_key_count",
+        ),
+        (
+            "scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count",
+            "scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count",
+        ),
+        (
+            "scan_runner_arg_preconditioner_rz_mats_compact_ok_count",
+            "scan_runner_arg_preconditioner_rz_mats_compact_ok_count",
+        ),
     )
     outer_solver_total_keys = {"setup_total_s", "iteration_loop_s", "finalize_s", "scan_total_s"}
     fallback_solver_total_keys = {"compute_forces_s", "preconditioner_s", "update_s", "scan_total_s"}
@@ -214,6 +250,7 @@ def profile_solver_timing(
         optimizer._profile_add(f"{profile_prefix}_{suffix}", value)
         if key in (outer_solver_total_keys if has_outer_solver_total else fallback_solver_total_keys):
             solver_total += max(0.0, value)
+    forwarded_counter_keys: set[str] = set()
     for key, suffix in counter_keys:
         if key not in timing:
             continue
@@ -222,15 +259,17 @@ def profile_solver_timing(
         except Exception:
             continue
         optimizer._profile_add_counter(f"{profile_prefix}_{suffix}", value)
+        forwarded_counter_keys.add(key)
     optimizer._profile_solver_free_boundary_timing(diagnostics, profile_prefix=profile_prefix)
     for key, value_raw in sorted(timing.items()):
-        if not (str(key).startswith("scan_runner_cache_miss_category_") and str(key).endswith("_count")):
+        key_str = str(key)
+        if key_str in forwarded_counter_keys or not _is_dynamic_scan_counter_key(key_str):
             continue
         try:
             value = int(value_raw)
         except Exception:
             continue
-        optimizer._profile_add_counter(f"{profile_prefix}_{key}", value)
+        optimizer._profile_add_counter(f"{profile_prefix}_{key_str}", value)
     if unattributed_name is not None:
         optimizer._profile_add(unattributed_name, max(0.0, float(phase_wall_s) - solver_total))
     return solver_total
