@@ -228,6 +228,16 @@ def test_performance_matrix_fixed_command_uses_backend_solver_device(tmp_path):
             "--use-input-niter",
             "--vmec-timing-detail",
             "--scan-arg-summary",
+            "--budget-scan-arg-nbytes",
+            "200000",
+            "--budget-scan-velocity-nbytes",
+            "125000",
+            "--budget-scan-preconditioner-nbytes",
+            "80000",
+            "--budget-scan-history-nbytes",
+            "1024",
+            "--budget-action",
+            "warn",
         ]
     )
     report = tmp_path / "report.json"
@@ -253,6 +263,11 @@ def test_performance_matrix_fixed_command_uses_backend_solver_device(tmp_path):
     assert "--no-multigrid" in command
     assert "--vmec-timing-detail" in command
     assert "--scan-arg-summary" in command
+    assert command[command.index("--budget-scan-arg-nbytes") + 1] == "200000"
+    assert command[command.index("--budget-scan-velocity-nbytes") + 1] == "125000"
+    assert command[command.index("--budget-scan-preconditioner-nbytes") + 1] == "80000"
+    assert command[command.index("--budget-scan-history-nbytes") + 1] == "1024"
+    assert command[command.index("--budget-action") + 1] == "warn"
 
 
 def test_performance_matrix_fixed_report_stem_uses_iter_budget_by_default():
