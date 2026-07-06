@@ -228,7 +228,7 @@ def test_fixed_boundary_exact_optimizer_init_uses_profiled_trial_scan_policy(mon
         inner_ftol=2.0e-9,
         solver_device="gpu",
     )
-    assert opt_qp._trial_solver_kwargs["use_scan"] is False
+    assert opt_qp._trial_solver_kwargs["use_scan"] is True
 
 
 def test_auto_method_resolver_keeps_dense_for_high_mode_cpu_cases(monkeypatch):

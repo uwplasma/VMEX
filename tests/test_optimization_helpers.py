@@ -2143,7 +2143,8 @@ def test_fixed_boundary_optimizer_trial_scan_default_and_env_override(monkeypatc
 
     opt._helicity_m = 0
     opt._helicity_n = -1
-    assert opt._use_scan_for_trial_solves() is False
+    assert opt._use_scan_for_trial_solves() is True
+    assert opt._use_scan_for_trial_solves(max_nfev=2) is False
 
     opt._objective_family = "qi"
     assert opt._use_scan_for_trial_solves() is False
