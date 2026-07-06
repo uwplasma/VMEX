@@ -311,6 +311,49 @@ def test_performance_matrix_repeat_run_summary_extracts_cache_hit_delta():
     assert repeat["last_execution_classification"] == "scan_cache_hit"
 
 
+def test_performance_matrix_callback_repeat_summary_extracts_cache_hit_delta():
+    tool = _load_tool()
+    summary = {
+        "sample_profile_summaries": [
+            {
+                "index": 0,
+                "repeat": 0,
+                "wall_time_s": 8.0,
+                "metrics": {
+                    "replay_scan_cache_miss_count": 2,
+                    "trial_solver_scan_runner_cache_miss_count": 1,
+                },
+                "exact_optimizer_patch_target": {"name": "exact_tape_build"},
+            },
+            {
+                "index": 1,
+                "repeat": 1,
+                "wall_time_s": 2.0,
+                "metrics": {
+                    "replay_scan_cache_miss_count": 0,
+                    "trial_solver_scan_runner_cache_miss_count": 0,
+                },
+                "exact_optimizer_patch_target": {"name": "projected_replay"},
+            },
+        ]
+    }
+
+    repeat = tool._matrix_callback_repeat_summary(summary)
+
+    assert repeat["count"] == 2
+    assert repeat["first_repeat"] == 0
+    assert repeat["last_repeat"] == 1
+    assert repeat["first_wall_s"] == pytest.approx(8.0)
+    assert repeat["last_wall_s"] == pytest.approx(2.0)
+    assert repeat["speedup_first_to_last"] == pytest.approx(4.0)
+    assert repeat["first_replay_scan_cache_miss_count"] == 2
+    assert repeat["last_replay_scan_cache_miss_count"] == 0
+    assert repeat["first_trial_scan_cache_miss_count"] == 1
+    assert repeat["last_trial_scan_cache_miss_count"] == 0
+    assert repeat["first_patch_target"] == "exact_tape_build"
+    assert repeat["last_patch_target"] == "projected_replay"
+
+
 def test_performance_matrix_fixed_report_stem_uses_iter_budget_by_default():
     tool = _load_tool()
     args = tool._build_parser().parse_args(

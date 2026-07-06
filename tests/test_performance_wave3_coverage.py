@@ -113,6 +113,28 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
                             "timing": {"scan_runner_cache_miss_count": 0},
                         },
                     ],
+                    "sample_profile_summaries": [
+                        {
+                            "index": 0,
+                            "repeat": 0,
+                            "wall_time_s": 6.0,
+                            "metrics": {
+                                "replay_scan_cache_miss_count": 2,
+                                "trial_solver_scan_runner_cache_miss_count": 1,
+                            },
+                            "exact_optimizer_patch_target": {"name": "exact_tape_build"},
+                        },
+                        {
+                            "index": 1,
+                            "repeat": 1,
+                            "wall_time_s": 1.5,
+                            "metrics": {
+                                "replay_scan_cache_miss_count": 0,
+                                "trial_solver_scan_runner_cache_miss_count": 0,
+                            },
+                            "exact_optimizer_patch_target": {"name": "projected_replay"},
+                        },
+                    ],
                 },
                 "report_path": "/tmp/qh_m2_gpu_jacobian.json",
             }
@@ -147,6 +169,10 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
     assert "speedup" in output
     assert "scan_cold_compile" in output
     assert "scan_cache_hit" in output
+    assert "Exact callback repeats:" in output
+    assert "first_replay_misses" in output
+    assert "exact_tape_build" in output
+    assert "projected_replay" in output
     assert "Projected replay / JVP details:" in output
     assert "jvp_tape" in output
     assert "base_carries" in output
