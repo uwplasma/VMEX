@@ -83,6 +83,13 @@ The checked-in evidence and provenance are:
 - :download:`readme_ad_fd_evidence.csv <_static/figures/readme_ad_fd_evidence.csv>`
 - :download:`readme_ad_fd_evidence.json <_static/figures/readme_ad_fd_evidence.json>`
 
+For new direct-coil free-boundary derivative checks, prefer the public
+``free_boundary_value_and_jvp(..., validate_fd=True)`` report's
+``validation_summary`` field when building compact provenance tables.  It
+summarizes same-branch compatibility, scalar AD-vs-FD pass status,
+cotangent-projected VJP-vs-FD pass status, and maximum scalar errors while
+leaving the full ``fd_validation`` payload available for detailed audits.
+
 Regenerate the panel from a same-branch direct-coil report with:
 
 .. code-block:: bash
