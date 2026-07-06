@@ -1063,6 +1063,18 @@ def run_nonchunked_scan(
     runner_seq_len = int(requested_seq_len)
     if scan_runner_seq_len_func is not None:
         runner_seq_len = int(scan_runner_seq_len_func(int(requested_seq_len)))
+    if bool(scan_timing_enabled):
+        scan_timing_stats["scan_runner_requested_seq_len"] = max(
+            int(scan_timing_stats.get("scan_runner_requested_seq_len", 0)),
+            int(requested_seq_len),
+        )
+        scan_timing_stats["scan_runner_actual_seq_len"] = max(
+            int(scan_timing_stats.get("scan_runner_actual_seq_len", 0)),
+            int(runner_seq_len),
+        )
+        scan_timing_stats["scan_runner_padded_extra_iter_count"] = int(
+            scan_timing_stats.get("scan_runner_padded_extra_iter_count", 0)
+        ) + max(0, int(runner_seq_len) - int(requested_seq_len))
     runner, cache_status = get_scan_runner(int(runner_seq_len))
     if int(preflight_iters) > 0:
         carry_pre = carry_init

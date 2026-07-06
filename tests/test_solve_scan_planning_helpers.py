@@ -1052,6 +1052,59 @@ def test_run_nonchunked_scan_buckets_state_only_runner_length_without_history():
     assert calls == [(0, 1, 2, 3, 4, 5, 6, 7)]
 
 
+def test_run_nonchunked_scan_reports_bucketed_state_only_runner_lengths():
+    stats = new_scan_timing_stats()
+
+    class Runtime:
+        @staticmethod
+        def ready(_t_device, value, *, cache_status=None):
+            assert cache_status == "hit"
+            return value
+
+    def get_scan_runner(seq_len):
+        assert seq_len == 8
+
+        def runner(carry, it_seq):
+            return carry + (int(np.asarray(it_seq).shape[0]),), ()
+
+        return runner, "hit"
+
+    ticks = iter(float(i) for i in range(10))
+    result = run_nonchunked_scan(
+        ("carry",),
+        max_iter_scan=5,
+        max_iter_tail=5,
+        preflight_iters=0,
+        iter_offset_preflight=0,
+        axis_reset_repeat=False,
+        iter_offset0=0,
+        get_scan_runner=get_scan_runner,
+        scan_runner_seq_len_func=lambda seq_len: 8,
+        scan_step=lambda *_args: pytest.fail("no preflight should not call scan_step directly"),
+        runtime_scan_args=(),
+        scan_jit_preflight_enabled_func=lambda **_kwargs: pytest.fail("no preflight should not probe jit policy"),
+        scan_jit_preflight_env=None,
+        backend_name="cpu",
+        scan_differentiated=False,
+        scan_collect_print=False,
+        scan_timing_enabled=True,
+        scan_timing_stats=stats,
+        scan_device_runtime=Runtime(),
+        perf_counter=lambda: next(ticks),
+        state_only_scan=True,
+        scan_fallback_enabled_run=False,
+        scan_fallback_iters=0,
+        jnp_module=jnp,
+        jax_module=SimpleNamespace(tree_util=None),
+    )
+
+    assert result.carry_final == ("carry", 8)
+    assert stats["scan_runner_requested_seq_len"] == 5
+    assert stats["scan_runner_actual_seq_len"] == 8
+    assert stats["scan_runner_padded_extra_iter_count"] == 3
+    assert stats["scan_runner_cache_hit_device_run_s"] == pytest.approx(0.0)
+
+
 def test_state_only_scan_runner_bucket_helpers_keep_full_scans_exact():
     assert state_only_scan_runner_bucket_size("", default=32) == 32
     assert state_only_scan_runner_bucket_size("0", default=32) == 0
