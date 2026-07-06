@@ -82,8 +82,13 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
                     "scan_payload_leaders": {
                         "total_array_nbytes": 4096,
                         "velocity_array_nbytes": 2048,
+                        "velocity_R_array_nbytes": 1024,
+                        "velocity_Z_array_nbytes": 768,
+                        "velocity_lambda_array_nbytes": 256,
                         "preconditioner_array_nbytes": 1024,
                         "preconditioner_rz_apply_array_nbytes": 768,
+                        "preconditioner_lambda_array_nbytes": 128,
+                        "preconditioner_other_array_nbytes": 128,
                         "history_array_nbytes": 96,
                         "largest_category": "velocity",
                         "largest_subcategory": "preconditioner_rz_apply",
@@ -91,6 +96,8 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
                     "scan_payload_next_target": {
                         "target": "velocity",
                         "target_array_nbytes": 2048,
+                        "target_subcategory": "velocity_R",
+                        "target_subcategory_array_nbytes": 1024,
                         "bucket_padding_active": True,
                         "requested_seq_len": 5,
                         "actual_seq_len": 8,
@@ -184,6 +191,9 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
     assert "preconditioner_rz_apply" in output
     assert "next_target" in output
     assert "target_B" in output
+    assert "target_subcat" in output
+    assert "subcat_B" in output
+    assert "velocity_R" in output
     assert "bucket_pad" in output
     assert "budget_ok" in output
     assert "Repeated fixed-boundary runs:" in output

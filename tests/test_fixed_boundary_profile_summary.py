@@ -91,13 +91,20 @@ def test_summarize_profile_extracts_compile_and_scan_metrics(tmp_path) -> None:
                     "largest_subcategory": "preconditioner_rz_apply",
                     "largest_subcategory_array_nbytes": 512,
                     "velocity_array_nbytes": 1536,
+                    "velocity_R_array_nbytes": 768,
+                    "velocity_Z_array_nbytes": 512,
+                    "velocity_lambda_array_nbytes": 256,
                     "preconditioner_array_nbytes": 1024,
                     "preconditioner_rz_apply_array_nbytes": 512,
+                    "preconditioner_lambda_array_nbytes": 384,
+                    "preconditioner_other_array_nbytes": 128,
                     "state_checkpoint_array_nbytes": 256,
                 },
                 "scan_payload_next_target": {
                     "target": "velocity",
                     "target_array_nbytes": 1536,
+                    "target_subcategory": "velocity_R",
+                    "target_subcategory_array_nbytes": 768,
                     "bucket_padding_active": True,
                 },
             }
@@ -133,11 +140,18 @@ def test_summarize_profile_extracts_compile_and_scan_metrics(tmp_path) -> None:
     assert row["scan_payload_largest_subcategory"] == "preconditioner_rz_apply"
     assert row["scan_payload_largest_subcategory_array_nbytes"] == 512.0
     assert row["scan_payload_velocity_array_nbytes"] == 1536.0
+    assert row["scan_payload_velocity_R_array_nbytes"] == 768.0
+    assert row["scan_payload_velocity_Z_array_nbytes"] == 512.0
+    assert row["scan_payload_velocity_lambda_array_nbytes"] == 256.0
     assert row["scan_payload_preconditioner_array_nbytes"] == 1024.0
     assert row["scan_payload_preconditioner_rz_apply_array_nbytes"] == 512.0
+    assert row["scan_payload_preconditioner_lambda_array_nbytes"] == 384.0
+    assert row["scan_payload_preconditioner_other_array_nbytes"] == 128.0
     assert row["scan_payload_state_checkpoint_array_nbytes"] == 256.0
     assert row["scan_payload_next_target"] == "velocity"
     assert row["scan_payload_next_target_array_nbytes"] == 1536.0
+    assert row["scan_payload_next_target_subcategory"] == "velocity_R"
+    assert row["scan_payload_next_target_subcategory_array_nbytes"] == 768.0
     assert row["scan_runner_requested_seq_len"] == 5.0
     assert row["scan_runner_actual_seq_len"] == 8.0
     assert row["scan_runner_padded_extra_iter_count"] == 3.0
@@ -185,7 +199,12 @@ def test_summarize_profile_reconstructs_scan_payload_fields_from_legacy_timing(t
                 "timing": {
                     "scan_runner_arg_category_velocity_array_nbytes": 480,
                     "scan_runner_arg_category_preconditioner_array_nbytes": 160,
+                    "scan_runner_arg_subcategory_velocity_R_array_nbytes": 240,
+                    "scan_runner_arg_subcategory_velocity_Z_array_nbytes": 160,
+                    "scan_runner_arg_subcategory_velocity_lambda_array_nbytes": 80,
                     "scan_runner_arg_subcategory_preconditioner_rz_apply_array_nbytes": 96,
+                    "scan_runner_arg_subcategory_preconditioner_lambda_array_nbytes": 64,
+                    "scan_runner_arg_subcategory_preconditioner_other_array_nbytes": 0,
                     "scan_runner_arg_subcategory_state_checkpoint_array_nbytes": 64,
                 }
             }
@@ -197,11 +216,16 @@ def test_summarize_profile_reconstructs_scan_payload_fields_from_legacy_timing(t
 
     assert row["scan_payload_largest_category"] == "velocity"
     assert row["scan_payload_largest_category_array_nbytes"] == 480
-    assert row["scan_payload_largest_subcategory"] == "preconditioner_rz_apply"
-    assert row["scan_payload_largest_subcategory_array_nbytes"] == 96
+    assert row["scan_payload_largest_subcategory"] == "velocity_R"
+    assert row["scan_payload_largest_subcategory_array_nbytes"] == 240
     assert row["scan_payload_velocity_array_nbytes"] == 480.0
+    assert row["scan_payload_velocity_R_array_nbytes"] == 240.0
+    assert row["scan_payload_velocity_Z_array_nbytes"] == 160.0
+    assert row["scan_payload_velocity_lambda_array_nbytes"] == 80.0
     assert row["scan_payload_preconditioner_array_nbytes"] == 160.0
     assert row["scan_payload_preconditioner_rz_apply_array_nbytes"] == 96.0
+    assert row["scan_payload_preconditioner_lambda_array_nbytes"] == 64.0
+    assert row["scan_payload_preconditioner_other_array_nbytes"] == 0.0
     assert row["scan_payload_state_checkpoint_array_nbytes"] == 64.0
 
 
@@ -249,11 +273,18 @@ def test_render_markdown_includes_blank_missing_values() -> None:
                 "scan_payload_largest_subcategory": "",
                 "scan_payload_largest_subcategory_array_nbytes": None,
                 "scan_payload_velocity_array_nbytes": None,
+                "scan_payload_velocity_R_array_nbytes": None,
+                "scan_payload_velocity_Z_array_nbytes": None,
+                "scan_payload_velocity_lambda_array_nbytes": None,
                 "scan_payload_preconditioner_array_nbytes": None,
                 "scan_payload_preconditioner_rz_apply_array_nbytes": None,
+                "scan_payload_preconditioner_lambda_array_nbytes": None,
+                "scan_payload_preconditioner_other_array_nbytes": None,
                 "scan_payload_state_checkpoint_array_nbytes": None,
                 "scan_payload_next_target": "",
                 "scan_payload_next_target_array_nbytes": None,
+                "scan_payload_next_target_subcategory": "",
+                "scan_payload_next_target_subcategory_array_nbytes": None,
                 "scan_runner_requested_seq_len": None,
                 "scan_runner_actual_seq_len": None,
                 "scan_runner_padded_extra_iter_count": None,

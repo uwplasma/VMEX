@@ -1188,14 +1188,27 @@ def test_fixed_boundary_profiler_summary_exposes_scan_timing_fields():
     assert summary["scan_arg_subcategories"]["largest_subcategory"] == "velocity_R"
     assert summary["scan_arg_subcategories"]["largest_subcategory_array_nbytes"] == 240
     assert summary["scan_payload_leaders"]["velocity_array_nbytes"] == 480
+    assert summary["scan_payload_leaders"]["velocity_R_array_nbytes"] == 240
+    assert summary["scan_payload_leaders"]["velocity_Z_array_nbytes"] == 160
+    assert summary["scan_payload_leaders"]["velocity_lambda_array_nbytes"] == 80
     assert summary["scan_payload_leaders"]["preconditioner_array_nbytes"] == 160
     assert summary["scan_payload_leaders"]["preconditioner_rz_apply_array_nbytes"] == 96
+    assert summary["scan_payload_leaders"]["preconditioner_lambda_array_nbytes"] == 0
+    assert summary["scan_payload_leaders"]["preconditioner_other_array_nbytes"] == 0
     assert summary["scan_payload_leaders"]["history_array_nbytes"] == 288
     assert summary["scan_payload_next_target"] == {
         "target": "velocity",
         "target_array_nbytes": 480,
+        "target_subcategory": "velocity_R",
+        "target_subcategory_array_nbytes": 240,
         "velocity_array_nbytes": 480,
+        "velocity_R_array_nbytes": 240,
+        "velocity_Z_array_nbytes": 160,
+        "velocity_lambda_array_nbytes": 80,
         "preconditioner_array_nbytes": 160,
+        "preconditioner_rz_apply_array_nbytes": 96,
+        "preconditioner_lambda_array_nbytes": 0,
+        "preconditioner_other_array_nbytes": 0,
         "history_array_nbytes": 288,
         "requested_seq_len": 5,
         "actual_seq_len": 8,
@@ -1315,6 +1328,9 @@ def test_fixed_boundary_profiler_scan_payload_next_target_classifies_live_carry(
     out = fixed_tool._scan_payload_next_target(
         {
             "velocity_array_nbytes": 121008,
+            "velocity_R_array_nbytes": 40336,
+            "velocity_Z_array_nbytes": 40336,
+            "velocity_lambda_array_nbytes": 40336,
             "preconditioner_array_nbytes": 71976,
             "history_array_nbytes": 72,
         },
@@ -1327,6 +1343,8 @@ def test_fixed_boundary_profiler_scan_payload_next_target_classifies_live_carry(
 
     assert out["target"] == "velocity"
     assert out["target_array_nbytes"] == 121008
+    assert out["target_subcategory"] == "velocity_lambda"
+    assert out["target_subcategory_array_nbytes"] == 40336
     assert out["bucket_padding_active"] is True
     assert out["requested_seq_len"] == 5
     assert out["actual_seq_len"] == 8
