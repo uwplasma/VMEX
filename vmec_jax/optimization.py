@@ -467,13 +467,13 @@ class FixedBoundaryExactOptimizer:
         The VMEC2000-compatible scan path can reuse compiled runners across
         boundary updates, but it has a cold setup cost and can perturb SciPy's
         accepted trust-region trajectory by changing trial convergence details.
-        CPU QA/QH probes through max_nfev=6 were equal or slower than the
-        VMEC-control loop, or reached a weaker endpoint, so CPU defaults to the
-        loop.  QP mode-3 probes were quality-matched, but under the current
-        public ``80/1e-8`` accepted/trial VMEC budget the VMEC2000-compatible
-        scan path was slower than the loop.  Therefore all CPU QS/QI example
-        families keep trial scan opt-in until complete-solve speed and quality
-        evidence supports promotion.  Environment overrides always win so
+        Public-budget CPU policy matrices currently show family-specific
+        candidates rather than a safe universal promotion: QA can benefit from
+        accelerated scan in short probes, QP can benefit from VMEC2000-scan in
+        noisy short probes, and QH accelerated scan changes the trust-region
+        endpoint.  Therefore all CPU QS/QI example families keep trial scan
+        opt-in until complete-solve speed and quality evidence supports a
+        family-specific default.  Environment overrides always win so
         regressions can be isolated per machine/problem.
         """
         forced = os.getenv("VMEC_JAX_OPT_TRIAL_SCAN", "").strip().lower()
