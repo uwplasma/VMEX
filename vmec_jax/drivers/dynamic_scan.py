@@ -207,7 +207,16 @@ def maybe_disable_scan_by_parity_guard(
     if bool(accelerated_mode) or (not bool(scan_mode)) or (not bool(scan_guard_enabled)) or int(niter) < 3:
         return bool(scan_mode)
 
-    probe_iters = min(10, int(niter))
+    try:
+        guard_max_fraction = max(0.0, float(getenv("VMEC_JAX_SCAN_GUARD_MAX_SOLVE_FRACTION", "1.0")))
+    except Exception:
+        guard_max_fraction = 1.0
+    # The guard runs scan and non-scan prefixes before the accepted solve.  Keep
+    # the default total probe budget no larger than one requested stage budget.
+    max_probe_iters = max(1, int((max(1, int(niter)) * guard_max_fraction) // 2))
+    probe_iters = min(10, int(niter), int(max_probe_iters))
+    if probe_iters >= int(niter):
+        probe_iters = max(1, int(niter) - 1)
     try:
         guard_rtol = float(getenv("VMEC_JAX_SCAN_GUARD_RTOL", "1e-3"))
         guard_atol = float(getenv("VMEC_JAX_SCAN_GUARD_ATOL", "1e-12"))

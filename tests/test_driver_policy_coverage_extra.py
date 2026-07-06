@@ -355,8 +355,8 @@ def test_scan_guard_mismatch_and_abort_fallback_use_non_scan_stage(
     )
 
     assert calls == [
-        {"max_iter": 3, "use_scan": True},
-        {"max_iter": 3, "use_scan": False},
+        {"max_iter": 1, "use_scan": True},
+        {"max_iter": 1, "use_scan": False},
         {"max_iter": 3, "use_scan": False},
     ]
     assert "scan parity guard: disabling scan" in capsys.readouterr().out
