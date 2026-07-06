@@ -88,6 +88,14 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
                         "largest_category": "velocity",
                         "largest_subcategory": "preconditioner_rz_apply",
                     },
+                    "scan_payload_next_target": {
+                        "target": "velocity",
+                        "target_array_nbytes": 2048,
+                        "bucket_padding_active": True,
+                        "requested_seq_len": 5,
+                        "actual_seq_len": 8,
+                        "padded_extra_iter_count": 3,
+                    },
                     "budget_status": {
                         "ok": True,
                         "action": "warn",
@@ -174,6 +182,9 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
     assert "hlo_instr" in output
     assert "hlo_budget" in output
     assert "preconditioner_rz_apply" in output
+    assert "next_target" in output
+    assert "target_B" in output
+    assert "bucket_pad" in output
     assert "budget_ok" in output
     assert "Repeated fixed-boundary runs:" in output
     assert "speedup" in output

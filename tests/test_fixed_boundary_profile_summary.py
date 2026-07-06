@@ -37,6 +37,9 @@ def test_summarize_profile_extracts_compile_and_scan_metrics(tmp_path) -> None:
                     "scan_runner_arg_array_leaf_count": 35,
                     "scan_runner_arg_scalar_leaf_count": 5,
                     "scan_runner_arg_array_nbytes": 4096,
+                    "scan_runner_requested_seq_len": 5,
+                    "scan_runner_actual_seq_len": 8,
+                    "scan_runner_padded_extra_iter_count": 3,
                     "scan_runner_arg_preconditioner_rz_mats_key_count": 8,
                     "scan_runner_arg_preconditioner_rz_mats_unexpected_key_count": 0,
                     "scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count": 0,
@@ -92,6 +95,11 @@ def test_summarize_profile_extracts_compile_and_scan_metrics(tmp_path) -> None:
                     "preconditioner_rz_apply_array_nbytes": 512,
                     "state_checkpoint_array_nbytes": 256,
                 },
+                "scan_payload_next_target": {
+                    "target": "velocity",
+                    "target_array_nbytes": 1536,
+                    "bucket_padding_active": True,
+                },
             }
         ),
         encoding="utf-8",
@@ -128,6 +136,11 @@ def test_summarize_profile_extracts_compile_and_scan_metrics(tmp_path) -> None:
     assert row["scan_payload_preconditioner_array_nbytes"] == 1024.0
     assert row["scan_payload_preconditioner_rz_apply_array_nbytes"] == 512.0
     assert row["scan_payload_state_checkpoint_array_nbytes"] == 256.0
+    assert row["scan_payload_next_target"] == "velocity"
+    assert row["scan_payload_next_target_array_nbytes"] == 1536.0
+    assert row["scan_runner_requested_seq_len"] == 5.0
+    assert row["scan_runner_actual_seq_len"] == 8.0
+    assert row["scan_runner_padded_extra_iter_count"] == 3.0
     assert row["scan_runner_arg_preconditioner_rz_mats_key_count"] == 8.0
     assert row["scan_runner_arg_preconditioner_rz_mats_unexpected_key_count"] == 0.0
     assert row["scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count"] == 0.0
@@ -231,6 +244,19 @@ def test_render_markdown_includes_blank_missing_values() -> None:
                 "scan_runner_arg_array_leaf_count": None,
                 "scan_runner_arg_scalar_leaf_count": None,
                 "scan_runner_arg_array_nbytes": None,
+                "scan_payload_largest_category": "",
+                "scan_payload_largest_category_array_nbytes": None,
+                "scan_payload_largest_subcategory": "",
+                "scan_payload_largest_subcategory_array_nbytes": None,
+                "scan_payload_velocity_array_nbytes": None,
+                "scan_payload_preconditioner_array_nbytes": None,
+                "scan_payload_preconditioner_rz_apply_array_nbytes": None,
+                "scan_payload_state_checkpoint_array_nbytes": None,
+                "scan_payload_next_target": "",
+                "scan_payload_next_target_array_nbytes": None,
+                "scan_runner_requested_seq_len": None,
+                "scan_runner_actual_seq_len": None,
+                "scan_runner_padded_extra_iter_count": None,
                 "scan_runner_arg_preconditioner_rz_mats_key_count": None,
                 "scan_runner_arg_preconditioner_rz_mats_unexpected_key_count": None,
                 "scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count": None,

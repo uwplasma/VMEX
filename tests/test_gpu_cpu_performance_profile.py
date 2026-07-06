@@ -1135,6 +1135,9 @@ def test_fixed_boundary_profiler_summary_exposes_scan_timing_fields():
         "scan_runner_cache_miss_category_iteration_budget_count": 2,
         "scan_runner_arg_leaf_count": 15,
         "scan_runner_arg_array_nbytes": 700,
+        "scan_runner_requested_seq_len": 5,
+        "scan_runner_actual_seq_len": 8,
+        "scan_runner_padded_extra_iter_count": 3,
         "scan_runner_arg_category_velocity_leaf_count": 6,
         "scan_runner_arg_category_velocity_array_leaf_count": 6,
         "scan_runner_arg_category_velocity_array_nbytes": 480,
@@ -1188,6 +1191,17 @@ def test_fixed_boundary_profiler_summary_exposes_scan_timing_fields():
     assert summary["scan_payload_leaders"]["preconditioner_array_nbytes"] == 160
     assert summary["scan_payload_leaders"]["preconditioner_rz_apply_array_nbytes"] == 96
     assert summary["scan_payload_leaders"]["history_array_nbytes"] == 288
+    assert summary["scan_payload_next_target"] == {
+        "target": "velocity",
+        "target_array_nbytes": 480,
+        "velocity_array_nbytes": 480,
+        "preconditioner_array_nbytes": 160,
+        "history_array_nbytes": 288,
+        "requested_seq_len": 5,
+        "actual_seq_len": 8,
+        "padded_extra_iter_count": 3,
+        "bucket_padding_active": True,
+    }
     assert summary["scan_arg_subcategories"]["subcategories"]["velocity_lambda"]["array_nbytes"] == 80
     assert summary["scan_cache_miss_categories"]["total_count"] == 3
     assert summary["scan_cache_miss_categories"]["largest_category"] == "iteration_budget"
@@ -1242,6 +1256,9 @@ def test_fixed_boundary_profiler_repeat_run_record_surfaces_cache_reuse():
                 "scan_runner_arg_category_velocity_array_nbytes": 48,
                 "scan_history_none": 1,
                 "scan_history_array_nbytes": 0,
+                "scan_runner_requested_seq_len": 5,
+                "scan_runner_actual_seq_len": 8,
+                "scan_runner_padded_extra_iter_count": 3,
             },
         }
     )
@@ -1253,6 +1270,8 @@ def test_fixed_boundary_profiler_repeat_run_record_surfaces_cache_reuse():
     assert record["execution_classification"] == "scan_cache_hit"
     assert record["timing"]["scan_runner_cache_hit_count"] == 1
     assert record["scan_payload_leaders"]["velocity_array_nbytes"] == 48
+    assert record["scan_payload_next_target"]["target"] == "velocity"
+    assert record["scan_payload_next_target"]["bucket_padding_active"] is True
 
 
 def test_fixed_boundary_profiler_scan_payload_budget_status_flags_exceeded():
@@ -1288,6 +1307,30 @@ def test_fixed_boundary_profiler_scan_payload_budget_status_flags_exceeded():
         "scan_history_nbytes",
         "scan_hlo_instructions",
     }
+
+
+def test_fixed_boundary_profiler_scan_payload_next_target_classifies_live_carry():
+    fixed_tool = _load_fixed_tool()
+
+    out = fixed_tool._scan_payload_next_target(
+        {
+            "velocity_array_nbytes": 121008,
+            "preconditioner_array_nbytes": 71976,
+            "history_array_nbytes": 72,
+        },
+        {
+            "scan_runner_requested_seq_len": 5,
+            "scan_runner_actual_seq_len": 8,
+            "scan_runner_padded_extra_iter_count": 3,
+        },
+    )
+
+    assert out["target"] == "velocity"
+    assert out["target_array_nbytes"] == 121008
+    assert out["bucket_padding_active"] is True
+    assert out["requested_seq_len"] == 5
+    assert out["actual_seq_len"] == 8
+    assert out["padded_extra_iter_count"] == 3
 
 
 def test_fixed_boundary_profiler_scan_arg_category_summary_handles_empty_timing():
