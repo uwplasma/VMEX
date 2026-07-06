@@ -633,6 +633,32 @@ class FixedBoundaryExactOptimizer:
         """Record a diagnostic counter in the profile schema without timing it."""
         self._profile_add(name, float(value))
 
+    def _profile_replay_scan_diagnostics(self, profile_prefix: str, diagnostics: dict | None) -> None:
+        """Attach replay path/cache diagnostics to the optimizer profile.
+
+        ``checkpoint_tape_state_jvp_columns`` records which replay path was used
+        and whether the JIT scan runner hit its cache.  These counters are only
+        populated when ``VMEC_JAX_TIMING`` is enabled, so recording them here is
+        a no-op for normal user runs but gives budget probes enough information
+        to target replay-dispatch bottlenecks without scraping stdout.
+        """
+
+        if not isinstance(diagnostics, dict):
+            return
+        prefix = f"{profile_prefix}_replay_diag"
+        for key, value in diagnostics.items():
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                continue
+            if numeric == 0.0:
+                continue
+            name = f"{prefix}_{key}"
+            if str(key).endswith("_s"):
+                self._profile_add(name, numeric)
+            else:
+                self._profile_add_counter(name, numeric)
+
     _profile_solver_free_boundary_timing = _profiling.profile_solver_free_boundary_timing
     _profile_solver_timing = _profiling.profile_solver_timing
     _profile_exact_tape_solver_timing = _profiling.profile_exact_tape_solver_timing
@@ -1024,7 +1050,7 @@ class FixedBoundaryExactOptimizer:
 
     def _state_and_tangent_columns(self, params, *, profile_prefix: str, return_packed_final: bool = False):
         """Return accepted-point state and packed tangent columns as JAX arrays."""
-        from .discrete_adjoint import checkpoint_tape_state_jvp_columns
+        from .discrete_adjoint import checkpoint_tape_state_jvp_columns, replay_scan_cache_diagnostics
 
         params = jnp.asarray(params, dtype=jnp.float64)
         state, payload = self._solve_exact_with_tape_for_jvp(params)
@@ -1047,6 +1073,7 @@ class FixedBoundaryExactOptimizer:
         column_chunk = self._lasym_replay_column_chunk(int(params.size))
         if column_chunk is not None:
             self._profile_add(f"{profile_prefix}_replay_column_chunk_{column_chunk}", 0.0)
+        replay_scan_cache_diagnostics(reset=True)
         t_replay = time.perf_counter()
         final_tangents = checkpoint_tape_state_jvp_columns(
             tape=payload["tape"],
@@ -1054,6 +1081,10 @@ class FixedBoundaryExactOptimizer:
             initial_tangents=initial_tangents,
             rebuild_preconditioner=True,
             column_chunk=column_chunk,
+        )
+        self._profile_replay_scan_diagnostics(
+            profile_prefix,
+            replay_scan_cache_diagnostics(reset=True),
         )
         final_tangents = self._profile_async_phase(
             f"{profile_prefix}_tape_replay",
@@ -1471,7 +1502,7 @@ class FixedBoundaryExactOptimizer:
     def _jacobian_fun_projected_replay(self, params, exact_param_key, *, t_total: float) -> np.ndarray:
         """Dense exact Jacobian path that avoids synchronizing full state tangents."""
 
-        from .discrete_adjoint import checkpoint_tape_state_jvp_columns
+        from .discrete_adjoint import checkpoint_tape_state_jvp_columns, replay_scan_cache_diagnostics
         from .state import unpack_state
 
         state, payload = self._solve_exact_with_tape_for_jvp(params)
@@ -1534,6 +1565,7 @@ class FixedBoundaryExactOptimizer:
             t_replay = time.perf_counter()
             jac_blocks = []
             residuals = None
+            replay_scan_cache_diagnostics(reset=True)
             for start in range(0, int(params.size), int(column_chunk)):
                 stop = min(start + int(column_chunk), int(params.size))
                 final_tangents_chunk = checkpoint_tape_state_jvp_columns(
@@ -1549,6 +1581,10 @@ class FixedBoundaryExactOptimizer:
                     final_tangents_chunk,
                 )
                 jac_blocks.append(jac_chunk)
+            self._profile_replay_scan_diagnostics(
+                "jacobian",
+                replay_scan_cache_diagnostics(reset=True),
+            )
             jac = jnp.concatenate(jac_blocks, axis=1)
             residuals, jac = self._profile_blocking_phase(
                 "jacobian_chunked_projected_replay_projection_total",
@@ -1559,12 +1595,17 @@ class FixedBoundaryExactOptimizer:
             return self._store_jacobian_result(exact_param_key, residuals, jac, source=source, t_total=t_total)
 
         t_replay = time.perf_counter()
+        replay_scan_cache_diagnostics(reset=True)
         final_tangents = checkpoint_tape_state_jvp_columns(
             tape=payload["tape"],
             static=self._static,
             initial_tangents=initial_tangents,
             rebuild_preconditioner=True,
             column_chunk=column_chunk,
+        )
+        self._profile_replay_scan_diagnostics(
+            "jacobian",
+            replay_scan_cache_diagnostics(reset=True),
         )
         # Intentionally do not block here.  Let the residual projection consume
         # the device value and block once after projection so GPU callbacks avoid
