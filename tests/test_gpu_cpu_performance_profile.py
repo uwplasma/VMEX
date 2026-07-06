@@ -61,6 +61,7 @@ def _fixed_profiler_args(fixed_tool, **overrides):
     values = {
         "input": "input.test",
         "iters": 2,
+        "timed_runs": 1,
         "solver_mode": "accelerated",
         "solver_device": "cpu",
         "multigrid": False,
@@ -81,6 +82,7 @@ def _fixed_profiler_args(fixed_tool, **overrides):
         "require_scan": False,
         "require_no_scan": False,
         "phase_timing": {},
+        "repeat_runs": [],
     }
     values.update(overrides)
     return fixed_tool.argparse.Namespace(**values)
@@ -1083,6 +1085,7 @@ def test_fixed_boundary_profiler_summary_exposes_scan_timing_fields():
         "array_nbytes": 288,
     }
     assert summary["args"]["use_scan"] is True
+    assert summary["args"]["timed_runs"] == 1
     assert summary["args"]["scan_hlo_summary"] is False
     json.dumps(fixed_tool._json_safe(summary))
 
@@ -1105,6 +1108,36 @@ def test_fixed_boundary_profiler_prints_scan_hlo_summary(capsys):
     assert "lines=120" in output
     assert "instructions=90" in output
     assert "top_ops=broadcast:30,slice:18,add:12" in output
+
+
+def test_fixed_boundary_profiler_repeat_run_record_surfaces_cache_reuse():
+    fixed_tool = _load_fixed_tool()
+    run = _fixed_profiler_run(
+        {
+            "use_scan": True,
+            "vmec2000_scan": True,
+            "converged": False,
+            "fixed_boundary_execution_classification": "scan_cache_hit",
+            "timing": {
+                "solve_total_s": 1.2,
+                "setup_total_s": 0.1,
+                "scan_total_s": 0.9,
+                "scan_runner_cache_hit_count": 1,
+                "scan_runner_cache_miss_count": 0,
+                "scan_runner_arg_category_velocity_array_nbytes": 48,
+                "scan_history_none": 1,
+                "scan_history_array_nbytes": 0,
+            },
+        }
+    )
+
+    record = fixed_tool._repeat_run_record(run=run, index=2, wall_time_s=1.5)
+
+    assert record["index"] == 2
+    assert record["wall_time_s"] == pytest.approx(1.5)
+    assert record["execution_classification"] == "scan_cache_hit"
+    assert record["timing"]["scan_runner_cache_hit_count"] == 1
+    assert record["scan_payload_leaders"]["velocity_array_nbytes"] == 48
 
 
 def test_fixed_boundary_profiler_scan_payload_budget_status_flags_exceeded():
@@ -1201,6 +1234,10 @@ def test_fixed_boundary_profiler_prints_host_update_and_scan_timing(capsys):
         wall_time=2.5,
         jax_module=_FixedProfilerJaxModule,
     )
+    summary["repeat_runs"] = [
+        {"wall_time_s": 2.5, "timing": {"scan_runner_cache_miss_count": 1}},
+        {"wall_time_s": 1.25, "timing": {"scan_runner_cache_miss_count": 0}},
+    ]
 
     fixed_tool._print_run_summary(summary)
 
@@ -1211,6 +1248,8 @@ def test_fixed_boundary_profiler_prints_host_update_and_scan_timing(capsys):
     assert "scan_runner_explicit_compile_s=0.6" in output
     assert "scan_device_ready_s=1.3" in output
     assert "scan_runner_cache_hit_count=1" in output
+    assert "timed_runs count=2 wall_s=[2.500,1.250]" in output
+    assert "scan_cache_miss_count=[1,0]" in output
 
 
 def test_fixed_boundary_profiler_scan_requirement_detects_policy_mismatch():
