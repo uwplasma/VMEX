@@ -1426,7 +1426,7 @@ def test_dynamic_scan_probe_mismatch_selects_non_scan_stage(monkeypatch, tmp_pat
         max_iter_i = int(kwargs["max_iter"])
         use_scan_i = bool(kwargs["use_scan"])
         calls.append({"max_iter": max_iter_i, "use_scan": use_scan_i})
-        if max_iter_i == 2:
+        if max_iter_i <= 2:
             fsq_values = [1.0, 0.75] if use_scan_i else [1.0, 0.25]
         else:
             fsq_values = [1.0e-12, 5.0e-13, 1.0e-13]
@@ -1455,8 +1455,8 @@ def test_dynamic_scan_probe_mismatch_selects_non_scan_stage(monkeypatch, tmp_pat
 
     out = capsys.readouterr().out
     assert calls == [
-        {"max_iter": 2, "use_scan": True},
-        {"max_iter": 2, "use_scan": False},
+        {"max_iter": 1, "use_scan": True},
+        {"max_iter": 1, "use_scan": False},
         {"max_iter": 3, "use_scan": False},
     ]
     assert "[vmec_jax] dynamic scan probe mismatch:" in out
