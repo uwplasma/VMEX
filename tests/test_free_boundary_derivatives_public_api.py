@@ -144,13 +144,15 @@ def test_free_boundary_value_and_jvp_can_attach_complete_solve_fd_validation(mon
     def fake_scalar_report(complete_report, branch_local, *, scalar_keys, **kwargs):
         return {
             "passed": True,
-            "scalars": {
+            "scalar_reports": {
                 key: {
+                    "passed": True,
                     "exact_directional": float(branch_local["directional_derivatives"][key]),
                     "complete_fd_directional": complete_report["objective_values"][key][
                         "central_fd_directional"
                     ],
                     "abs_error": 0.0,
+                    "rel_error": 0.0,
                 }
                 for key in scalar_keys
             },
@@ -190,7 +192,7 @@ def test_free_boundary_value_and_jvp_can_attach_complete_solve_fd_validation(mon
         "n_scalars": 2,
         "n_scalar_passes": 2,
         "max_abs_error": 0.0,
-        "max_rel_error": None,
+        "max_rel_error": 0.0,
     }
     cotangent_check = report["cotangent_vjp_fd_check"]
     assert cotangent_check["passed"] is True

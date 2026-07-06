@@ -254,6 +254,18 @@ def _cotangent_directional_check(
     }
 
 
+def _scalar_records(report: Mapping[str, Any] | None) -> Mapping[str, Any]:
+    """Return scalar evidence records from either public gate-report shape."""
+
+    if not report:
+        return {}
+    records = report.get("scalars")
+    if isinstance(records, Mapping):
+        return records
+    records = report.get("scalar_reports")
+    return records if isinstance(records, Mapping) else {}
+
+
 def _fd_validation_summary(
     *,
     scalar_report: Mapping[str, Any] | None,
@@ -271,7 +283,7 @@ def _fd_validation_summary(
     scalar_report = scalar_report or {}
     complete_report = complete_report or {}
     branch = complete_report.get("branch_compatibility") or {}
-    scalars = scalar_report.get("scalars") or {}
+    scalars = _scalar_records(scalar_report)
     scalar_passed = bool(scalar_report.get("passed", False)) if scalar_report else None
     scalar_passes = [
         bool(record.get("passed", scalar_passed))
@@ -466,9 +478,9 @@ def free_boundary_value_and_jvp(
             "complete_solve_report": complete_report,
             "scalar_report": scalar_report,
             "public_scalar_report": {
-                public: scalar_report["scalars"][internal]
+                public: _scalar_records(scalar_report)[internal]
                 for public, internal in public_to_internal.items()
-                if internal in scalar_report.get("scalars", {})
+                if internal in _scalar_records(scalar_report)
             },
         }
         result["cotangent_vjp_fd_check"] = _cotangent_directional_check(
