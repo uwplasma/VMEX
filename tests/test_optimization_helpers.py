@@ -1254,6 +1254,8 @@ def test_fixed_boundary_optimizer_exact_callback_metadata_reports_shapes():
             "projected_replay_reason": "disabled_or_below_threshold",
             "fused_projected_replay": False,
             "column_chunk": None,
+            "requested_replay_column_chunk": None,
+            "requested_replay_column_chunk_policy": "unset",
             "chunked_projected_replay_projection": False,
             "dynamic_replay_mode": "basepoint",
             "dynamic_replay_bucket": 32,

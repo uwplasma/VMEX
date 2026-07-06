@@ -14,6 +14,26 @@ def _env_flag(name: str) -> bool | None:
     return value.strip().lower() not in ("", "0", "false", "no", "off")
 
 
+def _column_chunk_override_metadata() -> tuple[str, int | None]:
+    """Return the generic replay-column chunk override for diagnostics only."""
+
+    value = os.getenv("VMEC_JAX_REPLAY_COLUMN_CHUNK")
+    if value is None:
+        return "unset", None
+    text = str(value).strip().lower()
+    if text in ("", "auto", "default"):
+        return "auto", None
+    if text in ("0", "none", "off", "false", "no"):
+        return "disabled", None
+    try:
+        parsed = int(text)
+    except (TypeError, ValueError):
+        return "malformed", None
+    if parsed <= 0:
+        return "disabled", None
+    return "active", int(parsed)
+
+
 def _positive_int_env(name: str, default: int) -> int:
     """Return a positive integer environment setting or a safe default."""
 
@@ -263,6 +283,7 @@ def exact_replay_policy_metadata(optimizer, n_params: int | None = None) -> dict
 
     jvp_only_override = _env_flag("VMEC_JAX_OPT_JVP_ONLY_EXACT_TAPE")
     basepoint_override = _env_flag("VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES")
+    chunk_override_policy, chunk_override_value = _column_chunk_override_metadata()
     column_chunk = None
     projected = False
     chunked_projection = False
@@ -290,6 +311,8 @@ def exact_replay_policy_metadata(optimizer, n_params: int | None = None) -> dict
         "projected_replay_reason": "enabled" if projected else "disabled_or_below_threshold",
         "fused_projected_replay": fused_projected_replay_enabled(),
         "column_chunk": None if column_chunk is None else int(column_chunk),
+        "requested_replay_column_chunk": chunk_override_value,
+        "requested_replay_column_chunk_policy": chunk_override_policy,
         "chunked_projected_replay_projection": bool(chunked_projection),
         "dynamic_replay_mode": dynamic_replay_mode_from_env(),
         "dynamic_replay_bucket": dynamic_replay_bucket_for_backend(backend),

@@ -686,6 +686,7 @@ def test_exact_replay_policy_metadata_is_side_effect_free(monkeypatch) -> None:
         "VMEC_JAX_JVP_ONLY_EXACT_TAPE_BASEPOINT_CARRIES",
         "VMEC_JAX_DYNAMIC_REPLAY_BUCKET",
         "VMEC_JAX_DYNAMIC_REPLAY_MODE",
+        "VMEC_JAX_REPLAY_COLUMN_CHUNK",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -697,6 +698,8 @@ def test_exact_replay_policy_metadata_is_side_effect_free(monkeypatch) -> None:
     assert meta["projected_replay"] is True
     assert meta["fused_projected_replay"] is False
     assert meta["column_chunk"] == 40
+    assert meta["requested_replay_column_chunk"] is None
+    assert meta["requested_replay_column_chunk_policy"] == "unset"
     assert meta["chunked_projected_replay_projection"] is True
     assert meta["dynamic_replay_mode"] == "basepoint"
     assert meta["dynamic_replay_bucket"] == 128
@@ -715,6 +718,8 @@ def test_exact_replay_policy_metadata_is_side_effect_free(monkeypatch) -> None:
     assert meta["lasym"] is True
     assert meta["projected_replay"] is False
     assert meta["column_chunk"] == 8
+    assert meta["requested_replay_column_chunk"] is None
+    assert meta["requested_replay_column_chunk_policy"] == "unset"
     assert meta["chunked_projected_replay_projection"] is False
     assert meta["dynamic_replay_mode"] == "basepoint"
     assert meta["dynamic_replay_bucket"] == 32
@@ -726,6 +731,16 @@ def test_exact_replay_policy_metadata_is_side_effect_free(monkeypatch) -> None:
     meta = exact_replay_policy_metadata(opt, 64)
     assert meta["dynamic_replay_mode"] == "whole_scan"
     assert meta["dynamic_replay_bucket"] == 96
+
+    monkeypatch.setenv("VMEC_JAX_REPLAY_COLUMN_CHUNK", "48")
+    meta = exact_replay_policy_metadata(opt, 64)
+    assert meta["requested_replay_column_chunk"] == 48
+    assert meta["requested_replay_column_chunk_policy"] == "active"
+
+    monkeypatch.setenv("VMEC_JAX_REPLAY_COLUMN_CHUNK", "bad")
+    meta = exact_replay_policy_metadata(opt, 64)
+    assert meta["requested_replay_column_chunk"] is None
+    assert meta["requested_replay_column_chunk_policy"] == "malformed"
 
 
 def test_projected_replay_jacobian_path_projects_without_intermediate_sync(monkeypatch) -> None:
