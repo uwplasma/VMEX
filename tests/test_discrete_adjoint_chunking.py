@@ -1282,8 +1282,32 @@ def test_stacked_trace_signature_uses_asarray_dtype_for_proxy_leaf():
     assert da._stacked_trace_signature((ArrayProxy(),)) == (((2,), np.dtype(int).str),)
 
 
-def test_dynamic_initial_carry_zero_fills_missing_asymmetric_velocities():
+def test_dynamic_initial_carry_compacts_missing_symmetric_asymmetric_velocities():
     trace = _fake_dynamic_trace()
+    for key in ("vRsc_before", "vRcs_before", "vZcc_before", "vZss_before", "vLcc_before", "vLss_before"):
+        del trace[key]
+
+    carry = da._dynamic_replay_initial_carry(trace)
+
+    assert len(carry) == 20
+    for idx in (5, 6, 9, 10, 13, 14):
+        assert carry[idx] is None
+    for idx in range(15, 20):
+        np.testing.assert_allclose(np.asarray(carry[idx]), 0.0)
+
+
+def test_dynamic_initial_carry_zero_fills_missing_lasym_asymmetric_velocities():
+    trace = _fake_dynamic_trace()
+    state = trace["state_pre"]
+    trace["state_pre"] = VMECState(
+        layout=StateLayout(ns=state.layout.ns, K=state.layout.K, lasym=True),
+        Rcos=state.Rcos,
+        Rsin=state.Rsin,
+        Zcos=state.Zcos,
+        Zsin=state.Zsin,
+        Lcos=state.Lcos,
+        Lsin=state.Lsin,
+    )
     for key in ("vRsc_before", "vRcs_before", "vZcc_before", "vZss_before", "vLcc_before", "vLss_before"):
         del trace[key]
 
@@ -1293,8 +1317,6 @@ def test_dynamic_initial_carry_zero_fills_missing_asymmetric_velocities():
     for idx in (5, 6, 9, 10, 13, 14):
         np.testing.assert_allclose(np.asarray(carry[idx]), 0.0)
         assert np.asarray(carry[idx]).shape == np.asarray(carry[3]).shape
-    for idx in range(15, 20):
-        np.testing.assert_allclose(np.asarray(carry[idx]), 0.0)
 
 
 def test_dynamic_safe_dt_from_force_arrays_limits_only_finite_nonzero_forces():
@@ -1523,14 +1545,20 @@ def test_jvp_columns_batches_supported_segments_across_restart(monkeypatch):
     calls = []
 
     def fake_runner(*, static, stacked, stacked_base_carries, static_flags):
+        def _copy(item):
+            return None if item is None else np.asarray(item).copy()
+
+        def _advance_aux(item):
+            return None if item is None else item + 9.0
+
         def run(carry_tangents, _stacked_base_carries, _stacked_traces):
-            calls.append(tuple(np.asarray(item).copy() for item in carry_tangents))
+            calls.append(tuple(_copy(item) for item in carry_tangents))
             if len(calls) == 1:
                 return (
                     carry_tangents[0] + 1.0,
                     carry_tangents[1] + 5.0,
                     carry_tangents[2] + 7.0,
-                    *(item + 9.0 for item in carry_tangents[3:]),
+                    *(_advance_aux(item) for item in carry_tangents[3:]),
                 )
             return (carry_tangents[0] + 3.0, *carry_tangents[1:])
 
@@ -1562,8 +1590,12 @@ def test_jvp_columns_batches_supported_segments_across_restart(monkeypatch):
     np.testing.assert_allclose(calls[1][0], tangents + 1.0)
     np.testing.assert_allclose(calls[1][1], 0.0)
     np.testing.assert_allclose(calls[1][2], 7.0)
-    for velocity_tangent in calls[1][3:]:
-        np.testing.assert_allclose(velocity_tangent, 0.0)
+    inactive_asym_slots = {5, 6, 9, 10, 13, 14}
+    for idx, velocity_tangent in enumerate(calls[1][3:15], start=3):
+        if idx in inactive_asym_slots:
+            assert velocity_tangent is None
+        else:
+            np.testing.assert_allclose(velocity_tangent, 0.0)
 
 
 def test_state_vjp_basepoint_runner_receives_zero_aux_cotangents(monkeypatch):

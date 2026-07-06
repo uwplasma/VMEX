@@ -1255,6 +1255,8 @@ def test_fixed_boundary_optimizer_exact_callback_metadata_reports_shapes():
             "fused_projected_replay": False,
             "column_chunk": None,
             "chunked_projected_replay_projection": False,
+            "dynamic_replay_mode": "basepoint",
+            "dynamic_replay_bucket": 32,
             "scalar_gradient_initial_tangents": False,
             "linear_operator_initial_tangents": False,
             "jvp_only_exact_tape": False,

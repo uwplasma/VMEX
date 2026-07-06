@@ -328,8 +328,11 @@ def _dynamic_replay_initial_carry(trace):
     trace = _trace_with_replay_defaults(trace)
     packed_state = jnp.asarray(pack_state(trace["state_pre"]))
     dtype = packed_state.dtype
+    lasym = bool(getattr(getattr(trace["state_pre"], "layout", None), "lasym", True))
 
-    def _arr(name: str):
+    def _arr(name: str, *, inactive_asym: bool = False):
+        if bool(inactive_asym) and not lasym:
+            return None
         value = trace.get(name)
         if value is None:
             return jnp.zeros_like(jnp.asarray(trace["vRcc_before"], dtype=dtype))
@@ -353,16 +356,16 @@ def _dynamic_replay_initial_carry(trace):
         jnp.asarray(trace["fsq_prev_before"], dtype=dtype),
         _arr("vRcc_before"),
         _arr("vRss_before"),
-        _arr("vRsc_before"),
-        _arr("vRcs_before"),
+        _arr("vRsc_before", inactive_asym=True),
+        _arr("vRcs_before", inactive_asym=True),
         _arr("vZsc_before"),
         _arr("vZcs_before"),
-        _arr("vZcc_before"),
-        _arr("vZss_before"),
+        _arr("vZcc_before", inactive_asym=True),
+        _arr("vZss_before", inactive_asym=True),
         _arr("vLsc_before"),
         _arr("vLcs_before"),
-        _arr("vLcc_before"),
-        _arr("vLss_before"),
+        _arr("vLcc_before", inactive_asym=True),
+        _arr("vLss_before", inactive_asym=True),
         *_constraint_cache_from_trace(trace, dtype=dtype),
         _lam_prec_from_trace(),
         _precond_mats_from_trace(),
