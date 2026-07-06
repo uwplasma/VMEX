@@ -194,6 +194,9 @@ def test_timing_report_math_excludes_dispatch_breakdown_from_leaf_total():
     stats["scan_runner_arg_path_arg0_state_leaf_count"] = 4
     stats["scan_runner_arg_path_arg0_state_array_leaf_count"] = 4
     stats["scan_runner_arg_path_arg0_state_array_nbytes"] = 80
+    stats["scan_runner_arg_subcategory_velocity_R_leaf_count"] = 2
+    stats["scan_runner_arg_subcategory_velocity_R_array_leaf_count"] = 2
+    stats["scan_runner_arg_subcategory_velocity_R_array_nbytes"] = 64
     stats["scan_postprocess_s"] = 2.0
     stats["scan_runner_cache_hit_count"] = 3
     stats["scan_runner_cache_miss_category_iteration_budget_count"] = 2
@@ -222,6 +225,9 @@ def test_timing_report_math_excludes_dispatch_breakdown_from_leaf_total():
     assert report["scan_runner_arg_path_arg0_state_leaf_count"] == 4
     assert report["scan_runner_arg_path_arg0_state_array_leaf_count"] == 4
     assert report["scan_runner_arg_path_arg0_state_array_nbytes"] == 80
+    assert report["scan_runner_arg_subcategory_velocity_R_leaf_count"] == 2
+    assert report["scan_runner_arg_subcategory_velocity_R_array_leaf_count"] == 2
+    assert report["scan_runner_arg_subcategory_velocity_R_array_nbytes"] == 64
     assert report["scan_cold_cache_miss_s"] == pytest.approx(0.6)
     assert report["scan_cold_cache_miss_ready_s"] == pytest.approx(0.2)
     assert report["scan_cache_build_wrapper_s"] == pytest.approx(0.1)
@@ -518,6 +524,51 @@ def test_record_scan_runner_arg_summary_reports_compact_rz_preconditioner_carry(
     assert stats["scan_runner_arg_preconditioner_rz_mats_unexpected_key_count"] == 0
     assert stats["scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count"] == 0
     assert stats["scan_runner_arg_preconditioner_rz_mats_compact_ok_count"] == 1
+
+
+def test_record_scan_runner_arg_summary_splits_velocity_and_preconditioner_subcategories():
+    """Scan carry diagnostics should identify the actionable high-byte groups."""
+
+    carry = namedtuple(
+        "Carry",
+        "vRcc vZsc vLsc cache_prec_rz_mats state state_checkpoint fsqr_checkpoint fsq_prev",
+    )
+    arr = jnp.ones((2, 2), dtype=jnp.float64)
+    mats = {
+        "ar": arr,
+        "m1_fac_r": jnp.ones((2,), dtype=jnp.float64),
+        "arm_parity": arr,
+    }
+    stats = {}
+
+    record_scan_runner_arg_summary(
+        (
+            carry(
+                vRcc=arr,
+                vZsc=arr,
+                vLsc=arr,
+                cache_prec_rz_mats=mats,
+                state=arr,
+                state_checkpoint=arr,
+                fsqr_checkpoint=arr,
+                fsq_prev=jnp.asarray(1.0),
+            ),
+            jnp.arange(3),
+        ),
+        scan_timing_enabled=True,
+        scan_timing_stats=stats,
+    )
+
+    assert stats["scan_runner_arg_subcategory_velocity_R_array_nbytes"] == arr.nbytes
+    assert stats["scan_runner_arg_subcategory_velocity_Z_array_nbytes"] == arr.nbytes
+    assert stats["scan_runner_arg_subcategory_velocity_lambda_array_nbytes"] == arr.nbytes
+    assert stats["scan_runner_arg_subcategory_preconditioner_rz_apply_array_nbytes"] == arr.nbytes
+    assert stats["scan_runner_arg_subcategory_preconditioner_rz_derived_array_nbytes"] == 16
+    assert stats["scan_runner_arg_subcategory_preconditioner_rz_extra_array_nbytes"] == arr.nbytes
+    assert stats["scan_runner_arg_subcategory_state_current_array_nbytes"] == arr.nbytes
+    assert stats["scan_runner_arg_subcategory_state_checkpoint_array_nbytes"] == arr.nbytes
+    assert stats["scan_runner_arg_subcategory_residual_checkpoint_array_nbytes"] == arr.nbytes
+    assert stats["scan_runner_arg_subcategory_residual_previous_array_nbytes"] == 8
 
 
 def test_record_scan_runner_arg_summary_flags_reassembly_rz_preconditioner_carry():

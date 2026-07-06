@@ -500,6 +500,52 @@ def _scan_arg_category_key(path: tuple[str, ...]) -> str:
     return "other"
 
 
+def _scan_arg_subcategory_key(path: tuple[str, ...]) -> str:
+    """Return a finer scan-runner category for graph-breadth planning.
+
+    The top-level categories identify broad physics blocks.  Subcategories
+    split the large blocks into actionable targets, for example R/Z/lambda
+    velocity memory and apply-vs-derived R/Z preconditioner matrices.  These
+    diagnostics do not affect JIT cache keys or numerical execution.
+    """
+
+    category = _scan_arg_category_key(path)
+    if not path or path[0] != "arg0":
+        return category
+    field = path[1] if len(path) > 1 else ""
+    if category == "velocity":
+        if field.startswith("vR"):
+            return "velocity_R"
+        if field.startswith("vZ"):
+            return "velocity_Z"
+        if field.startswith("vL"):
+            return "velocity_lambda"
+    if category == "preconditioner":
+        if field == "cache_prec_rz_mats":
+            if len(path) > 2:
+                key = str(path[2])
+                if key in _SCAN_RZ_CARRY_APPLY_KEYS:
+                    return "preconditioner_rz_apply"
+                if key in _SCAN_RZ_CARRY_DERIVED_KEYS:
+                    return "preconditioner_rz_derived"
+                return "preconditioner_rz_extra"
+            return "preconditioner_rz_mats"
+        if field == "cache_prec_lam_prec":
+            return "preconditioner_lambda"
+        return "preconditioner_other"
+    if category == "state":
+        return "state_checkpoint" if field == "state_checkpoint" else "state_current"
+    if category == "residual":
+        if "checkpoint" in field:
+            return "residual_checkpoint"
+        if field.endswith("_prev") or "_prev" in field:
+            return "residual_previous"
+        return "residual_current"
+    if category == "controller":
+        return "controller"
+    return category
+
+
 def record_scan_runner_arg_summary(
     args: tuple[Any, ...],
     *,
@@ -520,15 +566,20 @@ def record_scan_runner_arg_summary(
     category_counts: dict[str, int] = {}
     category_array_counts: dict[str, int] = {}
     category_nbytes: dict[str, int] = {}
+    subcategory_counts: dict[str, int] = {}
+    subcategory_array_counts: dict[str, int] = {}
+    subcategory_nbytes: dict[str, int] = {}
     rz_mat_keys: set[str] = set()
     for index, arg in enumerate(args):
         for path, leaf in _scan_runner_arg_path_leaves(arg, (f"arg{index}",)):
             group_key = _scan_arg_group_key(path)
             category_key = _scan_arg_category_key(path)
+            subcategory_key = _scan_arg_subcategory_key(path)
             if len(path) > 2 and path[0] == "arg0" and path[1] == "cache_prec_rz_mats":
                 rz_mat_keys.add(str(path[2]))
             group_counts[group_key] = int(group_counts.get(group_key, 0)) + 1
             category_counts[category_key] = int(category_counts.get(category_key, 0)) + 1
+            subcategory_counts[subcategory_key] = int(subcategory_counts.get(subcategory_key, 0)) + 1
             leaf_count += 1
             shape = getattr(leaf, "shape", None)
             nbytes = getattr(leaf, "nbytes", None)
@@ -536,6 +587,9 @@ def record_scan_runner_arg_summary(
                 array_leaf_count += 1
                 group_array_counts[group_key] = int(group_array_counts.get(group_key, 0)) + 1
                 category_array_counts[category_key] = int(category_array_counts.get(category_key, 0)) + 1
+                subcategory_array_counts[subcategory_key] = int(
+                    subcategory_array_counts.get(subcategory_key, 0)
+                ) + 1
                 try:
                     nbytes_int = int(nbytes)
                 except Exception:
@@ -543,6 +597,9 @@ def record_scan_runner_arg_summary(
                 array_nbytes += nbytes_int
                 group_nbytes[group_key] = int(group_nbytes.get(group_key, 0)) + nbytes_int
                 category_nbytes[category_key] = int(category_nbytes.get(category_key, 0)) + nbytes_int
+                subcategory_nbytes[subcategory_key] = int(
+                    subcategory_nbytes.get(subcategory_key, 0)
+                ) + nbytes_int
             else:
                 scalar_leaf_count += 1
     scan_timing_stats["scan_runner_arg_leaf_count"] = int(leaf_count)
@@ -559,6 +616,13 @@ def record_scan_runner_arg_summary(
         scan_timing_stats[f"{prefix}_leaf_count"] = int(count)
         scan_timing_stats[f"{prefix}_array_leaf_count"] = int(category_array_counts.get(category_key, 0))
         scan_timing_stats[f"{prefix}_array_nbytes"] = int(category_nbytes.get(category_key, 0))
+    for subcategory_key, count in subcategory_counts.items():
+        prefix = f"scan_runner_arg_subcategory_{subcategory_key}"
+        scan_timing_stats[f"{prefix}_leaf_count"] = int(count)
+        scan_timing_stats[f"{prefix}_array_leaf_count"] = int(
+            subcategory_array_counts.get(subcategory_key, 0)
+        )
+        scan_timing_stats[f"{prefix}_array_nbytes"] = int(subcategory_nbytes.get(subcategory_key, 0))
     if rz_mat_keys:
         unexpected_keys = rz_mat_keys - _SCAN_RZ_CARRY_ALLOWED_KEYS
         missing_mandatory_keys = _SCAN_RZ_CARRY_MANDATORY_KEYS - rz_mat_keys

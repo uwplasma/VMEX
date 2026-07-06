@@ -951,6 +951,15 @@ def test_fixed_boundary_profiler_summary_exposes_scan_timing_fields():
         "scan_runner_arg_category_velocity_leaf_count": 6,
         "scan_runner_arg_category_velocity_array_leaf_count": 6,
         "scan_runner_arg_category_velocity_array_nbytes": 480,
+        "scan_runner_arg_subcategory_velocity_R_leaf_count": 2,
+        "scan_runner_arg_subcategory_velocity_R_array_leaf_count": 2,
+        "scan_runner_arg_subcategory_velocity_R_array_nbytes": 240,
+        "scan_runner_arg_subcategory_velocity_Z_leaf_count": 2,
+        "scan_runner_arg_subcategory_velocity_Z_array_leaf_count": 2,
+        "scan_runner_arg_subcategory_velocity_Z_array_nbytes": 160,
+        "scan_runner_arg_subcategory_velocity_lambda_leaf_count": 2,
+        "scan_runner_arg_subcategory_velocity_lambda_array_leaf_count": 2,
+        "scan_runner_arg_subcategory_velocity_lambda_array_nbytes": 80,
         "scan_runner_arg_category_preconditioner_leaf_count": 4,
         "scan_runner_arg_category_preconditioner_array_leaf_count": 3,
         "scan_runner_arg_category_preconditioner_array_nbytes": 160,
@@ -982,6 +991,9 @@ def test_fixed_boundary_profiler_summary_exposes_scan_timing_fields():
     assert summary["scan_arg_categories"]["largest_category"] == "velocity"
     assert summary["scan_arg_categories"]["categories"]["velocity"]["array_nbytes"] == 480
     assert summary["scan_arg_categories"]["categories"]["preconditioner"]["array_leaf_count"] == 3
+    assert summary["scan_arg_subcategories"]["largest_subcategory"] == "velocity_R"
+    assert summary["scan_arg_subcategories"]["largest_subcategory_array_nbytes"] == 240
+    assert summary["scan_arg_subcategories"]["subcategories"]["velocity_lambda"]["array_nbytes"] == 80
     assert summary["scan_cache_miss_categories"]["total_count"] == 3
     assert summary["scan_cache_miss_categories"]["largest_category"] == "iteration_budget"
     assert summary["scan_cache_miss_categories"]["categories"]["cold_empty"] == 1
@@ -1001,6 +1013,8 @@ def test_fixed_boundary_profiler_scan_arg_category_summary_handles_empty_timing(
 
     assert fixed_tool._scan_arg_category_summary(None) == {}
     assert fixed_tool._scan_arg_category_summary({"iterations": 2}) == {}
+    assert fixed_tool._scan_arg_subcategory_summary(None) == {}
+    assert fixed_tool._scan_arg_subcategory_summary({"iterations": 2}) == {}
     assert fixed_tool._scan_cache_miss_category_summary(None) == {}
     assert fixed_tool._scan_cache_miss_category_summary({"iterations": 2}) == {}
     assert fixed_tool._scan_history_summary(None) == {}
