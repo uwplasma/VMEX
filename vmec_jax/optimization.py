@@ -56,8 +56,8 @@ from .optimizers.fixed_boundary.qs_residuals import (
 from .optimizers.fixed_boundary.replay_policy import (
     chunked_projected_replay_projection_enabled, fused_projected_replay_enabled,
     exact_replay_policy_metadata, lasym_replay_column_chunk, optimizer_backend_name,
-    precompute_linear_operator_initial_tangents_enabled, projected_replay_residuals_enabled,
-    scalar_gradient_initial_tangents_enabled,
+    precompute_linear_operator_initial_tangents_enabled, projected_replay_projection_column_chunk,
+    projected_replay_residuals_enabled, scalar_gradient_initial_tangents_enabled,
 )
 from .optimizers.fixed_boundary.scalar_gradient import exact_objective_and_gradient
 from .optimizers.fixed_boundary.scalar_lbfgs import run_lbfgs_adjoint_exact_optimizer
@@ -1370,6 +1370,7 @@ class FixedBoundaryExactOptimizer:
     _projected_replay_residuals_enabled = projected_replay_residuals_enabled
     _fused_projected_replay_enabled = staticmethod(fused_projected_replay_enabled)
     _chunked_projected_replay_projection_enabled = chunked_projected_replay_projection_enabled
+    _projected_replay_projection_column_chunk = projected_replay_projection_column_chunk
 
     def _discrete_jacobian_residual_helper(self, params_size: int, residuals_from_packed, *, jax):
         """Return cached residual/Jacobian projection helper for packed tangents."""
@@ -1584,19 +1585,23 @@ class FixedBoundaryExactOptimizer:
             _residuals_from_packed,
             jax=jax,
         )
-        if self._chunked_projected_replay_projection_enabled(column_chunk, int(params.size)):
+        projection_column_chunk = self._projected_replay_projection_column_chunk(
+            column_chunk,
+            int(params.size),
+        )
+        if projection_column_chunk is not None:
             t_replay = time.perf_counter()
             jac_blocks = []
             residuals = None
             replay_scan_cache_diagnostics(reset=True)
-            for start in range(0, int(params.size), int(column_chunk)):
-                stop = min(start + int(column_chunk), int(params.size))
+            for start in range(0, int(params.size), int(projection_column_chunk)):
+                stop = min(start + int(projection_column_chunk), int(params.size))
                 final_tangents_chunk = checkpoint_tape_state_jvp_columns(
                     tape=payload["tape"],
                     static=self._static,
                     initial_tangents=initial_tangents[start:stop],
                     rebuild_preconditioner=True,
-                    column_chunk=column_chunk,
+                    column_chunk=projection_column_chunk,
                     _allow_chunking=False,
                 )
                 residuals, jac_chunk = helper_cache["residual_tangent_jacobian"](

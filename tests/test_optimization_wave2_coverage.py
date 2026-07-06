@@ -657,6 +657,8 @@ def test_chunked_projected_replay_projection_policy_branches(monkeypatch) -> Non
     assert opt._chunked_projected_replay_projection_enabled(None, 80) is False
     assert opt._chunked_projected_replay_projection_enabled(80, 80) is False
     assert opt._chunked_projected_replay_projection_enabled(40, 80) is True
+    assert opt._projected_replay_projection_column_chunk(None, 80) is None
+    assert opt._projected_replay_projection_column_chunk(40, 80) == 40
 
     opt._solver_device_name = "cpu"
     assert opt._chunked_projected_replay_projection_enabled(40, 80) is False
@@ -670,6 +672,10 @@ def test_chunked_projected_replay_projection_policy_branches(monkeypatch) -> Non
     assert opt._chunked_projected_replay_projection_enabled(40, 80) is False
     monkeypatch.setenv("VMEC_JAX_OPT_CHUNKED_PROJECTED_REPLAY_PROJECTION", "yes")
     assert opt._chunked_projected_replay_projection_enabled(40, 80) is True
+
+    opt._solver_device_name = "cpu"
+    monkeypatch.setenv("VMEC_JAX_REPLAY_COLUMN_CHUNK", "16")
+    assert opt._projected_replay_projection_column_chunk(None, 80) == 16
 
 
 def test_exact_replay_policy_metadata_is_side_effect_free(monkeypatch) -> None:
@@ -698,6 +704,7 @@ def test_exact_replay_policy_metadata_is_side_effect_free(monkeypatch) -> None:
     assert meta["projected_replay"] is True
     assert meta["fused_projected_replay"] is False
     assert meta["column_chunk"] == 40
+    assert meta["projected_replay_projection_column_chunk"] == 40
     assert meta["requested_replay_column_chunk"] is None
     assert meta["requested_replay_column_chunk_policy"] == "unset"
     assert meta["chunked_projected_replay_projection"] is True
@@ -718,6 +725,7 @@ def test_exact_replay_policy_metadata_is_side_effect_free(monkeypatch) -> None:
     assert meta["lasym"] is True
     assert meta["projected_replay"] is False
     assert meta["column_chunk"] == 8
+    assert meta["projected_replay_projection_column_chunk"] is None
     assert meta["requested_replay_column_chunk"] is None
     assert meta["requested_replay_column_chunk_policy"] == "unset"
     assert meta["chunked_projected_replay_projection"] is False
@@ -736,6 +744,13 @@ def test_exact_replay_policy_metadata_is_side_effect_free(monkeypatch) -> None:
     meta = exact_replay_policy_metadata(opt, 64)
     assert meta["requested_replay_column_chunk"] == 48
     assert meta["requested_replay_column_chunk_policy"] == "active"
+
+    opt._static = SimpleNamespace(cfg=SimpleNamespace(lasym=False))
+    opt._has_stellarator_asymmetric_configuration = lambda: False
+    monkeypatch.setenv("VMEC_JAX_OPT_CHUNKED_PROJECTED_REPLAY_PROJECTION", "on")
+    meta = exact_replay_policy_metadata(opt, 64)
+    assert meta["projected_replay_projection_column_chunk"] == 48
+    assert meta["chunked_projected_replay_projection"] is True
 
     monkeypatch.setenv("VMEC_JAX_REPLAY_COLUMN_CHUNK", "bad")
     meta = exact_replay_policy_metadata(opt, 64)

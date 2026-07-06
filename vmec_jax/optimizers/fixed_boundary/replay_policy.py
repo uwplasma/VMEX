@@ -263,6 +263,31 @@ def chunked_projected_replay_projection_enabled(
     return True
 
 
+def projected_replay_projection_column_chunk(
+    optimizer,
+    column_chunk: int | None,
+    n_params: int,
+) -> int | None:
+    """Return the chunk size for per-chunk replay projection, if active.
+
+    ``VMEC_JAX_REPLAY_COLUMN_CHUNK`` is a generic replay knob.  The standard
+    replay path consumes it internally, but the projected path needs the same
+    value before replay starts so it can project residual tangents per chunk
+    instead of materializing all final-state tangent columns first.
+    """
+
+    active_chunk = None if column_chunk is None else int(column_chunk)
+    if active_chunk is None:
+        policy, requested = _column_chunk_override_metadata()
+        if policy == "active" and requested is not None:
+            active_chunk = int(requested)
+    if active_chunk is None or int(n_params) <= int(active_chunk):
+        return None
+    if not chunked_projected_replay_projection_enabled(optimizer, active_chunk, n_params):
+        return None
+    return int(active_chunk)
+
+
 def exact_replay_policy_metadata(optimizer, n_params: int | None = None) -> dict[str, object]:
     """Summarize exact-callback replay policy choices without changing them.
 
@@ -287,16 +312,18 @@ def exact_replay_policy_metadata(optimizer, n_params: int | None = None) -> dict
     column_chunk = None
     projected = False
     chunked_projection = False
+    projection_column_chunk = None
     scalar_initial_tangents = False
     linear_operator_initial_tangents = False
     if n_params_int is not None:
         column_chunk = lasym_replay_column_chunk(optimizer, n_params_int)
         projected = projected_replay_residuals_enabled(optimizer, n_params_int)
-        chunked_projection = chunked_projected_replay_projection_enabled(
+        projection_column_chunk = projected_replay_projection_column_chunk(
             optimizer,
             column_chunk,
             n_params_int,
         )
+        chunked_projection = projection_column_chunk is not None
         scalar_initial_tangents = scalar_gradient_initial_tangents_enabled(optimizer, n_params_int)
         linear_operator_initial_tangents = precompute_linear_operator_initial_tangents_enabled(
             optimizer,
@@ -311,6 +338,7 @@ def exact_replay_policy_metadata(optimizer, n_params: int | None = None) -> dict
         "projected_replay_reason": "enabled" if projected else "disabled_or_below_threshold",
         "fused_projected_replay": fused_projected_replay_enabled(),
         "column_chunk": None if column_chunk is None else int(column_chunk),
+        "projected_replay_projection_column_chunk": projection_column_chunk,
         "requested_replay_column_chunk": chunk_override_value,
         "requested_replay_column_chunk_policy": chunk_override_policy,
         "chunked_projected_replay_projection": bool(chunked_projection),
