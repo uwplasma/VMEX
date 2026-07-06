@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from vmec_jax._compat import jnp
+from vmec_jax.solvers.fixed_boundary.performance import scan_cache_key_field_names
 from vmec_jax.solvers.fixed_boundary.residual.policy import vmec2000_scan_options_from_env
 from vmec_jax.solvers.fixed_boundary.residual.accelerated_scan import _accelerated_scan_cache_key
 from vmec_jax.solvers.fixed_boundary.scan.controller import _select_initial_rz_norm_func
@@ -1421,20 +1422,26 @@ def test_scan_chunk_settings_match_quiet_and_printing_modes():
 
 def test_scan_cache_key_is_stable_and_tracks_behavioral_toggles():
     base = _cache_key()
-    assert base[0] == "vmec2000_scan_v10"
+    assert base[0] == "vmec2000_scan_v11"
     equivalent = _cache_key(
         max_iter_tail=9.0,
+        step_size=0.4,
         preflight_iters=True,
+        lambda_update_scale=0.8,
         stage_prev_fsq=None,
         scan_fallback_badjac_limit=10.0,
     )
     assert equivalent == base
+    assert _cache_key(lambda_update_scale=1.0) != base
+    assert _cache_key(initial_flip_sign=1.0) != base
     assert _cache_key(scan_light=True) != base
     assert _cache_key(stage_prev_fsq=3) != base
     assert _cache_key(tomnsps_policy_key=("tomnsps", "fft")) != base
     assert _cache_key(scan_use_precomputed=True) != base
     assert _cache_key(scan_use_lax_tridi=True) != base
-    assert _cache_key(stage_prev_fsq=3)[18] is True
+    stage_key = _cache_key(stage_prev_fsq=3)
+    stage_fields = dict(zip(scan_cache_key_field_names(stage_key), stage_key, strict=True))
+    assert stage_fields["has_stage_prev_fsq"] is True
     assert _cache_key(stage_prev_fsq=3) == _cache_key(stage_prev_fsq=4)
     assert _cache_key(stage_transition_factor=20.0) == base
     assert _cache_key(stage_transition_scale=0.25) == base
@@ -1457,9 +1464,13 @@ def test_scan_cache_key_is_stable_and_tracks_behavioral_toggles():
     assert state_only == _cache_key(state_only_scan=True, scan_light=True, scan_minimal=False)
     assert state_only == _cache_key(state_only_scan=True, max_iter_tail=99)
     assert _cache_key(max_iter_tail=9) != _cache_key(max_iter_tail=99)
-    assert state_only[-2:] == (0, 0)
-    assert state_only[12] == 0
-    assert state_only[20:23] == (True, False, True)
+    state_only_fields = dict(zip(scan_cache_key_field_names(state_only), state_only, strict=True))
+    assert state_only_fields["scan_fallback_iters"] == 0
+    assert state_only_fields["scan_fallback_badjac_limit"] == 0
+    assert state_only_fields["nstep_screen"] == 0
+    assert state_only_fields["state_only_scan"] is True
+    assert state_only_fields["scan_light"] is False
+    assert state_only_fields["scan_minimal"] is True
 
 
 def test_scan_iteration_runtime_plan_resolves_offsets_and_cache_key():
@@ -1510,10 +1521,17 @@ def test_scan_iteration_runtime_plan_resolves_offsets_and_cache_key():
     assert plan.iter_offset_preflight == 0
     assert plan.iter_offset0 == -1
     assert plan.axis_reset_repeated
-    assert plan.scan_cache_key[1:4] == (("static",), ("wout",), ("edge",))
-    assert plan.scan_cache_key[4] == ("yes", "0", "1", "1")
-    assert plan.scan_cache_key[5:8] == (11, 2, -1)
-    assert plan.scan_cache_key[15:18] == (True, True, True)
+    fields = dict(zip(scan_cache_key_field_names(plan.scan_cache_key), plan.scan_cache_key, strict=True))
+    assert fields["static_key"] == ("static",)
+    assert fields["wout_key"] == ("wout",)
+    assert fields["edge_signature_key"] == ("edge",)
+    assert fields["tomnsps_policy_key"] == ("yes", "0", "1", "1")
+    assert fields["max_iter_tail"] == 11
+    assert fields["preflight_iters"] == 2
+    assert fields["iter_offset0"] == -1
+    assert fields["scan_use_precomputed"] is True
+    assert fields["scan_use_lax_tridi"] is True
+    assert fields["scan_use_restart_payload"] is True
 
 
 def test_scan_print_mode_normalization_and_invalid_guard_errors():

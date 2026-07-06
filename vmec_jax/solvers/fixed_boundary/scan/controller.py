@@ -135,6 +135,8 @@ def _scan_runtime_controls_args(
     controls: ScanConvergenceControls,
     *,
     dtype: Any,
+    step_size: Any,
+    lambda_update_scale: Any,
 ) -> tuple[Any, ...]:
     """Return scalar runtime controls for cache-stable scan-runner calls."""
 
@@ -163,6 +165,8 @@ def _scan_runtime_controls_args(
     if improve is None:
         improve = jnp.asarray(jnp.nan, dtype=dtype)
     return (
+        jnp.asarray(step_size, dtype=dtype),
+        jnp.asarray(lambda_update_scale, dtype=dtype),
         jnp.asarray(controls.ftol, dtype=dtype),
         jnp.asarray(target, dtype=dtype),
         jnp.asarray(stage_prev_fsq, dtype=dtype),
@@ -234,6 +238,8 @@ def _scan_step_with_runtime_controls(
     scan_fallback_fsq_abs: Any,
     scan_fallback_improve: Any,
     max_iter_runtime: Any,
+    step_size_runtime: Any,
+    lambda_update_scale_runtime: Any,
 ) -> Any:
     """Dispatch one scan step using scalar runtime convergence controls."""
 
@@ -255,7 +261,15 @@ def _scan_step_with_runtime_controls(
     return jax.lax.cond(
         hold_cond,
         lambda c: _hold_vmec2000_scan_step(step_ctx, c),
-        lambda c: _advance_vmec2000_scan_step(step_ctx, c, it, controls, max_iter_runtime),
+        lambda c: _advance_vmec2000_scan_step(
+            step_ctx,
+            c,
+            it,
+            controls,
+            max_iter_runtime,
+            step_size_runtime,
+            lambda_update_scale_runtime,
+        ),
         operand=carry,
     )
 
@@ -497,6 +511,7 @@ class ScanStepContext:
     scan_print_mode: Any
     scan_timecontrol_dumper: Any
     flip_sign0: Any
+    apply_lambda_update_scale: bool
 
 
 class ScanStepPreparedPayload(NamedTuple):
@@ -618,6 +633,7 @@ def _prepare_vmec2000_scan_step_payload(
     it: Any,
     convergence_controls: ScanConvergenceControls,
     max_iter_runtime: Any,
+    lambda_update_scale_runtime: Any,
 ) -> ScanStepPreparedPayload:
     """Prepare force, residual, and bad-Jacobian inputs for one scan step."""
 
@@ -700,8 +716,8 @@ def _prepare_vmec2000_scan_step_payload(
         rz_norm_func=ctx._rz_norm,
         scale_m1_precond_rhs_func=step_ctx.scale_m1_precond_rhs,
         w_mode_mn=ctx.w_mode_mn,
-        lambda_update_scale_j=ctx.lambda_update_scale_j,
-        apply_lambda_update_scale=(ctx.lambda_update_scale != 1.0),
+        lambda_update_scale_j=lambda_update_scale_runtime,
+        apply_lambda_update_scale=bool(step_ctx.apply_lambda_update_scale),
         fsqr=fsqr,
         fsqz=fsqz,
         fsql=fsql,
@@ -760,6 +776,8 @@ def _advance_vmec2000_scan_step(
     it: Any,
     convergence_controls: ScanConvergenceControls,
     max_iter_runtime: Any,
+    step_size_runtime: Any,
+    lambda_update_scale_runtime: Any,
 ) -> Any:
     """Advance one active VMEC2000 scan step."""
 
@@ -777,7 +795,14 @@ def _advance_vmec2000_scan_step(
         fsq_abs=convergence_controls.scan_fallback_fsq_abs,
         improve=convergence_controls.scan_fallback_improve,
     )
-    prepared = _prepare_vmec2000_scan_step_payload(step_ctx, carry_adv, it, convergence_controls, max_iter_runtime)
+    prepared = _prepare_vmec2000_scan_step_payload(
+        step_ctx,
+        carry_adv,
+        it,
+        convergence_controls,
+        max_iter_runtime,
+        lambda_update_scale_runtime,
+    )
     force_eval = prepared.force_eval
     current_payload_pre = prepared.current_payload
     tau_decision = prepared.tau_decision
@@ -834,7 +859,7 @@ def _advance_vmec2000_scan_step(
         restart_badjac_factor=constants.restart_badjac_factor,
         restart_badprog_factor=constants.restart_badprog_factor,
         stage_transition_scale=convergence_controls.stage_transition_scale,
-        step_size=ctx.step_size,
+        step_size=step_size_runtime,
         k_ndamp=constants.ndamp,
         dtype=dtype,
         restart_updates_func=_scan_math_restart_updates,
@@ -896,8 +921,8 @@ def _advance_vmec2000_scan_step(
         rz_norm_func=ctx._rz_norm,
         scale_m1_precond_rhs_func=step_ctx.scale_m1_precond_rhs,
         w_mode_mn=ctx.w_mode_mn,
-        lambda_update_scale_j=ctx.lambda_update_scale_j,
-        apply_lambda_update_scale=(ctx.lambda_update_scale != 1.0),
+        lambda_update_scale_j=lambda_update_scale_runtime,
+        apply_lambda_update_scale=bool(step_ctx.apply_lambda_update_scale),
         delta_s=ctx.delta_s,
         jmax0=step_ctx.jmax0,
         velocity_blocks_post=(
@@ -1024,7 +1049,15 @@ def _vmec2000_scan_step(step_ctx: ScanStepContext, carry: _ScanCarry, it: Any) -
     return jax.lax.cond(
         hold_cond,
         lambda c: _hold_vmec2000_scan_step(step_ctx, c),
-        lambda c: _advance_vmec2000_scan_step(step_ctx, c, iter_index, convergence_controls),
+        lambda c: _advance_vmec2000_scan_step(
+            step_ctx,
+            c,
+            iter_index,
+            convergence_controls,
+            jnp.asarray(int(step_ctx.max_iter), dtype=jnp.int32),
+            jnp.asarray(step_ctx.ctx.step_size, dtype=step_ctx.dtype),
+            jnp.asarray(step_ctx.ctx.lambda_update_scale_j, dtype=step_ctx.dtype),
+        ),
         operand=carry,
     )
 
@@ -1172,6 +1205,8 @@ def _run_scan_dispatch_and_finalize(inputs: ScanDispatchFinalizeInputs) -> Solve
     def _run_scan(
         carry_init,
         it_seq,
+        step_size_dyn,
+        lambda_update_scale_dyn,
         ftol_dyn,
         fsq_total_target_dyn,
         stage_prev_fsq_dyn,
@@ -1198,6 +1233,8 @@ def _run_scan_dispatch_and_finalize(inputs: ScanDispatchFinalizeInputs) -> Solve
                 fallback_fsq_abs_dyn,
                 fallback_improve_dyn,
                 max_iter_runtime_dyn,
+                step_size_dyn,
+                lambda_update_scale_dyn,
             )
 
         return jax.lax.scan(_step, carry_init, it_seq)
@@ -1259,6 +1296,8 @@ def _run_scan_dispatch_and_finalize(inputs: ScanDispatchFinalizeInputs) -> Solve
             *_scan_runtime_controls_args(
                 inputs.convergence_controls,
                 dtype=inputs.dtype,
+                step_size=inputs.step_context.ctx.step_size,
+                lambda_update_scale=inputs.step_context.ctx.lambda_update_scale_j,
             ),
             jnp.asarray(int(inputs.max_iter), dtype=jnp.int32),
         ),
@@ -1565,6 +1604,7 @@ def run_vmec2000_scan(ctx: Vmec2000ScanControllerContext, state_init: VMECState)
         scan_print_mode=scan_print_mode,
         scan_timecontrol_dumper=scan_timecontrol_dumper,
         flip_sign0=flip_sign0,
+        apply_lambda_update_scale=(lambda_update_scale != 1.0),
     )
     scan_step = partial(_vmec2000_scan_step, step_context)
 

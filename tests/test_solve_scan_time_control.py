@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from vmec_jax._compat import jnp
+from vmec_jax._compat import jax, jnp
 from vmec_jax.solvers.fixed_boundary.scan.time_control import (
     RESTART_BADJAC,
     RESTART_BADPROG_VMEC,
@@ -643,3 +643,26 @@ def test_ijacob_25_and_50_checkpoint_time_step_branches_preserve_damping_step():
     np.testing.assert_allclose(_scalar(hit_50.time_step), 1.92)
     np.testing.assert_allclose(_scalar(hit_50.damping_time_step), 9.0)
     assert _scalar(hit_50.ijacob) == 50
+
+
+def test_restart_transition_accepts_traced_step_size_runtime_operand():
+    """Restart damping must not concretize runtime scan step sizes."""
+
+    @jax.jit
+    def transition_time_step(step_size):
+        transition = scan_restart_transition(
+            time_step=jnp.asarray(10.0),
+            iter_offset=jnp.asarray(0, dtype=jnp.int32),
+            ijacob=jnp.asarray(24, dtype=jnp.int32),
+            bad_resets=jnp.asarray(0, dtype=jnp.int32),
+            iter2=jnp.asarray(1, dtype=jnp.int32),
+            restart_reason=jnp.asarray(RESTART_BADJAC, dtype=jnp.int32),
+            vmec2000_control=True,
+            restart_badjac_factor=0.9,
+            restart_badprog_factor=1.03,
+            stage_transition_scale=0.5,
+            step_size=step_size,
+        )
+        return transition.time_step
+
+    np.testing.assert_allclose(_scalar(transition_time_step(jnp.asarray(2.0))), 1.96)

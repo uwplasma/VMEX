@@ -329,17 +329,18 @@ def scan_restart_transition(
     next_time_step = jnp.maximum(next_time_step, jnp.asarray(1.0e-12, dtype=dtype))
     damping_time_step = next_time_step
     if bool(vmec2000_control):
+        step_size_j = jnp.asarray(step_size, dtype=dtype)
         next_ijacob = jnp.where(restart_reason == restart_badjac, ijacob + 1, ijacob)
         ijacob25 = next_ijacob == jnp.asarray(25, dtype=next_ijacob.dtype)
         ijacob50 = next_ijacob == jnp.asarray(50, dtype=next_ijacob.dtype)
         next_time_step = jnp.where(
             ijacob25 & (restart_reason == restart_badjac),
-            jnp.asarray(0.98, dtype=dtype) * jnp.asarray(float(step_size), dtype=dtype),
+            jnp.asarray(0.98, dtype=dtype) * step_size_j,
             next_time_step,
         )
         next_time_step = jnp.where(
             ijacob50 & (restart_reason == restart_badjac),
-            jnp.asarray(0.96, dtype=dtype) * jnp.asarray(float(step_size), dtype=dtype),
+            jnp.asarray(0.96, dtype=dtype) * step_size_j,
             next_time_step,
         )
     else:

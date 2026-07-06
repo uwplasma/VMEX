@@ -122,14 +122,21 @@ SCAN_CACHE_KEY_FIELDS_V9: tuple[str, ...] = tuple(
     if field not in {"scan_fallback_accept_frac", "scan_fallback_fsq_factor", "scan_fallback_fsq_abs"}
 )
 
-SCAN_CACHE_KEY_FIELDS: tuple[str, ...] = tuple(
+SCAN_CACHE_KEY_FIELDS_V10: tuple[str, ...] = tuple(
     field for field in SCAN_CACHE_KEY_FIELDS_V9 if field not in {"stage_transition_factor", "stage_transition_scale"}
+)
+
+SCAN_CACHE_KEY_FIELDS: tuple[str, ...] = tuple(
+    "lambda_update_scale_active" if field == "lambda_update_scale" else field
+    for field in SCAN_CACHE_KEY_FIELDS_V10
+    if field != "step_size"
 )
 
 SCAN_CACHE_KEY_FIELDS_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS + ("seq_len",)
 SCAN_CACHE_KEY_FIELDS_V7_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS_V7 + ("seq_len",)
 SCAN_CACHE_KEY_FIELDS_V8_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS_V8 + ("seq_len",)
 SCAN_CACHE_KEY_FIELDS_V9_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS_V9 + ("seq_len",)
+SCAN_CACHE_KEY_FIELDS_V10_WITH_SEQ_LEN: tuple[str, ...] = SCAN_CACHE_KEY_FIELDS_V10 + ("seq_len",)
 
 SCAN_FAST_CACHE_KEY_FIELDS_V1: tuple[str, ...] = (
     "schema",
@@ -182,6 +189,7 @@ SCAN_CACHE_KEY_CATEGORIES: dict[str, str] = {
     "step_size": "iteration_update",
     "initial_flip_sign": "initial_state",
     "lambda_update_scale": "iteration_update",
+    "lambda_update_scale_active": "iteration_update",
     "has_fsq_total_target": "tolerance",
     "nstep_screen": "iteration_budget",
     "use_restart_triggers": "restart_policy",
@@ -311,6 +319,10 @@ def scan_cache_key_field_names(key: tuple[Any, ...]) -> tuple[str, ...]:
             return SCAN_CACHE_KEY_FIELDS_V9_WITH_SEQ_LEN
         return SCAN_CACHE_KEY_FIELDS_V9
     if schema == "vmec2000_scan_v10":
+        if len(key) == len(SCAN_CACHE_KEY_FIELDS_V10_WITH_SEQ_LEN):
+            return SCAN_CACHE_KEY_FIELDS_V10_WITH_SEQ_LEN
+        return SCAN_CACHE_KEY_FIELDS_V10
+    if schema == "vmec2000_scan_v11":
         if len(key) == len(SCAN_CACHE_KEY_FIELDS_WITH_SEQ_LEN):
             return SCAN_CACHE_KEY_FIELDS_WITH_SEQ_LEN
         return SCAN_CACHE_KEY_FIELDS

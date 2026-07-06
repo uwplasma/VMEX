@@ -498,8 +498,9 @@ def build_vmec2000_scan_cache_key(
     nstep_screen_key = 0 if state_only_key else int(nstep_screen)
     scan_light_key = False if state_only_key else bool(scan_light)
     scan_minimal_key = True if state_only_key else bool(scan_minimal)
+    lambda_update_scale_active_key = bool(float(lambda_update_scale) != 1.0)
     return (
-        "vmec2000_scan_v10",
+        "vmec2000_scan_v11",
         static_key,
         wout_key,
         edge_signature_key,
@@ -507,9 +508,8 @@ def build_vmec2000_scan_cache_key(
         int(max_iter_tail_key),
         int(preflight_iters),
         int(iter_offset0),
-        float(step_size),
         float(initial_flip_sign),
-        float(lambda_update_scale),
+        lambda_update_scale_active_key,
         fsq_total_target is not None,
         int(nstep_screen_key),
         bool(use_restart_triggers),

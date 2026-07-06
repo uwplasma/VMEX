@@ -92,11 +92,11 @@ def test_scan_cache_key_delta_labels_behavioral_toggles():
 
     assert [(delta.index, delta.field) for delta in deltas] == [
         (5, "max_iter_tail"),
-        (15, "scan_use_precomputed"),
-        (16, "scan_use_lax_tridi"),
-        (18, "has_stage_prev_fsq"),
-        (21, "scan_light"),
-        (22, "scan_minimal"),
+        (14, "scan_use_precomputed"),
+        (15, "scan_use_lax_tridi"),
+        (17, "has_stage_prev_fsq"),
+        (20, "scan_light"),
+        (21, "scan_minimal"),
     ]
     assert deltas[3].before is False
     assert deltas[3].after is True
@@ -144,9 +144,8 @@ def test_vmec2000_scan_key_keeps_only_structural_scalar_controls_after_operand_r
     base = _scan_cache_key()
 
     for field, overrides in {
-        "step_size": {"step_size": 0.4},
         "initial_flip_sign": {"initial_flip_sign": 1.0},
-        "lambda_update_scale": {"lambda_update_scale": 0.8},
+        "lambda_update_scale_active": {"lambda_update_scale": 1.0},
         "has_fsq_total_target": {"fsq_total_target": 5.0e-11},
         "has_stage_prev_fsq": {"stage_prev_fsq": 2.0e-4},
     }.items():
@@ -154,6 +153,8 @@ def test_vmec2000_scan_key_keeps_only_structural_scalar_controls_after_operand_r
 
         assert summary["changed"] is True
         assert field in summary["fields"]
+    assert _scan_cache_key(step_size=0.4) == base
+    assert _scan_cache_key(lambda_update_scale=0.8) == base
     assert _scan_cache_key(ftol=1.0e-10) == base
     assert _scan_cache_key(fsq_total_target=5.0e-11) == _scan_cache_key(fsq_total_target=6.0e-11)
     assert _scan_cache_key(stage_prev_fsq=2.0e-4) == _scan_cache_key(stage_prev_fsq=3.0e-4)
