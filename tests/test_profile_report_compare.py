@@ -995,10 +995,18 @@ def test_fixed_boundary_report_summary_extracts_accelerated_scan_timing() -> Non
             "timing": {
                 "iterations": 120,
                 "scan_total_s": 3.0,
+                "scan_setup_s": 0.2,
+                "scan_run_setup_s": 0.3,
+                "scan_preflight_s": 0.4,
                 "scan_device_run_s": 2.0,
                 "scan_device_dispatch_s": 1.8,
                 "scan_device_ready_s": 0.2,
                 "scan_host_materialize_s": 0.1,
+                "scan_postprocess_s": 0.05,
+                "scan_unattributed_s": 0.25,
+                "scan_runner_cache_hit_count": 1,
+                "scan_runner_cache_miss_count": 0,
+                "scan_runner_cache_bypass_count": 0,
             }
         },
     }
@@ -1008,10 +1016,23 @@ def test_fixed_boundary_report_summary_extracts_accelerated_scan_timing() -> Non
 
     assert metrics["vmec_solve_s"] == 3.0
     assert metrics["vmec_scan_total_s"] == 3.0
+    assert metrics["vmec_scan_setup_s"] == 0.2
+    assert metrics["vmec_scan_run_setup_s"] == 0.3
+    assert metrics["vmec_scan_preflight_s"] == 0.4
     assert metrics["vmec_scan_device_run_s"] == 2.0
     assert metrics["vmec_scan_device_dispatch_s"] == 1.8
     assert metrics["vmec_scan_device_ready_s"] == 0.2
     assert metrics["vmec_scan_host_materialize_s"] == 0.1
+    assert metrics["vmec_scan_postprocess_s"] == 0.05
+    assert metrics["vmec_scan_unattributed_s"] == 0.25
+    assert metrics["vmec_scan_runner_cache_hit_count"] == 1
+    assert metrics["vmec_scan_runner_cache_miss_count"] == 0
+    assert metrics["vmec_scan_runner_cache_bypass_count"] == 0
+    scan = summary["fixed_boundary_scan_summary"]
+    assert scan["total_s"] == 3.0
+    assert scan["cache_status"] == {"hit": 1, "miss": 0, "bypass": 0}
+    assert scan["cache_miss_fraction"] == 0.0
+    assert scan["dispatch_share_of_scan"] == pytest.approx(1.8 / 3.0)
 
 
 def test_summary_bottleneck_hint_uses_qi_phase_when_largest() -> None:
