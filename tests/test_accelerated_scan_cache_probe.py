@@ -88,5 +88,12 @@ def test_run_probe_reports_cache_reuse_with_same_shape_boundary_update(monkeypat
     result = probe.run_probe(args)
 
     assert result["cache_reuse_pass"] is True
+    assert result["cache_reuse_summary"]["same_shape_cache_hit"] is True
+    assert result["cache_reuse_summary"]["first"]["miss_count"] == 1
+    assert result["cache_reuse_summary"]["first"]["hit_fraction"] == 0.0
+    assert result["cache_reuse_summary"]["second"]["hit_count"] == 1
+    assert result["cache_reuse_summary"]["second"]["hit_fraction"] == 1.0
+    assert result["cache_reuse_summary"]["second_to_first_wall_ratio"] == 0.5
+    assert result["cache_reuse_summary"]["first_to_second_wall_speedup"] == 2.0
     assert len(calls) == 2
     assert np.asarray(calls[1].Rcos)[-1, 1] != np.asarray(calls[0].Rcos)[-1, 1]
