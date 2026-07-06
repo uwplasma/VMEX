@@ -228,7 +228,7 @@ def test_fixed_boundary_exact_optimizer_init_uses_profiled_trial_scan_policy(mon
         inner_ftol=2.0e-9,
         solver_device="gpu",
     )
-    assert opt_qp._trial_solver_kwargs["use_scan"] is True
+    assert opt_qp._trial_solver_kwargs["use_scan"] is False
 
     opt_qp_high = FixedBoundaryExactOptimizer(
         static,
