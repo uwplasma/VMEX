@@ -79,6 +79,24 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
                         "count": 1,
                         "share_of_total": 0.11,
                     },
+                    "scan_payload_leaders": {
+                        "total_array_nbytes": 4096,
+                        "velocity_array_nbytes": 2048,
+                        "preconditioner_array_nbytes": 1024,
+                        "preconditioner_rz_apply_array_nbytes": 768,
+                        "history_array_nbytes": 96,
+                        "largest_category": "velocity",
+                        "largest_subcategory": "preconditioner_rz_apply",
+                    },
+                    "budget_status": {
+                        "ok": True,
+                        "action": "warn",
+                        "limits": {
+                            "scan_velocity_nbytes": 4096,
+                            "scan_preconditioner_nbytes": 2048,
+                            "scan_history_nbytes": 256,
+                        },
+                    },
                 },
                 "report_path": "/tmp/qh_m2_gpu_jacobian.json",
             }
@@ -103,6 +121,10 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
     assert "trial_misses" in output
     assert "replay_hits" in output
     assert "replay_misses" in output
+    assert "Scan payload:" in output
+    assert "velocity_B" in output
+    assert "preconditioner_rz_apply" in output
+    assert "budget_ok" in output
     assert "Projected replay / JVP details:" in output
     assert "jvp_tape" in output
     assert "base_carries" in output
