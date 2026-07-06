@@ -666,6 +666,10 @@ def test_callback_report_summary_exposes_cold_sample_hotspot() -> None:
         "jacobian_tape_replay_dispatch": {"count": 1, "wall_time_s": 8.5},
         "jacobian_tape_replay_ready": {"count": 1, "wall_time_s": 0.5},
         "jacobian_residual_tangents": {"count": 1, "wall_time_s": 2.0},
+        "gradient_residual_vjp": {"count": 1, "wall_time_s": 1.25},
+        "gradient_initial_tangents": {"count": 1, "wall_time_s": 0.35},
+        "gradient_initial_tangents_jacfwd": {"count": 1, "wall_time_s": 0.34},
+        "gradient_initial_projection": {"count": 1, "wall_time_s": 0.75},
     }
     report["samples"][0]["replay_scan_cache_diagnostics"] = {
         "replay_checkpoint_scan_cache_miss_count": 1,
@@ -689,6 +693,10 @@ def test_callback_report_summary_exposes_cold_sample_hotspot() -> None:
     assert samples[0]["repeat"] == 0
     assert samples[0]["metrics"]["accepted_replay_dispatch_s"] == 8.5
     assert samples[0]["metrics"]["accepted_replay_ready_s"] == 0.5
+    assert samples[0]["metrics"]["state_cotangent_s"] == 1.25
+    assert samples[0]["metrics"]["initial_tangents_s"] == 0.35
+    assert samples[0]["metrics"]["initial_tangents_jacfwd_s"] == 0.34
+    assert samples[0]["metrics"]["initial_projection_s"] == 0.75
     assert samples[0]["metrics"]["replay_time_s"] == 9.0
     assert samples[0]["metrics"]["replay_scan_cache_miss_count"] == 1
     assert samples[0]["metrics"]["replay_scan_cache_build_s"] == 0.3

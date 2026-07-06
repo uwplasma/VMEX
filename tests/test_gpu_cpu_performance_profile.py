@@ -322,6 +322,11 @@ def test_performance_matrix_callback_repeat_summary_extracts_cache_hit_delta():
                 "metrics": {
                     "replay_scan_cache_miss_count": 2,
                     "trial_solver_scan_runner_cache_miss_count": 1,
+                    "exact_tape_build_s": 0.3,
+                    "state_cotangent_s": 2.5,
+                    "accepted_replay_dispatch_s": 4.0,
+                    "initial_tangents_s": 0.5,
+                    "initial_projection_s": 0.6,
                 },
                 "exact_optimizer_patch_target": {"name": "exact_tape_build"},
             },
@@ -332,6 +337,11 @@ def test_performance_matrix_callback_repeat_summary_extracts_cache_hit_delta():
                 "metrics": {
                     "replay_scan_cache_miss_count": 0,
                     "trial_solver_scan_runner_cache_miss_count": 0,
+                    "exact_tape_build_s": 0.0,
+                    "state_cotangent_s": 0.01,
+                    "accepted_replay_dispatch_s": 0.02,
+                    "initial_tangents_s": 0.0,
+                    "initial_projection_s": 0.03,
                 },
                 "exact_optimizer_patch_target": {"name": "projected_replay"},
             },
@@ -350,6 +360,16 @@ def test_performance_matrix_callback_repeat_summary_extracts_cache_hit_delta():
     assert repeat["last_replay_scan_cache_miss_count"] == 0
     assert repeat["first_trial_scan_cache_miss_count"] == 1
     assert repeat["last_trial_scan_cache_miss_count"] == 0
+    assert repeat["first_tape_build_s"] == pytest.approx(0.3)
+    assert repeat["last_tape_build_s"] == pytest.approx(0.0)
+    assert repeat["first_state_cotangent_s"] == pytest.approx(2.5)
+    assert repeat["last_state_cotangent_s"] == pytest.approx(0.01)
+    assert repeat["first_replay_dispatch_s"] == pytest.approx(4.0)
+    assert repeat["last_replay_dispatch_s"] == pytest.approx(0.02)
+    assert repeat["first_initial_tangents_s"] == pytest.approx(0.5)
+    assert repeat["last_initial_tangents_s"] == pytest.approx(0.0)
+    assert repeat["first_initial_projection_s"] == pytest.approx(0.6)
+    assert repeat["last_initial_projection_s"] == pytest.approx(0.03)
     assert repeat["first_patch_target"] == "exact_tape_build"
     assert repeat["last_patch_target"] == "projected_replay"
 
