@@ -228,6 +228,8 @@ def test_performance_matrix_fixed_command_uses_backend_solver_device(tmp_path):
             "gpu",
             "--iters",
             "7",
+            "--timed-runs",
+            "2",
             "--no-warmup",
             "--use-input-niter",
             "--vmec-timing-detail",
@@ -262,6 +264,7 @@ def test_performance_matrix_fixed_command_uses_backend_solver_device(tmp_path):
     assert str(tool.PROFILE_FIXED_BOUNDARY) in command
     assert command[command.index("--solver-device") + 1] == "gpu"
     assert command[command.index("--iters") + 1] == "7"
+    assert command[command.index("--timed-runs") + 1] == "2"
     assert "--simple-profile" in command
     assert "--use-input-niter" in command
     assert "--use-scan" not in command
@@ -277,6 +280,35 @@ def test_performance_matrix_fixed_command_uses_backend_solver_device(tmp_path):
     assert command[command.index("--budget-scan-history-nbytes") + 1] == "1024"
     assert command[command.index("--budget-scan-hlo-instructions") + 1] == "12000"
     assert command[command.index("--budget-action") + 1] == "warn"
+
+
+def test_performance_matrix_repeat_run_summary_extracts_cache_hit_delta():
+    tool = _load_tool()
+    summary = {
+        "repeat_runs": [
+            {
+                "wall_time_s": 3.0,
+                "execution_classification": "scan_cold_compile",
+                "timing": {"scan_runner_cache_miss_count": 1},
+            },
+            {
+                "wall_time_s": 0.5,
+                "execution_classification": "scan_cache_hit",
+                "timing": {"scan_runner_cache_miss_count": 0},
+            },
+        ]
+    }
+
+    repeat = tool._matrix_repeat_run_summary(summary)
+
+    assert repeat["count"] == 2
+    assert repeat["first_wall_s"] == pytest.approx(3.0)
+    assert repeat["last_wall_s"] == pytest.approx(0.5)
+    assert repeat["speedup_first_to_last"] == pytest.approx(6.0)
+    assert repeat["first_scan_cache_miss_count"] == 1
+    assert repeat["last_scan_cache_miss_count"] == 0
+    assert repeat["first_execution_classification"] == "scan_cold_compile"
+    assert repeat["last_execution_classification"] == "scan_cache_hit"
 
 
 def test_performance_matrix_fixed_report_stem_uses_iter_budget_by_default():

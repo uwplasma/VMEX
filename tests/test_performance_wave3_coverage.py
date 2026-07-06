@@ -101,6 +101,18 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
                             "scan_hlo_instructions": 1024,
                         },
                     },
+                    "repeat_runs": [
+                        {
+                            "wall_time_s": 3.0,
+                            "execution_classification": "scan_cold_compile",
+                            "timing": {"scan_runner_cache_miss_count": 1},
+                        },
+                        {
+                            "wall_time_s": 0.5,
+                            "execution_classification": "scan_cache_hit",
+                            "timing": {"scan_runner_cache_miss_count": 0},
+                        },
+                    ],
                 },
                 "report_path": "/tmp/qh_m2_gpu_jacobian.json",
             }
@@ -131,6 +143,10 @@ def test_matrix_report_surfaces_cold_exact_callback_buckets(capsys):
     assert "hlo_budget" in output
     assert "preconditioner_rz_apply" in output
     assert "budget_ok" in output
+    assert "Repeated fixed-boundary runs:" in output
+    assert "speedup" in output
+    assert "scan_cold_compile" in output
+    assert "scan_cache_hit" in output
     assert "Projected replay / JVP details:" in output
     assert "jvp_tape" in output
     assert "base_carries" in output
