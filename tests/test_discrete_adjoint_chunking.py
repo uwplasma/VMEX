@@ -311,6 +311,97 @@ def test_dynamic_replay_payload_signature_reuses_scalar_value_changes(monkeypatc
     assert float(np.asarray(stacked_b["max_update_rms_pre"])[0]) == 0.03
 
 
+def test_dynamic_replay_payload_can_store_invariant_preconditioner_cache_in_trace(monkeypatch):
+    monkeypatch.setenv("VMEC_JAX_DYNAMIC_REPLAY_BUCKET", "2")
+    monkeypatch.setenv("VMEC_JAX_OPT_STATIC_PRECOND_REPLAY_CARRY", "1")
+    traces = (
+        _fake_supported_dynamic_trace(
+            precond_cache_update=False,
+            constraint_cache_update=False,
+            lam_prec=np.asarray([2.0]),
+            precond_mats=np.asarray([3.0]),
+        ),
+        _fake_supported_dynamic_trace(
+            precond_cache_update=False,
+            constraint_cache_update=True,
+            lam_prec=np.asarray([4.0]),
+            precond_mats=np.asarray([5.0]),
+        ),
+    )
+    flags = da._static_flags_from_replay_step_traces(traces)
+
+    stacked, dynamic_flags, initial_carry, base_carries = da._build_dynamic_replay_payload(
+        traces,
+        flags,
+    )
+
+    assert dynamic_flags["preconditioner_cache_in_trace"] is True
+    assert len(initial_carry) == 18
+    assert len(base_carries) == 18
+    assert "cache_lam_prec_static" in stacked
+    assert "cache_prec_mats_static" in stacked
+    np.testing.assert_allclose(np.asarray(stacked["cache_lam_prec_static"]), [[2.0], [4.0]])
+    np.testing.assert_allclose(np.asarray(stacked["cache_prec_mats_static"]), [[3.0], [5.0]])
+
+
+def test_dynamic_replay_payload_keeps_preconditioner_cache_in_carry_when_any_step_updates(monkeypatch):
+    monkeypatch.setenv("VMEC_JAX_DYNAMIC_REPLAY_BUCKET", "2")
+    monkeypatch.setenv("VMEC_JAX_OPT_STATIC_PRECOND_REPLAY_CARRY", "1")
+    traces = (
+        _fake_supported_dynamic_trace(
+            precond_cache_update=False,
+            lam_prec=np.asarray([2.0]),
+            precond_mats=np.asarray([3.0]),
+        ),
+        _fake_supported_dynamic_trace(
+            precond_cache_update=True,
+            lam_prec=np.asarray([4.0]),
+            precond_mats=np.asarray([5.0]),
+        ),
+    )
+    flags = da._static_flags_from_replay_step_traces(traces)
+
+    stacked, dynamic_flags, initial_carry, base_carries = da._build_dynamic_replay_payload(
+        traces,
+        flags,
+    )
+
+    assert dynamic_flags["preconditioner_cache_in_trace"] is False
+    assert len(initial_carry) == 20
+    assert len(base_carries) == 20
+    assert "cache_lam_prec_static" not in stacked
+    assert "cache_prec_mats_static" not in stacked
+
+
+def test_dynamic_replay_payload_stacks_nested_preconditioner_cache_tree(monkeypatch):
+    monkeypatch.setenv("VMEC_JAX_DYNAMIC_REPLAY_BUCKET", "2")
+    monkeypatch.setenv("VMEC_JAX_OPT_STATIC_PRECOND_REPLAY_CARRY", "1")
+    traces = (
+        _fake_supported_dynamic_trace(
+            precond_cache_update=False,
+            lam_prec=np.asarray([2.0]),
+            precond_mats={"ar": np.asarray([3.0]), "nested": {"az": np.asarray([4.0])}},
+        ),
+        _fake_supported_dynamic_trace(
+            precond_cache_update=False,
+            lam_prec=np.asarray([4.0]),
+            precond_mats={"ar": np.asarray([5.0]), "nested": {"az": np.asarray([6.0])}},
+        ),
+    )
+    flags = da._static_flags_from_replay_step_traces(traces)
+
+    stacked, dynamic_flags, initial_carry, _base_carries = da._build_dynamic_replay_payload(
+        traces,
+        flags,
+    )
+
+    assert dynamic_flags["preconditioner_cache_in_trace"] is True
+    assert len(initial_carry) == 18
+    assert "cache_prec_mats_static" in stacked
+    np.testing.assert_allclose(np.asarray(stacked["cache_prec_mats_static"]["ar"]), [[3.0], [5.0]])
+    np.testing.assert_allclose(np.asarray(stacked["cache_prec_mats_static"]["nested"]["az"]), [[4.0], [6.0]])
+
+
 def test_single_state_jvp_uses_dynamic_column_replay(monkeypatch):
     calls = []
 

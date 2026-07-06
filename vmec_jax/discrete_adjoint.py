@@ -560,6 +560,9 @@ def build_residual_checkpoint_tape_direct(
                 step_trace_static_flags,
                 store_base_carries=(not bool(jvp_only)) or preserve_jvp_basepoint_carries,
             )
+            compact_diagnostics["dynamic_replay_trace_summary"]["preconditioner_cache_in_trace"] = bool(
+                dynamic_static_flags.get("preconditioner_cache_in_trace", False)
+            )
             _record_timing("tape_dynamic_payload_build_s", dynamic_payload_start)
             if not store_full_step_traces:
                 step_traces = ()
@@ -935,8 +938,11 @@ def _packed_dynamic_replay_step_from_carry(
     preconditioner_use_precomputed_tridi: bool | None = None,
     preconditioner_use_lax_tridi: bool | None = None,
 ):
-    if len(carry) != 20:
+    preconditioner_cache_in_trace = bool(static_flags.get("preconditioner_cache_in_trace", False))
+    expected_carry_len = 18 if preconditioner_cache_in_trace else 20
+    if len(carry) != expected_carry_len:
         raise ValueError("dynamic replay requires a stored VMEC layout and complete replay carry")
+    common_carry = carry[:18]
     (
         packed_state,
         inv_tau,
@@ -956,9 +962,12 @@ def _packed_dynamic_replay_step_from_carry(
         constraint_ard1_before,
         constraint_azd1_before,
         constraint_tcon_before,
-        cache_lam_prec_before,
-        cache_prec_mats_before,
-    ) = carry
+    ) = common_carry
+    if preconditioner_cache_in_trace:
+        cache_lam_prec_before = _dynamic_replay_value(trace, static_flags, "cache_lam_prec_static")
+        cache_prec_mats_before = _dynamic_replay_value(trace, static_flags, "cache_prec_mats_static")
+    else:
+        cache_lam_prec_before, cache_prec_mats_before = carry[18:]
     layout = static_flags.get("layout", trace["state_pre"].layout if isinstance(trace, dict) and "state_pre" in trace else None)
     if layout is None:
         raise ValueError("dynamic replay requires a stored VMEC layout")
@@ -1022,22 +1031,30 @@ def _packed_dynamic_replay_step_from_carry(
         if preconditioner_use_lax_tridi is None
         else preconditioner_use_lax_tridi
     )
-    refreshed_preconditioner_out = state_dependent_preconditioner_from_forces(
-        k=residual_out["k"],
-        static=static,
-        trig=trig,
-        dtype=jnp.asarray(packed_state).dtype,
-        jmax_override=preconditioner_jmax_override,
-        w_mode_mn=w_mode_mn,
-        use_precomputed=tridi_policy,
-        use_lax_tridi=lax_tridi_policy,
-    )
-    preconditioner_out = _dynamic_preconditioner_cache_current(
-        refreshed_preconditioner_out,
-        trace,
-        cache_lam_prec_before,
-        cache_prec_mats_before,
-    )
+    if preconditioner_cache_in_trace:
+        preconditioner_out = {
+            "lam_prec": jnp.asarray(cache_lam_prec_before),
+            "mats": cache_prec_mats_before,
+            "jmax": preconditioner_jmax_override,
+            "w_mode_mn": w_mode_mn,
+        }
+    else:
+        refreshed_preconditioner_out = state_dependent_preconditioner_from_forces(
+            k=residual_out["k"],
+            static=static,
+            trig=trig,
+            dtype=jnp.asarray(packed_state).dtype,
+            jmax_override=preconditioner_jmax_override,
+            w_mode_mn=w_mode_mn,
+            use_precomputed=tridi_policy,
+            use_lax_tridi=lax_tridi_policy,
+        )
+        preconditioner_out = _dynamic_preconditioner_cache_current(
+            refreshed_preconditioner_out,
+            trace,
+            cache_lam_prec_before,
+            cache_prec_mats_before,
+        )
     constraint_tcon0 = _dynamic_replay_value(trace, static_flags, "constraint_tcon0")
     if constraint_tcon0 is None or float(constraint_tcon0) == 0.0:
         refreshed_ard1 = jnp.zeros_like(jnp.asarray(constraint_ard1_before))
@@ -1062,8 +1079,9 @@ def _packed_dynamic_replay_step_from_carry(
     constraint_ard1_next = jnp.where(update_cache, refreshed_ard1, jnp.asarray(constraint_ard1_before))
     constraint_azd1_next = jnp.where(update_cache, refreshed_azd1, jnp.asarray(constraint_azd1_before))
     constraint_tcon_next = jnp.where(update_cache, refreshed_tcon, jnp.asarray(constraint_tcon_before))
-    cache_lam_prec_next = preconditioner_out["lam_prec"]
-    cache_prec_mats_next = preconditioner_out["mats"]
+    if not preconditioner_cache_in_trace:
+        cache_lam_prec_next = preconditioner_out["lam_prec"]
+        cache_prec_mats_next = preconditioner_out["mats"]
     force_out = preconditioned_force_channels_from_raw_forces(
         frzl=residual_out["frzl"],
         mats=preconditioner_out["mats"],
@@ -1150,7 +1168,7 @@ def _packed_dynamic_replay_step_from_carry(
         need_update_rms=False,
         divide_by_scalxc_for_update=static_flags["divide_by_scalxc_for_update"],
     )
-    return (
+    next_carry = (
         pack_state(step_out["state_post"]),
         inv_tau_next,
         fsq1,
@@ -1169,6 +1187,10 @@ def _packed_dynamic_replay_step_from_carry(
         constraint_ard1_next,
         constraint_azd1_next,
         constraint_tcon_next,
+    )
+    if preconditioner_cache_in_trace:
+        return next_carry
+    return next_carry + (
         cache_lam_prec_next,
         cache_prec_mats_next,
     )

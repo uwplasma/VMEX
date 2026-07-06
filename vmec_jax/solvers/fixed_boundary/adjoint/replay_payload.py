@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 import numpy as np
@@ -57,6 +58,58 @@ def _trace_with_replay_defaults(trace: dict[str, Any]) -> dict[str, Any]:
     out.setdefault("constraint_cache_update", constraint_update)
     out.setdefault("precond_cache_update", constraint_update)
     return out
+
+
+def _static_preconditioner_replay_carry_enabled() -> bool:
+    """Return whether replay should keep invariant preconditioner caches in the trace."""
+
+    return os.environ.get("VMEC_JAX_OPT_STATIC_PRECOND_REPLAY_CARRY", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _preconditioner_cache_update_flags(step_traces: tuple[dict[str, Any], ...]) -> tuple[bool, ...]:
+    """Return preconditioner-cache refresh flags with legacy constraint-cache fallback."""
+
+    return tuple(
+        bool(trace.get("precond_cache_update", trace.get("constraint_cache_update", False)))
+        for trace in step_traces
+    )
+
+
+def _is_numeric_replay_leaf(value) -> bool:
+    """Return whether ``value`` can be passed as a dynamic JAX replay argument."""
+
+    if value is None:
+        return True
+    try:
+        arr = np.asarray(value)
+    except Exception:
+        return False
+    return arr.dtype != np.dtype("O")
+
+
+def _preconditioner_cache_is_stackable(trace: dict[str, Any]) -> bool:
+    """Return whether the cached preconditioner matrix tree has numeric leaves."""
+
+    value = trace.get("precond_mats", None)
+    if value is None:
+        return True
+    return all(_is_numeric_replay_leaf(leaf) for leaf in jax.tree_util.tree_leaves(value))
+
+
+def _use_static_preconditioner_replay_carry(step_traces: tuple[dict[str, Any], ...]) -> bool:
+    """Return whether a dynamic replay tape can omit preconditioner caches from carry state."""
+
+    return bool(
+        step_traces
+        and _static_preconditioner_replay_carry_enabled()
+        and not any(_preconditioner_cache_update_flags(step_traces))
+        and all(_preconditioner_cache_is_stackable(trace) for trace in step_traces)
+    )
 
 
 def _replay_stack_values_fn():
@@ -138,6 +191,8 @@ def _build_dynamic_replay_payload(
 
     dynamic_static_flags = dict(static_flags)
     dynamic_static_flags["layout"] = step_traces[0]["state_pre"].layout
+    preconditioner_cache_in_trace = _use_static_preconditioner_replay_carry(step_traces)
+    dynamic_static_flags["preconditioner_cache_in_trace"] = preconditioner_cache_in_trace
     constant_candidates = (
         "wout_like",
         "trig",
@@ -159,6 +214,8 @@ def _build_dynamic_replay_payload(
         "zero_m1",
         *_DYNAMIC_REPLAY_SCALAR_TRACE_KEYS,
     ]
+    if preconditioner_cache_in_trace:
+        varying_keys.extend(("cache_lam_prec_static", "cache_prec_mats_static"))
     forced_varying_optional_keys = {
         "constraint_precond_active",
         "constraint_tcon_active",
@@ -198,20 +255,35 @@ def _build_dynamic_replay_payload(
             dynamic_static_flags[key] = first
         else:
             varying_keys.append(key)
-    filtered = tuple({key: trace[key] for key in varying_keys} | {"active": True} for trace in step_traces)
+    payload_traces = tuple(
+        _trace_with_static_preconditioner_cache(trace)
+        if preconditioner_cache_in_trace
+        else trace
+        for trace in step_traces
+    )
+    filtered = tuple({key: trace[key] for key in varying_keys} | {"active": True} for trace in payload_traces)
     target_len = _dynamic_replay_bucket_len(len(filtered))
     if target_len > len(filtered):
         pad_trace = dict(filtered[-1])
         pad_trace["active"] = False
         filtered = filtered + tuple(dict(pad_trace) for _ in range(target_len - len(filtered)))
     stacked = {
-        key: stack_values(*(trace[key] for trace in filtered))
+        key: jax.tree_util.tree_map(stack_values, *(trace[key] for trace in filtered))
         for key in filtered[0]
     }
-    initial_carry = _dynamic_replay_initial_carry(step_traces[0])
+    initial_carry = _dynamic_replay_initial_carry(
+        step_traces[0],
+        preconditioner_cache_in_trace=preconditioner_cache_in_trace,
+    )
     stacked_base_carries = None
     if store_base_carries:
-        base_carries = (initial_carry,) + tuple(_dynamic_replay_initial_carry(trace) for trace in step_traces[1:])
+        base_carries = (initial_carry,) + tuple(
+            _dynamic_replay_initial_carry(
+                trace,
+                preconditioner_cache_in_trace=preconditioner_cache_in_trace,
+            )
+            for trace in step_traces[1:]
+        )
         if target_len > len(base_carries):
             pad_carry = base_carries[-1]
             base_carries = base_carries + (pad_carry,) * (target_len - len(base_carries))
@@ -257,6 +329,7 @@ def _dynamic_replay_cache_key(*, static, stacked, static_flags, stacked_base_car
         int(static_flags["precond_jmax"]),
         _tridi_policy_cache_value(static_flags.get("preconditioner_use_precomputed_tridi", None)),
         _tridi_policy_cache_value(static_flags.get("preconditioner_use_lax_tridi", None)),
+        bool(static_flags.get("preconditioner_cache_in_trace", False)),
         _stacked_trace_signature(stacked),
     )
     if stacked_base_carries is not None:
@@ -324,33 +397,53 @@ def _carry_tangents_with_zero_aux(state_tangents, carry0):
     return (state_tangents,) + tuple(_zeros_like(arr) for arr in carry0[1:])
 
 
-def _dynamic_replay_initial_carry(trace):
+def _trace_dtype(trace):
+    return jnp.asarray(pack_state(trace["state_pre"])).dtype
+
+
+def _lam_prec_from_trace(trace, *, dtype):
+    value = trace.get("lam_prec", None)
+    if value is None:
+        return jnp.zeros_like(_trace_array(trace, "vLsc_before", dtype=dtype))
+    return jnp.asarray(value, dtype=dtype)
+
+
+def _precond_mats_from_trace(trace, *, dtype):
+    value = trace.get("precond_mats", None)
+    if value is None:
+        return jnp.zeros_like(_lam_prec_from_trace(trace, dtype=dtype))
+    return jax.tree_util.tree_map(lambda x: jnp.asarray(x, dtype=dtype), value)
+
+
+def _trace_array(trace, name: str, *, dtype, inactive_asym: bool = False):
+    lasym = bool(getattr(getattr(trace["state_pre"], "layout", None), "lasym", True))
+    if bool(inactive_asym) and not lasym:
+        return None
+    value = trace.get(name)
+    if value is None:
+        return jnp.zeros_like(jnp.asarray(trace["vRcc_before"], dtype=dtype))
+    return jnp.asarray(value, dtype=dtype)
+
+
+def _trace_with_static_preconditioner_cache(trace: dict[str, Any]) -> dict[str, Any]:
+    """Add cached preconditioner values as trace inputs for reduced-carry replay."""
+
+    dtype = _trace_dtype(trace)
+    out = dict(trace)
+    out["cache_lam_prec_static"] = _lam_prec_from_trace(trace, dtype=dtype)
+    out["cache_prec_mats_static"] = _precond_mats_from_trace(trace, dtype=dtype)
+    return out
+
+
+def _dynamic_replay_initial_carry(trace, *, preconditioner_cache_in_trace: bool = False):
     trace = _trace_with_replay_defaults(trace)
     packed_state = jnp.asarray(pack_state(trace["state_pre"]))
     dtype = packed_state.dtype
-    lasym = bool(getattr(getattr(trace["state_pre"], "layout", None), "lasym", True))
 
     def _arr(name: str, *, inactive_asym: bool = False):
-        if bool(inactive_asym) and not lasym:
-            return None
-        value = trace.get(name)
-        if value is None:
-            return jnp.zeros_like(jnp.asarray(trace["vRcc_before"], dtype=dtype))
-        return jnp.asarray(value, dtype=dtype)
+        return _trace_array(trace, name, dtype=dtype, inactive_asym=inactive_asym)
 
-    def _lam_prec_from_trace():
-        value = trace.get("lam_prec", None)
-        if value is None:
-            return jnp.zeros_like(_arr("vLsc_before"))
-        return jnp.asarray(value, dtype=dtype)
-
-    def _precond_mats_from_trace():
-        value = trace.get("precond_mats", None)
-        if value is None:
-            return jnp.zeros_like(_lam_prec_from_trace())
-        return jax.tree_util.tree_map(lambda x: jnp.asarray(x, dtype=dtype), value)
-
-    return (
+    carry = (
         packed_state,
         jnp.asarray(trace["inv_tau_before"], dtype=dtype),
         jnp.asarray(trace["fsq_prev_before"], dtype=dtype),
@@ -367,8 +460,12 @@ def _dynamic_replay_initial_carry(trace):
         _arr("vLcc_before", inactive_asym=True),
         _arr("vLss_before", inactive_asym=True),
         *_constraint_cache_from_trace(trace, dtype=dtype),
-        _lam_prec_from_trace(),
-        _precond_mats_from_trace(),
+    )
+    if preconditioner_cache_in_trace:
+        return carry
+    return carry + (
+        _lam_prec_from_trace(trace, dtype=dtype),
+        _precond_mats_from_trace(trace, dtype=dtype),
     )
 
 
