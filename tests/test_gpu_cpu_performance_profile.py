@@ -1191,6 +1191,8 @@ def test_fixed_boundary_profiler_prints_host_update_and_scan_timing(capsys):
                     "iterations": 2,
                     "update_state_s": 0.25,
                     "scan_total_s": 2.0,
+                    "scan_initial_compute_forces_s": 0.4,
+                    "scan_runner_explicit_compile_s": 0.6,
                     "scan_device_ready_s": 1.3,
                     "scan_runner_cache_hit_count": 1,
                 },
@@ -1205,6 +1207,8 @@ def test_fixed_boundary_profiler_prints_host_update_and_scan_timing(capsys):
     output = capsys.readouterr().out
     assert "update_state_s=0.25" in output
     assert "scan_total_s=2" in output
+    assert "scan_initial_compute_forces_s=0.4" in output
+    assert "scan_runner_explicit_compile_s=0.6" in output
     assert "scan_device_ready_s=1.3" in output
     assert "scan_runner_cache_hit_count=1" in output
 
