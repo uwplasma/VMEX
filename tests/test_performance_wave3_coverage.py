@@ -259,3 +259,47 @@ def test_exact_callback_matrix_dry_run_records_replay_tuning_without_gpu_run(tmp
 
     assert runs[0]["env"]["JAX_PLATFORMS"] == "cpu"
     assert runs[1]["env"]["JAX_PLATFORM_NAME"] == "gpu"
+
+
+def test_exact_callback_matrix_problem_all_dry_run_expands_qs_cases(tmp_path):
+    tool = _load_tool()
+    json_out = tmp_path / "matrix_all.json"
+    outdir = tmp_path / "profiles_all"
+
+    rc = tool.main(
+        [
+            "--dry-run",
+            "--mode",
+            "exact-callback",
+            "--backend",
+            "cpu",
+            "--problem",
+            "all",
+            "--max-mode",
+            "2",
+            "--callback",
+            "gradient",
+            "--repeats",
+            "2",
+            "--outdir",
+            str(outdir),
+            "--json-out",
+            str(json_out),
+        ]
+    )
+
+    payload = json.loads(json_out.read_text(encoding="utf-8"))
+    runs = payload["runs"]
+
+    assert rc == 0
+    assert payload["mode"] == "exact-callback"
+    assert payload["problems"] == ["qa", "qh", "qp"]
+    assert [run["problem"] for run in runs] == ["qa", "qh", "qp"]
+    assert [run["dry_run"] for run in runs] == [True, True, True]
+    assert [run["exit_code"] for run in runs] == [None, None, None]
+    for problem, run in zip(("qa", "qh", "qp"), runs, strict=True):
+        command = run["command"]
+        assert command[command.index("--problem") + 1] == problem
+        assert command[command.index("--callback") + 1] == "gradient"
+        assert command[command.index("--repeats") + 1] == "2"
+        assert f"exact_{problem}_m2_gradient" in run["report_path"]

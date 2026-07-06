@@ -537,6 +537,26 @@ def test_performance_matrix_exact_command_supports_qp_problem(tmp_path):
     assert command[command.index("--solver-device") + 1] == "gpu"
 
 
+def test_performance_matrix_exact_problem_all_expands_to_qs_cases():
+    tool = _load_tool()
+    args = tool._build_parser().parse_args(
+        [
+            "--mode",
+            "exact-callback",
+            "--backend",
+            "cpu",
+            "--problem",
+            "all",
+        ]
+    )
+
+    expanded = tool._expanded_matrix_args(args)
+
+    assert [item.problem for item in expanded] == ["qa", "qh", "qp"]
+    assert all(item.mode == "exact-callback" for item in expanded)
+    assert all(item is not args for item in expanded)
+
+
 def test_performance_matrix_exact_command_supports_auto_scalar_method(tmp_path):
     tool = _load_tool()
     args = tool._build_parser().parse_args(
