@@ -256,6 +256,8 @@ def test_exact_optimizer_profile_parser_accepts_cache_budget_args() -> None:
             "5",
             "--budget-replay-wall-s",
             "4",
+            "--budget-replay-dispatch-wall-s",
+            "3.5",
             "--budget-residual-tangent-wall-s",
             "3",
             "--budget-accepted-replays",
@@ -282,6 +284,7 @@ def test_exact_optimizer_profile_parser_accepts_cache_budget_args() -> None:
     assert args.budget_cache_entry_growth == 8
     assert args.budget_tape_build_wall_s == 5.0
     assert args.budget_replay_wall_s == 4.0
+    assert args.budget_replay_dispatch_wall_s == 3.5
     assert args.budget_residual_tangent_wall_s == 3.0
     assert args.budget_accepted_replays == 2
     assert args.budget_action == "warn"
@@ -684,6 +687,8 @@ def test_exact_optimizer_callback_report_schema_and_budget_status() -> None:
             "0.3",
             "--budget-replay-wall-s",
             "0.2",
+            "--budget-replay-dispatch-wall-s",
+            "0.15",
             "--budget-residual-tangent-wall-s",
             "0.1",
             "--budget-accepted-replays",
@@ -719,6 +724,7 @@ def test_exact_optimizer_callback_report_schema_and_budget_status() -> None:
         profile={
             "exact_tape_build": {"count": 1, "wall_time_s": 0.4, "mean_wall_time_s": 0.4},
             "jacobian_tape_replay": {"count": 1, "wall_time_s": 0.25, "mean_wall_time_s": 0.25},
+            "jacobian_tape_replay_dispatch": {"count": 1, "wall_time_s": 0.18, "mean_wall_time_s": 0.18},
             "jacobian_residual_tangents": {"count": 1, "wall_time_s": 0.15, "mean_wall_time_s": 0.15},
         },
         cache_before=cache_before,
@@ -752,9 +758,11 @@ def test_exact_optimizer_callback_report_schema_and_budget_status() -> None:
         "cache_entry_growth",
         "tape_build_wall_s",
         "replay_wall_s",
+        "replay_dispatch_wall_s",
         "residual_tangent_wall_s",
         "accepted_replays",
     }
+    assert report["budget_status"]["measurements"]["replay_dispatch_wall_s"] == 0.18
     assert report["budget_status"]["measurements"]["accepted_replays"] == 1
 
 
@@ -807,6 +815,8 @@ def test_exact_optimizer_callback_budget_status_counts_projected_replay() -> Non
             "jacobian",
             "--budget-replay-wall-s",
             "0.2",
+            "--budget-replay-dispatch-wall-s",
+            "0.2",
             "--budget-residual-tangent-wall-s",
             "0.1",
             "--budget-accepted-replays",
@@ -821,6 +831,11 @@ def test_exact_optimizer_callback_budget_status_counts_projected_replay() -> Non
         samples=[{"repeat": 0, "wall_time_s": 0.5, "profile_delta": {}}],
         profile={
             "jacobian_projected_replay_total": {"count": 1, "wall_time_s": 0.25, "mean_wall_time_s": 0.25},
+            "jacobian_projected_tape_replay_dispatch": {
+                "count": 1,
+                "wall_time_s": 0.22,
+                "mean_wall_time_s": 0.22,
+            },
             "jacobian_projected_replay_residual_tangents": {
                 "count": 1,
                 "wall_time_s": 0.15,
@@ -840,10 +855,12 @@ def test_exact_optimizer_callback_budget_status_counts_projected_replay() -> Non
         item["name"] for item in report["budget_status"]["exceeded"]
     } == {
         "replay_wall_s",
+        "replay_dispatch_wall_s",
         "residual_tangent_wall_s",
         "accepted_replays",
     }
     assert report["budget_status"]["measurements"]["replay_wall_s"] == 0.25
+    assert report["budget_status"]["measurements"]["replay_dispatch_wall_s"] == 0.22
     assert report["budget_status"]["measurements"]["residual_tangent_wall_s"] == 0.15
     assert report["budget_status"]["measurements"]["accepted_replays"] == 1
 
