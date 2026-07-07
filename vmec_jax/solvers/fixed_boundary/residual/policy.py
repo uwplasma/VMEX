@@ -214,38 +214,42 @@ class ResidualIterationHistories:
         return self.lists[key]
 
     def many(self, *keys: str) -> tuple[list[Any], ...]:
-        """Evaluate many for fixed-boundary VMEC solve and implicit differentiation."""
+        """Return several raw history channels in one call.
+
+        This keeps the production residual loop explicit while avoiding repeated
+        dictionary lookups when setup code unpacks the VMEC-style history arrays.
+        """
         return tuple(self.lists[key] for key in keys)
 
     def record_lists(self, *, free_boundary_enabled: bool) -> dict[str, Any]:
-        """Record record lists for fixed-boundary VMEC solve and implicit differentiation."""
+        """Return the mutable channels that receive one accepted/rejected row."""
         record_lists = {key: self.lists[key] for key in _RESIDUAL_ITER_HISTORY_RECORD_KEYS}
         record_lists["free_boundary_enabled"] = bool(free_boundary_enabled)
         return record_lists
 
     def terminal_lists(self, *, free_boundary_enabled: bool) -> dict[str, Any]:
-        """Evaluate terminal lists for fixed-boundary VMEC solve and implicit differentiation."""
+        """Return mutable end-of-iteration channels for final history append."""
         terminal_lists = {key: self.lists[key] for key in _RESIDUAL_ITER_TERMINAL_HISTORY_KEYS}
         terminal_lists["free_boundary_enabled"] = bool(free_boundary_enabled)
         return terminal_lists
 
     def step_sample_lists(self) -> dict[str, Any]:
-        """Evaluate step sample lists for fixed-boundary VMEC solve and implicit differentiation."""
+        """Return compact step-sample channels used by timing/optimization reports."""
         return {key: self.lists[key] for key in _RESIDUAL_ITER_STEP_SAMPLE_HISTORY_KEYS}
 
     def rollback_lists(self) -> tuple[list[Any], ...]:
-        """Evaluate rollback lists for fixed-boundary VMEC solve and implicit differentiation."""
+        """Return history lists that must roll back when VMEC repeats an iteration."""
         return tuple(self.lists[key] for key in _RESIDUAL_ITER_ROLLBACK_HISTORY_KEYS)
 
     def append_bad_jacobian(self, track_history: bool, min_tau: float, max_tau: float, bad_flag: bool) -> None:
-        """Evaluate append bad jacobian for fixed-boundary VMEC solve and implicit differentiation."""
+        """Record the Jacobian-sign diagnostic used for VMEC restart parity."""
         if bool(track_history):
             self.lists["min_tau_history"].append(float(min_tau))
             self.lists["max_tau_history"].append(float(max_tau))
             self.lists["bad_jacobian_history"].append(int(bool(bad_flag)))
 
     def append_physical_sample(self, *, track_history: bool, fsq: ResidualFsqSample, vmec_scalars: Any) -> None:
-        """Evaluate append physical sample for fixed-boundary VMEC solve and implicit differentiation."""
+        """Record physical residuals and VMEC table scalars before preconditioning."""
         for key, value in zip(("w_history", "fsqr2_history", "fsqz2_history", "fsql2_history"), fsq, strict=True):
             self.lists[key].append(float(value))
         if bool(track_history):
@@ -256,7 +260,7 @@ class ResidualIterationHistories:
                 self.lists[key].append(float(value))
 
     def freeb_source_history_lists(self) -> dict[str, list[Any]]:
-        """Evaluate freeb source history lists for fixed-boundary VMEC solve and implicit differentiation."""
+        """Return free-boundary NESTOR source channels filled during coupling."""
         return {
             "source_reused_history": self.lists["freeb_nestor_source_reused_history"],
             "provider_allows_source_reuse_history": self.lists["freeb_nestor_provider_allows_source_reuse_history"],
@@ -266,7 +270,7 @@ class ResidualIterationHistories:
         }
 
     def freeb_trial_history_lists(self) -> dict[str, list[Any]]:
-        """Evaluate freeb trial history lists for fixed-boundary VMEC solve and implicit differentiation."""
+        """Return trial-vacuum channels used by free-boundary restart diagnostics."""
         return {
             "trial_reused_history": self.lists["freeb_nestor_trial_reused_history"],
             "trial_solve_time_history": self.lists["freeb_nestor_trial_solve_time_history"],
@@ -436,7 +440,7 @@ class ResidualIterationHistories:
         return True
 
     def diagnostics(self) -> dict[str, Any]:
-        """Evaluate diagnostics for fixed-boundary VMEC solve and implicit differentiation."""
+        """Materialize history lists into array diagnostics for results and AD gates."""
         diag: dict[str, Any] = {"adjoint_step_trace": self.lists["adjoint_step_trace_history"]}
         diag.update(
             {key: np.asarray(self.lists[key], dtype=object) for key in _RESIDUAL_ITER_OBJECT_HISTORY_DIAGNOSTICS}
