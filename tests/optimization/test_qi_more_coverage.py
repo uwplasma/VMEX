@@ -1,6 +1,4 @@
 from __future__ import annotations
-
-import builtins
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,21 +9,7 @@ import pytest
 import vmec_jax.quasi_isodynamic.optimization as qio
 
 
-def test_load_basin_prefilter_tools_reports_source_checkout_requirement(monkeypatch: pytest.MonkeyPatch) -> None:
-    real_import = builtins.__import__
-
-    def blocked_import(name, globals_=None, locals_=None, fromlist=(), level=0):  # noqa: ANN001
-        if name in {"tools.diagnostics.qi.qi_basin_survey", "tools.diagnostics.qi.qi_landscape_scan"}:
-            raise ModuleNotFoundError(name)
-        return real_import(name, globals_, locals_, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", blocked_import)
-
-    with pytest.raises(RuntimeError, match="source checkout"):
-        qio._load_basin_prefilter_tools()
-
-
-def test_load_basin_prefilter_tools_imports_repo_helpers() -> None:
+def test_load_basin_prefilter_tools_imports_package_helpers() -> None:
     tools = qio._load_basin_prefilter_tools()
 
     assert len(tools) == 5

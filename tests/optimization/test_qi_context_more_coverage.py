@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import builtins
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -127,23 +126,19 @@ def test_seed_term_normalisation_uses_context_and_disables_cleanly(tmp_path: Pat
     assert all(max(abs(n), abs(m)) <= 1 for _name, (n, m), _value in default_terms)
 
 
-def test_parse_float_sequence_and_lazy_basin_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_parse_float_sequence_and_basin_prefilter_tools_are_package_owned() -> None:
     assert qio._parse_float_sequence(None, name="radii") is None
     assert qio._parse_float_sequence("", name="radii") is None
     assert qio._parse_float_sequence("0.1, 0.2 3", name="radii") == (0.1, 0.2, 3.0)
     with pytest.raises(ValueError, match="radii must be"):
         qio._parse_float_sequence("0.1 bad", name="radii")
 
-    real_import = builtins.__import__
-
-    def blocked_import(name, globals_=None, locals_=None, fromlist=(), level=0):  # noqa: ANN001
-        if name in {"tools.diagnostics.qi.qi_basin_survey", "tools.diagnostics.qi.qi_landscape_scan"}:
-            raise ModuleNotFoundError(name)
-        return real_import(name, globals_, locals_, fromlist, level)
-
-    monkeypatch.setattr(builtins, "__import__", blocked_import)
-    with pytest.raises(RuntimeError, match="source checkout"):
-        qio._load_basin_prefilter_tools()
+    helpers = qio._load_basin_prefilter_tools()
+    assert [helper.__name__ for helper in helpers[:3]] == [
+        "SurveyTargets",
+        "generate_basin_candidates",
+        "rank_candidate_records",
+    ]
 
 
 def test_basin_prefilter_options_use_explicit_context(tmp_path: Path) -> None:

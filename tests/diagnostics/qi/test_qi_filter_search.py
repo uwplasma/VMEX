@@ -8,13 +8,13 @@ import pytest
 
 from tools.diagnostics.qi.qi_filter_search import (
     FilterSearchOptions,
-    SurveyTargets,
     filter_decision,
     filter_phase,
     gate_status,
     generate_trial_directions,
     main,
 )
+from vmec_jax.quasi_isodynamic.seed_search import SurveyTargets
 
 
 def _metrics(**overrides):

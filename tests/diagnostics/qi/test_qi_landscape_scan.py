@@ -7,16 +7,16 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from tools.diagnostics.qi.qi_landscape_scan import (
-    METRICS,
+from tools.diagnostics.qi.qi_landscape_scan import plot_report
+from vmec_jax.optimization import BoundaryParamSpec
+from vmec_jax.quasi_isodynamic.seed_search import (
+    LANDSCAPE_METRICS as METRICS,
     ScanAxis,
     choose_default_dofs,
     parse_dofs,
-    plot_report,
     resolve_input_path,
     scan_landscape_records,
 )
-from vmec_jax.optimization import BoundaryParamSpec
 
 
 def _spec(name: str, index: int) -> BoundaryParamSpec:

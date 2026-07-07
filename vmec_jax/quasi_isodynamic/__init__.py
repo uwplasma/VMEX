@@ -12,6 +12,8 @@ This package keeps all QI-specific code behind one domain name:
   example scripts.
 - `optimization_terms.py` adapts QI, mirror, elongation, and LgradB metrics to
   the fixed-boundary least-squares objective tuple API.
+- `seed_search.py` contains bounded QI basin-survey and local landscape-scan
+  primitives used by both examples and developer diagnostics.
 """
 
 from .diagnostics import (
@@ -39,6 +41,18 @@ from .objectives import (
     quasi_isodynamic_residual_from_boozer_output,
     quasi_isodynamic_residual_from_state,
 )
+from .seed_search import (
+    BasinCandidate,
+    ScanAxis,
+    SurveyTargets,
+    axis_order,
+    axis_from_span,
+    basin_score,
+    choose_default_dofs,
+    generate_basin_candidates,
+    rank_candidate_records,
+    scan_landscape_records,
+)
 
 __all__ = [
     "QI_DIAGNOSTIC_VERSION",
@@ -47,6 +61,7 @@ __all__ = [
     "annotate_qi_seed_suitability",
     "boozer_output_from_state",
     "boundary_max_elongation_from_rz",
+    "BasinCandidate",
     "lgradb_from_state",
     "lgradb_penalty_from_state",
     "legacy_qi_branch_shuffle_diagnostic_from_boozer_output",
@@ -62,4 +77,13 @@ __all__ = [
     "quasi_isodynamic_residual_from_boozer_output",
     "quasi_isodynamic_residual_from_state",
     "rank_qi_seed_records",
+    "ScanAxis",
+    "SurveyTargets",
+    "axis_order",
+    "axis_from_span",
+    "basin_score",
+    "choose_default_dofs",
+    "generate_basin_candidates",
+    "rank_candidate_records",
+    "scan_landscape_records",
 ]

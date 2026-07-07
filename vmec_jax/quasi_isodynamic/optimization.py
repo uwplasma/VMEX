@@ -21,33 +21,26 @@ from vmec_jax.optimization import boundary_param_names, create_x_scale
 from vmec_jax.optimizers.fixed_boundary.workflow_outputs import json_safe as _jsonable
 from vmec_jax.optimizers.fixed_boundary.workflow_outputs import write_json_atomic as _write_json_atomic
 from vmec_jax.quasi_isodynamic.diagnostics import QISeedSuitabilityTargets, annotate_qi_seed_suitability
+from vmec_jax.quasi_isodynamic.seed_search import (
+    SurveyTargets,
+    build_stage as build_seed_search_stage,
+    generate_basin_candidates,
+    rank_candidate_records,
+    write_basin_csv,
+)
 
 QI_ENGINEERING_ASPECT_MAX = 7.0
 
 
 def _load_basin_prefilter_tools():
-    """Load repo-local diagnostic helpers only when the optional prefilter runs.
+    """Return package-owned QI basin-prefilter helpers.
 
-    ``tools/`` is intentionally excluded from the wheel, so importing this
-    public module must not require those scripts for normal installed-package
-    use. The example tree can still use the large-step basin prefilter when run
-    from a source checkout.
+    Older versions loaded these helpers from ``tools/diagnostics``.  They now
+    live in package code so installed vmec_jax can run the bounded prefilter
+    without a source checkout.
     """
 
-    try:
-        from tools.diagnostics.qi.qi_basin_survey import (
-            SurveyTargets,
-            generate_basin_candidates,
-            rank_candidate_records,
-            write_csv,
-        )
-        from tools.diagnostics.qi.qi_landscape_scan import build_stage as build_diagnostic_stage
-    except ModuleNotFoundError as exc:
-        raise RuntimeError(
-            "The QI basin prefilter requires vmec_jax to be run from a source checkout "
-            "with the repo-local tools/diagnostics scripts available."
-        ) from exc
-    return SurveyTargets, generate_basin_candidates, rank_candidate_records, write_csv, build_diagnostic_stage
+    return SurveyTargets, generate_basin_candidates, rank_candidate_records, write_basin_csv, build_seed_search_stage
 
 
 @dataclass(frozen=True)

@@ -6,12 +6,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tools.diagnostics.qi.qi_basin_survey import (
+from tools.diagnostics.qi.qi_basin_survey import main
+from vmec_jax.quasi_isodynamic.seed_search import (
     BasinCandidate,
     SurveyTargets,
     basin_score,
     generate_basin_candidates,
-    main,
     rank_candidate_records,
 )
 
