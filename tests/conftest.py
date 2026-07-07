@@ -100,6 +100,30 @@ def circular_coil_params(
     )
 
 
+def regularized_circular_coil_params(
+    *,
+    current: float,
+    radius: float,
+    n_segments: int,
+    major_offset: float = 0.0,
+    out_of_plane: float = 0.0,
+    nfp: int = 1,
+    stellsym: bool = False,
+):
+    """Build the regularized one-coil fixture used by adjoint tests."""
+
+    return circular_coil_params(
+        current=current,
+        radius=radius,
+        n_segments=n_segments,
+        major_offset=major_offset,
+        out_of_plane=out_of_plane,
+        nfp=nfp,
+        stellsym=stellsym,
+        regularization_epsilon=1.0e-9,
+    )
+
+
 def off_axis_circular_coil_params(
     *,
     current: float = 2.1e5,

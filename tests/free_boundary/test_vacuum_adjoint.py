@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from conftest import circular_coil_params as _shared_circular_coil_params
+from conftest import regularized_circular_coil_params as _regularized_circular_coil_params
 from vmec_jax._compat import enable_x64
 from vmec_jax.external_fields import sample_coil_field_cylindrical
 from vmec_jax.free_boundary import (
@@ -64,24 +64,6 @@ def _well_conditioned_matrix():
     )
     b = jnp.asarray([1.0, -0.4, 0.7])
     return A, b
-
-
-def _single_circular_coil_params(
-    *,
-    radius,
-    current,
-    n_segments: int,
-    out_of_plane: float = 0.0,
-):
-    """Build the one-coil circular Fourier fixture used by adjoint gates."""
-
-    return _shared_circular_coil_params(
-        current=current,
-        radius=radius,
-        n_segments=n_segments,
-        out_of_plane=out_of_plane,
-        regularization_epsilon=1.0e-9,
-    )
 
 
 def test_dense_vacuum_solve_matches_jnp_linalg_solve():
@@ -1012,7 +994,7 @@ def test_jax_visible_controller_direct_coil_gradient_matches_fd():
     from vmec_jax._compat import jnp
 
     enable_x64(True)
-    coil_params = _single_circular_coil_params(radius=1.27, current=4.8e6, n_segments=32)
+    coil_params = _regularized_circular_coil_params(radius=1.27, current=4.8e6, n_segments=32)
     dofs_direction = jnp.zeros_like(coil_params.base_curve_dofs)
     dofs_direction = dofs_direction.at[0, 0, 2].set(0.012)
     dofs_direction = dofs_direction.at[0, 1, 1].set(-0.010)
@@ -1085,7 +1067,7 @@ def test_masked_controller_direct_coil_projected_mode_ad_matches_fd_for_current_
     from vmec_jax._compat import jnp
 
     enable_x64(True)
-    coil_params = _single_circular_coil_params(radius=1.31, current=4.6e6, n_segments=32)
+    coil_params = _regularized_circular_coil_params(radius=1.31, current=4.6e6, n_segments=32)
     controls = {
         "gain": jnp.asarray([0.12, 0.10, 0.09, 0.08, 0.75], dtype=float),
         "phase": jnp.asarray([0.06, 0.24, 0.43, 0.67, 0.91], dtype=float),
@@ -1133,12 +1115,8 @@ def test_masked_controller_direct_coil_projected_mode_ad_matches_fd_for_current_
     def boundary_from_state(state, control):
         shape = jnp.asarray([[0.24, -0.16], [0.32, -0.21]], dtype=float)
         return {
-            "R": jnp.asarray([[0.76, 0.84], [0.90, 0.79]], dtype=float)
-            + 0.026 * state[0]
-            + 0.014 * state[2] * shape,
-            "Z": jnp.asarray([[0.11, -0.12], [0.17, -0.18]], dtype=float)
-            + 0.024 * state[1]
-            - 0.010 * state[2] * shape,
+            "R": jnp.asarray([[0.76, 0.84], [0.90, 0.79]], dtype=float) + 0.026 * state[0] + 0.014 * state[2] * shape,
+            "Z": jnp.asarray([[0.11, -0.12], [0.17, -0.18]], dtype=float) + 0.024 * state[1] - 0.010 * state[2] * shape,
             "phi": control["phase"] + phi_offsets,
             "Ru": jnp.asarray([[0.028, -0.038], [0.020, 0.048]], dtype=float) + 0.006 * state[2],
             "Zu": jnp.asarray([[0.205, 0.218], [0.192, 0.211]], dtype=float) - 0.005 * state[2],
@@ -1257,7 +1235,7 @@ def test_accepted_controller_direct_coil_projected_mode_ad_matches_fd_and_reject
     from vmec_jax._compat import jnp, tree_util
 
     enable_x64(True)
-    coil_params = _single_circular_coil_params(radius=1.28, current=4.4e6, n_segments=32)
+    coil_params = _regularized_circular_coil_params(radius=1.28, current=4.4e6, n_segments=32)
     controls = {
         "gain": jnp.asarray([0.10, 4.0, 0.09, 0.08, 0.75], dtype=float),
         "phase": jnp.asarray([0.04, 0.21, 0.40, 0.63, 0.88], dtype=float),
@@ -1306,12 +1284,8 @@ def test_accepted_controller_direct_coil_projected_mode_ad_matches_fd_and_reject
     def boundary_from_state(state, control):
         shape = jnp.asarray([[0.21, -0.15], [0.30, -0.20]], dtype=float)
         return {
-            "R": jnp.asarray([[0.75, 0.83], [0.89, 0.78]], dtype=float)
-            + 0.024 * state[0]
-            + 0.012 * state[2] * shape,
-            "Z": jnp.asarray([[0.10, -0.12], [0.16, -0.17]], dtype=float)
-            + 0.022 * state[1]
-            - 0.009 * state[2] * shape,
+            "R": jnp.asarray([[0.75, 0.83], [0.89, 0.78]], dtype=float) + 0.024 * state[0] + 0.012 * state[2] * shape,
+            "Z": jnp.asarray([[0.10, -0.12], [0.16, -0.17]], dtype=float) + 0.022 * state[1] - 0.009 * state[2] * shape,
             "phi": control["phase"] + phi_offsets,
             "Ru": jnp.asarray([[0.027, -0.036], [0.019, 0.046]], dtype=float) + 0.005 * state[2],
             "Zu": jnp.asarray([[0.202, 0.216], [0.190, 0.209]], dtype=float) - 0.004 * state[2],
@@ -1431,7 +1405,9 @@ def test_accepted_controller_direct_coil_projected_mode_ad_matches_fd_and_reject
         checkpoint_steps=True,
     )
     tree_util.tree_map(
-        lambda actual, expected: np.testing.assert_allclose(np.asarray(actual), np.asarray(expected), rtol=0.0, atol=0.0),
+        lambda actual, expected: np.testing.assert_allclose(
+            np.asarray(actual), np.asarray(expected), rtol=0.0, atol=0.0
+        ),
         changed_rejected_run["state"],
         current_check["run"]["state"],
     )
@@ -1663,8 +1639,7 @@ def test_jax_vmec_mode_matrix_gradient_wrt_grpmn_matches_finite_difference(lasym
     rows = np.arange(mnpd2, dtype=float)[:, None]
     cols = np.arange(nuv3, dtype=float)[None, :]
     grpmn = jnp.asarray(
-        0.03 * np.sin(0.2 + 0.15 * rows + 0.1 * cols)
-        + 0.01 * np.cos(0.25 * rows - 0.35 * cols),
+        0.03 * np.sin(0.2 + 0.15 * rows + 0.1 * cols) + 0.01 * np.cos(0.25 * rows - 0.35 * cols),
         dtype=float,
     )
     direction = jnp.asarray(np.cos(0.4 * rows + 0.2 * cols), dtype=float)
@@ -2579,7 +2554,9 @@ def test_free_boundary_adjoint_operator_validation_errors_are_explicit():
         vmec_source_from_gsource_jax(np.ones(4), onp=1.0, lasym=False)
 
     with pytest.raises(ValueError, match="sin_basis must be a 2D array"):
-        mode_rhs_from_gsource_jax(np.ones(3), sin_basis=np.ones(3), xmpot=np.arange(3), n_raw=np.arange(3), onp=1.0, lasym=True)
+        mode_rhs_from_gsource_jax(
+            np.ones(3), sin_basis=np.ones(3), xmpot=np.arange(3), n_raw=np.arange(3), onp=1.0, lasym=True
+        )
     with pytest.raises(ValueError, match="cos_basis is required"):
         mode_rhs_from_gsource_jax(
             np.ones(3),
@@ -2601,17 +2578,39 @@ def test_free_boundary_adjoint_operator_validation_errors_are_explicit():
         )
 
     with pytest.raises(ValueError, match="grpmn must be a 2D array"):
-        mode_matrix_from_grpmn_jax(np.ones(4), sin_basis=np.ones((3, 2)), xmpot=np.arange(2), n_raw=np.arange(2), lasym=False)
+        mode_matrix_from_grpmn_jax(
+            np.ones(4), sin_basis=np.ones((3, 2)), xmpot=np.arange(2), n_raw=np.arange(2), lasym=False
+        )
     with pytest.raises(ValueError, match="sin_basis must be a 2D array"):
-        mode_matrix_from_grpmn_jax(np.ones((2, 3)), sin_basis=np.ones(2), xmpot=np.arange(2), n_raw=np.arange(2), lasym=False)
+        mode_matrix_from_grpmn_jax(
+            np.ones((2, 3)), sin_basis=np.ones(2), xmpot=np.arange(2), n_raw=np.arange(2), lasym=False
+        )
     with pytest.raises(ValueError, match="invalid_grpmn_shape"):
-        mode_matrix_from_grpmn_jax(np.ones((1, 3)), sin_basis=np.ones((3, 2)), xmpot=np.arange(2), n_raw=np.arange(2), lasym=False)
+        mode_matrix_from_grpmn_jax(
+            np.ones((1, 3)), sin_basis=np.ones((3, 2)), xmpot=np.arange(2), n_raw=np.arange(2), lasym=False
+        )
     with pytest.raises(ValueError, match="invalid_grpmn_shape_lasym"):
-        mode_matrix_from_grpmn_jax(np.ones((2, 3)), sin_basis=np.ones((3, 2)), xmpot=np.arange(2), n_raw=np.arange(2), lasym=True, cos_basis=np.ones((3, 2)))
+        mode_matrix_from_grpmn_jax(
+            np.ones((2, 3)),
+            sin_basis=np.ones((3, 2)),
+            xmpot=np.arange(2),
+            n_raw=np.arange(2),
+            lasym=True,
+            cos_basis=np.ones((3, 2)),
+        )
     with pytest.raises(ValueError, match="cos_basis is required"):
-        mode_matrix_from_grpmn_jax(np.ones((4, 3)), sin_basis=np.ones((3, 2)), xmpot=np.arange(2), n_raw=np.arange(2), lasym=True)
+        mode_matrix_from_grpmn_jax(
+            np.ones((4, 3)), sin_basis=np.ones((3, 2)), xmpot=np.arange(2), n_raw=np.arange(2), lasym=True
+        )
     with pytest.raises(ValueError, match="cos_basis must match"):
-        mode_matrix_from_grpmn_jax(np.ones((4, 3)), sin_basis=np.ones((3, 2)), cos_basis=np.ones((3, 1)), xmpot=np.arange(2), n_raw=np.arange(2), lasym=True)
+        mode_matrix_from_grpmn_jax(
+            np.ones((4, 3)),
+            sin_basis=np.ones((3, 2)),
+            cos_basis=np.ones((3, 1)),
+            xmpot=np.arange(2),
+            n_raw=np.arange(2),
+            lasym=True,
+        )
 
     with pytest.raises(ValueError, match="R must be a 2D"):
         vmec_nonsingular_terms_from_bexni_jax(
@@ -2843,7 +2842,7 @@ def _toy_coil_vacuum_response(*, current_scale: float = 0.0, radius_shift: float
 
     from vmec_jax._compat import jnp
 
-    params = _single_circular_coil_params(
+    params = _regularized_circular_coil_params(
         radius=1.15 + 0.02 * radius_shift,
         current=3.0e7 * (1.0 + 0.01 * current_scale),
         n_segments=96,
@@ -2876,7 +2875,7 @@ def _toy_coil_nonlinear_response(*, current_scale: float = 0.0, radius_shift: fl
 
     from vmec_jax._compat import jnp
 
-    params = _single_circular_coil_params(
+    params = _regularized_circular_coil_params(
         radius=1.25 + 0.03 * radius_shift,
         current=6.0e6 * (1.0 + 0.02 * current_scale),
         n_segments=96,
@@ -2920,7 +2919,7 @@ def _toy_coil_free_boundary_fixed_point_response(
 
     from vmec_jax._compat import jnp
 
-    coil_params = _single_circular_coil_params(
+    coil_params = _regularized_circular_coil_params(
         radius=1.28 + 0.02 * radius_shift,
         current=4.5e6 * (1.0 + 0.015 * current_scale),
         n_segments=64,
@@ -2979,7 +2978,7 @@ def _toy_coil_projected_mode_fixed_point_response(
 
     from vmec_jax._compat import jnp
 
-    coil_params = _single_circular_coil_params(
+    coil_params = _regularized_circular_coil_params(
         radius=1.34 + 0.025 * radius_shift,
         current=5.5e6 * (1.0 + 0.012 * current_scale),
         n_segments=64,
@@ -3200,7 +3199,7 @@ def test_projected_mode_fixed_point_objective_exposes_components():
     assert np.isfinite(float(value))
     assert float(value) > 0.0
 
-    coil_params = _single_circular_coil_params(radius=1.34, current=5.5e6, n_segments=32)
+    coil_params = _regularized_circular_coil_params(radius=1.34, current=5.5e6, n_segments=32)
     phi = jnp.asarray([[0.05, 0.45], [0.85, 1.25]], dtype=float)
     sin_basis = jnp.asarray(
         [
@@ -3256,7 +3255,7 @@ def test_projected_mode_fixed_point_objective_value_and_grad_wrt_coil_pytree():
     from vmec_jax._compat import jnp
 
     enable_x64(True)
-    coil_params = _single_circular_coil_params(radius=1.34, current=5.5e6, n_segments=32)
+    coil_params = _regularized_circular_coil_params(radius=1.34, current=5.5e6, n_segments=32)
     phi = jnp.asarray([[0.05, 0.45], [0.85, 1.25]], dtype=float)
     sin_basis = jnp.asarray(
         [
@@ -3276,11 +3275,8 @@ def test_projected_mode_fixed_point_objective_value_and_grad_wrt_coil_pytree():
     def boundary_from_state(state):
         shape = jnp.asarray([[0.25, -0.15], [0.35, -0.20]], dtype=float)
         return {
-            "R": jnp.asarray([[0.74, 0.83], [0.89, 0.78]], dtype=float)
-            + 0.02 * state[0]
-            + 0.01 * state[1] * shape,
-            "Z": jnp.asarray([[0.10, -0.13], [0.18, -0.16]], dtype=float)
-            + 0.025 * state[1],
+            "R": jnp.asarray([[0.74, 0.83], [0.89, 0.78]], dtype=float) + 0.02 * state[0] + 0.01 * state[1] * shape,
+            "Z": jnp.asarray([[0.10, -0.13], [0.18, -0.16]], dtype=float) + 0.025 * state[1],
             "phi": phi,
             "Ru": jnp.asarray([[0.03, -0.04], [0.02, 0.05]], dtype=float),
             "Zu": jnp.asarray([[0.20, 0.22], [0.19, 0.21]], dtype=float),
@@ -3368,7 +3364,7 @@ def test_lasym_projected_mode_fixed_point_objective_ad_matches_central_fd_for_co
     from vmec_jax._compat import jnp
 
     enable_x64(True)
-    coil_params = _single_circular_coil_params(
+    coil_params = _regularized_circular_coil_params(
         radius=1.29,
         current=4.2e6,
         n_segments=32,
@@ -3414,12 +3410,8 @@ def test_lasym_projected_mode_fixed_point_objective_ad_matches_central_fd_for_co
     def boundary_from_state(state):
         shape = jnp.asarray([[0.20, -0.13], [0.31, -0.22]], dtype=float)
         return {
-            "R": jnp.asarray([[0.73, 0.84], [0.88, 0.79]], dtype=float)
-            + 0.018 * state[0]
-            + 0.012 * state[2] * shape,
-            "Z": jnp.asarray([[0.12, -0.14], [0.20, -0.17]], dtype=float)
-            + 0.020 * state[1]
-            - 0.010 * state[2] * shape,
+            "R": jnp.asarray([[0.73, 0.84], [0.88, 0.79]], dtype=float) + 0.018 * state[0] + 0.012 * state[2] * shape,
+            "Z": jnp.asarray([[0.12, -0.14], [0.20, -0.17]], dtype=float) + 0.020 * state[1] - 0.010 * state[2] * shape,
             "phi": phi,
             "Ru": jnp.asarray([[0.025, -0.035], [0.018, 0.045]], dtype=float) + 0.004 * state[2],
             "Zu": jnp.asarray([[0.19, 0.22], [0.18, 0.21]], dtype=float) - 0.003 * state[2],
@@ -3607,7 +3599,7 @@ def _toy_coil_projected_vacuum_response(*, current_scale: float = 0.0, radius_sh
 
     from vmec_jax._compat import jnp
 
-    params = _single_circular_coil_params(
+    params = _regularized_circular_coil_params(
         radius=1.45 + 0.03 * radius_shift,
         current=2.5e7 * (1.0 + 0.02 * current_scale),
         n_segments=128,
@@ -3656,7 +3648,7 @@ def _toy_coil_projected_mode_vacuum_response(*, current_scale: float = 0.0, radi
 
     from vmec_jax._compat import jnp
 
-    params = _single_circular_coil_params(
+    params = _regularized_circular_coil_params(
         radius=1.45 + 0.03 * radius_shift,
         current=2.5e7 * (1.0 + 0.02 * current_scale),
         n_segments=128,
@@ -3727,8 +3719,7 @@ def test_dense_vacuum_adjoint_chain_through_projection_wrt_current_matches_finit
     exact = jax.grad(lambda scale: _toy_coil_projected_vacuum_response(current_scale=scale))(0.0)
     eps = 1.0e-4
     fd = (
-        _toy_coil_projected_vacuum_response(current_scale=eps)
-        - _toy_coil_projected_vacuum_response(current_scale=-eps)
+        _toy_coil_projected_vacuum_response(current_scale=eps) - _toy_coil_projected_vacuum_response(current_scale=-eps)
     ) / (2.0 * eps)
 
     assert abs(float(exact)) > 1.0e-8
@@ -3746,8 +3737,7 @@ def test_dense_vacuum_adjoint_chain_through_projection_wrt_geometry_matches_fini
     exact = jax.grad(lambda shift: _toy_coil_projected_vacuum_response(radius_shift=shift))(0.0)
     eps = 1.0e-4
     fd = (
-        _toy_coil_projected_vacuum_response(radius_shift=eps)
-        - _toy_coil_projected_vacuum_response(radius_shift=-eps)
+        _toy_coil_projected_vacuum_response(radius_shift=eps) - _toy_coil_projected_vacuum_response(radius_shift=-eps)
     ) / (2.0 * eps)
 
     assert abs(float(exact)) > 1.0e-8
