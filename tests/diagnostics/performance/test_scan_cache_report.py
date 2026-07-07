@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from tools.diagnostics.performance import accelerated_scan_cache_probe as probe
+from tools.diagnostics.performance import scan_cache_report as report
 from vmec_jax.state import StateLayout, VMECState
 
 
@@ -28,7 +28,7 @@ def _state() -> VMECState:
 def test_perturb_boundary_edge_changes_only_requested_edge_coefficient() -> None:
     state = _state()
 
-    perturbed = probe._perturb_boundary_edge(state, coefficient_index=1, perturbation=1.0e-4)
+    perturbed = report._perturb_boundary_edge(state, coefficient_index=1, perturbation=1.0e-4)
 
     np.testing.assert_allclose(np.asarray(perturbed.Rcos)[:-1], np.asarray(state.Rcos)[:-1])
     assert np.asarray(perturbed.Rcos)[-1, 1] == np.asarray(state.Rcos)[-1, 1] + 1.0e-4
@@ -37,15 +37,15 @@ def test_perturb_boundary_edge_changes_only_requested_edge_coefficient() -> None
     np.testing.assert_allclose(np.asarray(perturbed.Zsin), np.asarray(state.Zsin))
 
 
-def test_run_probe_reports_cache_reuse_with_same_shape_boundary_update(monkeypatch, tmp_path) -> None:
+def test_run_report_records_cache_reuse_with_same_shape_boundary_update(monkeypatch, tmp_path) -> None:
     state = _state()
     cfg = SimpleNamespace(nfp=4, ns=35, mpol=2, ntor=2, lasym=False)
     indata = SimpleNamespace(get_float=lambda _name, default=1.0: 0.9)
     static = object()
     calls = []
 
-    monkeypatch.setattr(probe, "_build_initial_state", lambda *_args, **_kwargs: (cfg, indata, static, state))
-    monkeypatch.setattr(probe, "_clear_caches", lambda: None)
+    monkeypatch.setattr(report, "_build_initial_state", lambda *_args, **_kwargs: (cfg, indata, static, state))
+    monkeypatch.setattr(report, "_clear_caches", lambda: None)
 
     def fake_run_accelerated_scan(**kwargs):
         calls.append(kwargs["state"])
@@ -67,7 +67,7 @@ def test_run_probe_reports_cache_reuse_with_same_shape_boundary_update(monkeypat
             "timing": {},
         }
 
-    monkeypatch.setattr(probe, "_run_accelerated_scan", fake_run_accelerated_scan)
+    monkeypatch.setattr(report, "_run_accelerated_scan", fake_run_accelerated_scan)
 
     args = SimpleNamespace(
         input=tmp_path / "input.fake",
@@ -85,7 +85,7 @@ def test_run_probe_reports_cache_reuse_with_same_shape_boundary_update(monkeypat
         jax_platforms=None,
     )
 
-    result = probe.run_probe(args)
+    result = report.run_report(args)
 
     assert result["cache_reuse_pass"] is True
     assert result["cache_reuse_summary"]["same_shape_cache_hit"] is True

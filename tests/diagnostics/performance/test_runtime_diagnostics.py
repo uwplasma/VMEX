@@ -21,7 +21,7 @@ def _load_tool(name: str):
         "render_freeb_single_stage_readme",
     }
     parity_tools = {
-        "scan_fallback_parity_probe",
+        "scan_fallback_parity_report",
         "vmec2000_exec_stage_trace_compare",
         "vmec2000_exec_freeb_scalpot_compare",
     }
@@ -210,8 +210,8 @@ def test_runtime_matrix_scan_profile_env_flags_are_explicit() -> None:
     assert env["VMEC_JAX_SCAN_ARG_SUMMARY"] == "1"
 
 
-def test_scan_fallback_parity_probe_state_metrics_and_payload_compare(tmp_path):
-    mod = _load_tool("scan_fallback_parity_probe")
+def test_scan_fallback_parity_report_state_metrics_and_payload_compare(tmp_path):
+    mod = _load_tool("scan_fallback_parity_report")
 
     ref = np.asarray([1.0, 2.0, 0.0])
     cand = np.asarray([1.0, 2.1, 0.2])

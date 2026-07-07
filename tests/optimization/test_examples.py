@@ -167,13 +167,13 @@ def test_qs_examples_expose_reviewed_budgets() -> None:
 
 
 def test_qp_budget_probe_uses_vmec_space_engineering_terms() -> None:
-    from tools.diagnostics.optimization import qs_budget_probe
+    from tools.diagnostics.optimization import qs_budget_report
 
-    assert qs_budget_probe.PROBLEM_DEFAULTS["qp"]["max_mode"] == 3
+    assert qs_budget_report.PROBLEM_DEFAULTS["qp"]["max_mode"] == 3
 
-    problem = qs_budget_probe._objective_problem(
+    problem = qs_budget_report._objective_problem(
         "qp",
-        qs_budget_probe.PROBLEM_DEFAULTS["qp"],
+        qs_budget_report.PROBLEM_DEFAULTS["qp"],
     )
 
     assert problem.scalar_objective_names == (
@@ -202,17 +202,17 @@ def test_qp_budget_probe_uses_vmec_space_engineering_terms() -> None:
 
 
 def test_qi_budget_probe_exposes_two_stage_qp_to_qi_problem() -> None:
-    from tools.diagnostics.optimization import qs_budget_probe
+    from tools.diagnostics.optimization import qs_budget_report
 
-    assert "qi" in qs_budget_probe.PROBLEM_DEFAULTS
-    assert qs_budget_probe.PROBLEM_DEFAULTS["qi"]["qp_method"] == "scipy"
+    assert "qi" in qs_budget_report.PROBLEM_DEFAULTS
+    assert qs_budget_report.PROBLEM_DEFAULTS["qi"]["qp_method"] == "scipy"
 
-    qp_problem = qs_budget_probe._objective_problem(
+    qp_problem = qs_budget_report._objective_problem(
         "qi",
-        qs_budget_probe.PROBLEM_DEFAULTS["qi"],
+        qs_budget_report.PROBLEM_DEFAULTS["qi"],
     )
-    qi_problem = qs_budget_probe._qi_objective_problem(
-        qs_budget_probe.PROBLEM_DEFAULTS["qi"],
+    qi_problem = qs_budget_report._qi_objective_problem(
+        qs_budget_report.PROBLEM_DEFAULTS["qi"],
     )
 
     assert qp_problem.scalar_objective_names == (
@@ -247,8 +247,8 @@ def test_qi_budget_probe_exposes_two_stage_qp_to_qi_problem() -> None:
     )
 
 
-def test_qs_budget_probe_exposes_optimizer_policy_knobs() -> None:
-    text = (ROOT / "tools" / "diagnostics" / "optimization" / "qs_budget_probe.py").read_text()
+def test_qs_budget_report_exposes_optimizer_policy_knobs() -> None:
+    text = (ROOT / "tools" / "diagnostics" / "optimization" / "qs_budget_report.py").read_text()
 
     assert "--method" in text
     assert "--scipy-tr-solver" in text
@@ -270,14 +270,14 @@ def test_qs_budget_probe_exposes_optimizer_policy_knobs() -> None:
     assert "target_helicity_seed_terms(" in text
 
 
-def test_qs_budget_probe_objective_reduction_fraction() -> None:
-    from tools.diagnostics.optimization import qs_budget_probe
+def test_qs_budget_report_objective_reduction_fraction() -> None:
+    from tools.diagnostics.optimization import qs_budget_report
 
-    assert qs_budget_probe._objective_reduction_fraction(10.0, 2.5) == pytest.approx(0.75)
-    assert qs_budget_probe._objective_reduction_fraction(10.0, 12.0) == pytest.approx(-0.2)
-    assert qs_budget_probe._objective_reduction_fraction(0.0, 1.0) is None
-    assert qs_budget_probe._objective_reduction_fraction("bad", 1.0) is None
-    assert qs_budget_probe._objective_reduction_fraction(float("nan"), 1.0) is None
+    assert qs_budget_report._objective_reduction_fraction(10.0, 2.5) == pytest.approx(0.75)
+    assert qs_budget_report._objective_reduction_fraction(10.0, 12.0) == pytest.approx(-0.2)
+    assert qs_budget_report._objective_reduction_fraction(0.0, 1.0) is None
+    assert qs_budget_report._objective_reduction_fraction("bad", 1.0) is None
+    assert qs_budget_report._objective_reduction_fraction(float("nan"), 1.0) is None
 
 
 def _profile_counter(count: int, wall_time_s: float, mean_wall_time_s: float | None = None) -> dict[str, float | int]:
@@ -288,7 +288,7 @@ def _profile_counter(count: int, wall_time_s: float, mean_wall_time_s: float | N
     return {"count": int(count), "wall_time_s": wall, "mean_wall_time_s": mean}
 
 
-def _qs_budget_probe_synthetic_history() -> dict[str, dict[str, dict[str, float | int]]]:
+def _qs_budget_report_synthetic_history() -> dict[str, dict[str, dict[str, float | int]]]:
     """Return a compact optimizer profile exercising scan, replay, and route summaries."""
 
     entries = [
@@ -458,19 +458,19 @@ def _qs_matrix_options(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
-def test_qs_budget_probe_compacts_profile_scan_and_cache_buckets() -> None:
-    from tools.diagnostics.optimization import qs_budget_probe
+def test_qs_budget_report_compacts_profile_scan_and_cache_buckets() -> None:
+    from tools.diagnostics.optimization import qs_budget_report
 
-    history = _qs_budget_probe_synthetic_history()
+    history = _qs_budget_report_synthetic_history()
 
-    compact = qs_budget_probe._compact_optimizer_profile(history, top_n=2)
+    compact = qs_budget_report._compact_optimizer_profile(history, top_n=2)
 
     assert [row["name"] for row in compact["top"]] == ["jacobian_total", "exact_tape_build"]
     assert "trial_solver_scan_runner_cache_hit_count" in compact["scan"]
     assert "trial_solver_scan_runner_cache_miss_count" in compact["cache"]
     assert "scan_runner_explicit_compile_s" in compact["cache"]
 
-    cache_summary = qs_budget_probe._trial_scan_cache_summary(history)
+    cache_summary = qs_budget_report._trial_scan_cache_summary(history)
 
     assert cache_summary["hit_count"] == 3
     assert cache_summary["miss_count"] == 1
@@ -481,7 +481,7 @@ def test_qs_budget_probe_compacts_profile_scan_and_cache_buckets() -> None:
     assert cache_summary["largest_miss_category_count"] == 2
     assert cache_summary["miss_categories"] == {"iteration_budget": 2}
 
-    arg_summary = qs_budget_probe._trial_scan_arg_breadth_summary(history)
+    arg_summary = qs_budget_report._trial_scan_arg_breadth_summary(history)
 
     assert arg_summary["leaf_count"] == 40
     assert arg_summary["array_leaf_count"] == 24
@@ -504,7 +504,7 @@ def test_qs_budget_probe_compacts_profile_scan_and_cache_buckets() -> None:
         "compact_ok_count": 1,
     }
 
-    history_summary = qs_budget_probe._trial_scan_history_summary(history)
+    history_summary = qs_budget_report._trial_scan_history_summary(history)
 
     assert history_summary == {
         "none": False,
@@ -514,7 +514,7 @@ def test_qs_budget_probe_compacts_profile_scan_and_cache_buckets() -> None:
         "array_nbytes": 288,
     }
 
-    exact_summary = qs_budget_probe._exact_replay_timing_summary(history)
+    exact_summary = qs_budget_report._exact_replay_timing_summary(history)
 
     assert exact_summary["jacobian_total_s"] == 12.0
     assert exact_summary["exact_tape_build_s"] == 9.0
@@ -528,7 +528,7 @@ def test_qs_budget_probe_compacts_profile_scan_and_cache_buckets() -> None:
     assert exact_summary["replay_share_of_jacobian"] == pytest.approx(6.5 / 12.0)
     assert exact_summary["residual_tangent_share_of_jacobian"] == 0.25
 
-    replay_summary = qs_budget_probe._replay_scan_diagnostics_summary(history)
+    replay_summary = qs_budget_report._replay_scan_diagnostics_summary(history)
 
     assert replay_summary["dominant_path"] == "dynamic_basepoint"
     assert replay_summary["path_counts"]["dynamic_basepoint"] == 3
@@ -546,7 +546,7 @@ def test_qs_budget_probe_compacts_profile_scan_and_cache_buckets() -> None:
     assert replay_summary["cache"]["dynamic_basepoint"]["total_lookup_count"] == 3
     assert replay_summary["cache"]["dynamic_basepoint"]["hit_fraction"] == pytest.approx(2 / 3)
     assert replay_summary["cache"]["dynamic_basepoint"]["build_s"] == 0.7
-    gradient_replay_summary = qs_budget_probe._replay_scan_diagnostics_summary(history, prefix="gradient")
+    gradient_replay_summary = qs_budget_report._replay_scan_diagnostics_summary(history, prefix="gradient")
     assert gradient_replay_summary["dominant_vjp_path"] == "dynamic_basepoint"
     assert gradient_replay_summary["vjp_path_counts"]["dynamic_basepoint"] == 2
     assert gradient_replay_summary["cache"]["dynamic_basepoint_vjp"]["hit_count"] == 5
@@ -554,14 +554,14 @@ def test_qs_budget_probe_compacts_profile_scan_and_cache_buckets() -> None:
     assert gradient_replay_summary["cache"]["dynamic_basepoint_vjp"]["total_lookup_count"] == 7
     assert gradient_replay_summary["cache"]["dynamic_basepoint_vjp"]["hit_fraction"] == pytest.approx(5 / 7)
     assert gradient_replay_summary["cache"]["dynamic_basepoint_vjp"]["build_s"] == 0.3
-    linear_replay_summary = qs_budget_probe._replay_scan_diagnostics_summary(history, prefix="linear_operator")
+    linear_replay_summary = qs_budget_report._replay_scan_diagnostics_summary(history, prefix="linear_operator")
     assert linear_replay_summary["dominant_vjp_path"] == "dynamic_basepoint"
     assert linear_replay_summary["vjp_path_counts"]["dynamic_basepoint"] == 1
     assert linear_replay_summary["cache"]["dynamic_basepoint_vjp"]["miss_count"] == 1
     assert linear_replay_summary["cache"]["dynamic_basepoint_vjp"]["hit_fraction"] == 0.0
     assert linear_replay_summary["cache"]["dynamic_basepoint_vjp"]["build_s"] == 0.2
 
-    route_summary = qs_budget_probe._optimizer_route_timing_summary(history)
+    route_summary = qs_budget_report._optimizer_route_timing_summary(history)
 
     assert route_summary["active_derivative_route"] == "dense_jacobian"
     assert route_summary["dense_jacobian_total_s"] == 12.0
@@ -583,23 +583,23 @@ def test_qs_budget_probe_compacts_profile_scan_and_cache_buckets() -> None:
     assert route_summary["trial_scan_share_of_trial_forward"] == 0.75
 
 
-def test_qs_budget_probe_extracts_effective_trial_scan_policy() -> None:
-    from tools.diagnostics.optimization import qs_budget_probe
+def test_qs_budget_report_extracts_effective_trial_scan_policy() -> None:
+    from tools.diagnostics.optimization import qs_budget_report
 
     result_scan = SimpleNamespace(final_optimizer=SimpleNamespace(_trial_solver_kwargs={"use_scan": True}))
     result_loop = SimpleNamespace(final_optimizer=SimpleNamespace(_trial_solver_kwargs={"use_scan": False}))
     result_missing = SimpleNamespace(final_optimizer=SimpleNamespace(_trial_solver_kwargs={}))
 
-    assert qs_budget_probe._effective_trial_solver_use_scan(result_scan) is True
-    assert qs_budget_probe._effective_trial_solver_use_scan(result_loop) is False
-    assert qs_budget_probe._effective_trial_solver_use_scan(result_missing) is None
-    assert qs_budget_probe._effective_trial_solver_use_scan(object()) is None
+    assert qs_budget_report._effective_trial_solver_use_scan(result_scan) is True
+    assert qs_budget_report._effective_trial_solver_use_scan(result_loop) is False
+    assert qs_budget_report._effective_trial_solver_use_scan(result_missing) is None
+    assert qs_budget_report._effective_trial_solver_use_scan(object()) is None
 
 
-def test_qs_budget_probe_metadata_marks_scan_trials_state_only() -> None:
+def test_qs_budget_report_metadata_marks_scan_trials_state_only() -> None:
     """Scan trial solves are reported as state-only unless explicitly overridden."""
 
-    from tools.diagnostics.optimization import qs_budget_probe
+    from tools.diagnostics.optimization import qs_budget_report
 
     optimizer = SimpleNamespace(
         _layout=SimpleNamespace(size=8),
@@ -616,7 +616,7 @@ def test_qs_budget_probe_metadata_marks_scan_trials_state_only() -> None:
     )
     result = SimpleNamespace(final_optimizer=optimizer, final_params=np.asarray([0.0]))
 
-    metadata = qs_budget_probe._exact_callback_metadata(result)
+    metadata = qs_budget_report._exact_callback_metadata(result)
 
     assert metadata["trial_solver_use_scan"] is True
     assert metadata["trial_solver_scan_policy_source"] == "environment"
@@ -627,8 +627,8 @@ def test_qs_budget_probe_metadata_marks_scan_trials_state_only() -> None:
     assert metadata["exact_solver_resume_state_mode"] == "none"
 
 
-def test_qs_budget_probe_reports_exact_callback_metadata() -> None:
-    from tools.diagnostics.optimization import qs_budget_probe
+def test_qs_budget_report_reports_exact_callback_metadata() -> None:
+    from tools.diagnostics.optimization import qs_budget_report
 
     residuals_fn = SimpleNamespace(
         _residual_block_summary=(
@@ -662,7 +662,7 @@ def test_qs_budget_probe_reports_exact_callback_metadata() -> None:
         final_params=np.asarray([1.0, 2.0, 3.0]),
     )
 
-    metadata = qs_budget_probe._exact_callback_metadata(result)
+    metadata = qs_budget_report._exact_callback_metadata(result)
 
     assert metadata == {
         "backend": "cpu",
@@ -707,7 +707,7 @@ def test_qs_budget_probe_reports_exact_callback_metadata() -> None:
         },
         "lasym": True,
     }
-    assert qs_budget_probe._exact_callback_metadata(object()) == {}
+    assert qs_budget_report._exact_callback_metadata(object()) == {}
 
 
 def test_qs_trial_policy_matrix_builds_policy_commands(tmp_path) -> None:
@@ -732,7 +732,7 @@ def test_qs_trial_policy_matrix_builds_policy_commands(tmp_path) -> None:
 
     row_dir = tmp_path / "qa" / "scan-accelerated"
     row_json = row_dir / "summary.json"
-    command = qs_trial_policy_matrix.build_probe_command(
+    command = qs_trial_policy_matrix.build_report_command(
         problem="qa",
         policy="scan-accelerated",
         row_dir=row_dir,
@@ -740,7 +740,7 @@ def test_qs_trial_policy_matrix_builds_policy_commands(tmp_path) -> None:
         options=options,
     )
 
-    assert str(qs_trial_policy_matrix.PROBE) in command
+    assert str(qs_trial_policy_matrix.REPORT) in command
     assert command[command.index("--problem") + 1] == "qa"
     assert command[command.index("--output-dir") + 1] == str(row_dir)
     assert command[command.index("--json-out") + 1] == str(row_json)
@@ -1012,10 +1012,10 @@ def test_qs_trial_policy_matrix_builds_policy_commands(tmp_path) -> None:
     assert summary["problems"]["qp"]["loop_baseline_available"] is True
 
 
-def test_qs_budget_probe_supports_direct_qi_without_qp_preseed() -> None:
+def test_qs_budget_report_supports_direct_qi_without_qp_preseed() -> None:
     """The budget harness lets QI probes skip the optional QP preseed stage."""
 
-    text = (ROOT / "tools" / "diagnostics" / "optimization" / "qs_budget_probe.py").read_text()
+    text = (ROOT / "tools" / "diagnostics" / "optimization" / "qs_budget_report.py").read_text()
 
     assert "if preseed_nfev > 0:" in text
     assert "qi_input_file = input_file" in text
@@ -1048,14 +1048,14 @@ def test_qs_budget_matrix_builds_budget_commands_and_recommendations(tmp_path) -
         chunked_projected_replay_projection="off",
         target_helicity_seed=True,
     )
-    command = qs_budget_matrix.build_probe_command(
+    command = qs_budget_matrix.build_report_command(
         problem="qa",
         budget=compact,
         row_dir=tmp_path / "row",
         row_json=tmp_path / "row.json",
         options=options,
     )
-    assert str(qs_budget_matrix.PROBE) in command
+    assert str(qs_budget_matrix.REPORT) in command
     assert command[command.index("--inner-max-iter") + 1] == "80"
     assert command[command.index("--trial-ftol") + 1] == "1e-08"
     assert command[command.index("--fused-projected-replay") + 1] == "on"
@@ -1346,14 +1346,14 @@ def test_qs_replay_route_matrix_builds_route_commands_and_recommendations(tmp_pa
     options = _qs_matrix_options(
         policy="scan-vmec2000",
     )
-    command = qs_replay_route_matrix.build_probe_command(
+    command = qs_replay_route_matrix.build_report_command(
         problem="qh",
         route="chunked",
         row_dir=tmp_path / "row",
         row_json=tmp_path / "row.json",
         options=options,
     )
-    assert str(qs_replay_route_matrix.PROBE) in command
+    assert str(qs_replay_route_matrix.REPORT) in command
     assert command[command.index("--inner-max-iter") + 1] == "60"
     assert command[command.index("--fused-projected-replay") + 1] == "off"
     assert command[command.index("--replay-column-chunk") + 1] == "8"

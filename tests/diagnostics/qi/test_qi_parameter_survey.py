@@ -10,12 +10,12 @@ SCRIPT = (
     / "tools"
     / "diagnostics"
     / "qi"
-    / "qi_parameter_probe_harness.py"
+    / "qi_parameter_survey.py"
 )
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("qi_parameter_probe_harness", SCRIPT)
+    spec = importlib.util.spec_from_file_location("qi_parameter_survey", SCRIPT)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -108,7 +108,7 @@ def test_cli_dry_run_writes_plan_and_commands(tmp_path: Path) -> None:
 
     assert rc == 0
     plan = json.loads((tmp_path / "plan.json").read_text())
-    assert plan["kind"] == "qi_parameter_probe_harness"
+    assert plan["kind"] == "qi_parameter_survey"
     assert plan["execute"] is False
     assert plan["case_count"] == 2
     commands = (tmp_path / "commands.sh").read_text()
