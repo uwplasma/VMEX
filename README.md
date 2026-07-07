@@ -23,7 +23,8 @@ This full bundled single-grid fixed-boundary matrix compares VMEC2000,
 The plotted inputs live in `examples/data/single_grid` and are normalized to
 `NS_ARRAY=151`, `FTOL_ARRAY=1e-14`, and `NITER_ARRAY=5000`. The performance
 docs keep the detailed CSV/JSON provenance, WOUT-parity rows, and regression
-classifications. In the 2026-07-06 local CPU refresh, warm `vmec_jax` was
+classifications; rows are ordered by descending cold `vmec_jax` speedup over
+VMEC2000. In the 2026-07-06 local CPU refresh, warm `vmec_jax` was
 faster than VMEC2000 on 33 of 37 rows using the default CLI policy; cold tiny
 rows still pay Python/JAX/XLA setup cost, and VMEC++ is shown only on the 17
 rows where it exits cleanly.
