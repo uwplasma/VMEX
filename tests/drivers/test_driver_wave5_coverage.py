@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
 import vmec_jax.driver as driver
+from vmec_jax.kernels.tomnsp import vmec_angle_grid
 from vmec_jax.solve import SolveVmecResidualResult
+
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _result(*, n: int = 3, bad_fsql: bool = False):
@@ -25,6 +30,155 @@ def _result(*, n: int = 3, bad_fsql: bool = False):
         step_history=np.zeros((0,), dtype=float),
         diagnostics={"converged": True},
     )
+
+
+def _fixed_boundary_run(*, result=None, signgs: int = 1) -> driver.FixedBoundaryRun:
+    return driver.FixedBoundaryRun(
+        cfg=object(),
+        indata=object(),
+        static=object(),
+        state=object(),
+        result=result,
+        flux=object(),
+        profiles={},
+        signgs=signgs,
+    )
+
+
+def test_example_paths_reports_missing_wout_as_none(tmp_path):
+    data_dir = tmp_path / "examples" / "data"
+    data_dir.mkdir(parents=True)
+    input_path = data_dir / "input.synthetic"
+    input_path.write_text("&INDATA\n/\n")
+
+    actual_input, actual_wout = driver.example_paths("synthetic", root=tmp_path)
+
+    assert actual_input == input_path
+    assert actual_wout is None
+
+
+def test_load_example_without_wout_skips_optional_wout_read():
+    example = driver.load_example("circular_tokamak", root=ROOT, with_wout=False)
+
+    assert example.input_path.exists()
+    if example.wout_path is not None:
+        assert example.wout_path.name in {"wout_circular_tokamak_reference.nc", "wout_circular_tokamak.nc"}
+    assert example.wout is None
+    assert example.state is None
+    assert example.static.cfg.ns == example.cfg.ns
+
+
+def test_save_npz_creates_parent_and_preserves_arrays(tmp_path):
+    path = driver.save_npz(tmp_path / "nested" / "demo.npz", a=np.asarray([1, 2, 3]), b=np.asarray([[4.0], [5.0]]))
+
+    with np.load(path) as data:
+        np.testing.assert_array_equal(data["a"], np.asarray([1, 2, 3]))
+        np.testing.assert_allclose(data["b"], np.asarray([[4.0], [5.0]]))
+
+
+def test_run_fixed_boundary_initial_guess_verbose_vmec2000_mode(capsys):
+    grid = vmec_angle_grid(ntheta=8, nzeta=1, nfp=1, lasym=False)
+
+    run = driver.run_fixed_boundary(
+        ROOT / "examples" / "data" / "input.circular_tokamak",
+        solver="vmec2000_iter",
+        max_iter=1,
+        use_initial_guess=True,
+        vmec_project=False,
+        verbose=True,
+        grid=grid,
+    )
+
+    out = capsys.readouterr().out
+    assert "fixed-boundary run (initial guess)" in out
+    assert "max_iter=" not in out
+    assert run.result is None
+    assert run.state is not None
+
+
+def test_run_fixed_boundary_unknown_solver_raises_before_solver_dispatch():
+    grid = vmec_angle_grid(ntheta=8, nzeta=1, nfp=1, lasym=False)
+
+    with pytest.raises(ValueError, match="Unknown solver"):
+        driver.run_fixed_boundary(
+            ROOT / "examples" / "data" / "input.circular_tokamak",
+            solver="bogus",
+            max_iter=1,
+            ns_override=3,
+            vmec_project=False,
+            verbose=False,
+            grid=grid,
+        )
+
+
+def test_wout_from_fixed_boundary_run_uses_residual_scalars_when_result_missing(monkeypatch, tmp_path: Path) -> None:
+    captured = []
+
+    def fake_wout_minimal_from_fixed_boundary(**kwargs):
+        captured.append(kwargs)
+        return SimpleNamespace(kind="wout", kwargs=kwargs)
+
+    monkeypatch.setattr(driver, "residual_scalars_from_state", lambda **_kwargs: (1.25, 2.5, 3.75))
+    monkeypatch.setattr("vmec_jax.wout.wout_minimal_from_fixed_boundary", fake_wout_minimal_from_fixed_boundary)
+
+    out = driver.wout_from_fixed_boundary_run(
+        _fixed_boundary_run(result=None, signgs=-1),
+        path=tmp_path / "wout_missing_result.nc",
+    )
+
+    assert out.kind == "wout"
+    assert captured[-1]["signgs"] == -1
+    assert captured[-1]["converged"] is None
+    assert captured[-1]["fsqr"] == pytest.approx(1.25)
+    assert captured[-1]["fsqz"] == pytest.approx(2.5)
+    assert captured[-1]["fsql"] == pytest.approx(3.75)
+    assert captured[-1]["fsqt"] is None
+
+
+def test_write_wout_from_fixed_boundary_run_creates_parent_and_overwrites(monkeypatch, tmp_path: Path) -> None:
+    calls = []
+    fake_wout = SimpleNamespace(kind="synthetic")
+    out_path = tmp_path / "nested" / "wout_case.nc"
+
+    def fake_wout_from_fixed_boundary_run(run, *, include_fsq, path, fast_bcovar):
+        calls.append(("build", run, include_fsq, Path(path), fast_bcovar))
+        return fake_wout
+
+    def fake_write_wout(path, wout, *, overwrite):
+        calls.append(("write", Path(path), wout, overwrite, Path(path).parent.exists()))
+
+    monkeypatch.setattr(driver, "wout_from_fixed_boundary_run", fake_wout_from_fixed_boundary_run)
+    monkeypatch.setattr("vmec_jax.wout.write_wout", fake_write_wout)
+
+    returned = driver.write_wout_from_fixed_boundary_run(
+        out_path,
+        _fixed_boundary_run(),
+        include_fsq=False,
+        fast_bcovar=True,
+    )
+
+    assert returned is fake_wout
+    assert calls[0][0] == "build"
+    assert calls[0][2:] == (False, out_path, True)
+    assert calls[1] == ("write", out_path, fake_wout, True, True)
+
+
+def test_result_final_fsq_uses_residual_sum_when_history_is_unusable() -> None:
+    result = SimpleNamespace(
+        diagnostics={"final_fsqr": 0.5, "final_fsqz": "1.25", "final_fsql": np.float64(2.0)},
+        w_history=np.asarray([object()], dtype=object),
+    )
+
+    assert driver._result_final_residuals(result) == (0.5, 1.25, 2.0)
+    assert driver._result_final_fsq(result) == pytest.approx(3.75)
+
+
+def test_stage_budget_helpers_keep_final_stage_nonzero_after_weight_rounding() -> None:
+    budgets = driver._accelerated_cli_budgeted_stage_iters(total_budget=2, ns_stages=[20, 20, 21])
+
+    assert budgets[-1] == 1
+    assert len(budgets) == 3
+    assert driver._accelerated_cli_budgeted_total_iters(total_budget=81, ns_stages=[9, 81]) == 27
 
 
 def test_list_coercion_and_resume_sanitizers_cover_numpy_scalar_and_bad_step_edges():
