@@ -31,7 +31,9 @@ Numerical domains:
   scan, preconditioning, optimization, diagnostics, and result containers.
 - ``vmec_jax/solvers/free_boundary/`` contains free-boundary provider plumbing,
   NESTOR/vacuum-coupling helpers, direct-coil validation seams, and
-  branch-local adjoint/replay evidence.
+  branch-local adjoint/replay evidence.  Direct-coil example workflow helpers
+  live in ``coil_workflow.py``; same-branch derivative report and proposal
+  helpers live in ``coil_optimization.py``.
 - ``vmec_jax/external_fields/`` contains differentiable coil and ``mgrid``
   field providers.
 - ``vmec_jax/io/wout_files/`` contains persisted-WOUT schema, netCDF I/O, flux
