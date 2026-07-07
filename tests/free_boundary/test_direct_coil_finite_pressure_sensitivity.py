@@ -1580,29 +1580,30 @@ def test_direct_coil_trial_nestor_timing_records_solver_trial_calls(tmp_path: Pa
     assert np.count_nonzero(trial_failed) == 0
 
 
-def test_direct_coil_current_only_objective_fd_slope_is_stable(tmp_path: Path) -> None:
-    """Central finite-difference slopes should be stable for a current-only direct-coil objective."""
+@pytest.mark.parametrize(
+    "input_name,variables,current_step,dof_step,rtol",
+    [
+        pytest.param("input.direct_current_fd_slope", [("current", (0,))], 0.02, 0.0, 5.0e-6, id="current"),
+        pytest.param("input.direct_geometry_fd_slope", [("fourier_dof", (0, 0, 2))], 0.0, 1.0e-2, 1.0e-4, id="geometry"),
+    ],
+)
+def test_direct_coil_bnormal_fd_slope_is_stable(
+    tmp_path: Path,
+    input_name: str,
+    variables: list[tuple[str, tuple[int, ...]]],
+    current_step: float,
+    dof_step: float,
+    rtol: float,
+) -> None:
+    """Boundary-normal vacuum response should vary smoothly with coil controls."""
 
     _assert_direct_coil_bnormal_fd_slope_stable(
         tmp_path,
-        input_name="input.direct_current_fd_slope",
-        variables=[("current", (0,))],
-        current_step=0.02,
-        dof_step=0.0,
-        rtol=5.0e-6,
-    )
-
-
-def test_direct_coil_geometry_dof_accepted_state_fd_slope_is_stable(tmp_path: Path) -> None:
-    """Boundary-normal vacuum response should vary smoothly with a coil geometry DOF."""
-
-    _assert_direct_coil_bnormal_fd_slope_stable(
-        tmp_path,
-        input_name="input.direct_geometry_fd_slope",
-        variables=[("fourier_dof", (0, 0, 2))],
-        current_step=0.0,
-        dof_step=1.0e-2,
-        rtol=1.0e-4,
+        input_name=input_name,
+        variables=variables,
+        current_step=current_step,
+        dof_step=dof_step,
+        rtol=rtol,
     )
 
 
@@ -1814,6 +1815,17 @@ _ASPECT_STATE_QS_KEYS = ("aspect", "state_norm", "qs_total")
 _ASPECT_STATE_QS_RTOL = {"aspect": 5.0e-3, "state_norm": 5.0e-3, "qs_total": 2.0e-2}
 _ASPECT_STATE_QS_ATOL = {"aspect": 5.0e-8, "state_norm": 5.0e-8, "qs_total": 1.0e-8}
 _ASPECT_STATE_QS_BASE_ATOL = {"aspect": 2.0e-3, "state_norm": 2.0e-3, "qs_total": 2.0e-3}
+
+
+def _betatotal_from_state(state, payload):
+    from vmec_jax.finite_beta import finite_beta_scalars_from_state
+
+    return finite_beta_scalars_from_state(
+        state=state,
+        static=payload["init"].static,
+        indata=payload["init"].indata,
+        signgs=int(payload["init"].signgs),
+    )["betatotal"]
 
 
 def _assert_native_rejected_slot_branch(
@@ -3174,143 +3186,130 @@ def test_direct_coil_same_branch_custom_vjp_matches_complete_solve_fd(
 
 
 @pytest.mark.py311_coverage_only
-def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve_fd(
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            {
+                "input_name": "input.direct_native_rejected_slot",
+                "coil_kwargs": {"current_fraction": 0.002},
+                "changed_branch_failure": "mutated-plus-fingerprint",
+            },
+            id="current-aspect-state-qs",
+        ),
+        pytest.param(
+            {
+                "input_name": "input.direct_native_rejected_slot_betatotal",
+                "coil_kwargs": {"current_fraction": 0.002},
+                "scalar_kind": "betatotal",
+                "changed_branch_failure": "same-branch-flag",
+            },
+            id="current-betatotal",
+        ),
+        pytest.param(
+            {
+                "input_name": "input.direct_native_rejected_slot_geometry",
+                "coil_kwargs": {"dof_index": (0, 0, 2), "dof_step": 1.0e-3},
+                "expect_fixed_geometry": False,
+                "expect_fast_path": "none",
+            },
+            id="geometry-aspect-state-qs",
+        ),
+        pytest.param(
+            {
+                "input_name": "input.direct_native_rejected_slot_mixed_state_only",
+                "coil_kwargs": {"current_fraction": 0.002, "dof_index": (0, 0, 2), "dof_step": 1.0e-3},
+                "scalar_kind": "mixed",
+                "expect_fixed_geometry": False,
+                "expect_fast_path": "none",
+                "expect_state_only_replay": True,
+                "replay_kwargs_extra": {"state_only_replay": True},
+                "solve_kwargs_extra": {"adjoint_trace_mode": "branch"},
+            },
+            id="mixed-state-only",
+        ),
+    ],
+)
+def test_direct_coil_native_rejected_slot_jvp_matches_complete_solve_fd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    case: dict,
 ) -> None:
-    """Native restart/rejected slots can be validated under an unchanged branch."""
+    """Native rejected-slot JVPs are valid only on one fingerprinted branch."""
 
+    case_kwargs = dict(case)
+    input_name = case_kwargs.pop("input_name")
+    coil_kwargs = case_kwargs.pop("coil_kwargs")
+    scalar_kind = case_kwargs.pop("scalar_kind", "aspect_state_qs")
+    if scalar_kind == "betatotal":
+        scalar_map = lambda payload: {"betatotal": _betatotal_from_state(payload["result"].state, payload)}
+        replay_scalar_fns = {"betatotal": lambda replay, payload: _betatotal_from_state(replay["state"], payload)}
+        scalar_keys = ("betatotal",)
+        rtol = {"betatotal": 1.0e-2}
+        atol = {"betatotal": 1.0e-8}
+        base_value_atol = {"betatotal": 2.0e-3}
+    elif scalar_kind == "mixed":
+        scalar_map = _aspect_qs_boundary_scalar_map
+        replay_scalar_fns = _aspect_qs_boundary_replay_scalar_fns()
+        scalar_keys = ("aspect", "qs_total", "lcfs_boundary_moment")
+        rtol = {"aspect": 5.0e-3, "qs_total": 2.0e-2, "lcfs_boundary_moment": 5.0e-3}
+        atol = {"aspect": 5.0e-8, "qs_total": 1.0e-8, "lcfs_boundary_moment": 5.0e-8}
+        base_value_atol = {"aspect": 2.0e-3, "qs_total": 2.0e-3, "lcfs_boundary_moment": 2.0e-3}
+    else:
+        scalar_map = _aspect_state_norm_qs_scalar_map
+        replay_scalar_fns = _aspect_state_norm_qs_replay_scalar_fns()
+        scalar_keys = _ASPECT_STATE_QS_KEYS
+        rtol = _ASPECT_STATE_QS_RTOL
+        atol = _ASPECT_STATE_QS_ATOL
+        base_value_atol = _ASPECT_STATE_QS_BASE_ATOL
+    changed_branch_failure = case_kwargs.pop("changed_branch_failure", None)
+    expect_fast_path = case_kwargs.pop("expect_fast_path", None)
+    expect_fixed_geometry = case_kwargs.pop("expect_fixed_geometry", None)
+    expect_state_only_replay = bool(case_kwargs.pop("expect_state_only_replay", False))
     reports = _native_rejected_slot_case_report(
         tmp_path,
         monkeypatch,
-        "input.direct_native_rejected_slot",
-        coil_kwargs={"current_fraction": 0.002},
-        scalar_map=_aspect_state_norm_qs_scalar_map,
-        replay_scalar_fns=_aspect_state_norm_qs_replay_scalar_fns(),
-        scalar_keys=_ASPECT_STATE_QS_KEYS,
-        rtol=_ASPECT_STATE_QS_RTOL,
-        atol=_ASPECT_STATE_QS_ATOL,
-        base_value_atol=_ASPECT_STATE_QS_BASE_ATOL,
-    )
-    complete_report = reports["complete_report"]
-    scalars_report = reports["scalars_report"]
-
-    changed_branch_report = deepcopy(complete_report)
-    changed_branch_report["branch_compatibility"]["same_branch"] = False
-    changed_branch_report["branch_compatibility"]["plus_fingerprint"] = deepcopy(
-        changed_branch_report["branch_compatibility"]["plus_fingerprint"]
-    )
-    changed_branch_report["branch_compatibility"]["plus_fingerprint"]["step_status"] = (
-        "momentum",
-        "restart_bad_jacobian",
-        "restart_bad_jacobian",
-    )
-    changed_branch_gate = _native_rejected_adaptive_gate_report(
-        changed_branch_report,
-        scalars_report,
-        scalar_keys=_ASPECT_STATE_QS_KEYS,
-    )
-    assert changed_branch_gate["passed"] is False
-    assert changed_branch_gate["same_branch"] is False
-    assert changed_branch_gate["same_full_loop_branch_fingerprint"] is False
-    assert any("branch fingerprints" in error for error in changed_branch_gate["errors"])
-
-
-@pytest.mark.py311_coverage_only
-def test_direct_coil_native_rejected_slot_betatotal_jvp_matches_complete_solve_fd(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Finite-beta scalar JVP is branch-local and fingerprint-gated."""
-
-    from vmec_jax.finite_beta import finite_beta_scalars_from_state
-
-    def betatotal_from_state(state, payload):
-        return finite_beta_scalars_from_state(
-            state=state,
-            static=payload["init"].static,
-            indata=payload["init"].indata,
-            signgs=int(payload["init"].signgs),
-        )["betatotal"]
-
-    def scalar_map(payload):
-        return {"betatotal": betatotal_from_state(payload["result"].state, payload)}
-
-    scalar_keys = ("betatotal",)
-    reports = _native_rejected_slot_case_report(
-        tmp_path,
-        monkeypatch,
-        "input.direct_native_rejected_slot_betatotal",
-        coil_kwargs={"current_fraction": 0.002},
+        input_name,
+        coil_kwargs=coil_kwargs,
         scalar_map=scalar_map,
-        replay_scalar_fns={
-            "betatotal": lambda replay, payload: betatotal_from_state(replay["state"], payload),
-        },
+        replay_scalar_fns=replay_scalar_fns,
         scalar_keys=scalar_keys,
-        rtol={"betatotal": 1.0e-2},
-        atol={"betatotal": 1.0e-8},
-        base_value_atol={"betatotal": 2.0e-3},
+        rtol=rtol,
+        atol=atol,
+        base_value_atol=base_value_atol,
+        **case_kwargs,
     )
-    complete_report = reports["complete_report"]
-    scalars_report = reports["scalars_report"]
-
-    changed_branch_report = deepcopy(complete_report)
-    changed_branch_report["branch_compatibility"]["same_branch"] = False
-    changed_branch_gate = _native_rejected_adaptive_gate_report(
-        changed_branch_report,
-        scalars_report,
-        scalar_keys=scalar_keys,
-    )
-    assert changed_branch_gate["passed"] is False
-    assert changed_branch_gate["same_full_loop_branch_fingerprint"] is False
-
-
-@pytest.mark.py311_coverage_only
-def test_direct_coil_native_rejected_slot_directional_jvp_matches_complete_solve_fd(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Geometry and mixed-control rejected-slot JVPs are valid on one fingerprinted branch."""
-
-    geometry_reports = _native_rejected_slot_case_report(
-        tmp_path,
-        monkeypatch,
-        "input.direct_native_rejected_slot_geometry",
-        coil_kwargs={"dof_index": (0, 0, 2), "dof_step": 1.0e-3},
-        scalar_map=_aspect_state_norm_qs_scalar_map,
-        replay_scalar_fns=_aspect_state_norm_qs_replay_scalar_fns(),
-        scalar_keys=_ASPECT_STATE_QS_KEYS,
-        rtol=_ASPECT_STATE_QS_RTOL,
-        atol=_ASPECT_STATE_QS_ATOL,
-        base_value_atol=_ASPECT_STATE_QS_BASE_ATOL,
-    )
-    branch_local = geometry_reports["branch_local"]
+    branch_local = reports["branch_local"]
     assert branch_local["uses_production_forward"] is True
     assert branch_local["derivative_mode"] == "directional_jvp"
-    assert branch_local["replay_option_flags"]["directional_jvp_fast_path"] == "none"
-    assert branch_local["replay_option_flags"]["directional_uses_fixed_coil_geometry"] is False
-
-    mixed_keys = ("aspect", "qs_total", "lcfs_boundary_moment")
-    mixed_reports = _native_rejected_slot_case_report(
-        tmp_path,
-        monkeypatch,
-        "input.direct_native_rejected_slot_mixed_state_only",
-        coil_kwargs={"current_fraction": 0.002, "dof_index": (0, 0, 2), "dof_step": 1.0e-3},
-        scalar_map=_aspect_qs_boundary_scalar_map,
-        replay_scalar_fns=_aspect_qs_boundary_replay_scalar_fns(),
-        scalar_keys=mixed_keys,
-        rtol={"aspect": 5.0e-3, "qs_total": 2.0e-2, "lcfs_boundary_moment": 5.0e-3},
-        atol={"aspect": 5.0e-8, "qs_total": 1.0e-8, "lcfs_boundary_moment": 5.0e-8},
-        base_value_atol={"aspect": 2.0e-3, "qs_total": 2.0e-3, "lcfs_boundary_moment": 2.0e-3},
-        replay_kwargs_extra={"state_only_replay": True},
-        solve_kwargs_extra={"adjoint_trace_mode": "branch"},
-    )
-    branch_local = mixed_reports["branch_local"]
-    assert branch_local["uses_production_forward"] is True
-    assert branch_local["derivative_mode"] == "directional_jvp"
-    assert branch_local["replay_option_flags"]["state_only_replay"] is True
-    assert branch_local["replay_option_flags"]["directional_jvp_fast_path"] == "none"
-    assert branch_local["replay_option_flags"]["directional_uses_fixed_coil_geometry"] is False
+    if expect_fast_path is not None:
+        assert branch_local["replay_option_flags"]["directional_jvp_fast_path"] == expect_fast_path
+    if expect_fixed_geometry is not None:
+        assert branch_local["replay_option_flags"]["directional_uses_fixed_coil_geometry"] is expect_fixed_geometry
+    if expect_state_only_replay:
+        assert branch_local["replay_option_flags"]["state_only_replay"] is True
+    if changed_branch_failure is not None:
+        changed_report = deepcopy(reports["complete_report"])
+        changed_report["branch_compatibility"]["same_branch"] = False
+        if changed_branch_failure == "mutated-plus-fingerprint":
+            changed_report["branch_compatibility"]["plus_fingerprint"] = deepcopy(
+                changed_report["branch_compatibility"]["plus_fingerprint"]
+            )
+            changed_report["branch_compatibility"]["plus_fingerprint"]["step_status"] = (
+                "momentum",
+                "restart_bad_jacobian",
+                "restart_bad_jacobian",
+            )
+        changed_gate = _native_rejected_adaptive_gate_report(
+            changed_report,
+            reports["scalars_report"],
+            scalar_keys=scalar_keys,
+        )
+        assert changed_gate["passed"] is False
+        assert changed_gate["same_full_loop_branch_fingerprint"] is False
+        if changed_branch_failure == "mutated-plus-fingerprint":
+            assert changed_gate["same_branch"] is False
+            assert any("branch fingerprints" in error for error in changed_gate["errors"])
 
 
 @pytest.mark.py311_coverage_only
