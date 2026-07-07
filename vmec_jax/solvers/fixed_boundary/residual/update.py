@@ -771,6 +771,14 @@ class StrictStepBranchApplication(NamedTuple):
     side_effects: StrictStepBranchSideEffects
 
 
+class StrictCatastrophicRestartSelection(NamedTuple):
+    """Post-restart branch contract and controller scalars for strict updates."""
+
+    restart_update: HostCatastrophicRestartUpdate
+    branch_result: StrictStepBranchResult
+    branch_application: StrictStepBranchApplication
+
+
 class InitialResidualVelocityState(NamedTuple):
     """Initial residual-loop velocity memory and conservative update caps."""
 
@@ -1763,6 +1771,61 @@ def strict_step_branch_application(
             branch,
             after_catastrophic_restart=bool(after_catastrophic_restart),
         ),
+    )
+
+
+def select_strict_catastrophic_restart_branch(
+    *,
+    branch: StrictStepBranchResult,
+    state_backup: Any,
+    probe_bad_jacobian: bool,
+    w_try: float,
+    time_step: float,
+    restart_badjac_factor: float,
+    restart_badprog_factor: float,
+    step_size: float,
+    ijacob: int,
+    bad_resets: int,
+    iter2: int,
+    fsq_prev_before: float,
+    fsq0_prev_before: float,
+    k_ndamp: int,
+    max_coeff_delta_rms: float,
+    max_update_rms: float,
+) -> StrictCatastrophicRestartSelection:
+    """Package a rejected strict update into VMEC's catastrophic restart branch."""
+
+    restart_update = host_catastrophic_restart_update(
+        probe_bad_jacobian=bool(probe_bad_jacobian),
+        w_try=float(w_try),
+        time_step=float(time_step),
+        restart_badjac_factor=float(restart_badjac_factor),
+        restart_badprog_factor=float(restart_badprog_factor),
+        step_size=float(step_size),
+        ijacob=int(ijacob),
+        bad_resets=int(bad_resets),
+        iter2=int(iter2),
+        fsq_prev_before=float(fsq_prev_before),
+        fsq0_prev_before=float(fsq0_prev_before),
+        k_ndamp=int(k_ndamp),
+        max_coeff_delta_rms=float(max_coeff_delta_rms),
+        max_update_rms=float(max_update_rms),
+    )
+    branch_after_restart = strict_step_branch_result_after_catastrophic_restart(
+        branch=branch,
+        restart_update=restart_update,
+        state_backup=state_backup,
+    )
+    branch_application = strict_step_branch_application(
+        branch_after_restart,
+        max_coeff_delta_rms=float(max_coeff_delta_rms),
+        max_update_rms=float(max_update_rms),
+        after_catastrophic_restart=True,
+    )
+    return StrictCatastrophicRestartSelection(
+        restart_update=restart_update,
+        branch_result=branch_after_restart,
+        branch_application=branch_application,
     )
 
 

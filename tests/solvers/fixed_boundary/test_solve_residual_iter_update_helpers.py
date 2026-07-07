@@ -52,6 +52,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     resolve_strict_update_control_policy,
     scale_velocity_blocks,
     DirectForceFallbackTrial,
+    select_strict_catastrophic_restart_branch,
     select_strict_trial_branch_result,
     strict_step_branch_application,
     strict_step_branch_side_effects,
@@ -968,6 +969,46 @@ def test_strict_step_branch_application_couples_runtime_and_side_effects() -> No
     assert application.runtime.restart_path == restart.restart_path
     assert application.runtime.max_update_rms == pytest.approx(restart.max_update_rms)
     assert application.side_effects == (False, False, True, True)
+
+
+def test_select_strict_catastrophic_restart_branch_packages_policy_and_application() -> None:
+    rejected = strict_step_branch_result(
+        acceptance=strict_step_acceptance_decision(w_try=np.inf, w_curr=1.0, backtracking=True),
+        state_try=np.asarray([1.0]),
+        state_backup=np.asarray([0.0]),
+        update_rms=None,
+        vmec2000_control=False,
+        huge_force_restart_count=3,
+    )
+
+    result = select_strict_catastrophic_restart_branch(
+        branch=rejected,
+        state_backup=np.asarray([-1.0]),
+        probe_bad_jacobian=True,
+        w_try=np.inf,
+        time_step=0.2,
+        restart_badjac_factor=0.9,
+        restart_badprog_factor=1.03,
+        step_size=0.1,
+        ijacob=4,
+        bad_resets=5,
+        iter2=9,
+        fsq_prev_before=1.25,
+        fsq0_prev_before=2.5,
+        k_ndamp=2,
+        max_coeff_delta_rms=1.0e-5,
+        max_update_rms=5.0e-3,
+    )
+
+    assert result.restart_update.restart_path == "catastrophic_nonfinite"
+    assert result.restart_update.ijacob == 5
+    assert result.branch_result.restart_path == "catastrophic_nonfinite"
+    assert result.branch_result.restart_reason == "bad_jacobian"
+    np.testing.assert_allclose(result.branch_result.state, [-1.0])
+    assert result.branch_application.runtime.restart_path == "catastrophic_nonfinite"
+    assert result.branch_application.runtime.max_coeff_delta_rms == pytest.approx(5.0e-6)
+    assert result.branch_application.runtime.max_update_rms == pytest.approx(4.0e-3)
+    assert result.branch_application.side_effects == (False, False, True, True)
 
 
 def test_initial_residual_controller_state_matches_vmec_defaults() -> None:

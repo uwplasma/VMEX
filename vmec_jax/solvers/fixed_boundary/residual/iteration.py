@@ -123,7 +123,6 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     controller_state_from_resume_state as _controller_state_from_resume_state,
     controller_state_legacy_values as _controller_state_legacy_values,
     delta_tuple_from_blocks as _delta_tuple_from_blocks_helper,
-    host_catastrophic_restart_update as _host_catastrophic_restart_update,
     host_free_boundary_turnon_restart_update as _host_free_boundary_turnon_restart_update,
     host_initial_axis_reset_update as _host_axis_reset_update,
     host_pre_restart_trigger_branch_result as _host_pre_restart_trigger_branch_result,
@@ -133,10 +132,10 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     initial_residual_controller_state as _initial_residual_controller_state,
     initial_residual_velocity_state as _initial_residual_velocity_state,
     residual_evolve_coefficients as _residual_evolve_coefficients,
+    select_strict_catastrophic_restart_branch as _select_strict_catastrophic_restart_branch,
     resolve_strict_update_control_policy as _resolve_strict_update_control_policy,
     select_strict_trial_branch_result as _select_strict_trial_branch_result,
     strict_step_branch_application as _strict_step_branch_application,
-    strict_step_branch_result_after_catastrophic_restart as _strict_step_branch_result_after_catastrophic_restart,
     velocity_blocks_from_force_blocks as _velocity_blocks_from_force_blocks,
     velocity_blocks_from_resume_state as _velocity_blocks_from_resume_state,
     zero_all_velocity_blocks_like as _zero_all_velocity_blocks_like,
@@ -1531,16 +1530,22 @@ def solve_fixed_boundary_residual_iter(
         _zero_primary_velocity_blocks, lambda: axis_reset_coeffs, _print_scan_axis_guess,
     )
 
-    def _apply_strict_step_branch(branch_result, *, after_catastrophic_restart: bool = False):
+    def _apply_strict_step_branch(
+        branch_result,
+        *,
+        branch_application=None,
+        after_catastrophic_restart: bool = False,
+    ):
         nonlocal state, step_status, restart_reason, huge_force_restart_count, restart_path, update_rms
         nonlocal max_coeff_delta_rms, max_update_rms, freeb_controls_cached
 
-        branch_application = _strict_step_branch_application(
-            branch_result,
-            max_coeff_delta_rms=float(max_coeff_delta_rms),
-            max_update_rms=float(max_update_rms),
-            after_catastrophic_restart=bool(after_catastrophic_restart),
-        )
+        if branch_application is None:
+            branch_application = _strict_step_branch_application(
+                branch_result,
+                max_coeff_delta_rms=float(max_coeff_delta_rms),
+                max_update_rms=float(max_update_rms),
+                after_catastrophic_restart=bool(after_catastrophic_restart),
+            )
         branch_runtime = branch_application.runtime
         state = branch_runtime.state
         step_status = branch_runtime.step_status
@@ -2856,7 +2861,9 @@ def solve_fixed_boundary_residual_iter(
             if not branch_result.accepted:
                 catastrophic_restart = branch_result.catastrophic_restart
                 if catastrophic_restart:
-                    restart_update = _host_catastrophic_restart_update(
+                    catastrophic_selection = _select_strict_catastrophic_restart_branch(
+                        branch=branch_result,
+                        state_backup=state_backup,
                         probe_bad_jacobian=bool(probe_bad_jacobian),
                         w_try=float(w_try),
                         time_step=float(time_step),
@@ -2872,14 +2879,13 @@ def solve_fixed_boundary_residual_iter(
                         max_coeff_delta_rms=float(max_coeff_delta_rms),
                         max_update_rms=float(max_update_rms),
                     )
+                    restart_update = catastrophic_selection.restart_update
                     _apply_controller_update(_controller_state_after_catastrophic_restart_update, restart_update)
-                    branch_result = _strict_step_branch_result_after_catastrophic_restart(
-                        branch=branch_result,
-                        restart_update=restart_update,
-                        state_backup=state_backup,
-                    )
-                    branch_application = _apply_strict_step_branch(
+                    branch_result = catastrophic_selection.branch_result
+                    branch_application = catastrophic_selection.branch_application
+                    _apply_strict_step_branch(
                         branch_result,
+                        branch_application=branch_application,
                         after_catastrophic_restart=True,
                     )
             _record_update_state_ready_timing(
