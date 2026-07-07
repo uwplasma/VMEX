@@ -2729,65 +2729,40 @@ def _mode_vacuum_inputs(*, lasym: bool = False):
     return jnp.concatenate([top, bottom], axis=0), jnp.concatenate([rhs, -0.3 * rhs]), sin_basis, cos_basis
 
 
-def test_dense_mode_vacuum_solve_reconstructs_grid_potential():
+@pytest.mark.parametrize(
+    ("lasym", "include_phi_flat", "include_residual"),
+    [
+        pytest.param(False, True, True, id="stellsym-full"),
+        pytest.param(False, True, False, id="stellsym-no-residual"),
+        pytest.param(False, False, False, id="stellsym-coefficients-only"),
+        pytest.param(True, True, True, id="lasym-full"),
+    ],
+)
+def test_dense_mode_vacuum_solve_contract(lasym: bool, include_phi_flat: bool, include_residual: bool):
     from vmec_jax._compat import jnp
 
     enable_x64(True)
-    A, rhs, sin_basis, _cos_basis = _mode_vacuum_inputs()
-
-    actual = dense_mode_vacuum_solve_jax(A, rhs, sin_basis)
-    coeffs = jnp.linalg.solve(A, rhs)
-
-    np.testing.assert_allclose(actual["mode_coeffs"], coeffs, rtol=1.0e-14, atol=1.0e-14)
-    np.testing.assert_allclose(actual["phi_flat"], sin_basis @ coeffs, rtol=1.0e-14, atol=1.0e-14)
-    np.testing.assert_allclose(actual["residual"], np.zeros_like(np.asarray(rhs)), atol=1.0e-14)
-
-
-def test_dense_mode_vacuum_solve_can_skip_residual_diagnostics():
-    from vmec_jax._compat import jnp
-
-    enable_x64(True)
-    A, rhs, sin_basis, _cos_basis = _mode_vacuum_inputs()
-
-    actual = dense_mode_vacuum_solve_jax(A, rhs, sin_basis, include_residual=False)
-    coeffs = jnp.linalg.solve(A, rhs)
-
-    np.testing.assert_allclose(actual["mode_coeffs"], coeffs, rtol=1.0e-14, atol=1.0e-14)
-    np.testing.assert_allclose(actual["phi_flat"], sin_basis @ coeffs, rtol=1.0e-14, atol=1.0e-14)
-    assert "residual" not in actual
-
-
-def test_dense_mode_vacuum_solve_can_skip_grid_potential_reconstruction():
-    from vmec_jax._compat import jnp
-
-    enable_x64(True)
-    A, rhs, sin_basis, _cos_basis = _mode_vacuum_inputs()
-
-    actual = dense_mode_vacuum_solve_jax(A, rhs, sin_basis, include_phi_flat=False, include_residual=False)
-    coeffs = jnp.linalg.solve(A, rhs)
-
-    np.testing.assert_allclose(actual["mode_coeffs"], coeffs, rtol=1.0e-14, atol=1.0e-14)
-    assert "phi_flat" not in actual
-    assert "residual" not in actual
-
-
-def test_dense_mode_vacuum_solve_reconstructs_lasym_grid_potential():
-    from vmec_jax._compat import jnp
-
-    enable_x64(True)
-    A, rhs, sin_basis, cos_basis = _mode_vacuum_inputs(lasym=True)
-
-    actual = dense_mode_vacuum_solve_jax(A, rhs, sin_basis, cos_basis)
-    coeffs = jnp.linalg.solve(A, rhs)
-    nmodes = sin_basis.shape[1]
-
-    np.testing.assert_allclose(actual["mode_coeffs"], coeffs, rtol=1.0e-14, atol=1.0e-14)
-    np.testing.assert_allclose(
-        actual["phi_flat"],
-        sin_basis @ coeffs[:nmodes] + cos_basis @ coeffs[nmodes:],
-        rtol=1.0e-14,
-        atol=1.0e-14,
+    A, rhs, sin_basis, cos_basis = _mode_vacuum_inputs(lasym=lasym)
+    actual = dense_mode_vacuum_solve_jax(
+        A,
+        rhs,
+        sin_basis,
+        cos_basis,
+        include_phi_flat=include_phi_flat,
+        include_residual=include_residual,
     )
+    coeffs = jnp.linalg.solve(A, rhs)
+    np.testing.assert_allclose(actual["mode_coeffs"], coeffs, rtol=1.0e-14, atol=1.0e-14)
+    if include_phi_flat:
+        nmodes = sin_basis.shape[1]
+        expected_phi = sin_basis @ coeffs if cos_basis is None else sin_basis @ coeffs[:nmodes] + cos_basis @ coeffs[nmodes:]
+        np.testing.assert_allclose(actual["phi_flat"], expected_phi, rtol=1.0e-14, atol=1.0e-14)
+    else:
+        assert "phi_flat" not in actual
+    if include_residual:
+        np.testing.assert_allclose(actual["residual"], np.zeros_like(np.asarray(rhs)), atol=1.0e-14)
+    else:
+        assert "residual" not in actual
 
 
 def test_dense_mode_vacuum_gradient_wrt_rhs_matches_finite_difference():
