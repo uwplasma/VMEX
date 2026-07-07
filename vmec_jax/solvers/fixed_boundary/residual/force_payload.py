@@ -21,6 +21,7 @@ __all__ = [
     "ResidualForceMetricPayload",
     "ResidualForcePayloadResult",
     "StrictUpdateAdjointTraceFinalization",
+    "append_finalized_strict_update_adjoint_trace",
     "compute_forces_iter_runtime",
     "compute_forces_without_iter_dump",
     "ResidualForceEvaluationResult",
@@ -435,6 +436,58 @@ def finalize_strict_update_adjoint_trace_entry_from_payload(
         })
         if payload.velocity_blocks is not None:
             trace_entry.update(_trace_velocity_arrays({"velocity_blocks": payload.velocity_blocks}, "_after"))
+
+
+def append_finalized_strict_update_adjoint_trace(
+    trace_history: list[Any],
+    trace_entry: dict[str, Any],
+    *,
+    branch_result: Any,
+    branch_application: Any,
+    controller_state: Any,
+    branch_selection: Any,
+    update_policy: Any,
+    update_proposal: Any,
+    b1: float,
+    fac: float,
+    w_curr: float,
+    limit_update_rms: bool,
+    velocity_blocks: Any,
+    adjoint_trace_mode: str,
+) -> StrictUpdateAdjointTraceFinalization:
+    """Finalize and append one strict-update adjoint trace from explicit runtime objects."""
+
+    runtime = branch_application.runtime
+    payload = StrictUpdateAdjointTraceFinalization(
+        branch_result=branch_result,
+        step_status=str(runtime.step_status),
+        restart_reason=str(runtime.restart_reason),
+        restart_path=str(runtime.restart_path),
+        time_step=float(controller_state.time_step),
+        flip_sign=float(controller_state.flip_sign),
+        limit_update_rms=bool(limit_update_rms),
+        dt_eff=float(branch_selection.dt_eff),
+        b1=float(b1),
+        fac=float(fac),
+        force_scale=float(update_policy.force_scale),
+        state=runtime.state,
+        w_curr=float(w_curr),
+        w_try=float(branch_selection.w_try),
+        w_try_ratio=float(branch_selection.w_try_ratio),
+        update_rms_preclip=(
+            None if update_proposal.update_rms_preclip is None else float(update_proposal.update_rms_preclip)
+        ),
+        update_rms=None if runtime.update_rms is None else float(runtime.update_rms),
+        update_rms_scale=float(update_proposal.scale),
+        velocity_blocks=velocity_blocks,
+    )
+    finalize_strict_update_adjoint_trace_entry_from_payload(
+        trace_entry,
+        payload,
+        adjoint_trace_mode=adjoint_trace_mode,
+    )
+    trace_history.append(trace_entry)
+    return payload
 
 
 def force_z_channel_square_sums(frzl: TomnspsRZL) -> tuple[Any, Any]:

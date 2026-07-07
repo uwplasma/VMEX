@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
     ResidualForceMetricPayload,
@@ -10,6 +11,7 @@ from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
     ResidualForceEvaluationResult,
     ResidualForceKernelAux,
     StrictUpdateAdjointTraceFinalization,
+    append_finalized_strict_update_adjoint_trace,
     finalize_strict_update_adjoint_trace_entry,
     finalize_strict_update_adjoint_trace_entry_from_payload,
     force_z_channel_square_sums,
@@ -25,6 +27,12 @@ from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
 )
 from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualVelocityBlocks,
+    StrictMomentumProposal,
+    StrictStepBranchApplication,
+    StrictStepRuntimeFields,
+    StrictStepBranchSideEffects,
+    StrictTrialBranchSelection,
+    StrictUpdateControlPolicy,
     strict_step_acceptance_decision,
     strict_step_branch_result,
 )
@@ -174,6 +182,82 @@ def test_finalize_strict_update_trace_from_payload_records_full_post_update_fiel
     assert trace_entry["update_rms_postclip"] == 0.25
     assert trace_entry["update_rms_scale"] == 0.625
     np.testing.assert_allclose(trace_entry["vRcc_after"], np.full((2,), 0.0))
+    np.testing.assert_allclose(trace_entry["vLss_after"], np.full((2,), 11.0))
+
+
+def test_append_finalized_strict_update_trace_builds_payload_and_appends_history() -> None:
+    branch = strict_step_branch_result(
+        acceptance=strict_step_acceptance_decision(w_try=0.5, w_curr=1.0, backtracking=True),
+        state_try="accepted-state",
+        state_backup="backup-state",
+        update_rms=0.25,
+        vmec2000_control=False,
+        huge_force_restart_count=3,
+    )
+    velocity_blocks = ResidualVelocityBlocks(*(np.full((2,), idx, dtype=float) for idx in range(12)))
+    branch_application = StrictStepBranchApplication(
+        runtime=StrictStepRuntimeFields(
+            state="accepted-state",
+            step_status="momentum",
+            restart_reason="none",
+            huge_force_restart_count=0,
+            restart_path="momentum_accept",
+            update_rms=0.25,
+            max_coeff_delta_rms=1.0e-5,
+            max_update_rms=5.0e-3,
+        ),
+        side_effects=StrictStepBranchSideEffects(False, False, False, False),
+    )
+    branch_selection = StrictTrialBranchSelection(
+        branch_result=branch,
+        velocities=velocity_blocks,
+        dt_eff=0.08,
+        update_rms=0.25,
+        w_try=0.5,
+        w_try_ratio=0.5,
+        probe_bad_jacobian=False,
+    )
+    update_policy = StrictUpdateControlPolicy(
+        dt_eff=0.08,
+        force_scale=0.4,
+        need_update_rms=True,
+        need_trial_eval=False,
+        use_jit_step=False,
+    )
+    update_proposal = StrictMomentumProposal(
+        state="accepted-state",
+        velocities=velocity_blocks,
+        update_deltas=None,
+        update_rms_j=np.asarray(0.25),
+        update_rms=0.25,
+        update_rms_preclip=0.4,
+        scale=0.625,
+    )
+    trace_history: list[dict[str, object]] = []
+    trace_entry: dict[str, object] = {}
+
+    payload = append_finalized_strict_update_adjoint_trace(
+        trace_history,
+        trace_entry,
+        branch_result=branch,
+        branch_application=branch_application,
+        controller_state=SimpleNamespace(time_step=0.1, flip_sign=-1.0),
+        branch_selection=branch_selection,
+        update_policy=update_policy,
+        update_proposal=update_proposal,
+        b1=0.2,
+        fac=0.3,
+        w_curr=1.0,
+        limit_update_rms=True,
+        velocity_blocks=velocity_blocks,
+        adjoint_trace_mode="full",
+    )
+
+    assert payload.force_scale == pytest.approx(0.4)
+    assert trace_history == [trace_entry]
+    assert trace_entry["strict_branch_path"] == "momentum_accept"
+    assert trace_entry["state_post"] == "accepted-state"
+    assert trace_entry["update_rms_scale"] == pytest.approx(0.625)
     np.testing.assert_allclose(trace_entry["vLss_after"], np.full((2,), 11.0))
 
 
