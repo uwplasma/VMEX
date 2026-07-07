@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import os
 from pathlib import Path
@@ -10,7 +9,7 @@ from types import ModuleType, SimpleNamespace
 import numpy as np
 import pytest
 
-from conftest import circular_coil_params
+from conftest import circular_coil_params, load_python_module
 from vmec_jax.bootstrap_current import BootstrapCurrentIteration, BootstrapCurrentResult
 from vmec_jax.external_fields import CoilFieldParams
 
@@ -22,30 +21,15 @@ PEDAGOGIC_DIRECT_SCRIPT_PATH = ROOT / "examples" / "free_boundary_essos_direct_f
 
 
 def _load_forward_module():
-    spec = importlib.util.spec_from_file_location("free_boundary_essos_coils_forward_example", SCRIPT_PATH)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(SCRIPT_PATH, name="free_boundary_essos_coils_forward_example", register=False)
 
 
 def _load_beta_scan_module():
-    spec = importlib.util.spec_from_file_location("free_boundary_essos_coils_beta_scan", BETA_SCAN_SCRIPT_PATH)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(BETA_SCAN_SCRIPT_PATH, name="free_boundary_essos_coils_beta_scan", register=False)
 
 
 def _load_pedagogic_module(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(path, name=name, register=False)
 
 
 class _FakePedagogicEssosCoils:

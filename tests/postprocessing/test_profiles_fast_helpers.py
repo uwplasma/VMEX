@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from conftest import load_python_module
 from vmec_jax import profiles as profiles_mod
 from vmec_jax._compat import has_jax, jax, jnp
 from vmec_jax.config import load_config
@@ -18,12 +18,7 @@ PROFILE_EXAMPLE_PATH = ROOT / "examples" / "profile_input_examples.py"
 
 
 def _load_profile_example_module():
-    spec = importlib.util.spec_from_file_location("profile_input_examples", PROFILE_EXAMPLE_PATH)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(PROFILE_EXAMPLE_PATH, name="profile_input_examples", register=False)
 
 
 def test_profile_private_helpers_and_fallbacks():

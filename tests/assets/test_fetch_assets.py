@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import importlib.util
 import io
 from pathlib import Path
-import sys
 import tarfile
 
 import pytest
+
+from conftest import load_python_module
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,12 +14,7 @@ SCRIPT = ROOT / "tools" / "fetch_assets.py"
 
 
 def _load_fetch_assets():
-    spec = importlib.util.spec_from_file_location("fetch_assets", SCRIPT)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(SCRIPT, name="fetch_assets")
 
 
 def test_fetch_assets_dry_run_lists_bundle(capsys) -> None:

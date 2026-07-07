@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
+from conftest import load_python_module
 from vmec_jax.external_fields import CoilFieldParams
 
 
@@ -15,12 +15,7 @@ SCRIPT_PATH = ROOT / "examples" / "free_boundary_direct_coils_forward.py"
 
 
 def _load_forward_module():
-    spec = importlib.util.spec_from_file_location("free_boundary_direct_coils_forward_example", SCRIPT_PATH)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(SCRIPT_PATH, name="free_boundary_direct_coils_forward_example", register=False)
 
 
 def test_direct_coil_forward_example_imports_and_dry_runs_without_essos(tmp_path):
