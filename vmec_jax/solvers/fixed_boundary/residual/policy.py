@@ -577,6 +577,34 @@ def append_residual_iter_step_sample(
     return True
 
 
+def append_post_update_step_sample(
+    *,
+    history_lists: Any,
+    track_history: bool,
+    strict_update: bool,
+    dt_eff: float,
+    update_rms_j: Any,
+    update_rms: Any,
+    w_curr: float,
+    w_try: float,
+    w_try_ratio: float,
+    restart_path: str,
+) -> bool:
+    """Append compact update history after strict or non-strict VMEC steps."""
+
+    update_rms_record = update_rms_j if bool(strict_update) else float(update_rms)
+    return history_lists.append_step_sample(
+        track_history=bool(track_history),
+        step=float(dt_eff),
+        dt_eff=float(dt_eff),
+        update_rms=update_rms_record,
+        w_curr=float(w_curr),
+        w_try=float(w_try),
+        w_try_ratio=float(w_try_ratio),
+        restart_path=str(restart_path),
+    )
+
+
 def bad_jacobian_tau_decision(
     *,
     min_tau: float | None,

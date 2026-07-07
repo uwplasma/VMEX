@@ -7,6 +7,7 @@ import pytest
 
 from vmec_jax.solvers.fixed_boundary.options import validate_residual_iteration_options
 from vmec_jax.solvers.fixed_boundary.residual.policy import (
+    append_post_update_step_sample,
     append_preconditioned_residual_history,
     append_residual_iter_step_sample,
     append_zero_update_history_record,
@@ -132,6 +133,41 @@ def test_append_residual_iter_step_sample_keeps_update_channels_aligned():
     )
     assert skipped is False
     assert histories["step_history"] == [0.125]
+
+
+def test_append_post_update_step_sample_selects_strict_or_host_rms():
+    histories = new_residual_iter_histories()
+
+    assert append_post_update_step_sample(
+        history_lists=histories,
+        track_history=True,
+        strict_update=True,
+        dt_eff=0.25,
+        update_rms_j=np.asarray(0.5),
+        update_rms=9.0,
+        w_curr=1.0,
+        w_try=0.75,
+        w_try_ratio=0.75,
+        restart_path="momentum_accept",
+    )
+    assert append_post_update_step_sample(
+        history_lists=histories,
+        track_history=True,
+        strict_update=False,
+        dt_eff=0.125,
+        update_rms_j=np.asarray(9.0),
+        update_rms=0.25,
+        w_curr=2.0,
+        w_try=np.nan,
+        w_try_ratio=np.nan,
+        restart_path="non_strict",
+    )
+
+    lists = histories.step_sample_lists()
+    assert lists["dt_eff_history"] == [0.25, 0.125]
+    assert lists["update_rms_history"][0] == pytest.approx(0.5)
+    assert lists["update_rms_history"][1] == pytest.approx(0.25)
+    assert lists["restart_path_history"] == ["momentum_accept", "non_strict"]
 
 
 def test_append_zero_update_history_record_builds_aligned_converged_row():

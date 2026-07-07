@@ -39,6 +39,7 @@ from vmec_jax.solvers.fixed_boundary.residual.config import (
     resolve_setup_host_enforce as _resolve_setup_host_enforce,
 )
 from vmec_jax.solvers.fixed_boundary.residual.policy import (
+    append_post_update_step_sample as _append_post_update_step_sample,
     host_restart_decision as _host_restart_decision,
     new_residual_iter_histories as _new_residual_iter_histories,
     numpy_preconditioner_apply_policy as _numpy_preconditioner_apply_policy,
@@ -2972,12 +2973,13 @@ def solve_fixed_boundary_residual_iter(
             w_try = float("nan")
             w_try_ratio = float("nan")
             restart_path = "non_strict"
-        update_rms_record = update_rms_j if bool(strict_update) else float(update_rms)
-        history_lists.append_step_sample(
+        _append_post_update_step_sample(
+            history_lists=history_lists,
             track_history=bool(track_history),
-            step=float(dt_eff),
+            strict_update=bool(strict_update),
             dt_eff=float(dt_eff),
-            update_rms=update_rms_record,
+            update_rms_j=update_rms_j,
+            update_rms=update_rms,
             w_curr=float(w_curr),
             w_try=float(w_try),
             w_try_ratio=float(w_try_ratio),
