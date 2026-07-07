@@ -133,8 +133,8 @@ Required CI includes a no-executable residual parity gate:
    PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 pytest -q -p no:cacheprovider \
      tests/test_residue_getfsq_parity.py \
      tests/io/wout/test_wout_profiles_currents_bundled_parity.py \
-     tests/test_physics_parity_helper_gates.py \
-     tests/test_vmec_parity_physics_fast_gates.py \
+     tests/parity/test_physics_parity_helper_gates.py \
+     tests/parity/test_vmec_parity_physics_fast_gates.py \
      tests/io/wout/test_wout_physics_gates.py \
      tests/test_converged_wout_matrix_parity.py \
      tests/io/wout/test_wout_fixture_inventory.py \
@@ -703,7 +703,7 @@ The fastest executable-backed stage-trace validation is:
 
    VMEC2000_EXEC=/path/to/xvmec2000 \
    VMEC2000_INTEGRATION=1 \
-   pytest -q tests/test_vmec2000_exec_fast_validation.py::test_fast_vmec2000_stage_trace_validation_cases
+   pytest -q tests/parity/test_vmec2000_exec_fast_validation.py::test_fast_vmec2000_stage_trace_validation_cases
 
 This command uses bundled fixed-boundary inputs, a single ``ns=13`` grid,
 ``max_iter=2``, lite dump output, and a 60 second VMEC2000 timeout per case.
@@ -717,7 +717,7 @@ iterations and verifies VMEC2000 reaches the vacuum solve without an
 
    VMEC2000_EXEC=/path/to/xvmec2000 \
    VMEC2000_INTEGRATION=1 \
-   pytest -q tests/test_vmec2000_exec_fast_validation.py::test_vmec2000_free_boundary_lasym_true_reaches_vacuum_solve
+   pytest -q tests/parity/test_vmec2000_exec_fast_validation.py::test_vmec2000_free_boundary_lasym_true_reaches_vacuum_solve
 
 For WOUT-level generated-``mgrid`` free-boundary promotion, use the bounded
 W7-X fixture instead of the older LP-QA generated-``mgrid`` diagnostic.  The
@@ -758,7 +758,7 @@ For a short CLI comparison against the executable:
    VMEC2000_EXEC=/path/to/xvmec2000 \
    VMEC2000_INTEGRATION=1 \
    VMEC2000_CLI_NITER=5 \
-   pytest -q tests/test_cli_vmec2000_exec.py
+   pytest -q tests/drivers/test_cli_vmec2000_exec.py
 
 This caps both VMEC2000 and ``vmec_jax`` CLI runs at five iterations.  To run
 the whole executable-backed suite after the bounded checks are green:
@@ -770,7 +770,7 @@ the whole executable-backed suite after the bounded checks are green:
    pytest -q -m vmec2000
 
 Converged end-state VMEC2000-vs-``vmec_jax`` comparisons are in
-``tests/test_vmec2000_converged_parity.py``.  By default this runs only the
+``tests/parity/test_vmec2000_converged_parity.py``.  By default this runs only the
 bounded fixed-boundary circular case when ``VMEC2000_INTEGRATION=1`` is set.
 Set ``VMEC2000_NIGHTLY=1`` as well to include the slower non-axisymmetric,
 ``lasym=True``, multigrid, and free-boundary representatives:
@@ -780,7 +780,7 @@ Set ``VMEC2000_NIGHTLY=1`` as well to include the slower non-axisymmetric,
    VMEC2000_EXEC=/path/to/xvmec2000 \
    VMEC2000_INTEGRATION=1 \
    VMEC2000_NIGHTLY=1 \
-   pytest -q tests/test_vmec2000_converged_parity.py
+   pytest -q tests/parity/test_vmec2000_converged_parity.py
 
 On 2026-05-29 this nightly command passed locally with
 ``~/bin/xvmec2000``: ``4 passed, 1 skipped, 1 xfailed`` in ``15:06``.  The

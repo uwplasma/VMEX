@@ -17,11 +17,11 @@ from vmec_jax.wout import read_wout, state_from_wout
 
 
 def _data_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "examples" / "data"
+    return Path(__file__).resolve().parents[2] / "examples" / "data"
 
 
 def _single_grid_data_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "examples/data/single_grid"
+    return Path(__file__).resolve().parents[2] / "examples/data/single_grid"
 
 
 def _full_and_half_mesh(ns: int) -> tuple[np.ndarray, np.ndarray]:

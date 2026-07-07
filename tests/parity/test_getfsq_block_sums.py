@@ -25,7 +25,7 @@ def test_getfsq_block_sums_reconstruct_scalars(case_name: str, input_rel: str, w
     """Internal consistency: per-block sums-of-squares reconstruct fsq scalars exactly."""
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / input_rel
     wout_path = root / wout_rel
     assert input_path.exists()

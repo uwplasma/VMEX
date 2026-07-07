@@ -9,7 +9,7 @@ from vmec_jax.driver import example_paths, load_example, run_fixed_boundary, sav
 from vmec_jax.kernels.tomnsp import vmec_angle_grid
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_example_paths_reports_missing_wout_as_none(tmp_path):

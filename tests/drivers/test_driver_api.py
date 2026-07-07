@@ -195,13 +195,13 @@ def test_example_paths_and_load_example():
     pytest.importorskip("netCDF4")
 
     input_path, wout_path = example_paths(
-        "LandremanPaul2021_QH_reactorScale_lowres", root=Path(__file__).resolve().parents[1]
+        "LandremanPaul2021_QH_reactorScale_lowres", root=Path(__file__).resolve().parents[2]
     )
     assert input_path.exists()
     assert wout_path is not None and wout_path.exists()
 
     ex = load_example(
-        "LandremanPaul2021_QH_reactorScale_lowres", root=Path(__file__).resolve().parents[1], with_wout=True
+        "LandremanPaul2021_QH_reactorScale_lowres", root=Path(__file__).resolve().parents[2], with_wout=True
     )
     assert ex.cfg.ns > 0
     assert ex.wout is not None
@@ -214,7 +214,7 @@ def test_save_npz(tmp_path):
 
 
 def test_run_fixed_boundary_initial_guess():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.circular_tokamak"
     # Keep CI fast: use a small VMEC grid.
     grid = vmec_angle_grid(ntheta=10, nzeta=1, nfp=1, lasym=False)
@@ -236,7 +236,7 @@ def test_run_fixed_boundary_initial_guess():
 
 @pytest.mark.py311_slow_coverage
 def test_run_fixed_boundary_returns_current_driven_flux_profiles():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.basic_non_stellsym_pressure"
     grid = vmec_angle_grid(ntheta=10, nzeta=8, nfp=1, lasym=True)
 
@@ -269,7 +269,7 @@ def test_final_flux_profiles_from_state_supports_traced_lsin():
 
     enable_x64(True)
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.basic_non_stellsym_pressure"
     grid = vmec_angle_grid(ntheta=10, nzeta=8, nfp=1, lasym=True)
     run = run_fixed_boundary(
@@ -310,7 +310,7 @@ def test_final_flux_profiles_from_state_supports_traced_lsin():
 
 @pytest.mark.py311_slow_coverage
 def test_host_update_assembly_matches_jax_update_path():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.LandremanPaul2021_QA_lowres"
     cfg, indata = load_config(str(input_path))
     grid = vmec_angle_grid(ntheta=10, nzeta=8, nfp=cfg.nfp, lasym=False)
@@ -367,7 +367,7 @@ def test_host_update_assembly_matches_jax_update_path():
 
 @pytest.mark.py311_slow_coverage
 def test_host_update_assembly_matches_jax_update_path_lasym():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.basic_non_stellsym_pressure"
     cfg, indata = load_config(str(input_path))
     grid = vmec_angle_grid(ntheta=10, nzeta=8, nfp=cfg.nfp, lasym=True)
@@ -427,7 +427,7 @@ def test_host_update_assembly_matches_jax_update_path_lasym():
 
 
 def test_host_update_assembly_driver_default_env_override(monkeypatch):
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     cfg, _indata = load_config(str(root / "examples/data/input.nfp4_QH_warm_start"))
     cfg_finite_beta, _indata_finite_beta = load_config(str(root / "examples/data/input.nfp4_QH_finite_beta"))
     cfg_lasym, _indata_lasym = load_config(str(root / "examples/data/input.basic_non_stellsym_pressure"))
@@ -503,7 +503,7 @@ def test_host_update_assembly_driver_default_env_override(monkeypatch):
 
 
 def test_lasym_performance_mode_infers_axis_for_fast_path():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.up_down_asymmetric_tokamak"
     perf = run_fixed_boundary(
         input_path,
@@ -616,7 +616,7 @@ def test_driver_scalar_list_and_ftol_helpers():
 
 def test_default_non_autodiff_solver_policy_matches_fast_first_fixed_boundary_default(tmp_path, monkeypatch):
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "cpu")
-    simple_input = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    simple_input = Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
     _cfg_simple, indata_simple = load_config(simple_input)
     assert driver_module.default_non_autodiff_solver_policy(indata_simple) == ("accelerated", True)
 
@@ -626,11 +626,11 @@ def test_default_non_autodiff_solver_policy_matches_fast_first_fixed_boundary_de
 
 
 def test_default_use_scan_policy_uses_backend_capability_not_input_class():
-    simple_input = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    simple_input = Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
     _cfg_simple, indata_simple = load_config(simple_input)
-    lasym_input = Path(__file__).resolve().parents[1] / "examples/data/input.up_down_asymmetric_tokamak"
+    lasym_input = Path(__file__).resolve().parents[2] / "examples/data/input.up_down_asymmetric_tokamak"
     _cfg_lasym, indata_lasym = load_config(lasym_input)
-    finite_beta_input = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_finite_beta"
+    finite_beta_input = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_finite_beta"
     _cfg_finite_beta, indata_finite_beta = load_config(finite_beta_input)
 
     assert driver_module._default_use_scan_for_backend(indata_simple, "cpu", "default") is True
@@ -642,27 +642,27 @@ def test_default_use_scan_policy_uses_backend_capability_not_input_class():
 
 def test_default_non_autodiff_solver_policy_uses_accelerated_for_gpu(monkeypatch):
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "gpu")
-    simple_input = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    simple_input = Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
     _cfg_simple, indata_simple = load_config(simple_input)
     assert driver_module.default_non_autodiff_solver_policy(indata_simple) == ("accelerated", True)
 
 
 def test_default_non_autodiff_solver_policy_keeps_cpu_lasym_accelerated(monkeypatch):
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "cpu")
-    lasym_input = Path(__file__).resolve().parents[1] / "examples/data/input.up_down_asymmetric_tokamak"
+    lasym_input = Path(__file__).resolve().parents[2] / "examples/data/input.up_down_asymmetric_tokamak"
     _cfg_lasym, indata_lasym = load_config(lasym_input)
     assert driver_module.default_non_autodiff_solver_policy(indata_lasym) == ("accelerated", True)
 
 
 def test_default_non_autodiff_solver_policy_keeps_cpu_current_multigrid_accelerated(monkeypatch):
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "cpu")
-    qa_input = Path(__file__).resolve().parents[1] / "examples/data/input.LandremanPaul2021_QA_lowres"
+    qa_input = Path(__file__).resolve().parents[2] / "examples/data/input.LandremanPaul2021_QA_lowres"
     _cfg_qa, indata_qa = load_config(qa_input)
     assert driver_module.default_non_autodiff_solver_policy(indata_qa) == ("accelerated", True)
 
 
 def test_gpu_lasym_current_staged_solver_device_auto_inherits_gpu_default():
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.basic_non_stellsym_pressure"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.basic_non_stellsym_pressure"
     cfg, indata = load_config(input_path)
     ns_array = driver_module._as_list_like(indata.get("NS_ARRAY", None))
     niter_array = driver_module._as_list_like(indata.get("NITER_ARRAY", None))
@@ -685,7 +685,7 @@ def test_gpu_lasym_current_staged_solver_device_auto_inherits_gpu_default():
 
 
 def test_gpu_lasym_current_staged_solver_device_default_opts_out():
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.basic_non_stellsym_pressure"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.basic_non_stellsym_pressure"
     cfg, indata = load_config(input_path)
 
     device = driver_module._resolve_fixed_boundary_solver_device_name(
@@ -706,7 +706,7 @@ def test_gpu_lasym_current_staged_solver_device_default_opts_out():
 
 
 def test_gpu_lasym_current_staged_solver_device_cpu_is_explicit():
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.basic_non_stellsym_pressure"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.basic_non_stellsym_pressure"
     cfg, indata = load_config(input_path)
 
     device = driver_module._resolve_fixed_boundary_solver_device_name(
@@ -727,7 +727,7 @@ def test_gpu_lasym_current_staged_solver_device_cpu_is_explicit():
 
 
 def test_gpu_lasym_non_scan_uses_precomputed_tridi_default(monkeypatch):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.basic_non_stellsym_pressure"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.basic_non_stellsym_pressure"
     cfg, _indata = load_config(input_path)
     monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
 
@@ -771,7 +771,7 @@ def test_gpu_lasym_non_scan_uses_precomputed_tridi_default(monkeypatch):
 
 
 def test_low_mode_non_lasym_gpu_keeps_tridi_legacy_default(monkeypatch):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_warm_start"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_warm_start"
     cfg, _indata = load_config(input_path)
     monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
 
@@ -787,7 +787,7 @@ def test_low_mode_non_lasym_gpu_keeps_tridi_legacy_default(monkeypatch):
 
 
 def test_high_mode_non_lasym_gpu_uses_precomputed_tridi_default(monkeypatch):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_finite_beta"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_finite_beta"
     cfg, _indata = load_config(input_path)
     monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
 
@@ -821,7 +821,7 @@ def test_high_mode_non_lasym_gpu_uses_precomputed_tridi_default(monkeypatch):
 
 
 def test_run_fixed_boundary_gpu_lasym_passes_precomputed_tridi_policy(monkeypatch):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.basic_non_stellsym_pressure"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.basic_non_stellsym_pressure"
     monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "gpu")
     captured = {}
@@ -857,7 +857,7 @@ def test_run_fixed_boundary_gpu_lasym_passes_precomputed_tridi_policy(monkeypatc
 
 
 def test_run_fixed_boundary_gpu_high_mode_non_lasym_passes_precomputed_tridi_policy(monkeypatch):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_finite_beta"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_finite_beta"
     monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "gpu")
     captured = {}
@@ -893,7 +893,7 @@ def test_run_fixed_boundary_gpu_high_mode_non_lasym_passes_precomputed_tridi_pol
 
 
 def test_run_fixed_boundary_gpu_scan_passes_precomputed_tridi_policy(monkeypatch):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_warm_start"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_warm_start"
     monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "gpu")
     captured = {}
@@ -930,7 +930,7 @@ def test_run_fixed_boundary_gpu_scan_passes_precomputed_tridi_policy(monkeypatch
 
 
 def test_run_fixed_boundary_gpu_auto_policy_uses_scan_and_precomputed_tridi(monkeypatch):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_warm_start"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_warm_start"
     monkeypatch.delenv("VMEC_JAX_TRIDI_PRECOMPUTE", raising=False)
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "gpu")
     captured = {}
@@ -970,7 +970,7 @@ def test_run_fixed_boundary_gpu_auto_policy_uses_scan_and_precomputed_tridi(monk
 
 
 def test_run_fixed_boundary_gpu_auto_policy_env_tridi_override_delegates(monkeypatch):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_warm_start"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_warm_start"
     monkeypatch.setenv("VMEC_JAX_TRIDI_PRECOMPUTE", "0")
     monkeypatch.setattr(driver_module, "_default_backend_name", lambda: "gpu")
     captured = {}
@@ -1010,13 +1010,13 @@ def test_run_fixed_boundary_gpu_auto_policy_env_tridi_override_delegates(monkeyp
 
 
 def test_default_non_autodiff_solver_policy_keeps_free_boundary_on_robust_path():
-    freeb_input = Path(__file__).resolve().parents[1] / "examples/data/input.cth_like_free_bdy"
+    freeb_input = Path(__file__).resolve().parents[2] / "examples/data/input.cth_like_free_bdy"
     _cfg_freeb, indata_freeb = load_config(freeb_input)
     assert driver_module.default_non_autodiff_solver_policy(indata_freeb) == ("default", True)
 
 
 def test_run_free_boundary_rejects_fixed_boundary_input():
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
     with pytest.raises(ValueError, match="not a free-boundary case"):
         run_free_boundary(input_path, verbose=False, use_initial_guess=True)
 
@@ -1047,7 +1047,7 @@ def test_run_free_boundary_delegates_to_shared_driver(monkeypatch, tmp_path):
 
 
 def test_run_free_boundary_smoke_on_bundled_small_case():
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.cth_like_free_bdy_lasym_small"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.cth_like_free_bdy_lasym_small"
     run = run_free_boundary(
         input_path,
         use_initial_guess=True,
@@ -1060,7 +1060,7 @@ def test_run_free_boundary_smoke_on_bundled_small_case():
 
 
 def test_run_fixed_boundary_keeps_supporting_free_boundary_inputs():
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.cth_like_free_bdy_lasym_small"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.cth_like_free_bdy_lasym_small"
     run = run_fixed_boundary(
         input_path,
         use_initial_guess=True,
@@ -1205,7 +1205,7 @@ def test_cli_solver_mode_conflicts_with_fast_flags():
 
 
 def test_cli_passes_cli_fixed_boundary_mode(monkeypatch, tmp_path):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
     captured = {}
 
     def _fake_run_fixed_boundary(input_path_arg, **kwargs):
@@ -1226,7 +1226,7 @@ def test_cli_passes_cli_fixed_boundary_mode(monkeypatch, tmp_path):
 
 
 def test_cli_passes_public_finish_policy(monkeypatch, tmp_path):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
     captured = {}
 
     def _fake_run_fixed_boundary(input_path_arg, **kwargs):
@@ -1262,7 +1262,7 @@ def test_cli_passes_public_finish_policy(monkeypatch, tmp_path):
 
 
 def test_cli_defaults_to_cpu_accelerated_on_simple_fixed_boundary(monkeypatch, tmp_path):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
     captured = {}
 
     def _fake_run_fixed_boundary(input_path_arg, **kwargs):
@@ -1310,7 +1310,7 @@ def test_cli_defaults_to_cpu_accelerated_on_staged_fixed_boundary_with_niter_arr
 
 
 def test_cli_solver_device_cpu_uses_cpu_accelerated_policy(monkeypatch, tmp_path):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_warm_start"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_warm_start"
     captured = {}
 
     def _fake_run_fixed_boundary(input_path_arg, **kwargs):
@@ -1343,7 +1343,7 @@ def test_cli_solver_device_cpu_uses_cpu_accelerated_policy(monkeypatch, tmp_path
 
 
 def test_cli_solver_device_gpu_uses_gpu_performance_policy(monkeypatch, tmp_path):
-    input_path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_warm_start"
+    input_path = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_warm_start"
     captured = {}
 
     def _fake_run_fixed_boundary(input_path_arg, **kwargs):
@@ -1400,7 +1400,7 @@ def test_cli_defaults_to_accelerated_on_staged_fixed_boundary_without_niter_arra
 
 
 def test_run_fixed_boundary_accelerated_mode_uses_scan():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.circular_tokamak"
     grid = vmec_angle_grid(ntheta=10, nzeta=1, nfp=1, lasym=False)
 
@@ -1882,7 +1882,7 @@ def test_run_fixed_boundary_accelerated_mode_defaults_to_single_grid():
     # of whether NS_ARRAY/NITER_ARRAY are present.  The user_explicitly_staged_cli
     # path only activates in the CLI auto-detection code path (no explicit
     # solver_mode arg).
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.LandremanSenguptaPlunk_section5p3_low_res"
 
     run_acc = run_fixed_boundary(
@@ -2197,7 +2197,7 @@ def test_run_fixed_boundary_cli_three_stage_lasym_current_driven_nonaxis_uses_mu
 
 @pytest.mark.py311_slow_coverage
 def test_vmec2000_iter_histories_materialize_numeric_arrays():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.circular_tokamak"
     grid = vmec_angle_grid(ntheta=10, nzeta=1, nfp=1, lasym=False)
 

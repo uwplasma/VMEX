@@ -87,7 +87,7 @@ def test_vmec2000_scalars_match_vmec_jax_for_circular_tokamak(tmp_path: Path):
     except Exception as e:
         pytest.skip(f"vmec python extension not available: {e!r}")
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     input_path = repo_root / "examples/data/input.circular_tokamak"
     assert input_path.exists()
 

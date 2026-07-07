@@ -35,7 +35,7 @@ FIXED_BOUNDARY_WOUT_CASES = (
 
 
 def _data_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "examples" / "data"
+    return Path(__file__).resolve().parents[2] / "examples" / "data"
 
 
 def _case_paths(case: FixedBoundaryWoutCase) -> tuple[Path, Path]:

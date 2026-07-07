@@ -10,7 +10,7 @@ from vmec_jax.driver import run_fixed_boundary
 from vmec_jax.vmec2000_exec import find_vmec2000_exec, run_xvmec2000
 from vmec_jax.wout import read_wout, wout_minimal_from_fixed_boundary
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 QA_INPUT_ENV = os.environ.get("VMEC_JAX_QA_INPUT", "")
 QA_INPUT = Path(QA_INPUT_ENV).expanduser().resolve() if QA_INPUT_ENV else (REPO_ROOT / "examples/data/input.qa_signgs1")
 

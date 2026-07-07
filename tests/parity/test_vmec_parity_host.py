@@ -42,7 +42,7 @@ def _rng_arrays(*, ns: int, ncoeff: int, seed: int = 0):
 
 
 def test_host_signed_to_mn_matches_jax_cached():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     cfg, _ = load_config(str(root / "examples/data/input.basic_non_stellsym_pressure"))
     static = build_static(cfg)
     maps = signed_maps_from_modes(static.modes)
@@ -60,7 +60,7 @@ def test_host_signed_to_mn_matches_jax_cached():
 
 
 def test_host_m1_internal_to_physical_matches_jax_lasym_false():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     cfg, _ = load_config(str(root / "examples/data/input.LandremanPaul2021_QA_lowres"))
     static = build_static(cfg)
     arrays = _rng_arrays(ns=cfg.ns, ncoeff=static.modes.m.size, seed=2)
@@ -90,7 +90,7 @@ def test_host_m1_internal_to_physical_matches_jax_lasym_false():
 
 
 def test_host_m1_internal_to_physical_matches_jax_lasym_true():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     cfg, _ = load_config(str(root / "examples/data/input.basic_non_stellsym_pressure"))
     static = build_static(cfg)
     arrays = _rng_arrays(ns=cfg.ns, ncoeff=static.modes.m.size, seed=3)

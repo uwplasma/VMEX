@@ -33,7 +33,7 @@ def test_equif_matches_eqfor_normalization(input_rel: str, wout_rel: str):
 
     require_slow()
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / input_rel
     wout_path = root / wout_rel
     assert input_path.exists()
@@ -109,7 +109,7 @@ def test_equif_matches_eqfor_normalization(input_rel: str, wout_rel: str):
 
 def test_plascur_edge_matches_full_buco_path():
     pytest.importorskip("netCDF4")
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.circular_tokamak"
     wout_path = root / "examples/data/wout_circular_tokamak_reference.nc"
 

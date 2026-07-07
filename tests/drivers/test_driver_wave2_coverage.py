@@ -15,7 +15,7 @@ from vmec_jax.kernels.tomnsp import vmec_angle_grid
 
 
 def _example_input(name: str = "input.circular_tokamak") -> Path:
-    return Path(__file__).resolve().parents[1] / "examples" / "data" / name
+    return Path(__file__).resolve().parents[2] / "examples" / "data" / name
 
 
 def _small_grid(*, lasym: bool = False):

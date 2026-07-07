@@ -146,7 +146,7 @@ def test_fast_vmec2000_stage_trace_validation_cases():
     """Optional short executable-backed parity checks for fixed-boundary stages."""
 
     exe = _vmec2000_exec_or_skip()
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     script = repo_root / "tools" / "diagnostics" / "vmec2000_exec_stage_trace_compare.py"
 
     for input_name, rtol in VMEC2000_STAGE_TRACE_CASES:
@@ -180,7 +180,7 @@ def test_vmec2000_free_boundary_lasym_true_reaches_vacuum_solve(tmp_path: Path) 
     """Optional executable-backed guard for the bundled free-boundary LASYM deck."""
 
     exe = _vmec2000_exec_or_skip()
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     input_path = repo_root / "examples" / "data" / "input.cth_like_free_bdy_lasym_small"
     mgrid_path = repo_root / "examples" / "data" / "mgrid_cth_like_lasym_small.nc"
     if not input_path.exists() or not mgrid_path.exists():
@@ -217,7 +217,7 @@ def test_vmec2000_diiid_finite_beta_free_boundary_response_matches_vmec_jax(tmp_
     from vmec_jax.driver import run_free_boundary, write_wout_from_fixed_boundary_run
     from vmec_jax.wout import read_wout
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     input_path = repo_root / "examples" / "data" / "input.DIII-D_lasym_false"
     mgrid_path = repo_root / "examples" / "data" / "mgrid_d3d_ef.nc"
     if not input_path.exists() or not mgrid_path.exists():
@@ -292,7 +292,7 @@ def test_vmec2000_converged_wout_diagnostics_validation(
     from vmec_jax.driver import run_fixed_boundary, write_wout_from_fixed_boundary_run
     from vmec_jax.wout import read_wout
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     input_path = repo_root / "examples" / "data" / input_name
     if not input_path.exists():
         pytest.skip(f"Missing bundled input: {input_path}")

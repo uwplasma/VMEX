@@ -8,7 +8,6 @@ import pytest
 
 
 from vmec_jax.config import load_config
-from vmec_jax.field import bsup_from_geom, chips_from_chipf, lamscale_from_phips
 from vmec_jax.fourier import build_helical_basis, eval_fourier
 from vmec_jax.geom import eval_geom
 from vmec_jax.grids import AngleGrid
@@ -52,10 +51,10 @@ def _rel_rms(a: np.ndarray, b: np.ndarray) -> float:
 
 
 @pytest.mark.parametrize("case_name,input_rel,wout_rel", _CASES)
-def test_bsup_from_geom_matches_wout_on_outer_surfaces(case_name: str, input_rel: str, wout_rel: str):
+def test_bmag_from_bsup_matches_wout_bmnc(case_name: str, input_rel: str, wout_rel: str):
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / input_rel
     wout_path = root / wout_rel
     assert input_path.exists()
@@ -63,12 +62,11 @@ def test_bsup_from_geom_matches_wout_on_outer_surfaces(case_name: str, input_rel
 
     cfg, _indata = load_config(str(input_path))
     wout = read_wout(wout_path)
-    cfg_hi = _hi_res_cfg(cfg, mpol=wout.mpol, ntor=wout.ntor)
-    static = build_static(cfg_hi)
+    # Keep CI fast: cap angular resolution instead of upsizing.
+    cfg_mid = replace(cfg, ntheta=min(int(cfg.ntheta), 32), nzeta=min(int(cfg.nzeta), 32))
+    static = build_static(cfg_mid)
 
     st = state_from_wout(wout)
-    # wout Nyquist fields (gmnc, bsup*) are stored on the radial half mesh; match
-    # that convention by averaging R/Z coefficients onto the half mesh.
     st_half = replace(
         st,
         Rcos=_half_mesh_coeffs(np.asarray(st.Rcos)),
@@ -80,43 +78,22 @@ def test_bsup_from_geom_matches_wout_on_outer_surfaces(case_name: str, input_rel
     )
     g = eval_geom(st_half, static)
 
-    # Nyquist basis for reference fields.
+    # Nyquist basis.
     modes_nyq = ModeTable(m=wout.xm_nyq, n=(wout.xn_nyq // wout.nfp))
     grid = AngleGrid(theta=static.grid.theta, zeta=static.grid.zeta, nfp=wout.nfp)
     basis_nyq = build_helical_basis(modes_nyq, grid)
 
-    # Construct bsup from vmec_jax formula using wout flux functions, and compare
-    # against wout's stored bsup* Fourier series.
-    #
-    # Note: near-axis surfaces are sensitive to coordinate singularities and the
-    # exact axis expansions used by VMEC. For now, measure parity only over the
-    # outer quarter of the plasma.
-    lamscale = lamscale_from_phips(wout.phips, static.s)
-    scale = float(wout.signgs) * float(2.0 * np.pi)
-    phipf_int = np.asarray(wout.phipf) / scale
-    chipf_int = np.asarray(wout.chipf) / scale
-    chips = chips_from_chipf(chipf_int)
-    bsupu_calc, bsupv_calc = bsup_from_geom(
-        g,
-        phipf=phipf_int,
-        chipf=chips,
-        nfp=wout.nfp,
-        signgs=wout.signgs,
-        lamscale=lamscale,
-    )
-    bsupu_calc = np.asarray(bsupu_calc)
-    bsupv_calc = np.asarray(bsupv_calc)
+    bsupu = np.asarray(eval_fourier(wout.bsupumnc, wout.bsupumns, basis_nyq))
+    bsupv = np.asarray(eval_fourier(wout.bsupvmnc, wout.bsupvmns, basis_nyq))
 
-    bsupu_ref = np.asarray(eval_fourier(wout.bsupumnc, wout.bsupumns, basis_nyq))
-    bsupv_ref = np.asarray(eval_fourier(wout.bsupvmnc, wout.bsupvmns, basis_nyq))
+    gtt = np.asarray(g.g_tt)
+    gtp = np.asarray(g.g_tp)
+    gpp = np.asarray(g.g_pp)
+    B2 = gtt * bsupu**2 + 2.0 * gtp * bsupu * bsupv + gpp * bsupv**2
+    Bmag_calc = np.sqrt(np.maximum(B2, 0.0))
 
-    if wout.ns < 4:
-        return
-    js0 = max(1, int(0.25 * (wout.ns - 1)))
-    err_u = _rel_rms(bsupu_calc[js0:], bsupu_ref[js0:])
-    err_v = _rel_rms(bsupv_calc[js0:], bsupv_ref[js0:])
+    Bmag_ref = np.asarray(eval_fourier(wout.bmnc, wout.bmns, basis_nyq))
 
-    # These tolerances are intentionally loose while axis/half-mesh conventions
-    # are refined. Outer surfaces already show good parity for most cases.
-    assert err_u < 0.4
-    assert err_v < 0.3
+    err = _rel_rms(Bmag_calc[1:], Bmag_ref[1:])
+    # Some cases are sensitive to half-mesh conventions; keep loose for now.
+    assert err < 3.5e-3

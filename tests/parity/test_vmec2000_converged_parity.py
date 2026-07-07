@@ -306,7 +306,7 @@ def test_xvmec2000_converged_wout_matches_vmec_jax(case: ConvergedParityCase, tm
 
     from vmec_jax.driver import run_fixed_boundary, run_free_boundary, write_wout_from_fixed_boundary_run
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     input_path = repo_root / case.input_relpath
     if not input_path.exists():
         pytest.skip(f"Missing bundled input: {input_path}")

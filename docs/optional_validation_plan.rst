@@ -237,7 +237,7 @@ VMEC2000 executable smoke:
 
    VMEC2000_EXEC=/path/to/xvmec2000 \
    VMEC2000_INTEGRATION=1 \
-   pytest -q tests/test_vmec2000_exec_fast_validation.py
+   pytest -q tests/parity/test_vmec2000_exec_fast_validation.py
 
 Full VMEC2000 marker tier:
 
@@ -258,7 +258,7 @@ On 2026-05-19, after ``e0b00e7``, the no-executable physics gates stayed green:
 
 .. code-block:: bash
 
-   python -m pytest tests/io/wout/test_wout_physics_gates.py tests/test_vmec_parity_physics_fast_gates.py -q
+   python -m pytest tests/io/wout/test_wout_physics_gates.py tests/parity/test_vmec_parity_physics_fast_gates.py -q
 
 This covered 13 bundled physics/parity scalar checks in about 2.4 seconds on
 the local machine.
@@ -344,7 +344,7 @@ The next parity gates are:
 
      VMEC2000_EXEC=/path/to/xvmec2000 \
      VMEC2000_INTEGRATION=1 \
-     pytest -q tests/test_vmec2000_exec_fast_validation.py::test_vmec2000_free_boundary_lasym_true_reaches_vacuum_solve
+     pytest -q tests/parity/test_vmec2000_exec_fast_validation.py::test_vmec2000_free_boundary_lasym_true_reaches_vacuum_solve
 
 - Keep the optional bounded free-boundary ``LASYM=true`` manifest case
   instrumented until strict external parity is demonstrated.  The

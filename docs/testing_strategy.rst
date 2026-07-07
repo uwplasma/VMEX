@@ -226,7 +226,7 @@ the recommended local escalation path.
      - Before pushing ordinary code or docs-adjacent changes that touch tested
        APIs.
    * - Released WOUT parity gate
-     - ``python tools/fetch_assets.py --bundle wout-fixtures && JAX_ENABLE_X64=1 pytest -q tests/test_residue_getfsq_parity.py tests/io/wout/test_wout_profiles_currents_bundled_parity.py tests/test_physics_parity_helper_gates.py tests/diagnostics/parity/test_vmec2000_exec_threed1.py``
+     - ``python tools/fetch_assets.py --bundle wout-fixtures && JAX_ENABLE_X64=1 pytest -q tests/test_residue_getfsq_parity.py tests/io/wout/test_wout_profiles_currents_bundled_parity.py tests/parity/test_physics_parity_helper_gates.py tests/diagnostics/parity/test_vmec2000_exec_threed1.py``
      - Required no-executable physics gate: recompute VMEC2000 ``fsqr/fsqz/fsql``,
        verify flux/pressure/iota/current wout-field invariants, protect small
        Mercier/JXBFORCE/Boozer helper identities, and cover the VMEC2000 trace
@@ -277,7 +277,7 @@ the recommended local escalation path.
        local coverage-appended run reached ``72.35%`` coverage with
        ``74 passed, 4 skipped`` in ``27:21`` after refreshing released assets.
    * - External VMEC2000 tier
-     - ``VMEC2000_EXEC=/path/to/xvmec2000 VMEC2000_INTEGRATION=1 JAX_ENABLE_X64=1 pytest -q tests/test_vmec2000_exec_fast_validation.py::test_vmec2000_converged_wout_diagnostics_validation``
+     - ``VMEC2000_EXEC=/path/to/xvmec2000 VMEC2000_INTEGRATION=1 JAX_ENABLE_X64=1 pytest -q tests/parity/test_vmec2000_exec_fast_validation.py::test_vmec2000_converged_wout_diagnostics_validation``
      - Preferred executable-backed release gate: run low-resolution bundled
        inputs to convergence in VMEC2000 and ``vmec_jax``, then compare final
        ``wout`` geometry, flux/profile, magnetic-field, and scalar diagnostics.
@@ -288,7 +288,7 @@ the recommended local escalation path.
        tolerance in a bounded 2026-05-19 rerun; keep it as dated optional
        evidence rather than a broad strict-LASYM parity promotion or required
        PR check. Keep
-       ``tests/test_vmec2000_exec_fast_validation.py::test_fast_vmec2000_stage_trace_validation_cases``
+       ``tests/parity/test_vmec2000_exec_fast_validation.py::test_fast_vmec2000_stage_trace_validation_cases``
        for deliberate short-trace regressions.
    * - External SIMSOPT tier
      - ``RUN_SIMSOPT_VALIDATION=1 JAX_ENABLE_X64=1 pytest -q -m simsopt tests/test_simsopt_optional_validation.py tests/test_redl_bootstrap_simsopt_parity.py``
@@ -402,7 +402,7 @@ VMEC2000 parity gates:
   VMEC surface-averaged Ampere relation
   ``jcuru = -d(bvco)/ds / mu0`` and ``jcurv = d(buco)/ds / mu0`` on interior
   surfaces.
-- Required CI includes ``tests/test_physics_parity_helper_gates.py``.  This
+- Required CI includes ``tests/parity/test_physics_parity_helper_gates.py``.  This
   small no-solve helper gate uses released converged ``wout`` fixtures to
   protect VMEC Mercier decomposition, JXBFORCE ``bdotgradv`` normalization,
   magnetic-well endpoint extrapolation, Boozer spectral handoff conventions,

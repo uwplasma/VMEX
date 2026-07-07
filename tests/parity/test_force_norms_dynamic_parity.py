@@ -33,7 +33,7 @@ def test_force_norms_dynamic_matches_wout_scalars(case_name: str, input_rel: str
     """Dynamic force norms match the wout-derived VMEC conventions on the internal grid."""
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / input_rel
     wout_path = root / wout_rel
     assert input_path.exists()

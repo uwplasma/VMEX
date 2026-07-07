@@ -690,7 +690,7 @@ def test_default_cpu_policy_is_not_profile_or_size_classified():
 def test_default_cpu_policy_routes_serial2500170_fixture_to_accelerated():
     """The serial2500170 fixture uses scan for warm throughput."""
 
-    path = Path(__file__).resolve().parents[1] / "examples/data/input.serial2500170_surface_points_mpol12_ntor12"
+    path = Path(__file__).resolve().parents[2] / "examples/data/input.serial2500170_surface_points_mpol12_ntor12"
     indata = read_indata(path)
     assert driver._default_non_autodiff_solver_policy_for_backend(indata, "cpu") == ("accelerated", True)
     assert driver._default_use_scan_for_backend(indata, "cpu", "accelerated") is True
@@ -704,7 +704,7 @@ def test_default_cpu_policy_routes_serial2500170_fixture_to_accelerated():
 def test_default_cpu_policy_routes_finite_beta_fixture_to_fast_with_dynamic_scan():
     """Finite-beta/current cases also start fast; convergence monitors own safety."""
 
-    path = Path(__file__).resolve().parents[1] / "examples/data/input.nfp4_QH_finite_beta"
+    path = Path(__file__).resolve().parents[2] / "examples/data/input.nfp4_QH_finite_beta"
     indata = read_indata(path)
     assert driver._default_non_autodiff_solver_policy_for_backend(indata, "cpu") == ("accelerated", True)
     assert driver._default_use_scan_for_backend(indata, "cpu", "accelerated") is True

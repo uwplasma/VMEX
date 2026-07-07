@@ -19,7 +19,7 @@ def test_qh_reactorscale_multigrid_override_stage_parity(tmp_path: Path):
     if exe is None:
         pytest.skip("xvmec2000 executable not found")
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     script = repo_root / "tools" / "diagnostics" / "vmec2000_exec_stage_trace_compare.py"
     input_path = repo_root / "examples" / "data" / "input.LandremanPaul2021_QH_reactorScale_lowres"
     if not input_path.exists():

@@ -14,7 +14,7 @@ def _vmec2000_root() -> Path | None:
     # Expected layout in this monorepo-style workspace:
     #   <workspace>/vmec_jax_git
     #   <workspace>/VMEC2000
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[3]
     cand = root / "VMEC2000"
     return cand if cand.exists() else None
 
@@ -98,7 +98,7 @@ def test_vmec2000_python_api_produces_reference_wout_for_circular_tokamak(tmp_pa
     except ImportError as e:
         pytest.skip(f"VMEC2000 python extension import failed: {e!r}")
 
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     input_path = repo_root / "examples/data/input.circular_tokamak"
     ref_wout_path = repo_root / "examples/data/wout_circular_tokamak_reference.nc"
     assert input_path.exists()
