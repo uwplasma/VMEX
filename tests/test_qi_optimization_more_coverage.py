@@ -15,7 +15,7 @@ def test_load_basin_prefilter_tools_reports_source_checkout_requirement(monkeypa
     real_import = builtins.__import__
 
     def blocked_import(name, globals_=None, locals_=None, fromlist=(), level=0):  # noqa: ANN001
-        if name in {"tools.diagnostics.qi_basin_survey", "tools.diagnostics.qi_landscape_scan"}:
+        if name in {"tools.diagnostics.qi.qi_basin_survey", "tools.diagnostics.qi.qi_landscape_scan"}:
             raise ModuleNotFoundError(name)
         return real_import(name, globals_, locals_, fromlist, level)
 

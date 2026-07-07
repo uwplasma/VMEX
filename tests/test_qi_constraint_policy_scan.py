@@ -4,7 +4,13 @@ import importlib.util
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "diagnostics" / "qi_constraint_policy_scan.py"
+SCRIPT = (
+    Path(__file__).resolve().parents[1]
+    / "tools"
+    / "diagnostics"
+    / "qi"
+    / "qi_constraint_policy_scan.py"
+)
 
 
 def _load_module():

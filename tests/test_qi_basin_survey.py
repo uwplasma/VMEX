@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tools.diagnostics.qi_basin_survey import (
+from tools.diagnostics.qi.qi_basin_survey import (
     BasinCandidate,
     SurveyTargets,
     basin_score,

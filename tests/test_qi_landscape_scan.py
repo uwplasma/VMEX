@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from tools.diagnostics.qi_landscape_scan import (
+from tools.diagnostics.qi.qi_landscape_scan import (
     METRICS,
     ScanAxis,
     choose_default_dofs,

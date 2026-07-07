@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from tools.diagnostics.qi_objective_component_report import (
+from tools.diagnostics.qi.qi_objective_component_report import (
     _annotate_wout_case_gates,
     _wout_rankings,
     build_synthetic_report,

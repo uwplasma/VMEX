@@ -377,7 +377,7 @@ Plan a deterministic survey without running VMEC:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python tools/diagnostics/qi_basin_survey.py \
+   PYTHONPATH=. python tools/diagnostics/qi/qi_basin_survey.py \
      --input examples/data/input.QI_stel_seed_3127 \
      --output-dir results/diagnostics/qi_basin_survey
 
@@ -385,7 +385,7 @@ Run the bounded survey after reviewing the plan:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python tools/diagnostics/qi_basin_survey.py \
+   PYTHONPATH=. python tools/diagnostics/qi/qi_basin_survey.py \
      --input examples/data/input.QI_stel_seed_3127 \
      --output-dir results/diagnostics/qi_basin_survey \
      --execute --save-candidate-inputs
@@ -406,7 +406,7 @@ refinements:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python tools/diagnostics/qi_basin_promote.py \
+   PYTHONPATH=. python tools/diagnostics/qi/qi_basin_promote.py \
      --candidates results/diagnostics/qi_basin_survey/top_candidates.json \
      --out-root results/diagnostics/qi_basin_promotion
 
@@ -414,7 +414,7 @@ After reviewing ``promotion_plan.json``, run:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python tools/diagnostics/qi_basin_promote.py \
+   PYTHONPATH=. python tools/diagnostics/qi/qi_basin_promote.py \
      --candidates results/diagnostics/qi_basin_survey/top_candidates.json \
      --out-root results/diagnostics/qi_basin_promotion \
      --execute
@@ -431,7 +431,7 @@ gates are preserved while the active failed gate improves:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python tools/diagnostics/qi_filter_search.py \
+   PYTHONPATH=. python tools/diagnostics/qi/qi_filter_search.py \
      --input results/diagnostics/qi_basin_survey/top_candidate/input.candidate \
      --output-dir results/diagnostics/qi_filter_search
 

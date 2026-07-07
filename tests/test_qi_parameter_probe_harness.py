@@ -5,7 +5,13 @@ import json
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "diagnostics" / "qi_parameter_probe_harness.py"
+SCRIPT = (
+    Path(__file__).resolve().parents[1]
+    / "tools"
+    / "diagnostics"
+    / "qi"
+    / "qi_parameter_probe_harness.py"
+)
 
 
 def _load_module():

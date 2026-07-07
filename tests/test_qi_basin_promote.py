@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.diagnostics.qi_basin_promote import (
+from tools.diagnostics.qi.qi_basin_promote import (
     default_promotion_policies,
     load_candidate_records,
     main,

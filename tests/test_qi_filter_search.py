@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tools.diagnostics.qi_filter_search import (
+from tools.diagnostics.qi.qi_filter_search import (
     FilterSearchOptions,
     SurveyTargets,
     filter_decision,

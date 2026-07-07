@@ -35,13 +35,13 @@ def _load_basin_prefilter_tools():
     """
 
     try:
-        from tools.diagnostics.qi_basin_survey import (
+        from tools.diagnostics.qi.qi_basin_survey import (
             SurveyTargets,
             generate_basin_candidates,
             rank_candidate_records,
             write_csv,
         )
-        from tools.diagnostics.qi_landscape_scan import build_stage as build_diagnostic_stage
+        from tools.diagnostics.qi.qi_landscape_scan import build_stage as build_diagnostic_stage
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "The QI basin prefilter requires vmec_jax to be run from a source checkout "
