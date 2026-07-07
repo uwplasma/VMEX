@@ -47,8 +47,9 @@ Physics and geometry kernels:
 
 - Root modules such as ``config.py``, ``static.py``, ``state.py``,
   ``boundary.py``, ``init_guess.py``, ``coords.py``, ``geom.py``,
-  ``field.py``, ``energy.py``, ``vmec_tomnsp.py``, ``vmec_bcovar.py``, and
-  ``preconditioner_1d.py`` hold reusable VMEC data structures and kernels.
+  ``field.py``, ``energy.py``, and ``preconditioner_1d.py`` hold reusable VMEC
+  data structures and kernels.  Lower-level translated physics kernels live in
+  ``vmec_jax/kernels/``.
 - Objective/diagnostic modules and packages such as ``quasisymmetry.py``,
   ``quasi_isodynamic/``, ``bootstrap_current.py``, ``finite_beta.py``, and
   ``plotting.py`` expose higher-level physics quantities used by examples,
@@ -92,13 +93,23 @@ or optimization-output files.  Required automated checks belong under
 ``tests/``; optional executable/GPU/nightly checks should be driven from
 ``tools/diagnostics/`` or ``tools/benchmarks/``.
 
-Test organization is being migrated away from one flat directory.  New tests
-should use domain folders such as ``tests/fixed_boundary/``,
-``tests/free_boundary/``, ``tests/io_wout/``, ``tests/physics/``,
-``tests/optimization/``, ``tests/differentiation/``, ``tests/performance/``,
-``tests/examples/``, ``tests/cli/``, and ``tests/release/``.  Avoid adding
-``wave`` or ``more_coverage`` files; merge those assertions into behavior-named
-domain tests with shared fixtures.
+Test organization is domain-based.  New tests should use existing domains such
+as ``tests/solvers/``, ``tests/free_boundary/``, ``tests/io/``,
+``tests/kernels/``, ``tests/objectives/``, ``tests/optimization/``,
+``tests/adjoints/``, ``tests/drivers/``, ``tests/parity/``,
+``tests/postprocessing/``, ``tests/core/``, ``tests/diagnostics/``,
+``tests/external_fields/``, ``tests/assets/``, ``tests/integrations/``, and
+``tests/release/``.  Avoid adding ``wave`` or ``more_coverage`` files; merge
+those assertions into behavior-named domain tests with shared fixtures when the
+same behavior and fixture family are being checked.
+
+The current complexity problem is not a lack of folders.  The next test-suite
+work is to reduce repeated setup in the largest domains:
+``tests/solvers/``, ``tests/free_boundary/``, and ``tests/optimization/``.
+Move reusable input-deck, WOUT, synthetic-state, direct-coil, and optimizer
+builders to ``tests/fixtures/`` or a domain ``conftest.py``.  Do not merge
+physics/parity tests merely to reduce file count if that hides the physical
+assertion.
 
 For most scripts, prefer ``import vmec_jax as vj`` or ``import vmec_jax.api as
 vj``.  Import lower-level modules directly only when developing kernels,
@@ -149,7 +160,25 @@ The current code intentionally preserves VMEC2000 semantics, but several
 translation-era modules are now too large for long-term research development.
 Use ``vmec_jax_plan/plan_research_grade_performance_differentiability.md`` as
 the active single source of truth for the staged performance,
-differentiability, validation, and refactor plan.
+differentiability, validation, and refactor plan.  Its current target
+architecture is:
+
+- ``core`` for configuration, grids, profiles, state, modes, and boundaries;
+- ``spectral`` for Fourier transforms and mode projections;
+- ``equilibrium/fixed_boundary`` and ``equilibrium/free_boundary`` for solve
+  controllers and VMEC residual plumbing;
+- ``fields`` for real-space geometry, magnetic field, current density, and
+  Boozer-ready diagnostics;
+- ``stability`` for Mercier, Glasser, magnetic-well, bootstrap-current, and
+  finite-beta diagnostics;
+- ``objectives`` for QS/QP/QI and optimization objective terms;
+- ``diff`` for implicit differentiation, replay, branch fingerprints, and
+  custom derivative rules;
+- ``io`` for VMEC input, WOUT, mgrid, Boozer files, and asset manifests;
+- ``optimization`` for composable solvers and continuation utilities.
+
+Current folders move toward this architecture incrementally.  Do not add
+another deep package if code belongs naturally to one of these domains.
 ``vmec_jax_plan/plan_freeb.md`` is now a closed free-boundary evidence summary,
 not a parallel work plan. ``vmec_jax_plan/plan.md``,
 ``vmec_jax_plan/plan_differentiability.md``, and
