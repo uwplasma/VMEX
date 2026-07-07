@@ -48,7 +48,7 @@ LPQA_COILS = _find_lpqa_coils()
 
 
 def test_generated_mgrid_diagnostic_boundary_domain_check_flags_outside_surface() -> None:
-    from tools.diagnostics.compare_freeb_coils_mgrid_vmec2000 import (
+    from tools.diagnostics.parity.compare_freeb_coils_mgrid_vmec2000 import (
         _boundary_domain_check,
         _wout_boundary_extents,
     )
@@ -79,7 +79,7 @@ def test_generated_mgrid_diagnostic_boundary_domain_check_flags_outside_surface(
 
 
 def test_vmec2000_sign_probe_updates_flip_phiedge_and_extcur(tmp_path: Path) -> None:
-    from tools.diagnostics.compare_freeb_coils_mgrid_vmec2000 import _vmec2000_sign_probe_updates
+    from tools.diagnostics.parity.compare_freeb_coils_mgrid_vmec2000 import _vmec2000_sign_probe_updates
 
     mgrid_input = _write_freeb_input(tmp_path / "input.lpqa_mgrid", mgrid_file="mgrid_lpqa_from_essos.nc")
 
@@ -123,7 +123,7 @@ def test_w7x_generated_mgrid_fixture_input_patch_sets_vmec2000_free_boundary_con
 
 
 def test_vmec2000_unreadable_error_wout_classifies_phiedge_wrong_sign(tmp_path: Path) -> None:
-    from tools.diagnostics.compare_freeb_coils_mgrid_vmec2000 import _mark_unreadable_vmec2000_wout
+    from tools.diagnostics.parity.compare_freeb_coils_mgrid_vmec2000 import _mark_unreadable_vmec2000_wout
 
     wout_path = tmp_path / "wout_lpqa_mgrid.nc"
     wout_path.write_bytes(b"not a complete vmec wout")
@@ -334,7 +334,7 @@ def _finite_scalar(wout, name: str) -> float | None:
 
 
 def test_low_order_mode_mask_matches_main_and_nyquist_wout_bases() -> None:
-    from tools.diagnostics.compare_freeb_coils_mgrid_vmec2000 import (
+    from tools.diagnostics.parity.compare_freeb_coils_mgrid_vmec2000 import (
         _same_layout as diagnostic_same_layout,
         _vmec2000_wout_promotion_quality,
     )
@@ -561,7 +561,7 @@ def _write_wout_gap_report(path: Path, *, wout_jax, wout_vmec2000) -> None:
 
 
 def _classify_vmec2000_no_wout(vmec2000) -> dict[str, object]:
-    from tools.diagnostics.compare_freeb_coils_mgrid_vmec2000 import (
+    from tools.diagnostics.parity.compare_freeb_coils_mgrid_vmec2000 import (
         _classify_vmec2000_result_summary,
         _vmec2000_summary,
     )
@@ -682,7 +682,7 @@ def test_vmec2000_generated_mgrid_trace_smoke_records_iteration_rows(tmp_path: P
         pytest.skip("xvmec2000 executable not found")
     _load_lpqa_essos_coils()
 
-    from tools.diagnostics.compare_freeb_coils_mgrid_vmec2000 import main as compare_main
+    from tools.diagnostics.parity.compare_freeb_coils_mgrid_vmec2000 import main as compare_main
 
     out = tmp_path / "freeb_coils_trace_smoke.json"
     rc = compare_main(

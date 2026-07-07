@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from tools.diagnostics.vmec2000_exec_stage_trace_compare import _parse_vmec2000_threed1
+from tools.diagnostics.parity.vmec2000_exec_stage_trace_compare import _parse_vmec2000_threed1
 
 
 def test_parse_bundled_threed1_trace_compares_physical_and_preconditioned_fsq() -> None:

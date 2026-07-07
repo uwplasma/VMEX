@@ -6,7 +6,7 @@ import subprocess
 import numpy as np
 import pytest
 
-from tools.diagnostics.vmec2000_exec_stage_trace_compare import _parse_float_list_arg, _parse_int_list_arg
+from tools.diagnostics.parity.vmec2000_exec_stage_trace_compare import _parse_float_list_arg, _parse_int_list_arg
 from vmec_jax.vmec2000_exec import (
     _default_exec_candidates,
     _find_threed1_file,

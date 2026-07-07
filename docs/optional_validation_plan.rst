@@ -287,7 +287,7 @@ planning manifest after bounded ``xvmec2000`` stage-trace checks against
      --json-out outputs/external_vmec_assets/all_local_inventory.json
 
    EXTERNAL_IDS="fixed_nonaxis_lasym_false_simsopt_qh_reactor_lowres_external,fixed_nonaxis_lasym_false_landreman_w7x_standard_boundary,fixed_nonaxis_lasym_false_landreman_ncsx_fixed_boundary,fixed_nonaxis_lasym_false_simsopt_w7x_standard,fixed_nonaxis_lasym_true_simsopt_basic_non_stellsym_external,fixed_nonaxis_lasym_false_landreman_hsx_qhs_fixed"
-   python tools/diagnostics/parity_sweep_manifest.py \
+   python tools/diagnostics/parity/parity_sweep_manifest.py \
      --vmec-exec ~/bin/xvmec2000 \
      --ids "$EXTERNAL_IDS" \
      --output-root outputs/parity_sweeps_external_matrix
@@ -357,10 +357,10 @@ The next parity gates are:
 
      VMEC2000_EXEC=/path/to/xvmec2000 \
      VMEC2000_INTEGRATION=1 \
-     PYTHONPATH=. python tools/diagnostics/parity_sweep_manifest.py \
+     PYTHONPATH=. python tools/diagnostics/parity/parity_sweep_manifest.py \
        --ids freeb_nonaxis_lasym_true_cth_like_local \
        --output-root results/parity/freeb_lasym_true \
-       --manifest tools/diagnostics/parity_manifest.toml \
+       --manifest tools/diagnostics/parity/parity_manifest.toml \
        --vmec-exec "$VMEC2000_EXEC"
 
   This self-contained ``vmec_jax/examples`` case uses a scaled synthetic mgrid

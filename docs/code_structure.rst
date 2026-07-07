@@ -74,7 +74,7 @@ are not stable public examples:
 - ``tools/diagnostics/repo_health/source_health.py``: report largest Python source files
   and optionally fail above line-count or public-docstring thresholds for
   staged refactor ratchets.
-- ``tools/diagnostics/vmec2000_exec_stage_trace_compare.py``: per-iteration
+- ``tools/diagnostics/parity/vmec2000_exec_stage_trace_compare.py``: per-iteration
   VMEC2000 vs vmec_jax parity comparator.
 - ``tools/diagnostics/qh_vmec_vs_vmecjax.py``: QH comparison figures.
 - ``tools/diagnostics/docs_artifacts/readme_fsq_trace.py``: README

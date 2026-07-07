@@ -238,7 +238,7 @@ Kernel parity on reference states (solver-free)
 To validate intermediate pipeline quantities on *reference* ``wout`` states (no
 nonlinear solve), run::
 
-  python tools/diagnostics/pipeline_parity_summary.py
+  python tools/diagnostics/parity/pipeline_parity_summary.py
 
 By default this covers the 4-axisymmetric benchmark suite (``circular_tokamak``,
 ``purely_toroidal_field``, ``shaped_tokamak_pressure``, ``solovev``).
@@ -249,7 +249,7 @@ Scalar residual parity (``fsqr/fsqz/fsql``) on reference states
 To compare scalar residuals reconstructed from a reference state against
 ``wout.fsqr/fsqz/fsql``::
 
-  python tools/diagnostics/getfsq_parity_cases.py --solve-metric
+  python tools/diagnostics/parity/getfsq_parity_cases.py --solve-metric
 
 End-to-end solve snapshot
 -------------------------
@@ -259,7 +259,7 @@ released references, fetch the optional WOUT fixtures first::
 
   python tools/fetch_assets.py --bundle wout-fixtures
 
-  python tools/diagnostics/end_to_end_solve_parity_summary.py --use-input-niter --fast
+  python tools/diagnostics/parity/end_to_end_solve_parity_summary.py --use-input-niter --fast
 
 Drop ``--fast`` and increase ``--max-iter`` for a full parity snapshot (longer runtime).
 

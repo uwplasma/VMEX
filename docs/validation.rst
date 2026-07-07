@@ -201,7 +201,7 @@ Regenerate this gate with:
 
 .. code-block:: bash
 
-   python tools/diagnostics/converged_wout_parity_benchmark.py \
+   python tools/diagnostics/parity/converged_wout_parity_benchmark.py \
      --nightly --vmec-exec ~/bin/xvmec2000 \
      --case nfp4_QH_warm_start \
      --case solovev \
@@ -607,12 +607,12 @@ the executable comparator tools:
 
 .. code-block:: bash
 
-   python tools/diagnostics/vmec2000_exec_stage_trace_compare.py \
+   python tools/diagnostics/parity/vmec2000_exec_stage_trace_compare.py \
      --case circular_tokamak --max-iter 10 --single-ns 13
 
-   python tools/diagnostics/parity_sweep_manifest.py --tier smoke
+   python tools/diagnostics/parity/parity_sweep_manifest.py --tier smoke
 
-   python tools/diagnostics/wout_compare_axis_mask.py \
+   python tools/diagnostics/parity/wout_compare_axis_mask.py \
      --a /path/to/vmec2000/wout_case.nc \
      --b /path/to/vmec_jax/wout_case.nc \
      --rtol 1e-4 --atol 1e-12
@@ -621,9 +621,9 @@ Regenerate converged-wout benchmark summaries with:
 
 .. code-block:: bash
 
-   python tools/diagnostics/converged_wout_parity_benchmark.py --all-discovered-execs
-   python tools/diagnostics/converged_wout_parity_benchmark.py --nightly --all-discovered-execs
-   python tools/diagnostics/converged_wout_parity_benchmark.py --dry-run --scan-local-execs --all-discovered-execs
+   python tools/diagnostics/parity/converged_wout_parity_benchmark.py --all-discovered-execs
+   python tools/diagnostics/parity/converged_wout_parity_benchmark.py --nightly --all-discovered-execs
+   python tools/diagnostics/parity/converged_wout_parity_benchmark.py --dry-run --scan-local-execs --all-discovered-execs
 
 The first command runs the bounded circular end-state comparison.  The nightly
 variant adds the slower representative non-axisymmetric, ``lasym=True``,
@@ -637,12 +637,12 @@ safe to run.
 Manifest-driven sweep (fixed + free boundary)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The canonical parity matrix is defined in ``tools/diagnostics/parity_manifest.toml``:
+The canonical parity matrix is defined in ``tools/diagnostics/parity/parity_manifest.toml``:
 
 .. code-block:: bash
 
-   python tools/diagnostics/parity_sweep_manifest.py --tier smoke
-   python tools/diagnostics/parity_sweep_manifest.py --tier full
+   python tools/diagnostics/parity/parity_sweep_manifest.py --tier smoke
+   python tools/diagnostics/parity/parity_sweep_manifest.py --tier full
 
 The manifest covers: fixed-boundary axisymmetric and non-axisymmetric,
 ``lasym=False`` and ``lasym=True``, free-boundary axisymmetric and

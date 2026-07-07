@@ -107,11 +107,11 @@ all major VMEC branches:
 
 To make this auditable and repeatable, the case matrix is now codified in:
 
-- ``tools/diagnostics/parity_manifest.toml``
+- ``tools/diagnostics/parity/parity_manifest.toml``
 
 and executed by:
 
-- ``tools/diagnostics/parity_sweep_manifest.py``
+- ``tools/diagnostics/parity/parity_sweep_manifest.py``
 
 Current manifest coverage:
 
@@ -171,7 +171,7 @@ WP2 dump-to-dump alignment harness
 
 A dedicated free-boundary comparator is now available:
 
-- ``tools/diagnostics/vmec2000_exec_freeb_scalpot_compare.py``
+- ``tools/diagnostics/parity/vmec2000_exec_freeb_scalpot_compare.py``
 
 It runs VMEC2000 with ``VMEC_DUMP_SCALPOT=1``, ``VMEC_DUMP_BEXTERN=1``,
 ``VMEC_DUMP_FOURI=1`` and vmec-jax with

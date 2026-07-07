@@ -36,7 +36,7 @@ jobs:
 
       - name: Manifest smoke sweep (dry-run)
         run: |
-          python tools/diagnostics/parity_sweep_manifest.py --tier smoke --dry-run --vmec-exec /usr/bin/true
+          python tools/diagnostics/parity/parity_sweep_manifest.py --tier smoke --dry-run --vmec-exec /usr/bin/true
 
       - name: Source namespace gate
         run: |

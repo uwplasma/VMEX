@@ -21,8 +21,15 @@ def _load_tool(name: str):
         "render_freeb_beta_wout_panels",
         "render_freeb_single_stage_readme",
     }
+    parity_tools = {
+        "scan_fallback_parity_probe",
+        "vmec2000_exec_stage_trace_compare",
+        "vmec2000_exec_freeb_scalpot_compare",
+    }
     if name in docs_artifact_tools:
         path = ROOT / "tools" / "diagnostics" / "docs_artifacts" / f"{name}.py"
+    elif name in parity_tools:
+        path = ROOT / "tools" / "diagnostics" / "parity" / f"{name}.py"
     else:
         path = ROOT / "tools" / "diagnostics" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)

@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 import sys
 
-from tools.diagnostics.parity_sweep_manifest import (
+from tools.diagnostics.parity.parity_sweep_manifest import (
     DEFAULT_MANIFEST,
     _build_freeb_scalpot_cmd,
     _build_stage_trace_cmd,
@@ -14,7 +14,7 @@ from tools.diagnostics.parity_sweep_manifest import (
 )
 
 
-REPO_ROOT = DEFAULT_MANIFEST.parents[2]
+REPO_ROOT = DEFAULT_MANIFEST.parents[3]
 CI_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 
@@ -318,7 +318,7 @@ def test_parity_manifest_dry_run_writes_executable_summary_without_vmec2000(
 ) -> None:
     """Dry-run should validate stage/free-boundary command wiring without external VMEC."""
 
-    from tools.diagnostics import parity_sweep_manifest as manifest_runner
+    from tools.diagnostics.parity import parity_sweep_manifest as manifest_runner
 
     input_path = tmp_path / "input.synthetic"
     input_path.write_text("&INDATA\n/\n", encoding="utf-8")
@@ -414,7 +414,7 @@ def test_parity_manifest_explicit_ids_fail_closed_on_unknown_case(
 ) -> None:
     """Requested parity cases should not be silently skipped by a typo."""
 
-    from tools.diagnostics import parity_sweep_manifest as manifest_runner
+    from tools.diagnostics.parity import parity_sweep_manifest as manifest_runner
 
     input_path = tmp_path / "input.synthetic"
     input_path.write_text("&INDATA\n/\n", encoding="utf-8")

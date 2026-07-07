@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import subprocess
 
-from tools.diagnostics.parity_sweep_manifest import DEFAULT_MANIFEST, _parse_manifest
+from tools.diagnostics.parity.parity_sweep_manifest import DEFAULT_MANIFEST, _parse_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,7 +72,7 @@ def test_optional_validation_lasym_freeb_example_matches_manifest_case() -> None
     case = next(case for case in cases if case["id"] == "freeb_nonaxis_lasym_true_cth_like_local")
 
     assert "--ids freeb_nonaxis_lasym_true_cth_like_local" in plan
-    assert "--manifest tools/diagnostics/parity_manifest.toml" in plan
+    assert "--manifest tools/diagnostics/parity/parity_manifest.toml" in plan
     assert "--vmec-exec \"$VMEC2000_EXEC\"" in plan
     assert "freeb_scalpot" in plan
     assert "VMEC_DUMP_*" in plan

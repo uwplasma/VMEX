@@ -465,7 +465,7 @@ These figures were generated from VMEC-style ``wout_*.nc`` files using:
 
 .. code-block:: bash
 
-   python tools/diagnostics/plot_wout_profiles_compare.py \
+   python tools/diagnostics/parity/plot_wout_profiles_compare.py \
      --vmec /path/to/vmec2000/wout_case.nc \
      --jax  /path/to/vmec_jax/wout_case.nc \
      --vars jdotb,DMerc \

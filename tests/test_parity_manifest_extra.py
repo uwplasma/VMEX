@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from tools.diagnostics.parity_sweep_manifest import DEFAULT_MANIFEST, _parse_manifest
+from tools.diagnostics.parity.parity_sweep_manifest import DEFAULT_MANIFEST, _parse_manifest
 from vmec_jax.namelist import read_indata
 
 
-REPO_ROOT = DEFAULT_MANIFEST.parents[2]
+REPO_ROOT = DEFAULT_MANIFEST.parents[3]
 
 
 def _resolve_repo_path(path_like: str) -> Path:
@@ -140,7 +140,7 @@ def test_free_boundary_lasym_manifest_requires_local_mgrid_and_iter_gates() -> N
 
 def test_runtime_threshold_reports_missing_iter_as_failure() -> None:
     """Parity summaries must fail closed when a declared VMEC2000 checkpoint is absent."""
-    from tools.diagnostics.parity_sweep_manifest import _evaluate_runtime_thresholds
+    from tools.diagnostics.parity.parity_sweep_manifest import _evaluate_runtime_thresholds
 
     ok, report = _evaluate_runtime_thresholds(
         {"runtime_thresholds_s_by_iter": {"80": {"max_runtime_s": 40.0}}},

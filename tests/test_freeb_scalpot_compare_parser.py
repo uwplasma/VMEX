@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from tools.diagnostics.vmec2000_exec_freeb_scalpot_compare import (
+from tools.diagnostics.parity.vmec2000_exec_freeb_scalpot_compare import (
     _gc_metric_block,
     _missing_vmec_dumps_payload,
     _parse_bextern_dump,
@@ -197,7 +197,7 @@ def test_gc_metric_block_transposes_jax_gc_axes() -> None:
 
 
 def test_parse_fortran_float_handles_missing_exponent_marker() -> None:
-    from tools.diagnostics.vmec2000_exec_freeb_scalpot_compare import _parse_fortran_float
+    from tools.diagnostics.parity.vmec2000_exec_freeb_scalpot_compare import _parse_fortran_float
 
     np.testing.assert_allclose(_parse_fortran_float("1.0D+03"), 1.0e3, rtol=0.0, atol=0.0)
     np.testing.assert_allclose(_parse_fortran_float("1.0564215887228806-316"), 1.0564215887228806e-316, rtol=0.0, atol=0.0)
