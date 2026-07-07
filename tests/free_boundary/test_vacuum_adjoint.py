@@ -2842,8 +2842,10 @@ def _toy_coil_vacuum_response(*, current_scale: float = 0.0, radius_shift: float
 
     from vmec_jax._compat import jnp
 
-    params = _regularized_circular_coil_params(
-        radius=1.15 + 0.02 * radius_shift,
+    params = _regularized_circular_coil_params_with_radius_shift(
+        radius=1.15,
+        radius_shift=radius_shift,
+        radius_shift_scale=0.02,
         current=3.0e7 * (1.0 + 0.01 * current_scale),
         n_segments=96,
     )
@@ -2875,8 +2877,10 @@ def _toy_coil_nonlinear_response(*, current_scale: float = 0.0, radius_shift: fl
 
     from vmec_jax._compat import jnp
 
-    params = _regularized_circular_coil_params(
-        radius=1.25 + 0.03 * radius_shift,
+    params = _regularized_circular_coil_params_with_radius_shift(
+        radius=1.25,
+        radius_shift=radius_shift,
+        radius_shift_scale=0.03,
         current=6.0e6 * (1.0 + 0.02 * current_scale),
         n_segments=96,
     )
@@ -2919,8 +2923,10 @@ def _toy_coil_free_boundary_fixed_point_response(
 
     from vmec_jax._compat import jnp
 
-    coil_params = _regularized_circular_coil_params(
-        radius=1.28 + 0.02 * radius_shift,
+    coil_params = _regularized_circular_coil_params_with_radius_shift(
+        radius=1.28,
+        radius_shift=radius_shift,
+        radius_shift_scale=0.02,
         current=4.5e6 * (1.0 + 0.015 * current_scale),
         n_segments=64,
     )
@@ -2978,8 +2984,10 @@ def _toy_coil_projected_mode_fixed_point_response(
 
     from vmec_jax._compat import jnp
 
-    coil_params = _regularized_circular_coil_params(
-        radius=1.34 + 0.025 * radius_shift,
+    coil_params = _regularized_circular_coil_params_with_radius_shift(
+        radius=1.34,
+        radius_shift=radius_shift,
+        radius_shift_scale=0.025,
         current=5.5e6 * (1.0 + 0.012 * current_scale),
         n_segments=64,
     )
@@ -3071,121 +3079,89 @@ def _assert_scalar_directional_check(objective, *, eps, rtol, min_abs):
     np.testing.assert_allclose(check["exact_directional"], check["fd_directional"], rtol=rtol, atol=1.0e-10)
 
 
-def test_dense_vacuum_adjoint_chain_wrt_coil_current_matches_finite_difference():
-    """Validate a direct-coil field feeding an implicit vacuum solve."""
+def _regularized_circular_coil_params_with_radius_shift(
+    *,
+    radius: float,
+    radius_shift,
+    radius_shift_scale: float,
+    current,
+    n_segments: int,
+):
+    """Build a circular coil and apply differentiable radius shifts to Fourier DOFs."""
+
+    from vmec_jax._compat import jnp
+
+    params = _regularized_circular_coil_params(
+        radius=radius,
+        current=current,
+        n_segments=n_segments,
+    )
+    radial_delta = float(radius_shift_scale) * radius_shift
+    dofs = jnp.asarray(params.base_curve_dofs)
+    dofs = dofs.at[0, 0, 2].add(radial_delta)
+    dofs = dofs.at[0, 1, 1].add(radial_delta)
+    return params.with_arrays(base_curve_dofs=dofs)
+
+
+@pytest.mark.parametrize(
+    ("response_fn", "control", "rtol", "min_abs"),
+    [
+        pytest.param(_toy_coil_vacuum_response, "current", 2.0e-6, 1.0e-8, id="vacuum-current"),
+        pytest.param(_toy_coil_vacuum_response, "geometry", 2.0e-6, 1.0e-8, id="vacuum-geometry"),
+        pytest.param(_toy_coil_nonlinear_response, "current", 5.0e-6, 1.0e-8, id="nonlinear-current"),
+        pytest.param(
+            _toy_coil_nonlinear_response,
+            "geometry",
+            5.0e-6,
+            1.0e-8,
+            marks=pytest.mark.py311_coverage_only,
+            id="nonlinear-geometry",
+        ),
+        pytest.param(
+            _toy_coil_free_boundary_fixed_point_response,
+            "current",
+            8.0e-6,
+            1.0e-9,
+            marks=pytest.mark.py311_coverage_only,
+            id="fixed-point-current",
+        ),
+        pytest.param(
+            _toy_coil_free_boundary_fixed_point_response,
+            "geometry",
+            8.0e-6,
+            1.0e-9,
+            marks=pytest.mark.py311_coverage_only,
+            id="fixed-point-geometry",
+        ),
+        pytest.param(
+            _toy_coil_projected_mode_fixed_point_response,
+            "current",
+            1.0e-5,
+            1.0e-9,
+            marks=pytest.mark.py311_coverage_only,
+            id="projected-mode-current",
+        ),
+        pytest.param(
+            _toy_coil_projected_mode_fixed_point_response,
+            "geometry",
+            1.0e-5,
+            1.0e-9,
+            marks=pytest.mark.py311_coverage_only,
+            id="projected-mode-geometry",
+        ),
+    ],
+)
+def test_direct_coil_adjoint_chain_matches_finite_difference(response_fn, control: str, rtol: float, min_abs: float):
+    """Validate current and geometry controls through the promoted coil-response chains."""
 
     pytest.importorskip("jax")
-
     enable_x64(True)
-    _assert_scalar_directional_check(
-        lambda scale: _toy_coil_vacuum_response(current_scale=scale),
-        eps=1.0e-4,
-        rtol=2.0e-6,
-        min_abs=1.0e-8,
+    objective = (
+        (lambda scale: response_fn(current_scale=scale))
+        if control == "current"
+        else (lambda shift: response_fn(radius_shift=shift))
     )
-
-
-def test_dense_vacuum_adjoint_chain_wrt_coil_geometry_matches_finite_difference():
-    """Validate the same chain for a Fourier curve coefficient perturbation."""
-
-    pytest.importorskip("jax")
-
-    enable_x64(True)
-    _assert_scalar_directional_check(
-        lambda shift: _toy_coil_vacuum_response(radius_shift=shift),
-        eps=1.0e-4,
-        rtol=2.0e-6,
-        min_abs=1.0e-8,
-    )
-
-
-def test_dense_nonlinear_adjoint_chain_wrt_coil_current_matches_finite_difference():
-    """Validate direct-coil controls through a nonlinear implicit root."""
-
-    pytest.importorskip("jax")
-
-    enable_x64(True)
-    _assert_scalar_directional_check(
-        lambda scale: _toy_coil_nonlinear_response(current_scale=scale),
-        eps=1.0e-4,
-        rtol=5.0e-6,
-        min_abs=1.0e-8,
-    )
-
-
-@pytest.mark.py311_coverage_only
-def test_dense_nonlinear_adjoint_chain_wrt_coil_geometry_matches_finite_difference():
-    """Validate a coil Fourier perturbation through a nonlinear implicit root."""
-
-    pytest.importorskip("jax")
-
-    enable_x64(True)
-    _assert_scalar_directional_check(
-        lambda shift: _toy_coil_nonlinear_response(radius_shift=shift),
-        eps=1.0e-4,
-        rtol=5.0e-6,
-        min_abs=1.0e-8,
-    )
-
-
-@pytest.mark.py311_coverage_only
-def test_dense_fixed_point_direct_coil_loop_wrt_current_matches_finite_difference():
-    """Validate a miniature complete free-boundary fixed-point coil loop."""
-
-    pytest.importorskip("jax")
-
-    enable_x64(True)
-    _assert_scalar_directional_check(
-        lambda scale: _toy_coil_free_boundary_fixed_point_response(current_scale=scale),
-        eps=1.0e-4,
-        rtol=8.0e-6,
-        min_abs=1.0e-9,
-    )
-
-
-@pytest.mark.py311_coverage_only
-def test_dense_fixed_point_direct_coil_loop_wrt_geometry_matches_finite_difference():
-    """Validate the fixed-point loop for one coil Fourier geometry coefficient."""
-
-    pytest.importorskip("jax")
-
-    enable_x64(True)
-    _assert_scalar_directional_check(
-        lambda shift: _toy_coil_free_boundary_fixed_point_response(radius_shift=shift),
-        eps=1.0e-4,
-        rtol=8.0e-6,
-        min_abs=1.0e-9,
-    )
-
-
-@pytest.mark.py311_coverage_only
-def test_dense_fixed_point_projected_mode_loop_wrt_current_matches_finite_difference():
-    """Validate moving-boundary direct-coil fixed point through mode response."""
-
-    pytest.importorskip("jax")
-
-    enable_x64(True)
-    _assert_scalar_directional_check(
-        lambda scale: _toy_coil_projected_mode_fixed_point_response(current_scale=scale),
-        eps=1.0e-4,
-        rtol=1.0e-5,
-        min_abs=1.0e-9,
-    )
-
-
-@pytest.mark.py311_coverage_only
-def test_dense_fixed_point_projected_mode_loop_wrt_geometry_matches_finite_difference():
-    """Validate moving-boundary fixed point for one coil Fourier coefficient."""
-
-    pytest.importorskip("jax")
-
-    enable_x64(True)
-    _assert_scalar_directional_check(
-        lambda shift: _toy_coil_projected_mode_fixed_point_response(radius_shift=shift),
-        eps=1.0e-4,
-        rtol=1.0e-5,
-        min_abs=1.0e-9,
-    )
+    _assert_scalar_directional_check(objective, eps=1.0e-4, rtol=rtol, min_abs=min_abs)
 
 
 @pytest.mark.py311_slow_coverage
