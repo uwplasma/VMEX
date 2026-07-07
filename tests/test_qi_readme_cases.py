@@ -11,7 +11,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "examples" / "optimization" / "render_qi_readme_cases.py"
+SCRIPT = ROOT / "tools" / "diagnostics" / "optimization" / "render_qi_readme_cases.py"
 CASES_SCRIPT = ROOT / "examples" / "optimization" / "qi_optimization_cases.py"
 
 

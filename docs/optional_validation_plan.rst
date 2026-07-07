@@ -98,7 +98,7 @@ Run the no-optimization audit first:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py \
+   PYTHONPATH=. python tools/diagnostics/qi/audit_qi_seed_suitability.py \
      --quick \
      --output results/qi_seed_audit/summary.json \
      --csv results/qi_seed_audit/summary.csv
@@ -125,7 +125,7 @@ Before running even tiny optimizer probes, write a dry-run manifest:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py \
+   PYTHONPATH=. python tools/diagnostics/qi/audit_qi_seed_suitability.py \
      --quick \
      --prefine-probes plan \
      --prefine-manifest results/qi_seed_audit/prefine_manifest.json \

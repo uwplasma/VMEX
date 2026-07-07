@@ -269,9 +269,9 @@ Run the CPU production sweep:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
+   PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. python tools/diagnostics/optimization/render_qs_ess_publication_panel.py
 
 These commands describe the complete regeneration target, not the contents of
 the checked-in snapshot.  Do not cite a full ``max_mode>=4`` CPU/GPU matrix until
@@ -290,9 +290,9 @@ regenerate the focused preseed/no-preseed matrix with:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. python examples/optimization/render_qi_constrained_sweep.py
+   PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed both --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. python tools/diagnostics/optimization/render_qi_constrained_sweep.py
 
 The checked-in constrained-QI snapshot is not that full matrix; it currently
 contains only a single CPU continuation ``max_mode=3`` status row without a
@@ -314,8 +314,8 @@ launching that matrix:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py --quick --csv results/qi_seed_audit.csv
-   PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py --quick --smooth-qi-max 5e-3 --legacy-qi-max 2e-3 --csv results/qi_seed3127_audit.csv
+   PYTHONPATH=. python tools/diagnostics/qi/audit_qi_seed_suitability.py --quick --csv results/qi_seed_audit.csv
+   PYTHONPATH=. python tools/diagnostics/qi/audit_qi_seed_suitability.py --quick --smooth-qi-max 5e-3 --legacy-qi-max 2e-3 --csv results/qi_seed3127_audit.csv
 
 The preflight ranks seeds by smooth-plus-legacy QI score and leaves mirror,
 elongation, aspect, and iota gates as explicit columns.  The second command
@@ -329,7 +329,7 @@ To review the tiny QI-prefine probes before executing them:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python examples/optimization/audit_qi_seed_suitability.py --quick --prefine-probes plan --prefine-manifest results/qi_seed_audit/prefine_manifest.json --prefine-output-dir results/qi_seed_audit/prefine_probes --prefine-mirror-weight 2.0 --prefine-elongation-weight 0.5 --prefine-mirror-surface-index all
+   PYTHONPATH=. python tools/diagnostics/qi/audit_qi_seed_suitability.py --quick --prefine-probes plan --prefine-manifest results/qi_seed_audit/prefine_manifest.json --prefine-output-dir results/qi_seed_audit/prefine_probes --prefine-mirror-weight 2.0 --prefine-elongation-weight 0.5 --prefine-mirror-surface-index all
 
 The dry-run manifest is the intended bridge between seed audit and full
 seed-robust QI sweeps.  It is bounded by design and should be inspected before
@@ -361,15 +361,15 @@ Run the GPU production sweep on a machine with a working JAX GPU install:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. python tools/diagnostics/optimization/render_qs_ess_publication_panel.py
 
 Render the historical compact best-row panels from the best stellarator-symmetric rows:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python examples/optimization/render_readme_best_optimizations.py
+   PYTHONPATH=. python tools/diagnostics/optimization/render_readme_best_optimizations.py
 
 The default per-case timeout is 1800 seconds.  The current README science
 configs use NFP=4 for QH, aspect target 5 for QA/QH/QP, aspect target 6 for
@@ -403,11 +403,11 @@ asymmetric modes with ``1e-7``, and writes separate outputs under the
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORMS=cpu python examples/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python examples/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
-   PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py
+   PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORMS=cpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label cpu --solver-device cpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy continuation --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. JAX_PLATFORM_NAME=gpu python tools/diagnostics/optimization/generate_qs_ess_sweep.py --backend-label gpu --solver-device gpu --policy direct --problems qa,qh,qp,qi --modes 1,2,3,4,5 --ess both --qi-qp-preseed off --stellarator-asymmetric --max-nfev 70 --continuation-nfev 25 --inner-max-iter 180 --inner-ftol 1e-9 --trial-max-iter 180 --trial-ftol 1e-9 --rerun
+   PYTHONPATH=. python tools/diagnostics/optimization/render_qs_ess_publication_panel.py
 
 For NVIDIA-only JAX installations, ``JAX_PLATFORMS=cuda`` is also valid.  Do
 not use ``JAX_PLATFORMS=gpu``: some JAX versions interpret that as both CUDA
@@ -484,7 +484,7 @@ renderer boundary match before the panel is published.
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+   PYTHONPATH=. JAX_PLATFORMS=cuda python3 tools/diagnostics/optimization/generate_minimal_seed_showcase.py \
      --cases qi_nfp1,qi_nfp2,qi_nfp3,qi_nfp4 \
      --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
      --policy continuation --max-mode 5 --ess on \
@@ -492,7 +492,7 @@ renderer boundary match before the panel is published.
      --inner-max-iter 550 --inner-ftol 1e-10 \
      --trial-max-iter 550 --trial-ftol 1e-10 \
      --ess-alpha 1.2 --case-timeout-s 7200 --rerun
-   PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
+   PYTHONPATH=. python tools/diagnostics/optimization/render_qi_readme_cases.py
 
 The optimization commands above create candidate result directories under
 ``results/``.  After reviewing diagnostics and plots, replace the corresponding
@@ -535,16 +535,16 @@ are present with:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py
+   PYTHONPATH=. python tools/diagnostics/optimization/render_qi_readme_cases.py
 
 For quick provenance checks without a Matplotlib render, or to write review
 copies outside the tracked docs tree, use:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py \
+   PYTHONPATH=. python tools/diagnostics/optimization/render_qi_readme_cases.py \
      --summary-only --csv-out outputs/qi_readme_cases_check.csv
-   PYTHONPATH=. python examples/optimization/render_qi_readme_cases.py \
+   PYTHONPATH=. python tools/diagnostics/optimization/render_qi_readme_cases.py \
      --figure-out outputs/qi_readme_cases_review.png \
      --csv-out outputs/qi_readme_cases_review.csv
 
@@ -648,7 +648,7 @@ aspect 6 for public QI rows, with:
 
 .. code-block:: bash
 
-   PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+   PYTHONPATH=. JAX_PLATFORMS=cuda python3 tools/diagnostics/optimization/generate_minimal_seed_showcase.py \
      --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3 \
      --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
      --policy continuation --max-mode 5 --ess on \
@@ -656,7 +656,7 @@ aspect 6 for public QI rows, with:
      --inner-max-iter 550 --inner-ftol 1e-10 \
      --trial-max-iter 550 --trial-ftol 1e-10 \
      --ess-alpha 1.2 --case-timeout-s 7200 --rerun
-   PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
+   PYTHONPATH=. python tools/diagnostics/optimization/render_minimal_seed_showcase.py --publication-matrix
 
 Run QI rows with their reviewed policy modes instead of forcing every case to
 mode 5:
@@ -666,7 +666,7 @@ mode 5:
    for spec in qi_nfp1:3 qi_nfp2:5 qi_nfp3:4 qi_nfp4:3; do
      case_name=${spec%%:*}
      mode=${spec##*:}
-     PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+     PYTHONPATH=. JAX_PLATFORMS=cuda python3 tools/diagnostics/optimization/generate_minimal_seed_showcase.py \
        --cases "$case_name" \
        --backend-label gpu --solver-device gpu --worker-jax-platforms cuda \
        --policy continuation --max-mode "$mode" --ess on \
@@ -682,7 +682,7 @@ warn about the rest of the production matrix:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py \
+   PYTHONPATH=. python tools/diagnostics/optimization/render_minimal_seed_showcase.py \
      --output-root /path/to/minimal_seed_showcase \
      --figure-dir /path/to/figures \
      --cases qi_nfp1 --skip-missing
@@ -777,7 +777,7 @@ The checked-in summary snapshot has 23 CPU LASYM rows and 36 GPU LASYM rows.
 
 The objective-history figures are generated artifacts and are not part of the
 current checked-in snapshot.  Regenerate them with
-``PYTHONPATH=. python examples/optimization/render_qs_ess_publication_panel.py``
+``PYTHONPATH=. python tools/diagnostics/optimization/render_qs_ess_publication_panel.py``
 after producing or fetching the sweep results.  For a complete docs
 publication, keep bulky reviewed outputs in the local result tree or attach
 them to a GitHub release; promote only compact documentation-critical assets to

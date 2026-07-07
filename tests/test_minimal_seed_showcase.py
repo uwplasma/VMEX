@@ -11,10 +11,11 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DIAGNOSTIC_OPT_DIR = ROOT / "tools" / "diagnostics" / "optimization"
 
 
 def _load_module(name: str, script_name: str):
-    script = ROOT / "examples" / "optimization" / script_name
+    script = DIAGNOSTIC_OPT_DIR / script_name
     spec = importlib.util.spec_from_file_location(name, script)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

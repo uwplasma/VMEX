@@ -508,7 +508,7 @@ QI seed-robustness gates:
   a solve or optimization sweep.  Higher-resolution comparison of smooth QI,
   legacy QI, mirror ratio, elongation, iota, aspect ratio, and Boozer ``|B|``
   contour quality remains part of manual/nightly seed-robustness validation.
-- Use ``examples/optimization/audit_qi_seed_suitability.py --quick`` as the
+- Use ``tools/diagnostics/qi/audit_qi_seed_suitability.py --quick`` as the
   no-optimization preflight before a multi-seed QI sweep.  It ranks existing
   solved seeds through the public ``rank_qi_seed_records`` helper and records
   missing optional reference checkouts instead of making the default gate

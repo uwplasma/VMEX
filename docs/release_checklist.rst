@@ -112,7 +112,7 @@ instead of refreshing the full production matrix:
 
 .. code-block:: bash
 
-   PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py \
+   PYTHONPATH=. python tools/diagnostics/optimization/render_minimal_seed_showcase.py \
      --output-root /path/to/minimal_seed_showcase \
      --figure-dir /path/to/figures \
      --cases qi_nfp1 --skip-missing

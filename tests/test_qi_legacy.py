@@ -202,7 +202,7 @@ def test_smooth_qi_residual_preserves_legacy_synthetic_ranking():
 def test_qi_boozer_mode_scan_reports_smooth_and_legacy_metrics(monkeypatch):
     pytest.importorskip("jax")
 
-    script = ROOT / "examples" / "optimization" / "scan_qi_boozer_mode.py"
+    script = ROOT / "tools" / "diagnostics" / "qi" / "scan_qi_boozer_mode.py"
     spec = importlib.util.spec_from_file_location("scan_qi_boozer_mode", script)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

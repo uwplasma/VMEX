@@ -172,13 +172,13 @@ archived there.
 Reproduce the minimal-seed optimization rows with:
 
 ```bash
-PYTHONPATH=. JAX_PLATFORMS=cuda python3 examples/optimization/generate_minimal_seed_showcase.py \
+PYTHONPATH=. JAX_PLATFORMS=cuda python3 tools/diagnostics/optimization/generate_minimal_seed_showcase.py \
   --cases qa_nfp2,qa_nfp3,qh_nfp3,qh_nfp4,qp_nfp2,qp_nfp3 \
   --backend-label gpu \
   --solver-device gpu --worker-jax-platforms cuda --policy continuation --max-mode 5 --ess on \
   --max-nfev 70 --continuation-nfev 20 --inner-max-iter 550 --inner-ftol 1e-10 \
   --trial-max-iter 550 --trial-ftol 1e-10 --ess-alpha 1.2 --case-timeout-s 7200 --rerun
-PYTHONPATH=. python examples/optimization/render_minimal_seed_showcase.py --publication-matrix
+PYTHONPATH=. python tools/diagnostics/optimization/render_minimal_seed_showcase.py --publication-matrix
 ```
 
 Run individual editable examples with `python examples/optimization/QA_optimization.py`,
@@ -192,7 +192,7 @@ stage, QI stage, saved outputs, and plots directly. The seed-3127 preset is reta
 case, not a README promotion row. The checked-in QI NFP panel is a reviewed
 historical artifact; rerendering it requires the corresponding final WOUTs
 under `docs/_static/qi_readme_cases/`, so regenerate or restore those artifacts
-before running `python examples/optimization/render_qi_readme_cases.py`.
+before running `python tools/diagnostics/optimization/render_qi_readme_cases.py`.
 Full provenance and artifact-promotion rules live in the docs:
 `docs/optimization.rst` and `docs/optimization_sweep_results.rst`.
 

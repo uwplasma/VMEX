@@ -14,9 +14,12 @@ import numpy as np
 import pytest
 
 
+ROOT = Path(__file__).resolve().parents[1]
+DIAGNOSTIC_OPT_DIR = ROOT / "tools" / "diagnostics" / "optimization"
+
+
 def _load_renderer_module():
-    root = Path(__file__).resolve().parents[1]
-    script = root / "examples" / "optimization" / "render_qs_ess_publication_panel.py"
+    script = DIAGNOSTIC_OPT_DIR / "render_qs_ess_publication_panel.py"
     spec = importlib.util.spec_from_file_location("render_qs_ess_publication_panel", script)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -26,8 +29,7 @@ def _load_renderer_module():
 
 
 def _load_sweep_module():
-    root = Path(__file__).resolve().parents[1]
-    script = root / "examples" / "optimization" / "generate_qs_ess_sweep.py"
+    script = DIAGNOSTIC_OPT_DIR / "generate_qs_ess_sweep.py"
     spec = importlib.util.spec_from_file_location("generate_qs_ess_sweep", script)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -37,8 +39,7 @@ def _load_sweep_module():
 
 
 def _load_readme_renderer_module():
-    root = Path(__file__).resolve().parents[1]
-    script = root / "examples" / "optimization" / "render_readme_best_optimizations.py"
+    script = DIAGNOSTIC_OPT_DIR / "render_readme_best_optimizations.py"
     spec = importlib.util.spec_from_file_location("render_readme_best_optimizations", script)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -48,8 +49,7 @@ def _load_readme_renderer_module():
 
 
 def _load_qi_renderer_module():
-    root = Path(__file__).resolve().parents[1]
-    script = root / "examples" / "optimization" / "render_qi_constrained_sweep.py"
+    script = DIAGNOSTIC_OPT_DIR / "render_qi_constrained_sweep.py"
     spec = importlib.util.spec_from_file_location("render_qi_constrained_sweep", script)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -59,8 +59,7 @@ def _load_qi_renderer_module():
 
 
 def _load_qi_readme_cases_module():
-    root = Path(__file__).resolve().parents[1]
-    script = root / "examples" / "optimization" / "render_qi_readme_cases.py"
+    script = DIAGNOSTIC_OPT_DIR / "render_qi_readme_cases.py"
     spec = importlib.util.spec_from_file_location("render_qi_readme_cases", script)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -70,10 +69,9 @@ def _load_qi_readme_cases_module():
 
 
 def test_readme_renderer_scripts_help_exits_without_rendering() -> None:
-    root = Path(__file__).resolve().parents[1]
     scripts = (
-        root / "examples" / "optimization" / "render_qi_constrained_sweep.py",
-        root / "examples" / "optimization" / "render_readme_best_optimizations.py",
+        DIAGNOSTIC_OPT_DIR / "render_qi_constrained_sweep.py",
+        DIAGNOSTIC_OPT_DIR / "render_readme_best_optimizations.py",
     )
     for script in scripts:
         result = subprocess.run(
