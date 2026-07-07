@@ -270,7 +270,7 @@ If you have the VMEC2000 Python extension installed (``vmec`` + ``mpi4py`` +
 ``netCDF4``), you can run VMEC2000 on an input and compare outputs to released
 references::
 
-  python tools/diagnostics/external_vmec_driver_compare.py --case circular_tokamak
+  python tools/diagnostics/assets/external_vmec_driver_compare.py --case circular_tokamak
 
 A minimal API sketch (recommended)
 ----------------------------------

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-from tools.diagnostics.external_vmec_asset_inventory import build_inventory
+from tools.diagnostics.assets.external_vmec_asset_inventory import build_inventory
 
 if sys.version_info >= (3, 11):
     import tomllib

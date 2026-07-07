@@ -191,10 +191,10 @@ data into the repository:
 
 .. code-block:: bash
 
-   python tools/diagnostics/external_vmec_asset_inventory.py \
+   python tools/diagnostics/assets/external_vmec_asset_inventory.py \
      --family stellarator --family fixed_boundary
 
-   python tools/diagnostics/external_vmec_asset_inventory.py \
+   python tools/diagnostics/assets/external_vmec_asset_inventory.py \
      --repository landreman_vmec_equilibria \
      --source-root landreman_vmec_equilibria=outputs/external_benchmark_sources/vmec_equilibria \
      --fail-missing
@@ -281,7 +281,7 @@ planning manifest after bounded ``xvmec2000`` stage-trace checks against
 
 .. code-block:: bash
 
-   python tools/diagnostics/external_vmec_asset_inventory.py \
+   python tools/diagnostics/assets/external_vmec_asset_inventory.py \
      --source-root simsopt=/Users/rogeriojorge/local/simsopt \
      --source-root landreman_vmec_equilibria=/Users/rogeriojorge/local/vmec_equilibria \
      --json-out outputs/external_vmec_assets/all_local_inventory.json

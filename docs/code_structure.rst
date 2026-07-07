@@ -76,7 +76,7 @@ are not stable public examples:
   staged refactor ratchets.
 - ``tools/diagnostics/parity/vmec2000_exec_stage_trace_compare.py``: per-iteration
   VMEC2000 vs vmec_jax parity comparator.
-- ``tools/diagnostics/qh_vmec_vs_vmecjax.py``: QH comparison figures.
+- ``tools/diagnostics/fixed_boundary/qh_vmec_vs_vmecjax.py``: QH comparison figures.
 - ``tools/diagnostics/docs_artifacts/readme_fsq_trace.py``: README
   fsq_total traces.
 
