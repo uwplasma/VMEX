@@ -20,6 +20,32 @@ class ResidualProfileWindow(NamedTuple):
     directory: str
 
 
+class ResidualSetupTiming(NamedTuple):
+    """Setup-timing policy and callables for one residual solve."""
+
+    timing_enabled: bool
+    timing_detail_enabled: bool
+    setup_phase_timings: dict[str, float]
+    setup_timer_start: Callable[[], float | None]
+    record_setup_timing: Callable[[str, float | None], bool]
+
+
+class ResidualIterationBookkeeping(NamedTuple):
+    """Timing, profiling, and history containers for the residual loop."""
+
+    profile_started: bool
+    profile_active: bool
+    profile_start_iter: int | None
+    profile_dir: str
+    profile_perfetto: bool
+    timing_stats: dict[str, float | int]
+    record_timing: Callable[[str, float | None], bool]
+    record_compute_force_timing: Callable[..., Any]
+    history_lists: Any
+    fsqz2_history: list[Any]
+    adjoint_step_trace_history: list[Any]
+
+
 class FreeBoundaryIterationControls(NamedTuple):
     """VMEC free-boundary cadence values for one residual iteration."""
 
@@ -430,6 +456,84 @@ def resolve_residual_profile_window(
         True,
         int(start_iter),
         str(path_type(profile_dir) / f"window_{profile_window}"),
+    )
+
+
+def initialize_residual_setup_timing(
+    *,
+    timing_env: str,
+    timing_detail_env: str,
+    runtime_env_enabled: Callable[[str], bool],
+    perf_counter: Callable[[], float],
+) -> ResidualSetupTiming:
+    """Create setup-timing callables without changing solver control flow."""
+
+    timing_enabled = bool(runtime_env_enabled(str(timing_env)))
+    timing_detail_enabled = bool(timing_enabled and runtime_env_enabled(str(timing_detail_env)))
+    setup_phase_timings = _initial_setup_phase_timings()
+    return ResidualSetupTiming(
+        timing_enabled=timing_enabled,
+        timing_detail_enabled=timing_detail_enabled,
+        setup_phase_timings=setup_phase_timings,
+        setup_timer_start=partial(
+            _setup_timer_start,
+            timing_enabled=timing_enabled,
+            perf_counter=perf_counter,
+        ),
+        record_setup_timing=partial(
+            _record_setup_timing,
+            setup_phase_timings,
+            perf_counter=perf_counter,
+        ),
+    )
+
+
+def initialize_residual_iteration_bookkeeping(
+    *,
+    timing_enabled: bool,
+    setup_phase_timings: dict[str, float],
+    profile_window_env: str,
+    profile_dir_env: str,
+    profile_perfetto_env: str,
+    runtime_env_enabled: Callable[[str], bool],
+    new_residual_iter_histories_func: Callable[[], Any],
+    has_jax_func: Callable[[], bool],
+    jax_module: Any,
+    perf_counter: Callable[[], float],
+) -> ResidualIterationBookkeeping:
+    """Create per-iteration timing, profiling, and history containers."""
+
+    profile_window_config = resolve_residual_profile_window(
+        profile_window_env=profile_window_env,
+        profile_dir_env=profile_dir_env,
+    )
+    timing_stats = _new_residual_iter_timing_stats(setup_phase_timings)
+    record_timing = partial(
+        record_elapsed_timing,
+        bool(timing_enabled),
+        timing_stats,
+        perf_counter=perf_counter,
+    )
+    record_compute_force_timing = partial(
+        _record_compute_force_timing,
+        timing_enabled=bool(timing_enabled),
+        timing_stats=timing_stats,
+        perf_counter=perf_counter,
+        block_until_ready=jax_module.block_until_ready if has_jax_func() else None,
+    )
+    history_lists = new_residual_iter_histories_func()
+    return ResidualIterationBookkeeping(
+        profile_started=bool(profile_window_config.started),
+        profile_active=bool(profile_window_config.active),
+        profile_start_iter=profile_window_config.start_iter,
+        profile_dir=profile_window_config.directory,
+        profile_perfetto=bool(runtime_env_enabled(str(profile_perfetto_env))),
+        timing_stats=timing_stats,
+        record_timing=record_timing,
+        record_compute_force_timing=record_compute_force_timing,
+        history_lists=history_lists,
+        fsqz2_history=history_lists["fsqz2_history"],
+        adjoint_step_trace_history=history_lists["adjoint_step_trace_history"],
     )
 
 

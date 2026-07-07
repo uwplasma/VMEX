@@ -53,24 +53,19 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     _converged_residuals_scan_fast as _runtime_converged_residuals_scan_fast,
     _device_get_floats,
     _freeb_trial_bsqvac_half as _runtime_freeb_trial_bsqvac_half,
-    _initial_setup_phase_timings,
     initial_free_boundary_loop_state as _runtime_initial_free_boundary_loop_state,
+    initialize_residual_iteration_bookkeeping as _runtime_initialize_residual_iteration_bookkeeping,
+    initialize_residual_setup_timing as _runtime_initialize_residual_setup_timing,
     _maybe_dump_ptau as _runtime_maybe_dump_ptau,
     _maybe_print_nonscan_state_debug,
-    _new_residual_iter_timing_stats as _runtime_new_residual_iter_timing_stats,
-    _record_compute_force_timing as _runtime_record_compute_force_timing,
-    _record_setup_timing as _runtime_record_setup_timing,
-    _setup_timer_start as _runtime_setup_timer_start,
     _vmec_freeb_plascur_from_bcovar as _runtime_vmec_freeb_plascur_from_bcovar,
     dump_xc_with_velocity_blocks as _dump_xc_with_velocity_blocks,
     edge_bsqvac_from_nestor as _edge_bsqvac_from_nestor,
-    record_elapsed_timing as _record_elapsed_timing,
     record_update_state_ready_timing as _record_update_state_ready_timing,
     record_update_total_timing as _record_update_total_timing,
     resume_free_boundary_loop_state as _runtime_resume_free_boundary_loop_state,
     resolve_free_boundary_coupling_runtime as _runtime_resolve_free_boundary_coupling_runtime,
     resolve_free_boundary_iteration_controls as _runtime_resolve_free_boundary_iteration_controls,
-    resolve_residual_profile_window as _resolve_residual_profile_window,
     trial_residual_total_runtime as _runtime_trial_residual_total,
 )
 from vmec_jax.solvers.fixed_boundary.residual.accelerated_scan import (
@@ -740,13 +735,18 @@ def solve_fixed_boundary_residual_iter(
     if not has_jax():
         raise ImportError("solve_fixed_boundary_residual_iter requires JAX (jax + jaxlib)")
 
-    timing_enabled = _runtime_env_enabled(os.getenv("VMEC_JAX_TIMING", ""))
-    timing_detail_enabled = timing_enabled and _runtime_env_enabled(os.getenv("VMEC_JAX_TIMING_DETAIL", ""))
-    _setup_phase_timings = _initial_setup_phase_timings()
+    timing_setup = _runtime_initialize_residual_setup_timing(
+        timing_env=os.getenv("VMEC_JAX_TIMING", ""),
+        timing_detail_env=os.getenv("VMEC_JAX_TIMING_DETAIL", ""),
+        runtime_env_enabled=_runtime_env_enabled,
+        perf_counter=time.perf_counter,
+    )
+    timing_enabled = timing_setup.timing_enabled
+    timing_detail_enabled = timing_setup.timing_detail_enabled
+    _setup_phase_timings = timing_setup.setup_phase_timings
     state0_has_tracer = _tree_has_tracer(state0)
-
-    _setup_timer_start = partial(_runtime_setup_timer_start, timing_enabled=bool(timing_enabled), perf_counter=time.perf_counter)
-    _record_setup_timing = partial(_runtime_record_setup_timing, _setup_phase_timings, perf_counter=time.perf_counter)
+    _setup_timer_start = timing_setup.setup_timer_start
+    _record_setup_timing = timing_setup.record_setup_timing
 
     startup_policy = _resolve_startup_policy_for_residual_iter(
         max_iter=max_iter,
@@ -1301,34 +1301,29 @@ def solve_fixed_boundary_residual_iter(
         state = scan_outcome.state
         resume_state = scan_outcome.resume_state
 
-    profile_window_config = _resolve_residual_profile_window(
+    bookkeeping = _runtime_initialize_residual_iteration_bookkeeping(
+        timing_enabled=bool(timing_enabled),
+        setup_phase_timings=_setup_phase_timings,
         profile_window_env=os.getenv("VMEC_JAX_PROFILE_WINDOW", ""),
         profile_dir_env=os.getenv("VMEC_JAX_PROFILE_DIR", ""),
-    )
-    profile_started = profile_window_config.started
-    profile_active = profile_window_config.active
-    profile_start_iter = profile_window_config.start_iter
-    profile_dir = profile_window_config.directory
-    profile_perfetto = _runtime_env_enabled(os.getenv("VMEC_JAX_PROFILE_PERFETTO", "1"))
-
-    timing_stats = _runtime_new_residual_iter_timing_stats(_setup_phase_timings)
-    _record_timing = partial(
-        _record_elapsed_timing,
-        bool(timing_enabled),
-        timing_stats,
+        profile_perfetto_env=os.getenv("VMEC_JAX_PROFILE_PERFETTO", "1"),
+        runtime_env_enabled=_runtime_env_enabled,
+        new_residual_iter_histories_func=_new_residual_iter_histories,
+        has_jax_func=has_jax,
+        jax_module=jax,
         perf_counter=time.perf_counter,
     )
-    _record_compute_force_timing = partial(
-        _runtime_record_compute_force_timing,
-        timing_enabled=bool(timing_enabled),
-        timing_stats=timing_stats,
-        perf_counter=time.perf_counter,
-        block_until_ready=jax.block_until_ready if has_jax() else None,
-    )
-
-    history_lists = _new_residual_iter_histories()
-    fsqz2_history = history_lists["fsqz2_history"]
-    adjoint_step_trace_history = history_lists["adjoint_step_trace_history"]
+    profile_started = bookkeeping.profile_started
+    profile_active = bookkeeping.profile_active
+    profile_start_iter = bookkeeping.profile_start_iter
+    profile_dir = bookkeeping.profile_dir
+    profile_perfetto = bookkeeping.profile_perfetto
+    timing_stats = bookkeeping.timing_stats
+    _record_timing = bookkeeping.record_timing
+    _record_compute_force_timing = bookkeeping.record_compute_force_timing
+    history_lists = bookkeeping.history_lists
+    fsqz2_history = bookkeeping.fsqz2_history
+    adjoint_step_trace_history = bookkeeping.adjoint_step_trace_history
 
     r00_last = float("nan")
     z00_last = float("nan")
