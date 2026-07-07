@@ -2036,6 +2036,33 @@ def _native_rejected_slot_scalars_report(
     return {"complete_report": complete_report, "branch_local": branch_local, "scalars_report": scalars_report}
 
 
+def _native_rejected_slot_case_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    input_name: str,
+    *,
+    coil_kwargs: dict,
+    **report_kwargs,
+) -> dict:
+    """Build and validate one native rejected-slot branch-local derivative case."""
+
+    pytest.importorskip("jax")
+    enable_x64(True)
+    _set_same_branch_custom_vjp_env(monkeypatch)
+    input_path = _tiny_direct_same_branch_input(tmp_path, input_name)
+    base_params, direction, params_for = _coil_direction_case(
+        current=3.0e8,
+        **coil_kwargs,
+    )
+    return _native_rejected_slot_scalars_report(
+        input_path=input_path,
+        base_params=base_params,
+        direction=direction,
+        params_for=params_for,
+        **report_kwargs,
+    )
+
+
 def _assert_same_branch_physical_and_adaptive_scalar_gates(
     complete_report: dict,
     scalars_report: dict,
@@ -3153,20 +3180,11 @@ def test_direct_coil_native_rejected_slot_same_branch_jvp_matches_complete_solve
 ) -> None:
     """Native restart/rejected slots can be validated under an unchanged branch."""
 
-    pytest.importorskip("jax")
-    enable_x64(True)
-    _set_same_branch_custom_vjp_env(monkeypatch)
-    input_path = _tiny_direct_same_branch_input(tmp_path, "input.direct_native_rejected_slot")
-    base_params, direction, params_for = _coil_direction_case(
-        current=3.0e8,
-        current_fraction=0.002,
-    )
-
-    reports = _native_rejected_slot_scalars_report(
-        input_path=input_path,
-        base_params=base_params,
-        direction=direction,
-        params_for=params_for,
+    reports = _native_rejected_slot_case_report(
+        tmp_path,
+        monkeypatch,
+        "input.direct_native_rejected_slot",
+        coil_kwargs={"current_fraction": 0.002},
         scalar_map=_aspect_state_norm_qs_scalar_map,
         replay_scalar_fns=_aspect_state_norm_qs_replay_scalar_fns(),
         scalar_keys=_ASPECT_STATE_QS_KEYS,
@@ -3205,16 +3223,7 @@ def test_direct_coil_native_rejected_slot_betatotal_jvp_matches_complete_solve_f
 ) -> None:
     """Finite-beta scalar JVP is branch-local and fingerprint-gated."""
 
-    pytest.importorskip("jax")
     from vmec_jax.finite_beta import finite_beta_scalars_from_state
-
-    enable_x64(True)
-    _set_same_branch_custom_vjp_env(monkeypatch)
-    input_path = _tiny_direct_same_branch_input(tmp_path, "input.direct_native_rejected_slot_betatotal")
-    base_params, direction, params_for = _coil_direction_case(
-        current=3.0e8,
-        current_fraction=0.002,
-    )
 
     def betatotal_from_state(state, payload):
         return finite_beta_scalars_from_state(
@@ -3228,11 +3237,11 @@ def test_direct_coil_native_rejected_slot_betatotal_jvp_matches_complete_solve_f
         return {"betatotal": betatotal_from_state(payload["result"].state, payload)}
 
     scalar_keys = ("betatotal",)
-    reports = _native_rejected_slot_scalars_report(
-        input_path=input_path,
-        base_params=base_params,
-        direction=direction,
-        params_for=params_for,
+    reports = _native_rejected_slot_case_report(
+        tmp_path,
+        monkeypatch,
+        "input.direct_native_rejected_slot_betatotal",
+        coil_kwargs={"current_fraction": 0.002},
         scalar_map=scalar_map,
         replay_scalar_fns={
             "betatotal": lambda replay, payload: betatotal_from_state(replay["state"], payload),
@@ -3263,21 +3272,11 @@ def test_direct_coil_native_rejected_slot_geometry_jvp_matches_complete_solve_fd
 ) -> None:
     """Geometry-only rejected-slot JVP is valid under an unchanged branch."""
 
-    pytest.importorskip("jax")
-    enable_x64(True)
-    _set_same_branch_custom_vjp_env(monkeypatch)
-    input_path = _tiny_direct_same_branch_input(tmp_path, "input.direct_native_rejected_slot_geometry")
-    base_params, direction, params_for = _coil_direction_case(
-        current=3.0e8,
-        dof_index=(0, 0, 2),
-        dof_step=1.0e-3,
-    )
-
-    reports = _native_rejected_slot_scalars_report(
-        input_path=input_path,
-        base_params=base_params,
-        direction=direction,
-        params_for=params_for,
+    reports = _native_rejected_slot_case_report(
+        tmp_path,
+        monkeypatch,
+        "input.direct_native_rejected_slot_geometry",
+        coil_kwargs={"dof_index": (0, 0, 2), "dof_step": 1.0e-3},
         scalar_map=_aspect_state_norm_qs_scalar_map,
         replay_scalar_fns=_aspect_state_norm_qs_replay_scalar_fns(),
         scalar_keys=_ASPECT_STATE_QS_KEYS,
@@ -3299,23 +3298,12 @@ def test_direct_coil_native_rejected_slot_mixed_state_only_branch_trace_jvp_matc
 ) -> None:
     """Production-style mixed current/geometry JVP matches FD on one branch."""
 
-    pytest.importorskip("jax")
-    enable_x64(True)
-    _set_same_branch_custom_vjp_env(monkeypatch)
-    input_path = _tiny_direct_same_branch_input(tmp_path, "input.direct_native_rejected_slot_mixed_state_only")
-    base_params, direction, params_for = _coil_direction_case(
-        current=3.0e8,
-        current_fraction=0.002,
-        dof_index=(0, 0, 2),
-        dof_step=1.0e-3,
-    )
-
     scalar_keys = ("aspect", "qs_total", "lcfs_boundary_moment")
-    reports = _native_rejected_slot_scalars_report(
-        input_path=input_path,
-        base_params=base_params,
-        direction=direction,
-        params_for=params_for,
+    reports = _native_rejected_slot_case_report(
+        tmp_path,
+        monkeypatch,
+        "input.direct_native_rejected_slot_mixed_state_only",
+        coil_kwargs={"current_fraction": 0.002, "dof_index": (0, 0, 2), "dof_step": 1.0e-3},
         scalar_map=_aspect_qs_boundary_scalar_map,
         replay_scalar_fns=_aspect_qs_boundary_replay_scalar_fns(),
         scalar_keys=scalar_keys,
