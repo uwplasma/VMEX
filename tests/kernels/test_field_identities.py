@@ -162,3 +162,30 @@ def test_cartesian_field_norm_matches_metric_contraction_for_circular_geometry()
 def test_b_cartesian_from_state_requires_indata_or_wout():
     with np.testing.assert_raises(ValueError):
         b_cartesian_from_state(SimpleNamespace(), SimpleNamespace())
+
+
+def test_b_cartesian_matches_metric_b2_for_initial_torus(load_case_circular_tokamak):
+    from vmec_jax.energy import flux_profiles_from_indata
+    from vmec_jax.field import bsup_from_geom
+    from vmec_jax.geom import eval_geom
+
+    cfg, indata, static, _bdy, st0 = load_case_circular_tokamak
+
+    geom = eval_geom(st0, static)
+    signgs = signgs_from_sqrtg(np.asarray(geom.sqrtg))
+    flux = flux_profiles_from_indata(indata, static.s, signgs=signgs)
+    bsupu, bsupv = bsup_from_geom(
+        geom,
+        phipf=flux.phipf,
+        chipf=flux.chipf,
+        nfp=cfg.nfp,
+        signgs=signgs,
+        lamscale=flux.lamscale,
+    )
+
+    b2_metric = np.asarray(b2_from_bsup(geom, bsupu, bsupv))
+    bcart = np.asarray(b_cartesian_from_bsup(geom, bsupu, bsupv, zeta=static.grid.zeta, nfp=cfg.nfp))
+    b2_cartesian = np.sum(bcart**2, axis=-1)
+
+    # Skip the magnetic axis coordinate singularity.
+    np.testing.assert_allclose(b2_cartesian[1:], b2_metric[1:], rtol=1e-10, atol=1e-12)
