@@ -18,6 +18,43 @@ def _require_slow() -> None:
         pytest.skip("Set RUN_SLOW=1 to run slow QH derivative checks")
 
 
+def _qh_setup(load_case_qh_warm_start):
+    """Build the repeated QH initial state/sign convention used by adjoint tests."""
+
+    from vmec_jax.field import signgs_from_sqrtg
+    from vmec_jax.geom import eval_geom
+    from vmec_jax.init_guess import initial_guess_from_boundary
+
+    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
+    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
+    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
+    return indata, static, boundary, state_guess, signgs
+
+
+def _qh_solver_kwargs(indata, signgs: int, **overrides):
+    """Return the VMEC2000-control solver kwargs shared by QH replay tests."""
+
+    kwargs = dict(
+        indata=indata,
+        signgs=signgs,
+        ftol=float(indata.get_float("FTOL", 1e-14)),
+        step_size=float(indata.get_float("DELT", 1.0)),
+        vmec2000_control=True,
+        reference_mode=False,
+        backtracking=True,
+        limit_dt_from_force=True,
+        limit_update_rms=True,
+        verbose=False,
+        verbose_vmec2000_table=False,
+        jit_forces="auto",
+        use_scan=False,
+        light_history=True,
+        resume_state_mode="minimal",
+    )
+    kwargs.update(overrides)
+    return kwargs
+
+
 def test_replay_tridi_policy_helpers_and_static_flags():
     import vmec_jax.discrete_adjoint as da
 
@@ -302,14 +339,9 @@ def test_residual_iteration_trace_extracts_qh_history(load_case_qh_warm_start):
     pytest.importorskip("jax")
 
     from vmec_jax.discrete_adjoint import residual_iteration_trace_from_result
-    from vmec_jax.field import signgs_from_sqrtg
-    from vmec_jax.geom import eval_geom
-    from vmec_jax.init_guess import initial_guess_from_boundary
     from vmec_jax.solve import solve_fixed_boundary_residual_iter
 
-    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
-    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
-    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
+    indata, static, _boundary, state_guess, signgs = _qh_setup(load_case_qh_warm_start)
 
     result = solve_fixed_boundary_residual_iter(
         state_guess,
@@ -347,32 +379,11 @@ def test_residual_checkpoint_tape_matches_direct_one_step_qh(load_case_qh_warm_s
     pytest.importorskip("jax")
 
     from vmec_jax.discrete_adjoint import build_residual_checkpoint_tape
-    from vmec_jax.field import signgs_from_sqrtg
-    from vmec_jax.geom import eval_geom
-    from vmec_jax.init_guess import initial_guess_from_boundary
     from vmec_jax.solve import solve_fixed_boundary_residual_iter
     from vmec_jax.state import pack_state
 
-    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
-    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
-    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
-    common_kwargs = dict(
-        indata=indata,
-        signgs=signgs,
-        ftol=float(indata.get_float("FTOL", 1e-14)),
-        step_size=float(indata.get_float("DELT", 1.0)),
-        vmec2000_control=True,
-        reference_mode=False,
-        backtracking=True,
-        limit_dt_from_force=True,
-        limit_update_rms=True,
-        verbose=False,
-        verbose_vmec2000_table=False,
-        jit_forces="auto",
-        use_scan=False,
-        light_history=True,
-        resume_state_mode="minimal",
-    )
+    indata, static, _boundary, state_guess, signgs = _qh_setup(load_case_qh_warm_start)
+    common_kwargs = _qh_solver_kwargs(indata, signgs)
 
     direct = solve_fixed_boundary_residual_iter(
         state_guess,
@@ -409,32 +420,11 @@ def test_residual_checkpoint_tape_can_skip_debug_storage_qh(load_case_qh_warm_st
     _require_slow()
 
     from vmec_jax.discrete_adjoint import build_residual_checkpoint_tape
-    from vmec_jax.field import signgs_from_sqrtg
-    from vmec_jax.geom import eval_geom
-    from vmec_jax.init_guess import initial_guess_from_boundary
     from vmec_jax.solve import solve_fixed_boundary_residual_iter
     from vmec_jax.state import pack_state
 
-    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
-    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
-    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
-    common_kwargs = dict(
-        indata=indata,
-        signgs=signgs,
-        ftol=float(indata.get_float("FTOL", 1e-14)),
-        step_size=float(indata.get_float("DELT", 1.0)),
-        vmec2000_control=True,
-        reference_mode=False,
-        backtracking=True,
-        limit_dt_from_force=True,
-        limit_update_rms=True,
-        verbose=False,
-        verbose_vmec2000_table=False,
-        jit_forces="auto",
-        use_scan=False,
-        light_history=True,
-        resume_state_mode="minimal",
-    )
+    indata, static, _boundary, state_guess, signgs = _qh_setup(load_case_qh_warm_start)
+    common_kwargs = _qh_solver_kwargs(indata, signgs)
 
     direct = solve_fixed_boundary_residual_iter(
         state_guess,
@@ -477,30 +467,9 @@ def test_residual_checkpoint_tape_direct_matches_two_step_qh(load_case_qh_warm_s
         build_residual_checkpoint_tape,
         build_residual_checkpoint_tape_direct,
     )
-    from vmec_jax.field import signgs_from_sqrtg
-    from vmec_jax.geom import eval_geom
-    from vmec_jax.init_guess import initial_guess_from_boundary
 
-    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
-    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
-    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
-    common_kwargs = dict(
-        indata=indata,
-        signgs=signgs,
-        ftol=float(indata.get_float("FTOL", 1e-14)),
-        step_size=float(indata.get_float("DELT", 1.0)),
-        vmec2000_control=True,
-        reference_mode=False,
-        backtracking=True,
-        limit_dt_from_force=True,
-        limit_update_rms=True,
-        verbose=False,
-        verbose_vmec2000_table=False,
-        jit_forces="auto",
-        use_scan=False,
-        light_history=True,
-        resume_state_mode="full",
-    )
+    indata, static, _boundary, state_guess, signgs = _qh_setup(load_case_qh_warm_start)
+    common_kwargs = _qh_solver_kwargs(indata, signgs, resume_state_mode="full")
 
     replay_tape = build_residual_checkpoint_tape(
         state_guess,
@@ -547,30 +516,9 @@ def test_residual_checkpoint_tape_direct_dynamic_only_matches_two_step_qh(load_c
         build_residual_checkpoint_tape_direct,
         checkpoint_tape_state_jvp_columns,
     )
-    from vmec_jax.field import signgs_from_sqrtg
-    from vmec_jax.geom import eval_geom
-    from vmec_jax.init_guess import initial_guess_from_boundary
 
-    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
-    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
-    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
-    common_kwargs = dict(
-        indata=indata,
-        signgs=signgs,
-        ftol=float(indata.get_float("FTOL", 1e-14)),
-        step_size=float(indata.get_float("DELT", 1.0)),
-        vmec2000_control=True,
-        reference_mode=False,
-        backtracking=True,
-        limit_dt_from_force=True,
-        limit_update_rms=True,
-        verbose=False,
-        verbose_vmec2000_table=False,
-        jit_forces="auto",
-        use_scan=False,
-        light_history=True,
-        resume_state_mode="full",
-    )
+    indata, static, _boundary, state_guess, signgs = _qh_setup(load_case_qh_warm_start)
+    common_kwargs = _qh_solver_kwargs(indata, signgs, resume_state_mode="full")
 
     direct_full = build_residual_checkpoint_tape_direct(
         state_guess,
@@ -628,30 +576,9 @@ def test_residual_checkpoint_tape_direct_buckets_dynamic_shapes_for_nearby_lengt
 
     from vmec_jax._compat import jax
     from vmec_jax.discrete_adjoint import build_residual_checkpoint_tape_direct
-    from vmec_jax.field import signgs_from_sqrtg
-    from vmec_jax.geom import eval_geom
-    from vmec_jax.init_guess import initial_guess_from_boundary
 
-    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
-    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
-    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
-    common_kwargs = dict(
-        indata=indata,
-        signgs=signgs,
-        ftol=float(indata.get_float("FTOL", 1e-14)),
-        step_size=float(indata.get_float("DELT", 1.0)),
-        vmec2000_control=True,
-        reference_mode=False,
-        backtracking=True,
-        limit_dt_from_force=True,
-        limit_update_rms=True,
-        verbose=False,
-        verbose_vmec2000_table=False,
-        jit_forces="auto",
-        use_scan=False,
-        light_history=True,
-        resume_state_mode="full",
-    )
+    indata, static, _boundary, state_guess, signgs = _qh_setup(load_case_qh_warm_start)
+    common_kwargs = _qh_solver_kwargs(indata, signgs, resume_state_mode="full")
 
     tape2 = build_residual_checkpoint_tape_direct(
         state_guess,
@@ -700,32 +627,11 @@ def test_residual_checkpoint_tape_matches_direct_two_step_qh(load_case_qh_warm_s
     _require_slow()
 
     from vmec_jax.discrete_adjoint import build_residual_checkpoint_tape
-    from vmec_jax.field import signgs_from_sqrtg
-    from vmec_jax.geom import eval_geom
-    from vmec_jax.init_guess import initial_guess_from_boundary
     from vmec_jax.solve import solve_fixed_boundary_residual_iter
     from vmec_jax.state import pack_state
 
-    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
-    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
-    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
-    common_kwargs = dict(
-        indata=indata,
-        signgs=signgs,
-        ftol=float(indata.get_float("FTOL", 1e-14)),
-        step_size=float(indata.get_float("DELT", 1.0)),
-        vmec2000_control=True,
-        reference_mode=False,
-        backtracking=True,
-        limit_dt_from_force=True,
-        limit_update_rms=True,
-        verbose=False,
-        verbose_vmec2000_table=False,
-        jit_forces="auto",
-        use_scan=False,
-        light_history=False,
-        resume_state_mode="minimal",
-    )
+    indata, static, _boundary, state_guess, signgs = _qh_setup(load_case_qh_warm_start)
+    common_kwargs = _qh_solver_kwargs(indata, signgs, light_history=False)
 
     direct = solve_fixed_boundary_residual_iter(
         state_guess,
@@ -763,33 +669,12 @@ def test_checkpoint_tape_state_vjp_matches_direct_two_step_qh(load_case_qh_warm_
 
     from vmec_jax._compat import enable_x64, jax, jnp
     from vmec_jax.discrete_adjoint import build_residual_checkpoint_tape, checkpoint_tape_state_vjp
-    from vmec_jax.field import signgs_from_sqrtg
-    from vmec_jax.geom import eval_geom
-    from vmec_jax.init_guess import initial_guess_from_boundary
     from vmec_jax.state import pack_state, unpack_state
 
     enable_x64(True)
 
-    _cfg, indata, static, boundary, _state0 = load_case_qh_warm_start
-    state_guess = initial_guess_from_boundary(static, boundary, indata, vmec_project=True)
-    signgs = int(signgs_from_sqrtg(np.asarray(eval_geom(state_guess, static).sqrtg), axis_index=1))
-    common_kwargs = dict(
-        indata=indata,
-        signgs=signgs,
-        ftol=float(indata.get_float("FTOL", 1e-14)),
-        step_size=float(indata.get_float("DELT", 1.0)),
-        vmec2000_control=True,
-        reference_mode=False,
-        backtracking=True,
-        limit_dt_from_force=True,
-        limit_update_rms=True,
-        verbose=False,
-        verbose_vmec2000_table=False,
-        jit_forces="auto",
-        use_scan=False,
-        light_history=True,
-        resume_state_mode="full",
-    )
+    indata, static, _boundary, state_guess, signgs = _qh_setup(load_case_qh_warm_start)
+    common_kwargs = _qh_solver_kwargs(indata, signgs, resume_state_mode="full")
     tape = build_residual_checkpoint_tape(
         state_guess,
         static,
