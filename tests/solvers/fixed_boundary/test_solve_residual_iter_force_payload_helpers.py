@@ -9,7 +9,9 @@ from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
     ResidualForcePayloadResult,
     ResidualForceEvaluationResult,
     ResidualForceKernelAux,
+    StrictUpdateAdjointTraceFinalization,
     finalize_strict_update_adjoint_trace_entry,
+    finalize_strict_update_adjoint_trace_entry_from_payload,
     force_z_channel_square_sums,
     make_residual_force_evaluator,
     maybe_debug_force_z_channel_square_sums,
@@ -21,7 +23,11 @@ from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
     residual_force_z_nan_guard,
     resolve_residual_force_mask_pack,
 )
-from vmec_jax.solvers.fixed_boundary.residual.update import strict_step_acceptance_decision, strict_step_branch_result
+from vmec_jax.solvers.fixed_boundary.residual.update import (
+    ResidualVelocityBlocks,
+    strict_step_acceptance_decision,
+    strict_step_branch_result,
+)
 from vmec_jax.kernels.tomnsp import TomnspsRZL
 
 
@@ -120,6 +126,55 @@ def test_finalize_strict_update_trace_records_array_free_branch_identity() -> No
     assert trace_entry["strict_branch_restart_reason"] == "none"
     assert trace_entry["strict_branch_step_status"] == "momentum"
     assert trace_entry["strict_branch_has_direct_fallback"] is False
+
+
+def test_finalize_strict_update_trace_from_payload_records_full_post_update_fields() -> None:
+    branch = strict_step_branch_result(
+        acceptance=strict_step_acceptance_decision(w_try=0.5, w_curr=1.0, backtracking=True),
+        state_try="accepted-state",
+        state_backup="backup-state",
+        update_rms=0.25,
+        vmec2000_control=False,
+        huge_force_restart_count=3,
+    )
+    velocity_blocks = ResidualVelocityBlocks(*(np.full((2,), idx, dtype=float) for idx in range(12)))
+    trace_entry: dict[str, object] = {}
+
+    finalize_strict_update_adjoint_trace_entry_from_payload(
+        trace_entry,
+        StrictUpdateAdjointTraceFinalization(
+            branch_result=branch,
+            step_status="momentum",
+            restart_reason="none",
+            restart_path="momentum_accept",
+            time_step=0.1,
+            flip_sign=-1.0,
+            limit_update_rms=True,
+            dt_eff=0.08,
+            b1=0.2,
+            fac=0.3,
+            force_scale=0.4,
+            state="accepted-state",
+            w_curr=1.0,
+            w_try=0.5,
+            w_try_ratio=0.5,
+            update_rms_preclip=0.4,
+            update_rms=0.25,
+            update_rms_scale=0.625,
+            velocity_blocks=velocity_blocks,
+        ),
+        adjoint_trace_mode="full",
+    )
+
+    assert trace_entry["strict_branch_path"] == "momentum_accept"
+    assert trace_entry["state_post"] == "accepted-state"
+    assert trace_entry["w_curr"] == 1.0
+    assert trace_entry["w_try_ratio"] == 0.5
+    assert trace_entry["update_rms_preclip"] == 0.4
+    assert trace_entry["update_rms_postclip"] == 0.25
+    assert trace_entry["update_rms_scale"] == 0.625
+    np.testing.assert_allclose(trace_entry["vRcc_after"], np.full((2,), 0.0))
+    np.testing.assert_allclose(trace_entry["vLss_after"], np.full((2,), 11.0))
 
 
 def test_force_z_channel_square_sums_handles_asymmetric_and_symmetric_only_payloads() -> None:

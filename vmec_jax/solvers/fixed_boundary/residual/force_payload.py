@@ -20,12 +20,14 @@ __all__ = [
     "ResidualForceKernelAux",
     "ResidualForceMetricPayload",
     "ResidualForcePayloadResult",
+    "StrictUpdateAdjointTraceFinalization",
     "compute_forces_iter_runtime",
     "compute_forces_without_iter_dump",
     "ResidualForceEvaluationResult",
     "build_strict_update_adjoint_trace_entry",
     "evaluate_residual_force_from_state",
     "finalize_strict_update_adjoint_trace_entry",
+    "finalize_strict_update_adjoint_trace_entry_from_payload",
     "force_z_channel_square_sums",
     "maybe_debug_force_z_channel_square_sums",
     "metric_force_payload_after_edge_policy",
@@ -92,6 +94,30 @@ class ResidualForceEvaluationResult(NamedTuple):
     rz_scale: Any
     l_scale: Any
     norms: Any
+
+
+class StrictUpdateAdjointTraceFinalization(NamedTuple):
+    """Minimal post-update payload needed to finalize a strict adjoint trace."""
+
+    branch_result: Any | None
+    step_status: str
+    restart_reason: str
+    restart_path: str
+    time_step: float
+    flip_sign: float
+    limit_update_rms: bool
+    dt_eff: float
+    b1: float
+    fac: float
+    force_scale: float
+    state: Any
+    w_curr: float
+    w_try: float
+    w_try_ratio: float
+    update_rms_preclip: float | None
+    update_rms: float | None
+    update_rms_scale: float
+    velocity_blocks: Any | None = None
 
 
 def compute_forces_without_iter_dump(
@@ -328,17 +354,57 @@ def finalize_strict_update_adjoint_trace_entry(
     *,
     adjoint_trace_mode: str,
 ) -> None:
-    """Attach post-update values to an accepted-branch trace entry in place."""
+    """Attach post-update values from a legacy namespace payload."""
+
+    velocity_blocks = ns.get("velocity_blocks")
+    finalize_strict_update_adjoint_trace_entry_from_payload(
+        trace_entry,
+        StrictUpdateAdjointTraceFinalization(
+            branch_result=ns.get("branch_result"),
+            step_status=str(ns["step_status"]),
+            restart_reason=str(ns["restart_reason"]),
+            restart_path=str(ns["restart_path"]),
+            time_step=float(ns["time_step"]),
+            flip_sign=float(ns["flip_sign"]),
+            limit_update_rms=bool(ns["limit_update_rms"]),
+            dt_eff=float(ns["dt_eff"]),
+            b1=float(ns["b1"]),
+            fac=float(ns["fac"]),
+            force_scale=float(ns["force_scale"]),
+            state=ns["state"],
+            w_curr=float(ns.get("w_curr", np.nan)),
+            w_try=float(ns.get("w_try", np.nan)),
+            w_try_ratio=float(ns.get("w_try_ratio", np.nan)),
+            update_rms_preclip=(
+                None if ns.get("update_rms_preclip") is None else float(ns["update_rms_preclip"])
+            ),
+            update_rms=None if ns.get("update_rms") is None else float(ns["update_rms"]),
+            update_rms_scale=float(ns.get("scl", 1.0)),
+            velocity_blocks=velocity_blocks,
+        ),
+        adjoint_trace_mode=adjoint_trace_mode,
+    )
+    if adjoint_trace_mode == "full" and velocity_blocks is None:
+        trace_entry.update(_trace_velocity_arrays(ns, "_after"))
+
+
+def finalize_strict_update_adjoint_trace_entry_from_payload(
+    trace_entry: dict[str, Any],
+    payload: StrictUpdateAdjointTraceFinalization,
+    *,
+    adjoint_trace_mode: str,
+) -> None:
+    """Attach post-update values from an explicit strict-update trace payload."""
 
     trace_entry.update({
-        "step_status": str(ns["step_status"]),
-        "restart_reason": str(ns["restart_reason"]),
-        "restart_path": str(ns["restart_path"]),
-        "time_step": float(ns["time_step"]),
-        "flip_sign": float(ns["flip_sign"]),
-        "limit_update_rms": bool(ns["limit_update_rms"]),
+        "step_status": str(payload.step_status),
+        "restart_reason": str(payload.restart_reason),
+        "restart_path": str(payload.restart_path),
+        "time_step": float(payload.time_step),
+        "flip_sign": float(payload.flip_sign),
+        "limit_update_rms": bool(payload.limit_update_rms),
     })
-    branch_result = ns.get("branch_result")
+    branch_result = payload.branch_result
     if branch_result is not None:
         branch_fingerprint = strict_step_branch_fingerprint(branch_result)
         trace_entry.update({
@@ -352,22 +418,23 @@ def finalize_strict_update_adjoint_trace_entry(
         })
     if adjoint_trace_mode in {"full", "branch"}:
         trace_entry.update({
-            "dt_eff": float(ns["dt_eff"]),
-            "b1": float(ns["b1"]),
-            "fac": float(ns["fac"]),
-            "force_scale": float(ns["force_scale"]),
-            "state_post": ns["state"],
+            "dt_eff": float(payload.dt_eff),
+            "b1": float(payload.b1),
+            "fac": float(payload.fac),
+            "force_scale": float(payload.force_scale),
+            "state_post": payload.state,
         })
     if adjoint_trace_mode == "full":
         trace_entry.update({
-            "w_curr": float(ns["w_curr"]),
-            "w_try": float(ns["w_try"]),
-            "w_try_ratio": float(ns["w_try_ratio"]),
-            "update_rms_preclip": None if ns["update_rms_preclip"] is None else float(ns["update_rms_preclip"]),
-            "update_rms_postclip": None if ns["update_rms"] is None else float(ns["update_rms"]),
-            "update_rms_scale": float(ns["scl"]),
+            "w_curr": float(payload.w_curr),
+            "w_try": float(payload.w_try),
+            "w_try_ratio": float(payload.w_try_ratio),
+            "update_rms_preclip": payload.update_rms_preclip,
+            "update_rms_postclip": payload.update_rms,
+            "update_rms_scale": float(payload.update_rms_scale),
         })
-        trace_entry.update(_trace_velocity_arrays(ns, "_after"))
+        if payload.velocity_blocks is not None:
+            trace_entry.update(_trace_velocity_arrays({"velocity_blocks": payload.velocity_blocks}, "_after"))
 
 
 def force_z_channel_square_sums(frzl: TomnspsRZL) -> tuple[Any, Any]:

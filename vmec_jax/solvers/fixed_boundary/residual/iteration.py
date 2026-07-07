@@ -95,11 +95,12 @@ from vmec_jax.solvers.fixed_boundary.residual.force_cache import (
     select_compute_forces_callable as _select_compute_forces_callable,
 )
 from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
+    StrictUpdateAdjointTraceFinalization as _StrictUpdateAdjointTraceFinalization,
     build_strict_update_adjoint_trace_entry as _build_strict_update_adjoint_trace_entry,
     compute_forces_iter_runtime as _compute_forces_iter_runtime,
     compute_forces_without_iter_dump as _compute_forces_without_iter_dump,
     evaluate_residual_force_from_state as _evaluate_residual_force_from_state,  # noqa: F401 - compatibility alias for tests/internal users.
-    finalize_strict_update_adjoint_trace_entry as _finalize_strict_update_adjoint_trace_entry,
+    finalize_strict_update_adjoint_trace_entry_from_payload as _finalize_strict_update_adjoint_trace_entry_from_payload,
     make_residual_force_evaluator as _make_residual_force_evaluator,
     residual_iter_dump_index as _residual_iter_dump_index,
     tomnsps_to_numpy_host as _tomnsps_to_numpy_host,
@@ -2899,9 +2900,31 @@ def solve_fixed_boundary_residual_iter(
             )
             t_trace_finalize_start = time.perf_counter() if timing_enabled and adjoint_trace else None
             if adjoint_trace:
-                _finalize_strict_update_adjoint_trace_entry(
+                _finalize_strict_update_adjoint_trace_entry_from_payload(
                     trace_entry,
-                    locals(),
+                    _StrictUpdateAdjointTraceFinalization(
+                        branch_result=branch_result,
+                        step_status=str(step_status),
+                        restart_reason=str(restart_reason),
+                        restart_path=str(restart_path),
+                        time_step=float(time_step),
+                        flip_sign=float(flip_sign),
+                        limit_update_rms=bool(limit_update_rms),
+                        dt_eff=float(dt_eff),
+                        b1=float(b1),
+                        fac=float(fac),
+                        force_scale=float(force_scale),
+                        state=state,
+                        w_curr=float(w_curr),
+                        w_try=float(w_try),
+                        w_try_ratio=float(w_try_ratio),
+                        update_rms_preclip=(
+                            None if update_rms_preclip is None else float(update_rms_preclip)
+                        ),
+                        update_rms=None if update_rms is None else float(update_rms),
+                        update_rms_scale=float(scl),
+                        velocity_blocks=velocity_blocks,
+                    ),
                     adjoint_trace_mode=adjoint_trace_mode,
                 )
                 adjoint_step_trace_history.append(trace_entry)
