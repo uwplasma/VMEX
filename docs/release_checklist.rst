@@ -219,10 +219,10 @@ cite until a newer release-candidate run replaces it:
   --cov-fail-under=95`` passed with ``2423 passed, 20 skipped, 1 xfailed`` and
   ``95.16%`` coverage at the enforced ``95%`` gate.
 - Focused solve/refactor checks passed:
-  ``ruff check vmec_jax/solve.py tests/test_solve_dump_helpers.py``,
-  ``JAX_ENABLE_X64=1 pytest -q tests/test_solve_dump_helpers.py``, and
-  ``JAX_ENABLE_X64=1 pytest -q tests/test_solve_dump_helpers.py
-  tests/test_solve_additional_helpers.py tests/test_solve_runtime.py``.
+  ``ruff check vmec_jax/solve.py tests/solvers/fixed_boundary/test_solve_dump_helpers.py``,
+  ``JAX_ENABLE_X64=1 pytest -q tests/solvers/fixed_boundary/test_solve_dump_helpers.py``, and
+  ``JAX_ENABLE_X64=1 pytest -q tests/solvers/fixed_boundary/test_solve_dump_helpers.py
+  tests/solvers/fixed_boundary/test_solve_additional_helpers.py tests/solvers/fixed_boundary/test_solve_runtime.py``.
 - GitHub Actions run ``26885868424`` passed build, full docs, CLI smoke,
   parity dry-run, physics smoke, and Python 3.10/3.11/3.12 fast-test lanes for
   ``8c7ffcd``; the manual/nightly physics lane was skipped as expected.

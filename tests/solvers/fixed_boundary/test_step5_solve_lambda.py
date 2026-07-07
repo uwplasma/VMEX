@@ -24,7 +24,7 @@ def test_step5_solve_lambda_decreases_wb_toward_wout(load_case_qa_reactorscale_l
     cfg, _indata, _static_unused, _bdy, _st0 = load_case_qa_reactorscale_lowres
 
     wout_path = (
-        Path(__file__).resolve().parents[1]
+        Path(__file__).resolve().parents[3]
         / "examples"
         / "data"
         / "wout_LandremanPaul2021_QA_reactorScale_lowres_reference.nc"

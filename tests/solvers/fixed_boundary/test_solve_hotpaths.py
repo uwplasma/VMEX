@@ -75,7 +75,7 @@ def test_enforce_field_rows_matches_legacy_single_row():
 
 
 def test_enforce_fixed_boundary_and_axis_matches_component_reference():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     cfg, _ = load_config(str(root / "examples/data/input.circular_tokamak"))
     static = build_static(cfg)
     layout = StateLayout(ns=cfg.ns, K=static.modes.m.size, lasym=cfg.lasym)
@@ -390,7 +390,7 @@ def test_state_tau_minmax_from_vmec_state_uses_device_get_path():
 def test_preconditioner_output_scaling_gate_is_gpu_only_without_gpu(monkeypatch):
     pytest.importorskip("jax")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     cfg, indata = load_config(str(root / "examples/data/input.circular_tokamak"))
     grid = vmec_angle_grid(ntheta=8, nzeta=4, nfp=cfg.nfp, lasym=cfg.lasym)
     static = build_static(cfg, grid=grid)
