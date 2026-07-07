@@ -9,7 +9,7 @@ import pytest
 import vmec_jax.discrete_adjoint as da
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 TOOL_PATH = REPO_ROOT / "tools" / "diagnostics" / "performance" / "gpu_cpu_performance_matrix.py"
 FIXED_TOOL_PATH = REPO_ROOT / "tools" / "diagnostics" / "performance" / "profile_fixed_boundary.py"
 QI_TOOL_PATH = REPO_ROOT / "tools" / "diagnostics" / "performance" / "profile_qi_boozer_gpu.py"

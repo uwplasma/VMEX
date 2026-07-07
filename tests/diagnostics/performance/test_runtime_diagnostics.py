@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def _load_tool(name: str):
@@ -30,12 +30,20 @@ def _load_tool(name: str):
         "compare_runtime_memory_matrix",
         "example_runtime_memory_matrix",
     }
+    free_boundary_tools = {
+        "direct_coil_boundary_replay_report",
+        "direct_coil_segmented_replay_report",
+        "direct_coil_strict_update_replay_report",
+        "freeb_replay_diagnostic_utils",
+    }
     if name in docs_artifact_tools:
         path = ROOT / "tools" / "diagnostics" / "docs_artifacts" / f"{name}.py"
     elif name in parity_tools:
         path = ROOT / "tools" / "diagnostics" / "parity" / f"{name}.py"
     elif name in performance_tools:
         path = ROOT / "tools" / "diagnostics" / "performance" / f"{name}.py"
+    elif name in free_boundary_tools:
+        path = ROOT / "tools" / "diagnostics" / "free_boundary" / f"{name}.py"
     else:
         path = ROOT / "tools" / "diagnostics" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 TOOL_PATH = REPO_ROOT / "tools" / "diagnostics" / "performance" / "gpu_cpu_performance_matrix.py"
 
 
