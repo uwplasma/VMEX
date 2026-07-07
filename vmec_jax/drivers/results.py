@@ -318,6 +318,94 @@ def finalize_fixed_boundary_convergence_result(
     return copy_final_force_payload(out, result)
 
 
+def finalize_fixed_boundary_solver_run(
+    *,
+    cfg: object,
+    indata: object,
+    static: object,
+    result: SolveVmecResidualResult,
+    signgs: int,
+    flux_local: object,
+    profiles_local: object,
+    pressure_local: object,
+    static_profile_cache: object,
+    solver: str,
+    verbose: bool,
+    finish_policy_eff: str,
+    cli_fixed_boundary_finish_enabled: bool,
+    use_scan_policy_source: str,
+    use_scan_policy_detail: str,
+    multigrid: bool,
+    ns_stages: list[int],
+    maybe_finish_cli_fixed_boundary_run: Callable[..., object],
+    run_container: Callable[..., object],
+    maybe_print_optimizer_summary: Callable[..., None],
+    finalize_flux_profiles_for_run: Callable[..., tuple[object, object, dict]],
+    final_flux_profiles_from_state_func: Callable[..., object],
+    fixed_boundary_execution_classification: Callable[[dict], str],
+    replace_func: Callable[..., object],
+) -> object:
+    """Assemble the public fixed-boundary run and stamp public diagnostics.
+
+    The driver owns solver dispatch; this helper owns the deterministic
+    post-solve bookkeeping: final flux/profile synthesis, convergence metadata,
+    execution classification, and optional CLI finish-policy retry.
+    """
+
+    maybe_print_optimizer_summary(result, solver=solver, verbose=bool(verbose))
+    static_out, flux, profiles = finalize_flux_profiles_for_run(
+        cfg=cfg,
+        indata=indata,
+        static=static,
+        result=result,
+        signgs=signgs,
+        flux_local=flux_local,
+        profiles_local=profiles_local,
+        pressure_local=pressure_local,
+        static_profile_cache=static_profile_cache,
+        final_flux_profiles_from_state_func=final_flux_profiles_from_state_func,
+    )
+    run_out = run_container(
+        cfg=cfg,
+        indata=indata,
+        static=static_out,
+        state=result.state,
+        result=result,
+        flux=flux,
+        profiles=profiles,
+        signgs=signgs,
+    )
+    if run_out.result is not None:
+        diag_for_classification = dict(getattr(run_out.result, "diagnostics", {}) or {})
+        diag_for_classification.update(
+            {
+                "fixed_boundary_finish_policy": str(finish_policy_eff),
+                "cli_fixed_boundary_finish_enabled": bool(cli_fixed_boundary_finish_enabled),
+                "use_scan_policy_source": str(use_scan_policy_source),
+                "use_scan_policy_detail": str(use_scan_policy_detail),
+            }
+        )
+        run_out = replace_func(
+            run_out,
+            result=result_with_diag(
+                run_out.result,
+                fixed_boundary_finish_policy=str(finish_policy_eff),
+                cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
+                use_scan_policy_source=str(use_scan_policy_source),
+                use_scan_policy_detail=str(use_scan_policy_detail),
+                fixed_boundary_execution_classification=fixed_boundary_execution_classification(
+                    diag_for_classification
+                ),
+            ),
+        )
+    cli_initial_policy = "multigrid" if bool(multigrid) and (len(ns_stages) > 1) else "single_grid"
+    return maybe_finish_cli_fixed_boundary_run(
+        run_out,
+        initial_policy=cli_initial_policy,
+        enabled=bool(cli_fixed_boundary_finish_enabled),
+    )
+
+
 def stage_switch_reason_from_progress(
     *,
     start_total_fsq: float,

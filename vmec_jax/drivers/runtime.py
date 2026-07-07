@@ -27,6 +27,66 @@ class ExternalFieldProviderContext:
     provider_static: Any
 
 
+@dataclass(frozen=True)
+class FixedBoundaryStartupContext:
+    """Resolved input, device, restart, and first-pass policy for one run."""
+
+    cfg: Any
+    indata: Any
+    requested_solver_device: str
+    policy_backend: str
+    initial_policy: Any
+    solver_mode_explicit: bool
+    solver_mode_eff: str
+    accelerated_mode: bool
+    performance_mode: bool
+    use_scan: bool
+    use_scan_policy_source: str
+    use_scan_policy_detail: str
+    cli_fixed_boundary_mode: bool
+    restart_state: Any | None
+    restart_wout: Any | None
+    restart_solver_state: dict | None
+    solver_lower: str
+    axis_infer_missing: bool
+    routed_run: Any | None
+
+
+@dataclass(frozen=True)
+class FixedBoundaryStageContext:
+    """Resolved multigrid/stage policy for one fixed-boundary driver run."""
+
+    ns_list_input: Any
+    niter_list_input: Any
+    ftol_list_input: Any
+    cli_budgeted_multigrid_requested: bool
+    cli_fixed_boundary_finish_enabled: bool
+    finish_policy_eff: str
+    multigrid: bool
+    multigrid_user_provided: bool
+    accelerated_single_grid_default: bool
+    direct_staged_current_driven_3d_cli: bool
+    deferred_staged_current_driven_3d_cli: bool
+    max_iter: int
+    stage_transition_heuristic: bool
+    ns_stages: list[int]
+
+
+@dataclass(frozen=True)
+class FixedBoundaryRuntimeSetup:
+    """Late-bound provider, profile, sign, and initial-guess setup."""
+
+    direct_external_provider: bool
+    external_field_provider_static_eff: Any
+    boundary_coeffs: Any
+    signgs: int
+    jit_forces: Any
+    gamma: float
+    static_profile_cache: Any
+    step_size_val: float
+    initial_guess_with_optional_nojit: Any
+
+
 @dataclass
 class StaticProfileCache:
     """Lazy static/boundary/profile builder for one driver invocation."""
@@ -206,6 +266,119 @@ def resolve_restart_context(
     )
 
 
+def driver_resume_step_size_value(*, step_size, indata, step_size_sentinel) -> float:
+    """Resolve the step size used to sanitize resumable VMEC time-step state."""
+
+    if step_size is not step_size_sentinel and step_size is not None:
+        return float(step_size)
+    try:
+        return float(indata.get_float("DELT", 5e-3))
+    except Exception:
+        return 5e-3
+
+
+def sanitize_resume_state_for_driver_stage(
+    resume_state,
+    *,
+    step_size,
+    indata,
+    step_size_sentinel,
+    sanitize_resume_state_for_grid_change_func: Callable[..., Any],
+):
+    """Sanitize resume metadata when a VMEC stage changes radial grid size."""
+
+    return sanitize_resume_state_for_grid_change_func(
+        resume_state,
+        step_size=driver_resume_step_size_value(
+            step_size=step_size,
+            indata=indata,
+            step_size_sentinel=step_size_sentinel,
+        ),
+    )
+
+
+def sanitize_resume_state_for_driver_same_stage(
+    resume_state,
+    *,
+    step_size,
+    indata,
+    step_size_sentinel,
+    sanitize_resume_state_for_same_grid_func: Callable[..., Any],
+):
+    """Sanitize resume metadata for continuation on the same radial grid."""
+
+    return sanitize_resume_state_for_same_grid_func(
+        resume_state,
+        step_size=driver_resume_step_size_value(
+            step_size=step_size,
+            indata=indata,
+            step_size_sentinel=step_size_sentinel,
+        ),
+    )
+
+
+def resolve_fixed_boundary_stage_context(
+    *,
+    cfg: Any,
+    indata: Any,
+    solver_lower: str,
+    cli_fixed_boundary_mode: bool,
+    accelerated_mode: bool,
+    multigrid: bool | None,
+    max_iter: Any,
+    max_iter_sentinel: Any,
+    max_iter_overridden: bool,
+    restart_state_present: bool,
+    restart_solver_state_present: bool,
+    ns_override: int | None,
+    stage_transition_heuristic: bool | None,
+    finish_policy: str | None,
+    resolve_fixed_boundary_stage_policy_func: Callable[..., Any],
+    normalize_fixed_boundary_finish_policy_func: Callable[[str | None], str],
+    getenv: Callable[[str, str], str] = os.getenv,
+) -> FixedBoundaryStageContext:
+    """Resolve VMEC multigrid/stage policy and CLI finish-policy overrides."""
+
+    stage_policy = resolve_fixed_boundary_stage_policy_func(
+        cfg=cfg,
+        indata=indata,
+        solver_lower=solver_lower,
+        cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
+        accelerated_mode=bool(accelerated_mode),
+        multigrid=multigrid,
+        max_iter=max_iter,
+        max_iter_sentinel=max_iter_sentinel,
+        max_iter_overridden=bool(max_iter_overridden),
+        restart_state_present=bool(restart_state_present),
+        restart_solver_state_present=bool(restart_solver_state_present),
+        ns_override=ns_override,
+        stage_transition_heuristic=stage_transition_heuristic,
+        getenv=getenv,
+    )
+    finish_policy_eff = normalize_fixed_boundary_finish_policy_func(finish_policy)
+    cli_fixed_boundary_finish_enabled = bool(stage_policy.cli_fixed_boundary_finish_enabled)
+    if finish_policy_eff == "none":
+        cli_fixed_boundary_finish_enabled = False
+    elif finish_policy_eff == "converge":
+        cli_fixed_boundary_finish_enabled = bool(solver_lower == "vmec2000_iter") and (not bool(cfg.lfreeb))
+    return FixedBoundaryStageContext(
+        ns_list_input=stage_policy.ns_list_input,
+        niter_list_input=stage_policy.niter_list_input,
+        ftol_list_input=stage_policy.ftol_list_input,
+        cli_budgeted_multigrid_requested=bool(stage_policy.cli_budgeted_multigrid_requested),
+        cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
+        finish_policy_eff=str(finish_policy_eff),
+        multigrid=bool(stage_policy.multigrid),
+        multigrid_user_provided=bool(stage_policy.multigrid_user_provided),
+        accelerated_single_grid_default=bool(stage_policy.accelerated_single_grid_default),
+        direct_staged_current_driven_3d_cli=bool(stage_policy.direct_staged_current_driven_3d_cli),
+        deferred_staged_current_driven_3d_cli=bool(stage_policy.deferred_staged_current_driven_3d_cli),
+        max_iter=int(stage_policy.max_iter),
+        stage_transition_heuristic=bool(stage_policy.stage_transition_heuristic),
+        ns_stages=list(stage_policy.ns_stages),
+    )
+
+
 def resolve_external_field_provider_context(
     *,
     external_field_provider_kind: str | None,
@@ -263,9 +436,16 @@ def resolve_external_field_provider_context(
 
 __all__ = [
     "ExternalFieldProviderContext",
+    "FixedBoundaryRuntimeSetup",
+    "FixedBoundaryStageContext",
+    "FixedBoundaryStartupContext",
     "RestartContext",
     "StaticProfileCache",
+    "driver_resume_step_size_value",
     "maybe_enable_compilation_cache",
     "resolve_external_field_provider_context",
+    "resolve_fixed_boundary_stage_context",
     "resolve_restart_context",
+    "sanitize_resume_state_for_driver_same_stage",
+    "sanitize_resume_state_for_driver_stage",
 ]

@@ -142,6 +142,40 @@ def print_vmec2000_run_header(
     print_func("", flush=True)
 
 
+def maybe_print_fixed_boundary_run_intro(
+    *,
+    input_path: str | Path,
+    cfg: Any,
+    solver: str,
+    solver_lower: str,
+    use_initial_guess: bool,
+    max_iter: int,
+    step_size_val: float,
+    history_size: int,
+    verbose: bool,
+    getenv: Callable[[str, str], str],
+) -> None:
+    """Print the fixed-boundary banner selected by public driver policy."""
+
+    if not verbose:
+        return
+    if solver_lower != "vmec2000_iter" or use_initial_guess:
+        print_fixed_boundary_intro(
+            input_path=input_path,
+            cfg=cfg,
+            solver=solver,
+            use_initial_guess=bool(use_initial_guess),
+            max_iter=int(max_iter),
+            step_size=float(step_size_val),
+            history_size=int(history_size),
+        )
+        return
+    print_vmec2000_run_header(
+        input_path=input_path,
+        version=getenv("VMEC_JAX_VMEC2000_VERSION", "vmec_jax"),
+    )
+
+
 def print_vmec2000_run_summary(
     *,
     input_path: str | Path,

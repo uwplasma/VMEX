@@ -164,64 +164,9 @@ class FixedBoundaryRun:
     signgs: int
 
 
-@dataclass(frozen=True)
-class _FixedBoundaryStartupContext:
-    """Resolved startup policy and restart state for one fixed-boundary run."""
-
-    cfg: VMECConfig
-    indata: Any
-    requested_solver_device: str
-    policy_backend: str
-    initial_policy: Any
-    solver_mode_explicit: bool
-    solver_mode_eff: str
-    accelerated_mode: bool
-    performance_mode: bool
-    use_scan: bool
-    use_scan_policy_source: str
-    use_scan_policy_detail: str
-    cli_fixed_boundary_mode: bool
-    restart_state: Any | None
-    restart_wout: Any | None
-    restart_solver_state: dict | None
-    solver_lower: str
-    axis_infer_missing: bool
-    routed_run: Any | None
-
-
-@dataclass(frozen=True)
-class _FixedBoundaryStageContext:
-    """Resolved multigrid/stage policy for one fixed-boundary run."""
-
-    ns_list_input: Any
-    niter_list_input: Any
-    ftol_list_input: Any
-    cli_budgeted_multigrid_requested: bool
-    cli_fixed_boundary_finish_enabled: bool
-    finish_policy_eff: str
-    multigrid: bool
-    multigrid_user_provided: bool
-    accelerated_single_grid_default: bool
-    direct_staged_current_driven_3d_cli: bool
-    deferred_staged_current_driven_3d_cli: bool
-    max_iter: int
-    stage_transition_heuristic: bool
-    ns_stages: list[int]
-
-
-@dataclass(frozen=True)
-class _FixedBoundaryRuntimeSetup:
-    """Late-bound runtime setup that would otherwise clutter the public driver."""
-
-    direct_external_provider: bool
-    external_field_provider_static_eff: Any
-    boundary_coeffs: Any
-    signgs: int
-    jit_forces: Any
-    gamma: float
-    static_profile_cache: Any
-    step_size_val: float
-    initial_guess_with_optional_nojit: Any
+_FixedBoundaryStartupContext = _driver_runtime_helpers.FixedBoundaryStartupContext
+_FixedBoundaryStageContext = _driver_runtime_helpers.FixedBoundaryStageContext
+_FixedBoundaryRuntimeSetup = _driver_runtime_helpers.FixedBoundaryRuntimeSetup
 
 
 def _default_backend_name() -> str:
@@ -385,25 +330,30 @@ _MAX_ITER_SENTINEL = object()
 def _driver_resume_step_size_value(*, step_size, indata) -> float:
     """Resolve the step size used to sanitize resumable VMEC time-step state."""
 
-    if step_size is not _STEP_SIZE_SENTINEL and step_size is not None:
-        return float(step_size)
-    try:
-        return float(indata.get_float("DELT", 5e-3))
-    except Exception:
-        return 5e-3
+    return _driver_runtime_helpers.driver_resume_step_size_value(
+        step_size=step_size,
+        indata=indata,
+        step_size_sentinel=_STEP_SIZE_SENTINEL,
+    )
 
 
 def _sanitize_resume_state_for_driver_stage(resume_state, *, step_size, indata):
-    return _sanitize_resume_state_for_grid_change(
+    return _driver_runtime_helpers.sanitize_resume_state_for_driver_stage(
         resume_state,
-        step_size=_driver_resume_step_size_value(step_size=step_size, indata=indata),
+        step_size=step_size,
+        indata=indata,
+        step_size_sentinel=_STEP_SIZE_SENTINEL,
+        sanitize_resume_state_for_grid_change_func=_sanitize_resume_state_for_grid_change,
     )
 
 
 def _sanitize_resume_state_for_driver_same_stage(resume_state, *, step_size, indata):
-    return _sanitize_resume_state_for_same_grid(
+    return _driver_runtime_helpers.sanitize_resume_state_for_driver_same_stage(
         resume_state,
-        step_size=_driver_resume_step_size_value(step_size=step_size, indata=indata),
+        step_size=step_size,
+        indata=indata,
+        step_size_sentinel=_STEP_SIZE_SENTINEL,
+        sanitize_resume_state_for_same_grid_func=_sanitize_resume_state_for_same_grid,
     )
 
 
@@ -599,7 +549,7 @@ def _resolve_fixed_boundary_stage_context(
 ) -> _FixedBoundaryStageContext:
     """Resolve VMEC stage policy and finish-policy overrides."""
 
-    stage_policy = _driver_policy_helpers.resolve_fixed_boundary_stage_policy(
+    return _driver_runtime_helpers.resolve_fixed_boundary_stage_context(
         cfg=cfg,
         indata=indata,
         solver_lower=solver_lower,
@@ -613,29 +563,10 @@ def _resolve_fixed_boundary_stage_context(
         restart_solver_state_present=bool(restart_solver_state_present),
         ns_override=ns_override,
         stage_transition_heuristic=stage_transition_heuristic,
+        finish_policy=finish_policy,
+        resolve_fixed_boundary_stage_policy_func=_driver_policy_helpers.resolve_fixed_boundary_stage_policy,
+        normalize_fixed_boundary_finish_policy_func=_normalize_fixed_boundary_finish_policy,
         getenv=os.getenv,
-    )
-    finish_policy_eff = _normalize_fixed_boundary_finish_policy(finish_policy)
-    cli_fixed_boundary_finish_enabled = bool(stage_policy.cli_fixed_boundary_finish_enabled)
-    if finish_policy_eff == "none":
-        cli_fixed_boundary_finish_enabled = False
-    elif finish_policy_eff == "converge":
-        cli_fixed_boundary_finish_enabled = bool(solver_lower == "vmec2000_iter") and (not bool(cfg.lfreeb))
-    return _FixedBoundaryStageContext(
-        ns_list_input=stage_policy.ns_list_input,
-        niter_list_input=stage_policy.niter_list_input,
-        ftol_list_input=stage_policy.ftol_list_input,
-        cli_budgeted_multigrid_requested=bool(stage_policy.cli_budgeted_multigrid_requested),
-        cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
-        finish_policy_eff=str(finish_policy_eff),
-        multigrid=bool(stage_policy.multigrid),
-        multigrid_user_provided=bool(stage_policy.multigrid_user_provided),
-        accelerated_single_grid_default=bool(stage_policy.accelerated_single_grid_default),
-        direct_staged_current_driven_3d_cli=bool(stage_policy.direct_staged_current_driven_3d_cli),
-        deferred_staged_current_driven_3d_cli=bool(stage_policy.deferred_staged_current_driven_3d_cli),
-        max_iter=int(stage_policy.max_iter),
-        stage_transition_heuristic=bool(stage_policy.stage_transition_heuristic),
-        ns_stages=list(stage_policy.ns_stages),
     )
 
 
@@ -662,8 +593,7 @@ def _finalize_fixed_boundary_solver_run(
 ) -> FixedBoundaryRun:
     """Assemble the public run object after a fixed-boundary solver finishes."""
 
-    _driver_solve_helpers.maybe_print_optimizer_summary(result, solver=solver, verbose=bool(verbose))
-    static, flux, profiles = _driver_flux_helpers.finalize_flux_profiles_for_run(
+    return _driver_result_helpers.finalize_fixed_boundary_solver_run(
         cfg=cfg,
         indata=indata,
         static=static,
@@ -673,46 +603,21 @@ def _finalize_fixed_boundary_solver_run(
         profiles_local=profiles_local,
         pressure_local=pressure_local,
         static_profile_cache=static_profile_cache,
+        solver=solver,
+        verbose=bool(verbose),
+        finish_policy_eff=finish_policy_eff,
+        cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
+        use_scan_policy_source=use_scan_policy_source,
+        use_scan_policy_detail=use_scan_policy_detail,
+        multigrid=bool(multigrid),
+        ns_stages=ns_stages,
+        maybe_finish_cli_fixed_boundary_run=maybe_finish_cli_fixed_boundary_run,
+        run_container=FixedBoundaryRun,
+        maybe_print_optimizer_summary=_driver_solve_helpers.maybe_print_optimizer_summary,
+        finalize_flux_profiles_for_run=_driver_flux_helpers.finalize_flux_profiles_for_run,
         final_flux_profiles_from_state_func=_final_flux_profiles_from_state,
-    )
-    run_out = FixedBoundaryRun(
-        cfg=cfg,
-        indata=indata,
-        static=static,
-        state=result.state,
-        result=result,
-        flux=flux,
-        profiles=profiles,
-        signgs=signgs,
-    )
-    if run_out.result is not None:
-        diag_for_classification = dict(getattr(run_out.result, "diagnostics", {}) or {})
-        diag_for_classification.update(
-            {
-                "fixed_boundary_finish_policy": str(finish_policy_eff),
-                "cli_fixed_boundary_finish_enabled": bool(cli_fixed_boundary_finish_enabled),
-                "use_scan_policy_source": str(use_scan_policy_source),
-                "use_scan_policy_detail": str(use_scan_policy_detail),
-            }
-        )
-        run_out = replace(
-            run_out,
-            result=_result_with_diag(
-                run_out.result,
-                fixed_boundary_finish_policy=str(finish_policy_eff),
-                cli_fixed_boundary_finish_enabled=bool(cli_fixed_boundary_finish_enabled),
-                use_scan_policy_source=str(use_scan_policy_source),
-                use_scan_policy_detail=str(use_scan_policy_detail),
-                fixed_boundary_execution_classification=_fixed_boundary_execution_classification(
-                    diag_for_classification
-                ),
-            ),
-        )
-    cli_initial_policy = "multigrid" if bool(multigrid) and (len(ns_stages) > 1) else "single_grid"
-    return maybe_finish_cli_fixed_boundary_run(
-        run_out,
-        initial_policy=cli_initial_policy,
-        enabled=bool(cli_fixed_boundary_finish_enabled),
+        fixed_boundary_execution_classification=_fixed_boundary_execution_classification,
+        replace_func=replace,
     )
 
 
@@ -834,22 +739,17 @@ def _maybe_print_fixed_boundary_run_intro(
 ) -> None:
     """Emit the user-facing fixed-boundary or VMEC2000-style run header."""
 
-    if not verbose:
-        return
-    if solver_lower != "vmec2000_iter" or use_initial_guess:
-        _driver_interface_helpers.print_fixed_boundary_intro(
-            input_path=input_path,
-            cfg=cfg,
-            solver=solver,
-            use_initial_guess=bool(use_initial_guess),
-            max_iter=int(max_iter),
-            step_size=float(step_size_val),
-            history_size=int(history_size),
-        )
-        return
-    _driver_interface_helpers.print_vmec2000_run_header(
+    return _driver_interface_helpers.maybe_print_fixed_boundary_run_intro(
         input_path=input_path,
-        version=os.getenv("VMEC_JAX_VMEC2000_VERSION", "vmec_jax"),
+        cfg=cfg,
+        solver=solver,
+        solver_lower=solver_lower,
+        use_initial_guess=bool(use_initial_guess),
+        max_iter=int(max_iter),
+        step_size_val=float(step_size_val),
+        history_size=int(history_size),
+        verbose=bool(verbose),
+        getenv=os.getenv,
     )
 
 
@@ -905,91 +805,89 @@ def _run_fixed_boundary_vmec2000_iter_solver_branch(
 
     from .modes import vmec_mode_table
 
-    nstep = len(ns_stages)
-    niter_array = indata.get("NITER_ARRAY", None)
-    ftol_array = indata.get("FTOL_ARRAY", None)
-    niter_list = _as_list_like(niter_array)
-    ftol_list = _as_list_like(ftol_array)
-    niter_stages, ftol_stages, niter_stages_input, _ftol_stages_input = _resolve_vmec2000_stage_controls(
-        nstep=int(nstep),
-        niter_list=niter_list,
-        ftol_list=ftol_list,
+    return _driver_staging_helpers.run_fixed_boundary_vmec2000_iter_solver_branch(
+        input_path=input_path,
+        cfg=cfg,
+        indata=indata,
+        solver=solver,
+        solver_mode_eff=str(solver_mode_eff),
+        accelerated_mode=bool(accelerated_mode),
+        performance_mode=bool(performance_mode),
+        use_scan=bool(use_scan),
+        cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
+        direct_staged_current_driven_3d_cli=bool(direct_staged_current_driven_3d_cli),
+        multigrid=bool(multigrid),
+        multigrid_user_provided=bool(multigrid_user_provided),
+        multigrid_use_input_niter=bool(multigrid_use_input_niter),
+        accelerated_single_grid_default=bool(accelerated_single_grid_default),
+        direct_external_provider=bool(direct_external_provider),
+        policy_backend=str(policy_backend),
+        stage_transition_heuristic=bool(stage_transition_heuristic),
+        stage_transition_factor=float(stage_transition_factor),
+        stage_transition_scale=float(stage_transition_scale),
+        scan_minimal_default=scan_minimal_default,
+        scan_wout_corrector=scan_wout_corrector,
+        jit_forces=jit_forces,
+        jit_precompile=jit_precompile,
+        use_restart_triggers=use_restart_triggers,
+        vmecpp_restart=bool(vmecpp_restart),
+        limit_update_rms=limit_update_rms,
+        external_field_provider_kind=external_field_provider_kind,
+        external_field_provider_static_eff=external_field_provider_static_eff,
+        external_field_provider_params=external_field_provider_params,
+        free_boundary_activate_fsq=free_boundary_activate_fsq,
+        verbose=bool(verbose),
+        signgs=signgs,
+        step_size_val=float(step_size_val),
+        ns_stages=list(ns_stages),
+        ftol_list_input=ftol_list_input,
+        restart_state_eff=restart_state_eff,
+        restart_solver_state=restart_solver_state,
+        boundary_coeffs=boundary_coeffs,
+        t_start=float(t_start),
         max_iter=int(max_iter),
         max_iter_overridden=bool(max_iter_overridden),
-        multigrid_use_input_niter=bool(multigrid_use_input_niter),
-        multigrid_user_provided=bool(multigrid_user_provided),
-        accelerated_single_grid_default=bool(accelerated_single_grid_default),
-        indata=indata,
-    )
-
-    env_precompile_stages = os.getenv("VMEC_JAX_PRECOMPILE_STAGES", "0")
-    precompile_stages = env_precompile_stages.strip().lower() not in ("", "0", "false", "no")
-
-    return _driver_staging_helpers.run_vmec2000_staged_solve(
-        _driver_staging_helpers.Vmec2000StagedSolveContext.from_namespace(
-            locals(),
-            external_field_provider_static=external_field_provider_static_eff,
-            solver_mode_eff=str(solver_mode_eff),
-            accelerated_mode=bool(accelerated_mode),
-            performance_mode=bool(performance_mode),
-            use_scan=bool(use_scan),
-            cli_fixed_boundary_mode=bool(cli_fixed_boundary_mode),
-            direct_staged_current_driven_3d_cli=bool(direct_staged_current_driven_3d_cli),
-            multigrid=bool(multigrid),
-            multigrid_user_provided=bool(multigrid_user_provided),
-            accelerated_single_grid_default=bool(accelerated_single_grid_default),
-            direct_external_provider=bool(direct_external_provider),
-            policy_backend=str(policy_backend),
-            stage_transition_heuristic=bool(stage_transition_heuristic),
-            stage_transition_factor=float(stage_transition_factor),
-            stage_transition_scale=float(stage_transition_scale),
-            precompile_stages=bool(precompile_stages),
-            vmecpp_restart=bool(vmecpp_restart),
-            verbose=bool(verbose),
-            signgs=signgs,
-            step_size_val=float(step_size_val),
-            ns_stages=list(ns_stages),
-            niter_stages=list(niter_stages),
-            ftol_stages=list(ftol_stages),
-            t_start=float(t_start),
-            build_static_cfg=static_profile_cache.build_static_cfg,
-            initial_guess_with_optional_nojit=initial_guess_with_optional_nojit,
-            resolve_jit_forces=_resolve_jit_forces_auto_policy,
-            interp_vmec_state=interp_vmec_state,
-            mode_table_func=vmec_mode_table,
-            maybe_dump_xc_init=_driver_debug_helpers.maybe_dump_xc_init,
-            maybe_disable_scan_by_parity_guard=_driver_dynamic_scan_helpers.maybe_disable_scan_by_parity_guard,
-            resolve_stage_jit_settings=_resolve_stage_jit_settings,
-            accelerated_fsq_total_target_from_ftol=_accelerated_fsq_total_target_from_ftol,
-            host_update_assembly_driver_default=_host_update_assembly_driver_default,
-            default_preconditioner_use_precomputed_tridi=_default_preconditioner_use_precomputed_tridi,
-            default_preconditioner_use_lax_tridi=_default_preconditioner_use_lax_tridi,
-            solve_fixed_boundary_residual_iter=solve_fixed_boundary_residual_iter,
-            maybe_select_dynamic_scan_mode=_driver_dynamic_scan_helpers.maybe_select_dynamic_scan_mode,
-            dynamic_scan_probe_settings=_dynamic_scan_probe_settings,
-            vmec_histories_match=_vmec_histories_match,
-            vmec_history_relerr=_vmec_history_relerr,
-            maybe_precompile_fixed_boundary_stage=_driver_solve_helpers.maybe_precompile_fixed_boundary_stage,
-            run_fixed_boundary_stage_solve=_driver_solve_helpers.run_fixed_boundary_stage_solve,
-            result_meets_requested_ftol=_result_meets_requested_ftol,
-            stage_switch_reason_from_progress=_stage_switch_reason_from_progress,
-            merge_stage_chunk_results=_merge_stage_chunk_results,
-            result_with_diag=_result_with_diag,
-            maybe_rerun_scan_abort_stage=_driver_solve_helpers.maybe_rerun_scan_abort_stage,
-            assemble_multigrid_stage_result=_driver_result_helpers.assemble_multigrid_stage_result,
-            maybe_apply_scan_wout_corrector=_driver_solve_helpers.maybe_apply_scan_wout_corrector,
-            copy_final_force_payload=_copy_final_force_payload,
-            timing_solve_total_s=_timing_solve_total_s,
-            requested_final_ftol=_requested_final_ftol,
-            result_final_residuals=_result_final_residuals,
-            result_hits_total_target=_result_hits_total_target,
-            finalize_fixed_boundary_convergence_result=_driver_result_helpers.finalize_fixed_boundary_convergence_result,
-            print_vmec2000_run_summary=_driver_interface_helpers.print_vmec2000_run_summary,
-            default_backend_name=_default_backend_name,
-            deepcopy_func=deepcopy,
-            getenv=os.getenv,
-            perf_counter=time.perf_counter,
-        )
+        static_profile_cache=static_profile_cache,
+        initial_guess_with_optional_nojit=initial_guess_with_optional_nojit,
+        sanitize_resume_state_for_stage=sanitize_resume_state_for_stage,
+        sanitize_resume_state_for_same_stage=sanitize_resume_state_for_same_stage,
+        as_list_like=_as_list_like,
+        resolve_vmec2000_stage_controls=_resolve_vmec2000_stage_controls,
+        resolve_jit_forces=_resolve_jit_forces_auto_policy,
+        interp_vmec_state=interp_vmec_state,
+        mode_table_func=vmec_mode_table,
+        maybe_dump_xc_init=_driver_debug_helpers.maybe_dump_xc_init,
+        maybe_disable_scan_by_parity_guard=_driver_dynamic_scan_helpers.maybe_disable_scan_by_parity_guard,
+        resolve_stage_jit_settings=_resolve_stage_jit_settings,
+        accelerated_fsq_total_target_from_ftol=_accelerated_fsq_total_target_from_ftol,
+        host_update_assembly_driver_default=_host_update_assembly_driver_default,
+        default_preconditioner_use_precomputed_tridi=_default_preconditioner_use_precomputed_tridi,
+        default_preconditioner_use_lax_tridi=_default_preconditioner_use_lax_tridi,
+        solve_fixed_boundary_residual_iter=solve_fixed_boundary_residual_iter,
+        maybe_select_dynamic_scan_mode=_driver_dynamic_scan_helpers.maybe_select_dynamic_scan_mode,
+        dynamic_scan_probe_settings=_dynamic_scan_probe_settings,
+        vmec_histories_match=_vmec_histories_match,
+        vmec_history_relerr=_vmec_history_relerr,
+        maybe_precompile_fixed_boundary_stage=_driver_solve_helpers.maybe_precompile_fixed_boundary_stage,
+        run_fixed_boundary_stage_solve=_driver_solve_helpers.run_fixed_boundary_stage_solve,
+        result_meets_requested_ftol=_result_meets_requested_ftol,
+        stage_switch_reason_from_progress=_stage_switch_reason_from_progress,
+        merge_stage_chunk_results=_merge_stage_chunk_results,
+        result_with_diag=_result_with_diag,
+        maybe_rerun_scan_abort_stage=_driver_solve_helpers.maybe_rerun_scan_abort_stage,
+        assemble_multigrid_stage_result=_driver_result_helpers.assemble_multigrid_stage_result,
+        maybe_apply_scan_wout_corrector=_driver_solve_helpers.maybe_apply_scan_wout_corrector,
+        copy_final_force_payload=_copy_final_force_payload,
+        timing_solve_total_s=_timing_solve_total_s,
+        requested_final_ftol=_requested_final_ftol,
+        result_final_residuals=_result_final_residuals,
+        result_hits_total_target=_result_hits_total_target,
+        finalize_fixed_boundary_convergence_result=_driver_result_helpers.finalize_fixed_boundary_convergence_result,
+        print_vmec2000_run_summary=_driver_interface_helpers.print_vmec2000_run_summary,
+        default_backend_name=_default_backend_name,
+        deepcopy_func=deepcopy,
+        getenv=os.getenv,
+        perf_counter=time.perf_counter,
     )
 
 
