@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.diagnostics import readme_ad_fd_evidence as evidence
+from tools.diagnostics.docs_artifacts import readme_ad_fd_evidence as evidence
 
 
 PUBLIC_EVIDENCE_JSON = evidence.REPO_ROOT / "docs/_static/figures/readme_ad_fd_evidence.json"

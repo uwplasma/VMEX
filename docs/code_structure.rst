@@ -77,7 +77,8 @@ are not stable public examples:
 - ``tools/diagnostics/vmec2000_exec_stage_trace_compare.py``: per-iteration
   VMEC2000 vs vmec_jax parity comparator.
 - ``tools/diagnostics/qh_vmec_vs_vmecjax.py``: QH comparison figures.
-- ``tools/diagnostics/readme_fsq_trace.py``: README fsq_total traces.
+- ``tools/diagnostics/docs_artifacts/readme_fsq_trace.py``: README
+  fsq_total traces.
 
 Use ``tools/diagnostics/`` for reproducibility, profiling, parity-breakdown, and
 release-artifact generators.  Use ``tools/benchmarks/`` for stable benchmark

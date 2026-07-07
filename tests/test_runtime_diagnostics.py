@@ -12,7 +12,19 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_tool(name: str):
-    path = ROOT / "tools" / "diagnostics" / f"{name}.py"
+    docs_artifact_tools = {
+        "readme_ad_fd_evidence",
+        "readme_fsq_trace",
+        "readme_runtime_compare",
+        "readme_validation_panel",
+        "readme_vmecpp_runtime_two_cases",
+        "render_freeb_beta_wout_panels",
+        "render_freeb_single_stage_readme",
+    }
+    if name in docs_artifact_tools:
+        path = ROOT / "tools" / "diagnostics" / "docs_artifacts" / f"{name}.py"
+    else:
+        path = ROOT / "tools" / "diagnostics" / f"{name}.py"
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None
     module = importlib.util.module_from_spec(spec)
