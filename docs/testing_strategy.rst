@@ -246,7 +246,7 @@ the recommended local escalation path.
        artifact for the candidate being checked; the gate itself is 95%
        while optional executable validation stays in separate opt-in lanes.
    * - Optimization workflow smoke
-     - ``pytest -q tests/test_optimization_examples.py tests/diagnostics/optimization/test_qs_ess_render_smoke.py``
+     - ``pytest -q tests/optimization/test_examples.py tests/diagnostics/optimization/test_qs_ess_render_smoke.py``
      - After changing objective tuple construction, examples, or sweep
        rendering docs.
    * - QI objective checks
