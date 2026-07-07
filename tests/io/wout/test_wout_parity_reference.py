@@ -49,7 +49,7 @@ def _trim_radial(arr, skip: int = 2):
 def test_wout_parity_against_reference(case, tmp_path):
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     data_dir = root / "examples" / "data"
     input_path = data_dir / f"input.{case}"
     wout_path = data_dir / f"wout_{case}_reference.nc"
@@ -163,7 +163,7 @@ def test_wout_parity_against_reference(case, tmp_path):
 def test_wout_lasym_false_nonaxis_zeroes_forbidden_geometry_channels(tmp_path):
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     data_dir = root / "examples" / "data"
     input_path = data_dir / "input.LandremanPaul2021_QA_lowres"
     wout_path = data_dir / "wout_LandremanPaul2021_QA_lowres_reference.nc"

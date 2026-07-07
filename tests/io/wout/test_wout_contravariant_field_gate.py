@@ -50,7 +50,7 @@ CONTRAVARIANT_FIELD_CASES = (
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 def _vmec_reduced_angle_grid(static, *, nfp: int) -> AngleGrid:

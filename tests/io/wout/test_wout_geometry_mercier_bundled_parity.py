@@ -59,15 +59,15 @@ JACOBIAN_VOLUME_CASES = (
 
 
 def _data_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "examples" / "data"
+    return Path(__file__).resolve().parents[3] / "examples" / "data"
 
 
 def _single_grid_data_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "examples/data/single_grid"
+    return Path(__file__).resolve().parents[3] / "examples/data/single_grid"
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 def _read_wout_or_skip(path: Path):

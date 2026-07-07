@@ -258,7 +258,7 @@ On 2026-05-19, after ``e0b00e7``, the no-executable physics gates stayed green:
 
 .. code-block:: bash
 
-   python -m pytest tests/test_wout_physics_gates.py tests/test_vmec_parity_physics_fast_gates.py -q
+   python -m pytest tests/io/wout/test_wout_physics_gates.py tests/test_vmec_parity_physics_fast_gates.py -q
 
 This covered 13 bundled physics/parity scalar checks in about 2.4 seconds on
 the local machine.

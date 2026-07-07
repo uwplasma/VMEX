@@ -32,7 +32,7 @@ def up_down_lasym_reference_generation(tmp_path_factory: pytest.TempPathFactory)
     pytest.importorskip("jax")
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     input_path = root / "examples/data/single_grid/input.up_down_asymmetric_tokamak"
     wout_path = root / "examples/data/single_grid/wout_up_down_asymmetric_tokamak_reference.nc"
     if not input_path.exists() or not wout_path.exists():
@@ -139,7 +139,7 @@ def basic_non_stellsym_pressure_reference_generation(
     pytest.importorskip("jax")
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     input_path = root / "examples/data/single_grid/input.basic_non_stellsym_pressure"
     wout_path = root / "examples/data/single_grid/wout_basic_non_stellsym_pressure_reference.nc"
     if not input_path.exists() or not wout_path.exists():

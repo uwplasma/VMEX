@@ -33,7 +33,7 @@ BETA_CASES = (
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 @pytest.mark.parametrize(("case_name", "input_rel", "wout_rel"), BETA_CASES, ids=[case[0] for case in BETA_CASES])

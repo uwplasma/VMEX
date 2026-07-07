@@ -28,7 +28,7 @@ CASES = (
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 def _relative_rms(a: np.ndarray, b: np.ndarray) -> float:

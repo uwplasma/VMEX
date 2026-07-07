@@ -226,7 +226,7 @@ the recommended local escalation path.
      - Before pushing ordinary code or docs-adjacent changes that touch tested
        APIs.
    * - Released WOUT parity gate
-     - ``python tools/fetch_assets.py --bundle wout-fixtures && JAX_ENABLE_X64=1 pytest -q tests/test_residue_getfsq_parity.py tests/test_wout_profiles_currents_bundled_parity.py tests/test_physics_parity_helper_gates.py tests/diagnostics/parity/test_vmec2000_exec_threed1.py``
+     - ``python tools/fetch_assets.py --bundle wout-fixtures && JAX_ENABLE_X64=1 pytest -q tests/test_residue_getfsq_parity.py tests/io/wout/test_wout_profiles_currents_bundled_parity.py tests/test_physics_parity_helper_gates.py tests/diagnostics/parity/test_vmec2000_exec_threed1.py``
      - Required no-executable physics gate: recompute VMEC2000 ``fsqr/fsqz/fsql``,
        verify flux/pressure/iota/current wout-field invariants, protect small
        Mercier/JXBFORCE/Boozer helper identities, and cover the VMEC2000 trace
@@ -395,7 +395,7 @@ VMEC2000 parity gates:
 - Required CI also includes ``tests/diagnostics/parity/test_vmec2000_exec_threed1.py`` so the
   ``threed1`` parser used by executable-backed diagnostics is covered by a
   bundled fixture even when ``xvmec2000`` is unavailable.
-- Required CI includes ``tests/test_wout_profiles_currents_bundled_parity.py``.
+- Required CI includes ``tests/io/wout/test_wout_profiles_currents_bundled_parity.py``.
   This no-solve gate reads converged released ``wout`` fixtures and verifies
   input flux profiles, half-mesh ``phi`` integration, finite-beta
   ``pres/presf`` staggering, ``iotas -> iotaf`` radial smoothing, and the

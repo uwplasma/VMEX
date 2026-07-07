@@ -20,7 +20,7 @@ Reference data
 
 Eleven ``wout`` reference files are pre-computed with VMEC2000 and shipped as
 release assets restored by ``python tools/fetch_assets.py``.  A stable subset is used for strict field-by-field
-end-to-end parity in ``tests/test_wout_comprehensive_parity.py``; the remaining
+end-to-end parity in ``tests/io/wout/test_wout_comprehensive_parity.py``; the remaining
 references are covered by no-solve profile/current gates, convergence-only
 end-to-end gates, or optional refreshed-reference lanes until their released
 references are promoted.
@@ -132,12 +132,12 @@ Required CI includes a no-executable residual parity gate:
 
    PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 pytest -q -p no:cacheprovider \
      tests/test_residue_getfsq_parity.py \
-     tests/test_wout_profiles_currents_bundled_parity.py \
+     tests/io/wout/test_wout_profiles_currents_bundled_parity.py \
      tests/test_physics_parity_helper_gates.py \
      tests/test_vmec_parity_physics_fast_gates.py \
-     tests/test_wout_physics_gates.py \
+     tests/io/wout/test_wout_physics_gates.py \
      tests/test_converged_wout_matrix_parity.py \
-     tests/test_wout_fixture_inventory.py \
+     tests/io/wout/test_wout_fixture_inventory.py \
      tests/diagnostics/parity/test_vmec2000_exec_threed1.py \
      tests/diagnostics/parity/test_parity_sweep_manifest_thresholds.py
 
@@ -150,7 +150,7 @@ VMEC2000 or a full ``vmec_jax`` solve.  ``tests/diagnostics/parity/test_vmec2000
 keeps the executable trace parser covered with a bundled ``threed1`` fixture
 when ``xvmec2000`` is absent from CI.
 
-``tests/test_wout_profiles_currents_bundled_parity.py`` is a second required
+``tests/io/wout/test_wout_profiles_currents_bundled_parity.py`` is a second required
 no-solve wout-field gate.  It checks converged released equilibria directly:
 ``phipf`` and ``phi`` follow the input flux profile and VMEC half-mesh
 integration, finite-beta ``pres/presf`` follow the VMEC radial stencil,
@@ -178,7 +178,7 @@ and physics-gate checks instead of silent promotion.  Run with:
 
 .. code-block:: bash
 
-   RUN_FULL=1 pytest tests/test_wout_comprehensive_parity.py -v
+   RUN_FULL=1 pytest tests/io/wout/test_wout_comprehensive_parity.py -v
 
 PR #20 readiness parity
 -----------------------
@@ -263,7 +263,7 @@ These cases are exercised by:
 
 .. code-block:: bash
 
-   RUN_FULL=1 pytest tests/test_wout_comprehensive_parity.py -v -k "convergence_only"
+   RUN_FULL=1 pytest tests/io/wout/test_wout_comprehensive_parity.py -v -k "convergence_only"
 
 QI diagnostics and case coverage
 --------------------------------
@@ -690,7 +690,7 @@ bundle skip those optional fixture tests cleanly:
 .. code-block:: bash
 
    pytest -q -m "not full and not vmec2000"
-   RUN_FULL=1 pytest tests/test_wout_comprehensive_parity.py -v
+   RUN_FULL=1 pytest tests/io/wout/test_wout_comprehensive_parity.py -v
 
 Direct executable comparisons are opt-in because they require a VMEC2000
 Fortran executable, and some checks also require ``mpi4py`` and the VMEC2000

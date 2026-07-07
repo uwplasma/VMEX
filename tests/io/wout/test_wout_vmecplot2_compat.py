@@ -14,7 +14,7 @@ def test_write_wout_is_vmecplot2_compatible(tmp_path: Path) -> None:
     netCDF4 = pytest.importorskip("netCDF4")
     scipy = pytest.importorskip("scipy")
 
-    ref = Path(__file__).resolve().parents[1] / "examples" / "data" / "wout_circular_tokamak_reference.nc"
+    ref = Path(__file__).resolve().parents[3] / "examples" / "data" / "wout_circular_tokamak_reference.nc"
     if not ref.exists():
         pytest.skip("Reference wout not found")
 
@@ -70,7 +70,7 @@ def test_write_wout_is_vmecplot2_compatible(tmp_path: Path) -> None:
 def test_write_wout_mode_tables_use_float_storage(tmp_path: Path) -> None:
     netCDF4 = pytest.importorskip("netCDF4")
 
-    ref = Path(__file__).resolve().parents[1] / "examples" / "data" / "wout_circular_tokamak.nc"
+    ref = Path(__file__).resolve().parents[3] / "examples" / "data" / "wout_circular_tokamak.nc"
     if not ref.exists():
         pytest.skip("Reference wout not found")
 

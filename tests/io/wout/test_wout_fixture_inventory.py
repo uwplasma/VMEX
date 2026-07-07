@@ -41,7 +41,7 @@ REQUIRED_WOUT_FIXTURES = (
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 def _tracked_wout_fixtures(repo: Path) -> set[str]:

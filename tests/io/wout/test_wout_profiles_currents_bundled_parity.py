@@ -91,7 +91,7 @@ CURRENT_DRIVEN_STATE_CASES = (
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[3]
 
 
 def _s_full(ns: int) -> np.ndarray:

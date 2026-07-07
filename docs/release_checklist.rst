@@ -187,7 +187,7 @@ Optional research-grade gates
 These checks are not required for every PR, but they are expected before
 claiming a broader physics milestone:
 
-- ``RUN_FULL=1 pytest tests/test_wout_comprehensive_parity.py -v`` for bundled
+- ``RUN_FULL=1 pytest tests/io/wout/test_wout_comprehensive_parity.py -v`` for bundled
   fixed-boundary, finite-beta, and ``lasym`` references.
 - VMEC2000 executable parity with ``~/bin/xvmec2000`` for newly added input
   decks or convergence-policy changes.

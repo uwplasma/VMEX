@@ -20,7 +20,7 @@ _CASES = [
 def test_wout_roundtrip_read_write_read(tmp_path: Path, wout_rel: str):
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     src = root / wout_rel
     assert src.exists()
 

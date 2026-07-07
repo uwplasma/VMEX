@@ -174,7 +174,7 @@ _KNOWN_ZERO_VOLUME_REFERENCE = {
 
 
 def _data_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "examples" / "data"
+    return Path(__file__).resolve().parents[3] / "examples" / "data"
 
 
 def _assert_field(
