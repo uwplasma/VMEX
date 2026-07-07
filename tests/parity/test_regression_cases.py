@@ -67,7 +67,7 @@ def _half_mesh_coeffs(a: np.ndarray) -> np.ndarray:
 def test_volume_from_wout_nyquist_matches_volume_p(case_name: str, input_rel: str, wout_rel: str):
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / input_rel
     wout_path = root / wout_rel
     assert input_path.exists()
@@ -103,7 +103,7 @@ def test_volume_from_wout_nyquist_matches_volume_p(case_name: str, input_rel: st
 def test_step4_wb_against_wout_reference(case_name: str, input_rel: str, wout_rel: str):
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / input_rel
     wout_path = root / wout_rel
     assert input_path.exists()
@@ -165,7 +165,7 @@ def test_step4_wb_against_wout_reference(case_name: str, input_rel: str, wout_re
 def test_wp_from_wout_vp_pres_matches_wout_wp(case_name: str, input_rel: str, wout_rel: str):
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     wout_path = root / wout_rel
     assert wout_path.exists()
 

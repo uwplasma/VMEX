@@ -84,13 +84,13 @@ jobs:
           heartbeat_pid=$!
           trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
           VMEC_JAX_SKIP_PY311_COVERAGE_ONLY=1 pytest -q -n 2 -m "not full and not vmec2000 and not simsopt" \
-            tests/test_compat.py \
-            tests/test_packaging_metadata.py \
+            tests/core/test_compat.py \
+            tests/release/test_packaging_metadata.py \
             tests/drivers/test_cli_helpers.py \
             tests/drivers/test_doctor.py \
-            tests/test_namelist.py \
-            tests/test_config_edges.py \
-            tests/test_boundary_eval.py \
+            tests/core/test_namelist.py \
+            tests/core/test_config_edges.py \
+            tests/core/test_boundary_eval.py \
             tests/objectives/test_quasisymmetry.py \
             tests/objectives/test_quasi_isodynamic.py \
             tests/external_fields/test_external_fields_coils_jax.py \
@@ -371,7 +371,7 @@ jobs:
             'tests/io/wout/test_wout_comprehensive_parity.py::test_convergence_only[nfp2_QA_highres]' \
             'tests/io/wout/test_wout_bfield_bundled_parity.py::test_bundled_wout_stored_bsup_cartesian_magnitude_matches_bmnc[basic_non_stellsym_pressure_single_grid-examples/data/single_grid/input.basic_non_stellsym_pressure-examples/data/single_grid/wout_basic_non_stellsym_pressure_reference.nc-0.012]' \
             'tests/io/wout/test_wout_profiles_currents_bundled_parity.py::test_bundled_wout_surface_averaged_currents_follow_ampere_radial_difference[single_grid_lasym_pressure]' \
-            'tests/test_converged_wout_matrix_parity.py::test_bundled_converged_wout_matrix_physics_gates[fixed_nonaxis_lasym_single_basic_non_stellsym_pressure]' \
+            'tests/parity/test_converged_wout_matrix_parity.py::test_bundled_converged_wout_matrix_physics_gates[fixed_nonaxis_lasym_single_basic_non_stellsym_pressure]' \
             tests/drivers/test_driver_api.py::test_run_free_boundary_smoke_on_bundled_small_case \
             tests/free_boundary/test_beta_response_validation.py::test_free_boundary_pressure_scale_changes_bundled_lcfs_and_field
 

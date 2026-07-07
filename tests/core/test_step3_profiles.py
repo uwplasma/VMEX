@@ -115,7 +115,7 @@ def test_volume_total_matches_vmec2000_wout_reference(load_case_circular_tokamak
     from vmec_jax.api import state_from_wout
     from vmec_jax.wout import read_wout
 
-    wout_path = Path(__file__).resolve().parents[1] / "examples" / "data" / "wout_circular_tokamak_reference.nc"
+    wout_path = Path(__file__).resolve().parents[2] / "examples" / "data" / "wout_circular_tokamak_reference.nc"
     wout = read_wout(wout_path)
     st_ref = state_from_wout(wout)
 

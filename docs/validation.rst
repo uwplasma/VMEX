@@ -131,17 +131,17 @@ Required CI includes a no-executable residual parity gate:
 .. code-block:: bash
 
    PYTHONDONTWRITEBYTECODE=1 JAX_ENABLE_X64=1 pytest -q -p no:cacheprovider \
-     tests/test_residue_getfsq_parity.py \
+     tests/solvers/fixed_boundary/test_residue_getfsq_parity.py \
      tests/io/wout/test_wout_profiles_currents_bundled_parity.py \
      tests/parity/test_physics_parity_helper_gates.py \
      tests/parity/test_vmec_parity_physics_fast_gates.py \
      tests/io/wout/test_wout_physics_gates.py \
-     tests/test_converged_wout_matrix_parity.py \
+     tests/parity/test_converged_wout_matrix_parity.py \
      tests/io/wout/test_wout_fixture_inventory.py \
      tests/diagnostics/parity/test_vmec2000_exec_threed1.py \
      tests/diagnostics/parity/test_parity_sweep_manifest_thresholds.py
 
-``tests/test_residue_getfsq_parity.py`` reads released VMEC2000 ``wout``
+``tests/solvers/fixed_boundary/test_residue_getfsq_parity.py`` reads released VMEC2000 ``wout``
 files, reconstructs the solved state, recomputes the
 ``bcovar -> forces -> tomnsps -> getfsq`` scalar-residual path, and compares
 ``fsqr``, ``fsqz``, and ``fsql`` to the VMEC2000-stored values.  It currently
@@ -160,7 +160,7 @@ difference of ``bvco/buco`` divided by ``mu0``.  The covered fixtures include
 axisymmetric finite-beta, non-axisymmetric current-driven, 3D finite-beta, and
 ``lasym=True`` solved wouts.
 
-``tests/test_converged_wout_matrix_parity.py`` keeps a CI-safe converged-wout
+``tests/parity/test_converged_wout_matrix_parity.py`` keeps a CI-safe converged-wout
 matrix over released VMEC2000 outputs.  The representative fixtures cover
 fixed-boundary and free-boundary outputs, axisymmetric and non-axisymmetric
 geometry, ``lasym=False`` and ``lasym=True`` channels, and single-grid plus
@@ -807,7 +807,7 @@ Optional SIMSOPT formula parity is similarly guarded and targeted:
 .. code-block:: bash
 
    RUN_SIMSOPT_VALIDATION=1 \
-   pytest -q tests/test_simsopt_optional_validation.py::test_qh_quasisymmetry_residual_matches_simsopt_wout_formula
+   pytest -q tests/integrations/test_simsopt_optional_validation.py::test_qh_quasisymmetry_residual_matches_simsopt_wout_formula
 
 The machine-readable list of these bounded parity commands is emitted by:
 

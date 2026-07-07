@@ -47,7 +47,7 @@ MATERIALIZED_WOUT_CASES = (
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 def _max_abs(value: object) -> float:

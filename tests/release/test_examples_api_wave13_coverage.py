@@ -12,7 +12,7 @@ from vmec_jax.free_boundary import MGridMetadata, PreparedMGrid
 from vmec_jax.optimization_workflow import BoundaryModeLimits
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 QI_SUPPORT = ROOT / "examples" / "optimization" / "qi_optimization_support.py"
 
 

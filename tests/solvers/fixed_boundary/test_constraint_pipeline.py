@@ -17,7 +17,7 @@ pytestmark = pytest.mark.full
 
 
 def _load_case(input_rel: str, wout_rel: str):
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     input_path = root / input_rel
     wout_path = root / wout_rel
     assert input_path.exists()

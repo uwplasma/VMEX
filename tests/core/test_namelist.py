@@ -165,7 +165,7 @@ def test_minimal_fixed_boundary_seed_roundtrips_three_boundary_coefficients(tmp_
 def test_bundled_minimal_seed_inputs_match_factory_contract(nfp: int):
     """Guard the common far-from-target optimization seeds used in docs/examples."""
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples" / "data" / f"input.minimal_seed_nfp{nfp}"
 
     got = read_indata(input_path)
@@ -186,7 +186,7 @@ def test_bundled_minimal_seed_inputs_match_factory_contract(nfp: int):
 def test_bundled_nfp2_target_helicity_seed_has_documented_high_mode_perturbations():
     """Guard the reviewed QI panel seed separately from the bare minimal seed."""
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples" / "data" / "input.minimal_seed_nfp2_target_helicity"
     got = read_indata(input_path)
 

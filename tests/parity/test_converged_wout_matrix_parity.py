@@ -109,7 +109,7 @@ CONVERGED_WOUT_MATRIX_CASES = (
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 def _as_sequence(value: Any) -> tuple[Any, ...]:

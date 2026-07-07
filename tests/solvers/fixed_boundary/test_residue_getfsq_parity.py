@@ -78,7 +78,7 @@ def test_getfsq_parity_against_wout(case_name: str, input_rel: str, wout_rel: st
     """
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     input_path = root / input_rel
     wout_path = _resolve_wout(root, wout_rel)
     assert input_path.exists()

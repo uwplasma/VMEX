@@ -8,6 +8,8 @@ The test suite is organized by the code path or artifact being validated:
   seams, and fast differentiation API contracts.
 - `tests/assets/`: downloader, manifest, and optional validation-asset metadata
   gates.
+- `tests/core/`: small public API, namelist/config, boundary, coordinate,
+  state/static, profile, compatibility, and numerical helper contracts.
 - `tests/drivers/`: command-line entrypoints, Python driver APIs, run policies,
   and finish/output orchestration.
 - `tests/external_fields/`: differentiable coil, mgrid, ESSOS-adapter, and
@@ -15,6 +17,8 @@ The test suite is organized by the code path or artifact being validated:
 - `tests/free_boundary/`: production free-boundary, direct-coil, ESSOS, and
   branch-local derivative behavior.
 - `tests/io/`: public file formats and interchange artifacts, currently WOUT.
+- `tests/integrations/`: optional external-package validation, currently
+  SIMSOPT-backed formula and diagnostic comparisons.
 - `tests/kernels/`: low-level VMEC physics kernels, finite-beta terms,
   real-space geometry, force/residue helpers, and small parity identities.
 - `tests/parity/`: VMEC2000/VMEC++ agreement, bundled parity fixtures, and
@@ -24,10 +28,11 @@ The test suite is organized by the code path or artifact being validated:
 - `tests/objectives/`: differentiable QS/QI objective, augmented-Lagrangian,
   and Mercier/Glasser objective tests.
 - `tests/optimization/`: fixed-boundary and QI/QS optimization workflows.
+- `tests/release/`: package metadata, README/docs hygiene, release-facing
+  coverage gates, and public helper health checks.
 - `tests/diagnostics/`: diagnostics, renderers, benchmark parsers, and repo
   health checks. These support validation but are not the solver API itself.
 - `tests/fixtures/`: small reusable fixtures.
 
-Root-level tests are being reserved for cross-cutting public API, CLI, kernel,
-parity, and physics-gate coverage while domain-specific tests move into the
-folders above.
+Root-level test modules are intentionally empty. New tests should be placed in
+the domain folder that owns the behavior under test.

@@ -8,7 +8,7 @@ import subprocess
 from tools.diagnostics.parity.parity_sweep_manifest import DEFAULT_MANIFEST, _parse_manifest
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MAX_TRACKED_DOC_FIGURE_BYTES = 2 * 1024 * 1024
 
 

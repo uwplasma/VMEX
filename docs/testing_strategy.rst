@@ -226,7 +226,7 @@ the recommended local escalation path.
      - Before pushing ordinary code or docs-adjacent changes that touch tested
        APIs.
    * - Released WOUT parity gate
-     - ``python tools/fetch_assets.py --bundle wout-fixtures && JAX_ENABLE_X64=1 pytest -q tests/test_residue_getfsq_parity.py tests/io/wout/test_wout_profiles_currents_bundled_parity.py tests/parity/test_physics_parity_helper_gates.py tests/diagnostics/parity/test_vmec2000_exec_threed1.py``
+     - ``python tools/fetch_assets.py --bundle wout-fixtures && JAX_ENABLE_X64=1 pytest -q tests/solvers/fixed_boundary/test_residue_getfsq_parity.py tests/io/wout/test_wout_profiles_currents_bundled_parity.py tests/parity/test_physics_parity_helper_gates.py tests/diagnostics/parity/test_vmec2000_exec_threed1.py``
      - Required no-executable physics gate: recompute VMEC2000 ``fsqr/fsqz/fsql``,
        verify flux/pressure/iota/current wout-field invariants, protect small
        Mercier/JXBFORCE/Boozer helper identities, and cover the VMEC2000 trace
@@ -291,7 +291,7 @@ the recommended local escalation path.
        ``tests/parity/test_vmec2000_exec_fast_validation.py::test_fast_vmec2000_stage_trace_validation_cases``
        for deliberate short-trace regressions.
    * - External SIMSOPT tier
-     - ``RUN_SIMSOPT_VALIDATION=1 JAX_ENABLE_X64=1 pytest -q -m simsopt tests/test_simsopt_optional_validation.py tests/postprocessing/test_redl_bootstrap_simsopt_parity.py``
+     - ``RUN_SIMSOPT_VALIDATION=1 JAX_ENABLE_X64=1 pytest -q -m simsopt tests/integrations/test_simsopt_optional_validation.py tests/postprocessing/test_redl_bootstrap_simsopt_parity.py``
      - Optional SIMSOPT diagnostic parity on bundled converged ``wout``
        fixtures: QS formula parity, state-derived QS diagnostics, and Redl
        bootstrap mismatch normalization.
@@ -385,7 +385,7 @@ Core solve gates:
 
 VMEC2000 parity gates:
 
-- Required CI includes ``tests/test_residue_getfsq_parity.py``.  This reads
+- Required CI includes ``tests/solvers/fixed_boundary/test_residue_getfsq_parity.py``.  This reads
   released VMEC2000 ``wout`` fixtures, reconstructs the equilibrium state,
   recomputes the scalar residual pipeline
   ``bcovar -> forces -> tomnsps -> getfsq``, and compares ``fsqr/fsqz/fsql``

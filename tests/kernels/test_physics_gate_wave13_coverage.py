@@ -33,7 +33,7 @@ WOUT_FLUX_CASES = (
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[1]
+    return Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.parametrize(("case_name", "wout_rel"), WOUT_FLUX_CASES)

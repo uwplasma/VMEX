@@ -229,7 +229,7 @@ SIMSOPT formula parity:
 
 .. code-block:: bash
 
-   RUN_SIMSOPT_VALIDATION=1 pytest -q tests/test_simsopt_optional_validation.py
+   RUN_SIMSOPT_VALIDATION=1 pytest -q tests/integrations/test_simsopt_optional_validation.py
 
 VMEC2000 executable smoke:
 

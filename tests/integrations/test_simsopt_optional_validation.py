@@ -55,7 +55,7 @@ def _simsopt_qs_modules():
 
 
 def _case_paths(input_name: str, wout_name: str) -> tuple[Path, Path]:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples" / "data" / input_name
     wout_path = root / "examples" / "data" / wout_name
     if not input_path.exists():
