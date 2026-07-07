@@ -50,6 +50,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     momentum_update_jax,
     residual_evolve_coefficients,
     resolve_strict_update_control_policy,
+    run_non_strict_update_dispatch,
     run_strict_update_dispatch,
     scale_velocity_blocks,
     DirectForceFallbackTrial,
@@ -78,6 +79,77 @@ from vmec_jax.solvers.fixed_boundary.residual.payload_blocks import ForceBlocks
 def _blocks(*, offset: float, scale: float = 1.0) -> ResidualVelocityBlocks:
     base = np.arange(6.0, dtype=float).reshape(2, 3)
     return ResidualVelocityBlocks(*(scale * (base + offset + float(idx)) for idx in range(12)))
+
+
+def _unit_residual_blocks() -> ResidualVelocityBlocks:
+    return ResidualVelocityBlocks(*(np.ones((2, 3), dtype=float) for _ in range(12)))
+
+
+def _zero_residual_blocks() -> ResidualVelocityBlocks:
+    return ResidualVelocityBlocks(*(np.zeros((2, 3), dtype=float) for _ in range(12)))
+
+
+def _delta_tuple_from_scaled_blocks(dt, _transforms, *blocks, **_kwargs):
+    return tuple(float(dt) * np.asarray(block) for block in blocks)
+
+
+def _state_from_first_delta_mean(deltas, **_kwargs) -> float:
+    return float(np.mean(deltas[0]))
+
+
+def _run_strict_dispatch_for_unit_blocks(**overrides):
+    params = dict(
+        state=0.0,
+        static=None,
+        velocities=_zero_residual_blocks(),
+        forces=_unit_residual_blocks(),
+        state_backup=-1.0,
+        w_curr=1.0,
+        time_step=0.1,
+        limit_dt_from_force=False,
+        max_coeff_delta_rms=1.0,
+        max_update_rms=1.0,
+        limit_update_rms=False,
+        track_history=False,
+        verbose=False,
+        backtracking=False,
+        adjoint_trace=False,
+        adjoint_trace_mode="branch",
+        reference_mode=False,
+        use_direct_fallback=False,
+        jit_strict_update_enabled=False,
+        host_update_assembly=True,
+        safe_dt_from_force_blocks_func=lambda **_kwargs: 0.1,
+        tree_has_tracer_func=lambda _state: False,
+        force_blocks_for_dt_func=lambda blocks: tuple(blocks),
+        b1=0.0,
+        fac=1.0,
+        flip_sign=1.0,
+        divide_by_scalxc_for_update=False,
+        free_boundary_enabled=False,
+        strict_update_step_jit_func=None,
+        physical_delta_transforms=(),
+        internal_delta_transforms=(),
+        delta_tuple_from_blocks=_delta_tuple_from_scaled_blocks,
+        candidate_state_from_delta_tuple=_state_from_first_delta_mean,
+        zero_m1_value=np.asarray(1.0),
+        zero_m1_host=1.0,
+        freeb_bsqvac_half_for_trial_state=lambda _state: None,
+        trial_residual_total=lambda *_args, **_kwargs: 99.0,
+        vmec2000_control=True,
+        huge_force_restart_count=4,
+        restart_badjac_factor=0.9,
+        restart_badprog_factor=1.03,
+        step_size=0.1,
+        ijacob=0,
+        bad_resets=0,
+        iter2=1,
+        fsq_prev_before=1.0,
+        fsq0_prev_before=1.0,
+        k_ndamp=2,
+    )
+    params.update(overrides)
+    return run_strict_update_dispatch(**params)
 
 
 def test_residual_iteration_control_sample_matches_vmec2000_edge_and_precond_rules() -> None:
@@ -1013,65 +1085,7 @@ def test_select_strict_catastrophic_restart_branch_packages_policy_and_applicati
 
 
 def test_run_strict_update_dispatch_accepts_fast_no_trial_branch() -> None:
-    velocities = ResidualVelocityBlocks(*(np.zeros((2, 3), dtype=float) for _ in range(12)))
-    forces = ResidualVelocityBlocks(*(np.ones((2, 3), dtype=float) for _ in range(12)))
-
-    def delta_tuple_from_blocks(dt, _transforms, *blocks, **_kwargs):
-        return tuple(float(dt) * np.asarray(block) for block in blocks)
-
-    def candidate_state_from_delta_tuple(deltas, **_kwargs):
-        return float(np.mean(deltas[0]))
-
-    result = run_strict_update_dispatch(
-        state=0.0,
-        static=None,
-        velocities=velocities,
-        forces=forces,
-        state_backup=-1.0,
-        w_curr=1.0,
-        time_step=0.1,
-        limit_dt_from_force=False,
-        max_coeff_delta_rms=1.0,
-        max_update_rms=1.0,
-        limit_update_rms=False,
-        track_history=False,
-        verbose=False,
-        backtracking=False,
-        adjoint_trace=False,
-        adjoint_trace_mode="branch",
-        reference_mode=False,
-        use_direct_fallback=False,
-        jit_strict_update_enabled=False,
-        host_update_assembly=True,
-        safe_dt_from_force_blocks_func=lambda **_kwargs: 0.1,
-        tree_has_tracer_func=lambda _state: False,
-        force_blocks_for_dt_func=lambda blocks: tuple(blocks),
-        b1=0.0,
-        fac=1.0,
-        flip_sign=1.0,
-        divide_by_scalxc_for_update=False,
-        free_boundary_enabled=False,
-        strict_update_step_jit_func=None,
-        physical_delta_transforms=(),
-        internal_delta_transforms=(),
-        delta_tuple_from_blocks=delta_tuple_from_blocks,
-        candidate_state_from_delta_tuple=candidate_state_from_delta_tuple,
-        zero_m1_value=np.asarray(1.0),
-        zero_m1_host=1.0,
-        freeb_bsqvac_half_for_trial_state=lambda _state: None,
-        trial_residual_total=lambda *_args, **_kwargs: 99.0,
-        vmec2000_control=True,
-        huge_force_restart_count=4,
-        restart_badjac_factor=0.9,
-        restart_badprog_factor=1.03,
-        step_size=0.1,
-        ijacob=0,
-        bad_resets=0,
-        iter2=1,
-        fsq_prev_before=1.0,
-        fsq0_prev_before=1.0,
-        k_ndamp=2,
-    )
+    result = _run_strict_dispatch_for_unit_blocks()
 
     assert result.policy.dt_eff == pytest.approx(0.1)
     assert not result.policy.need_trial_eval
@@ -1085,64 +1099,18 @@ def test_run_strict_update_dispatch_accepts_fast_no_trial_branch() -> None:
 
 
 def test_run_strict_update_dispatch_packages_catastrophic_rejected_trial() -> None:
-    velocities = ResidualVelocityBlocks(*(np.zeros((2, 3), dtype=float) for _ in range(12)))
-    forces = ResidualVelocityBlocks(*(np.ones((2, 3), dtype=float) for _ in range(12)))
-
-    def delta_tuple_from_blocks(dt, _transforms, *blocks, **_kwargs):
-        return tuple(float(dt) * np.asarray(block) for block in blocks)
-
-    def candidate_state_from_delta_tuple(deltas, **_kwargs):
-        return float(np.mean(deltas[0]))
-
-    result = run_strict_update_dispatch(
-        state=0.0,
-        static=None,
-        velocities=velocities,
-        forces=forces,
-        state_backup=-1.0,
-        w_curr=1.0,
+    result = _run_strict_dispatch_for_unit_blocks(
         time_step=0.2,
-        limit_dt_from_force=False,
-        max_coeff_delta_rms=1.0,
-        max_update_rms=1.0,
-        limit_update_rms=False,
-        track_history=False,
-        verbose=False,
         backtracking=True,
-        adjoint_trace=False,
-        adjoint_trace_mode="branch",
-        reference_mode=False,
-        use_direct_fallback=False,
-        jit_strict_update_enabled=False,
-        host_update_assembly=True,
         safe_dt_from_force_blocks_func=lambda **_kwargs: 0.2,
-        tree_has_tracer_func=lambda _state: False,
-        force_blocks_for_dt_func=lambda blocks: tuple(blocks),
-        b1=0.0,
-        fac=1.0,
-        flip_sign=1.0,
-        divide_by_scalxc_for_update=False,
-        free_boundary_enabled=False,
-        strict_update_step_jit_func=None,
-        physical_delta_transforms=(),
-        internal_delta_transforms=(),
-        delta_tuple_from_blocks=delta_tuple_from_blocks,
-        candidate_state_from_delta_tuple=candidate_state_from_delta_tuple,
-        zero_m1_value=np.asarray(1.0),
-        zero_m1_host=1.0,
-        freeb_bsqvac_half_for_trial_state=lambda _state: None,
         trial_residual_total=lambda *_args, **_kwargs: 3.0,
         vmec2000_control=False,
         huge_force_restart_count=2,
-        restart_badjac_factor=0.9,
-        restart_badprog_factor=1.03,
-        step_size=0.1,
         ijacob=4,
         bad_resets=5,
         iter2=9,
         fsq_prev_before=1.25,
         fsq0_prev_before=2.5,
-        k_ndamp=2,
     )
 
     assert result.policy.need_trial_eval
@@ -1957,6 +1925,35 @@ def test_backtracking_momentum_search_rejects_and_damps_velocity() -> None:
     assert result.update_rms == pytest.approx(0.0)
     for block in result.velocities:
         np.testing.assert_allclose(block, 1.0)
+
+
+def test_run_non_strict_update_dispatch_packages_loop_defaults() -> None:
+    result = run_non_strict_update_dispatch(
+        state=0.0,
+        velocities=_zero_residual_blocks(),
+        forces=_unit_residual_blocks(),
+        time_step=0.2,
+        step_size=0.2,
+        b1=0.0,
+        fac=1.0,
+        flip_sign=1.0,
+        w_curr=1.0,
+        delta_transforms=(),
+        delta_tuple_from_blocks=_delta_tuple_from_scaled_blocks,
+        candidate_state_from_delta_tuple=_state_from_first_delta_mean,
+        freeb_bsqvac_half_for_trial_state=lambda _state: None,
+        trial_residual_total=lambda _state, _bsqvac: 1.0,
+    )
+
+    assert result.update.accepted
+    assert result.state == pytest.approx(0.04)
+    assert result.dt_eff == pytest.approx(0.2)
+    assert result.update_rms == pytest.approx(host_force_update_rms(0.2, *result.velocity_blocks))
+    assert result.step_status == "momentum"
+    assert result.restart_reason == "none"
+    assert result.restart_path == "non_strict"
+    assert np.isnan(result.w_try)
+    assert np.isnan(result.w_try_ratio)
 
 
 def test_direct_force_fallback_trial_caps_step_and_reports_residual() -> None:

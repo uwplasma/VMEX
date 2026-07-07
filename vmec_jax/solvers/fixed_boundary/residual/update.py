@@ -799,6 +799,22 @@ class StrictUpdateDispatch(NamedTuple):
     probe_bad_jacobian: bool
 
 
+class NonStrictUpdateDispatch(NamedTuple):
+    """Non-strict residual update and default history/restart bookkeeping."""
+
+    update: BacktrackingMomentumSearchResult
+    state: Any
+    velocity_blocks: ResidualVelocityBlocks
+    dt_eff: float
+    update_rms: float
+    step_status: str
+    restart_reason: str
+    restart_path: str
+    w_curr: float
+    w_try: float
+    w_try_ratio: float
+
+
 class InitialResidualVelocityState(NamedTuple):
     """Initial residual-loop velocity memory and conservative update caps."""
 
@@ -2084,6 +2100,56 @@ def backtracking_momentum_search(
         update_rms=float(update_rms),
         step_status=step_status,
         accepted=bool(accepted),
+    )
+
+
+def run_non_strict_update_dispatch(
+    *,
+    state: Any,
+    velocities: ResidualVelocityBlocks,
+    forces: ResidualVelocityBlocks,
+    time_step: float,
+    step_size: float,
+    b1: float,
+    fac: float,
+    flip_sign: float,
+    w_curr: float,
+    delta_transforms: tuple,
+    delta_tuple_from_blocks: Any,
+    candidate_state_from_delta_tuple: Any,
+    freeb_bsqvac_half_for_trial_state: Any,
+    trial_residual_total: Any,
+) -> NonStrictUpdateDispatch:
+    """Run the legacy non-strict backtracking update and package loop defaults."""
+
+    update = backtracking_momentum_search(
+        state=state,
+        velocities=velocities,
+        forces=forces,
+        time_step=float(time_step),
+        step_size=float(step_size),
+        b1=float(b1),
+        fac=float(fac),
+        flip_sign=float(flip_sign),
+        w_curr=float(w_curr),
+        delta_transforms=delta_transforms,
+        delta_tuple_from_blocks=delta_tuple_from_blocks,
+        candidate_state_from_delta_tuple=candidate_state_from_delta_tuple,
+        freeb_bsqvac_half_for_trial_state=freeb_bsqvac_half_for_trial_state,
+        trial_residual_total=trial_residual_total,
+    )
+    return NonStrictUpdateDispatch(
+        update=update,
+        state=update.state,
+        velocity_blocks=update.velocities,
+        dt_eff=float(update.dt_eff),
+        update_rms=float(update.update_rms),
+        step_status=update.step_status,
+        restart_reason="none",
+        restart_path="non_strict",
+        w_curr=float(w_curr),
+        w_try=float("nan"),
+        w_try_ratio=float("nan"),
     )
 
 

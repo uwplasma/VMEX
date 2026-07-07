@@ -108,7 +108,6 @@ from vmec_jax.solvers.fixed_boundary.residual.force_payload import (
 from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualControllerState as _ResidualControllerState,
     apply_controller_state_update as _apply_controller_state_update,
-    backtracking_momentum_search as _backtracking_momentum_search,
     candidate_state_from_deltas as _candidate_state_from_deltas_helper,
     candidate_state_from_delta_tuple as _candidate_state_from_delta_tuple_helper,
     controller_state_after_catastrophic_restart_update as _controller_state_after_catastrophic_restart_update,
@@ -132,6 +131,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     initial_residual_controller_state as _initial_residual_controller_state,
     initial_residual_velocity_state as _initial_residual_velocity_state,
     residual_evolve_coefficients as _residual_evolve_coefficients,
+    run_non_strict_update_dispatch as _run_non_strict_update_dispatch,
     run_strict_update_dispatch as _run_strict_update_dispatch,
     strict_step_branch_application as _strict_step_branch_application,
     velocity_blocks_from_force_blocks as _velocity_blocks_from_force_blocks,
@@ -2885,7 +2885,7 @@ def solve_fixed_boundary_residual_iter(
             timing_stats["iterations"] += 1
         else:
             w_curr = fsqr_f + fsqz_f + fsql_f
-            non_strict_update = _backtracking_momentum_search(
+            non_strict_dispatch = _run_non_strict_update_dispatch(
                 state=state,
                 velocities=velocity_blocks,
                 forces=force_blocks,
@@ -2906,16 +2906,16 @@ def solve_fixed_boundary_residual_iter(
                     timing_label="backtracking",
                 ),
             )
-            state = non_strict_update.state
-            velocity_blocks = non_strict_update.velocities
-            dt_eff = non_strict_update.dt_eff
-            update_rms = non_strict_update.update_rms
-            step_status = non_strict_update.step_status
+            state = non_strict_dispatch.state
+            velocity_blocks = non_strict_dispatch.velocity_blocks
+            dt_eff = non_strict_dispatch.dt_eff
+            update_rms = non_strict_dispatch.update_rms
+            step_status = non_strict_dispatch.step_status
             timing_stats["iterations"] += 1
-            restart_reason = "none"
-            w_try = float("nan")
-            w_try_ratio = float("nan")
-            restart_path = "non_strict"
+            restart_reason = non_strict_dispatch.restart_reason
+            w_try = non_strict_dispatch.w_try
+            w_try_ratio = non_strict_dispatch.w_try_ratio
+            restart_path = non_strict_dispatch.restart_path
         _append_post_update_step_sample(
             history_lists=history_lists,
             track_history=bool(track_history),

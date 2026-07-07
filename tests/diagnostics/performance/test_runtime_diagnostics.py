@@ -17,7 +17,6 @@ def _load_tool(name: str):
         "readme_fsq_trace",
         "readme_runtime_compare",
         "readme_validation_panel",
-        "readme_vmecpp_runtime_two_cases",
         "render_freeb_beta_wout_panels",
         "render_freeb_single_stage_readme",
     }
@@ -431,15 +430,3 @@ def test_direct_coil_boundary_replay_report_selects_active_trace():
     index, trace = mod._select_active_trace(traces, 0)
     assert index == 2
     assert mod._json_ready({"x": np.asarray([1.0]), "bad": float("-inf")}) == {"x": [1.0], "bad": None}
-
-
-def test_vmecpp_runtime_two_cases_runtime_updates():
-    mod = _load_tool("readme_vmecpp_runtime_two_cases")
-
-    assert mod._runtime_updates(ns=None, niter=None, ftol=None, nstep=None) == {}
-    assert mod._runtime_updates(ns=17, niter=25, ftol=1e-9, nstep=1) == {
-        "NSTEP": "1",
-        "NS_ARRAY": "17",
-        "NITER_ARRAY": "25",
-        "FTOL_ARRAY": "1.000e-09",
-    }
