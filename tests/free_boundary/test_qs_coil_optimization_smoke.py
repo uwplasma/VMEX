@@ -66,6 +66,87 @@ def _same_branch_replay_gate_stub() -> dict[str, object]:
     }
 
 
+def _same_branch_objective_values(*, scalar_keys: tuple[str, ...] = ("aspect", "qs_total")) -> dict[str, dict]:
+    """Return central-FD scalar values for branch-local derivative gates."""
+
+    all_values = {
+        "aspect": {"base": 6.0, "plus": 6.1, "minus": 5.9, "central_fd_directional": 0.2},
+        "qs_total": {"base": 0.4, "plus": 0.42, "minus": 0.38, "central_fd_directional": 0.1},
+    }
+    return {key: all_values[key] for key in scalar_keys}
+
+
+def _same_branch_complete_report(
+    *,
+    branch: dict[str, object] | None = None,
+    scalar_keys: tuple[str, ...] = ("aspect", "qs_total"),
+) -> dict[str, object]:
+    """Build a complete-solve FD report with same-branch replay metadata."""
+
+    gate = _same_branch_replay_gate_stub()
+    return {
+        "branch_compatibility": gate["branch"] if branch is None else branch,
+        "trace_replay_diagnostics": gate["trace_replay_diagnostics"],
+        "objective_values": _same_branch_objective_values(scalar_keys=scalar_keys),
+    }
+
+
+def _branch_local_scalar_report_stub(
+    *,
+    scalar_keys: tuple[str, ...] = ("aspect", "qs_total"),
+    use_stacked_step_controls: bool = True,
+    use_accepted_only_fast_path: bool = True,
+    values: dict[str, object] | None = None,
+    replay_value_map: dict[str, object] | None = None,
+    directional_derivatives: dict[str, object] | None = None,
+    base_abs_delta: dict[str, float] | None = None,
+    controller_slot_summary: dict[str, int] | None = None,
+    replay_branch_metadata: dict[str, object] | None = None,
+    replay_option_flags: dict[str, object] | None = None,
+    **overrides,
+) -> dict[str, object]:
+    """Build a branch-local scalar report with conservative differentiation claims."""
+
+    from vmec_jax._compat import jnp
+
+    default_values = {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)}
+    default_derivatives = {"aspect": jnp.asarray(0.2), "qs_total": jnp.asarray(0.1)}
+    option_flags = {
+        "use_stacked_step_controls": bool(use_stacked_step_controls),
+        "use_accepted_only_fast_path": bool(use_accepted_only_fast_path),
+    }
+    if replay_option_flags:
+        option_flags.update(replay_option_flags)
+    report = {
+        "uses_production_forward": True,
+        "differentiates_adaptive_controller": False,
+        "differentiates_run_free_boundary": False,
+        "differentiates_fixed_accepted_branch": True,
+        "derivative_mode": "directional_jvp",
+        "replay_ad_mode": "direct",
+        "scalar_keys": tuple(scalar_keys),
+        "values": values or {key: default_values[key] for key in scalar_keys},
+        "replay_value_map": replay_value_map or {key: default_values[key] for key in scalar_keys},
+        "base_abs_delta": (
+            base_abs_delta if base_abs_delta is not None else {key: 0.0 for key in scalar_keys}
+        ),
+        "directional_derivatives": directional_derivatives
+        if directional_derivatives is not None
+        else {key: default_derivatives[key] for key in scalar_keys},
+        "replay_option_flags": option_flags,
+        "replay_branch_metadata": replay_branch_metadata
+        or {
+            "n_steps": 1,
+            "accepted_mask": [True],
+            "rejected_mask": [False],
+            "done_mask": [True],
+        },
+        "controller_slot_summary": controller_slot_summary or {"accepted_slots": 1, "rejected_slots": 0},
+    }
+    report.update(overrides)
+    return report
+
+
 def test_objective_terms_report_weighted_proxy_components():
     module = _load_example_module()
 
@@ -319,36 +400,11 @@ def test_branch_local_scalar_report_adapter_records_gate_evidence():
         direct_coil_same_branch_physical_scalar_gate_report,
     )
 
-    gate = _same_branch_replay_gate_stub()
-    complete_report = {
-        "branch_compatibility": gate["branch"],
-        "trace_replay_diagnostics": gate["trace_replay_diagnostics"],
-        "objective_values": {
-            "aspect": {"base": 6.0, "plus": 6.1, "minus": 5.9, "central_fd_directional": 0.2},
-            "qs_total": {"base": 0.4, "plus": 0.42, "minus": 0.38, "central_fd_directional": 0.1},
-        },
-    }
-    branch_local = {
-        "uses_production_forward": True,
-        "differentiates_adaptive_controller": False,
-        "differentiates_run_free_boundary": False,
-        "differentiates_fixed_accepted_branch": True,
-        "derivative_mode": "directional_jvp",
-        "replay_ad_mode": "direct",
-        "scalar_keys": ("aspect", "qs_total"),
-        "values": {"aspect": 6.0, "qs_total": 0.4},
-        "replay_value_map": {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
-        "base_abs_delta": {"aspect": 0.0, "qs_total": 0.0},
-        "directional_derivatives": {"aspect": jnp.asarray(0.2), "qs_total": jnp.asarray(0.1)},
-        "replay_option_flags": {"use_stacked_step_controls": True, "use_accepted_only_fast_path": True},
-        "replay_branch_metadata": {
-            "n_steps": 1,
-            "accepted_mask": [True],
-            "rejected_mask": [False],
-            "done_mask": [True],
-        },
-        "controller_slot_summary": {"accepted_slots": 1, "rejected_slots": 0},
-    }
+    complete_report = _same_branch_complete_report()
+    branch_local = _branch_local_scalar_report_stub(
+        values={"aspect": 6.0, "qs_total": 0.4},
+        replay_value_map={"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
+    )
 
     report = direct_coil_branch_local_scalars_report_from_complete_fd(
         complete_report,
@@ -393,30 +449,12 @@ def test_branch_local_scalar_report_adapter_records_failure_modes():
     )
 
     gate = _same_branch_replay_gate_stub()
-    complete_report = {
-        "branch_compatibility": gate["branch"],
-        "trace_replay_diagnostics": gate["trace_replay_diagnostics"],
-        "objective_values": {
-            "aspect": {"base": 6.0, "plus": 6.1, "minus": 5.9, "central_fd_directional": 0.2},
-            "qs_total": {"base": 0.4, "plus": 0.42, "minus": 0.38, "central_fd_directional": 0.1},
-        },
-    }
-
-    valid_branch_local = {
-        "uses_production_forward": True,
-        "differentiates_adaptive_controller": False,
-        "differentiates_run_free_boundary": False,
-        "differentiates_fixed_accepted_branch": True,
-        "derivative_mode": "directional_jvp",
-        "replay_ad_mode": "direct",
-        "scalar_keys": ("aspect", "qs_total"),
-        "values": {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
-        "replay_value_map": {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
-        "directional_derivatives": {"aspect": jnp.asarray(0.2), "qs_total": jnp.asarray(0.1)},
-        "replay_option_flags": {"use_stacked_step_controls": False, "use_accepted_only_fast_path": True},
-        "replay_branch_metadata": {"accepted_mask": [True], "rejected_mask": [False]},
-        "controller_slot_summary": {"accepted_slots": 1, "rejected_slots": 0},
-    }
+    complete_report = _same_branch_complete_report()
+    valid_branch_local = _branch_local_scalar_report_stub(
+        use_stacked_step_controls=False,
+        base_abs_delta={},
+        replay_branch_metadata={"accepted_mask": [True], "rejected_mask": [False]},
+    )
 
     with pytest.raises(ValueError, match="scalar_keys"):
         direct_coil_branch_local_scalars_report_from_complete_fd(
@@ -533,7 +571,6 @@ def test_branch_local_scalar_report_adapter_records_failure_modes():
 
 def test_branch_mismatch_blocks_scalar_adaptive_and_proposal_promotion():
     pytest.importorskip("jax")
-    from vmec_jax._compat import jnp
     from vmec_jax.solvers.free_boundary.adjoint.branch_local_derivatives import (
         direct_coil_adaptive_full_loop_same_branch_gate_report,
         direct_coil_branch_local_scalars_report_from_complete_fd,
@@ -548,39 +585,13 @@ def test_branch_mismatch_blocks_scalar_adaptive_and_proposal_promotion():
         "same_accepted_trace_branch": False,
         "same_residual_branch": False,
     }
-    complete_report = {
-        "branch_compatibility": mismatched_branch,
-        "trace_replay_diagnostics": gate["trace_replay_diagnostics"],
-        "objective_values": {
-            "aspect": {"base": 6.0, "plus": 6.1, "minus": 5.9, "central_fd_directional": 0.2},
-            "qs_total": {"base": 0.4, "plus": 0.42, "minus": 0.38, "central_fd_directional": 0.1},
-        },
-    }
-    branch_local = {
-        "uses_production_forward": True,
-        "differentiates_adaptive_controller": False,
-        "differentiates_run_free_boundary": False,
-        "differentiates_fixed_accepted_branch": True,
-        "derivative_mode": "directional_jvp",
-        "replay_ad_mode": "direct",
-        "scalar_keys": ("aspect", "qs_total"),
-        "values": {"aspect": 6.0, "qs_total": 0.4},
-        "replay_value_map": {"aspect": jnp.asarray(6.0), "qs_total": jnp.asarray(0.4)},
-        "base_abs_delta": {"aspect": 0.0, "qs_total": 0.0},
-        "directional_derivatives": {"aspect": jnp.asarray(0.2), "qs_total": jnp.asarray(0.1)},
-        "replay_option_flags": {
-            "use_stacked_step_controls": True,
-            "use_accepted_only_fast_path": False,
-            "use_status_derived_rejected_controller_slot": True,
-        },
-        "replay_branch_metadata": {
-            "n_steps": 1,
-            "accepted_mask": [True],
-            "rejected_mask": [False],
-            "done_mask": [True],
-        },
-        "controller_slot_summary": {"accepted_slots": 1, "rejected_slots": 1},
-    }
+    complete_report = _same_branch_complete_report(branch=mismatched_branch)
+    branch_local = _branch_local_scalar_report_stub(
+        values={"aspect": 6.0, "qs_total": 0.4},
+        use_accepted_only_fast_path=False,
+        replay_option_flags={"use_status_derived_rejected_controller_slot": True},
+        controller_slot_summary={"accepted_slots": 1, "rejected_slots": 1},
+    )
 
     scalar_report = direct_coil_branch_local_scalars_report_from_complete_fd(
         complete_report,
@@ -633,37 +644,17 @@ def test_branch_mismatch_blocks_scalar_adaptive_and_proposal_promotion():
 
 def test_physical_and_adaptive_gates_reject_branch_local_top_level_ad_claim():
     pytest.importorskip("jax")
-    from vmec_jax._compat import jnp
     from vmec_jax.solvers.free_boundary.adjoint.branch_local_derivatives import (
         direct_coil_adaptive_full_loop_same_branch_gate_report,
         direct_coil_branch_local_scalars_report_from_complete_fd,
         direct_coil_same_branch_physical_scalar_gate_report,
     )
 
-    gate = _same_branch_replay_gate_stub()
-    complete_report = {
-        "branch_compatibility": gate["branch"],
-        "trace_replay_diagnostics": gate["trace_replay_diagnostics"],
-        "objective_values": {
-            "aspect": {"base": 6.0, "plus": 6.1, "minus": 5.9, "central_fd_directional": 0.2},
-        },
-    }
-    branch_local = {
-        "uses_production_forward": True,
-        "differentiates_adaptive_controller": False,
-        "differentiates_run_free_boundary": False,
-        "differentiates_fixed_accepted_branch": True,
-        "derivative_mode": "directional_jvp",
-        "replay_ad_mode": "direct",
-        "scalar_keys": ("aspect",),
-        "values": {"aspect": jnp.asarray(6.0)},
-        "replay_value_map": {"aspect": jnp.asarray(6.0)},
-        "base_abs_delta": {"aspect": 0.0},
-        "directional_derivatives": {"aspect": jnp.asarray(0.2)},
-        "replay_option_flags": {"use_stacked_step_controls": True, "use_accepted_only_fast_path": True},
-        "replay_branch_metadata": {"accepted_mask": [True], "rejected_mask": [False]},
-        "controller_slot_summary": {"accepted_slots": 1, "rejected_slots": 0},
-    }
+    complete_report = _same_branch_complete_report(scalar_keys=("aspect",))
+    branch_local = _branch_local_scalar_report_stub(
+        scalar_keys=("aspect",),
+        replay_branch_metadata={"accepted_mask": [True], "rejected_mask": [False]},
+    )
     scalar_report = direct_coil_branch_local_scalars_report_from_complete_fd(
         complete_report,
         branch_local,
