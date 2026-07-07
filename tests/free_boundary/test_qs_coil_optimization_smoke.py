@@ -198,6 +198,76 @@ def _branch_local_scalar_report_stub(
     return report
 
 
+def _same_branch_validation_report_writer(*, include_current_jvp_cache_probe: bool = False):
+    """Return a fake same-branch report writer for derivative-proposal tests."""
+
+    def fake_write_same_branch_validation_report(**kwargs):
+        path = Path(kwargs["outdir"]) / "same_branch_complete_solve_report.json"
+        jacobian = {
+            "available": True,
+            "uses_production_forward": True,
+            "differentiates_adaptive_controller": False,
+            "differentiates_run_free_boundary": False,
+            "differentiates_fixed_accepted_branch": True,
+            "replay_ad_mode": "direct",
+            "derivative_mode": "directional_jvp",
+            "directional_jvp_fast_path": "current_only",
+            "directional_uses_fixed_coil_geometry": True,
+            "replay_option_flags": {
+                "directional_jvp_fast_path": "current_only",
+                "directional_uses_fixed_coil_geometry": True,
+                "current_only_coil_geometry_source": "cached",
+            },
+            "max_base_abs_delta": 0.0,
+            "scalars": {
+                "qs_total": {"value": 0.25, "exact_directional": 1.0, "base_abs_delta": 0.0},
+                "aspect": {"value": 6.0, "exact_directional": 0.0, "base_abs_delta": 0.0},
+            },
+        }
+        report = {
+            "direction_x": [1.0, 0.0],
+            "current_only_coil_geometry_cache": {"available": True, "reason": ""},
+            "branch_compatibility": {"same_branch": True},
+            "branch_local_vector_gate": {
+                "available": True,
+                "passed": True,
+                "physical_scalar_gate": {"passed": True},
+            },
+            "accepted_rejected_controller_slot_gate": {
+                "requested": True,
+                "available": True,
+                "passed": True,
+                "scope": "fixed accepted/rejected controller-slot replay",
+                "same_stacked_step_policy_branch": True,
+                "fixed_rejected_controller_slots": 1,
+                "controller_slot_summary": {"accepted_slots": 2, "rejected_slots": 1},
+            },
+            "branch_local_vector_jacobian": jacobian,
+        }
+        if include_current_jvp_cache_probe:
+            jacobian["directional_jvp_cache_info"] = {
+                "enabled": True,
+                "hit": False,
+                "closure_bound": True,
+                "cache_key_static_digest": "accepted-summary",
+            }
+            report["branch_local_vector_current_jvp_cache_probe"] = {
+                "available": True,
+                "cache_hit": True,
+                "wall_s": 0.004,
+                "directional_jvp_cache_info": {
+                    "enabled": True,
+                    "hit": True,
+                    "closure_bound": True,
+                    "cache_key_static_digest": "accepted-summary",
+                },
+            }
+        path.write_text(json.dumps(report) + "\n")
+        return path
+
+    return fake_write_same_branch_validation_report
+
+
 def test_objective_terms_report_weighted_proxy_components():
     module = _load_example_module()
 
@@ -2719,77 +2789,15 @@ def test_derivative_proposal_summary_marks_report_stale_when_trial_is_accepted(t
     def fake_write_wout(path, _run, *, include_fsq):
         path.write_text(f"include_fsq={include_fsq}\n")
 
-    def fake_write_same_branch_validation_report(**kwargs):
-        path = Path(kwargs["outdir"]) / "same_branch_complete_solve_report.json"
-        path.write_text(
-            json.dumps(
-                {
-                    "direction_x": [1.0, 0.0],
-                    "current_only_coil_geometry_cache": {"available": True, "reason": ""},
-                    "branch_compatibility": {"same_branch": True},
-                    "branch_local_vector_gate": {
-                        "available": True,
-                        "passed": True,
-                        "physical_scalar_gate": {"passed": True},
-                    },
-                    "accepted_rejected_controller_slot_gate": {
-                        "requested": True,
-                        "available": True,
-                        "passed": True,
-                        "scope": "fixed accepted/rejected controller-slot replay",
-                        "same_stacked_step_policy_branch": True,
-                        "fixed_rejected_controller_slots": 1,
-                        "controller_slot_summary": {"accepted_slots": 2, "rejected_slots": 1},
-                    },
-                    "branch_local_vector_jacobian": {
-                        "available": True,
-                        "uses_production_forward": True,
-                        "differentiates_adaptive_controller": False,
-                        "differentiates_run_free_boundary": False,
-                        "differentiates_fixed_accepted_branch": True,
-                        "replay_ad_mode": "direct",
-                        "derivative_mode": "directional_jvp",
-                        "directional_jvp_fast_path": "current_only",
-                        "directional_uses_fixed_coil_geometry": True,
-                        "replay_option_flags": {
-                            "directional_jvp_fast_path": "current_only",
-                            "directional_uses_fixed_coil_geometry": True,
-                            "current_only_coil_geometry_source": "cached",
-                        },
-                        "directional_jvp_cache_info": {
-                            "enabled": True,
-                            "hit": False,
-                            "closure_bound": True,
-                            "cache_key_static_digest": "accepted-summary",
-                        },
-                        "max_base_abs_delta": 0.0,
-                        "scalars": {
-                            "qs_total": {"value": 0.25, "exact_directional": 1.0, "base_abs_delta": 0.0},
-                            "aspect": {"value": 6.0, "exact_directional": 0.0, "base_abs_delta": 0.0},
-                        },
-                    },
-                    "branch_local_vector_current_jvp_cache_probe": {
-                        "available": True,
-                        "cache_hit": True,
-                        "wall_s": 0.004,
-                        "directional_jvp_cache_info": {
-                            "enabled": True,
-                            "hit": True,
-                            "closure_bound": True,
-                            "cache_key_static_digest": "accepted-summary",
-                        },
-                    },
-                }
-            )
-            + "\n"
-        )
-        return path
-
     monkeypatch.setattr(module, "make_free_boundary_indata", fake_make_free_boundary_indata)
     monkeypatch.setattr(module, "run_direct_free_boundary", fake_run_direct_free_boundary)
     monkeypatch.setattr(module, "summarize_run", fake_summarize_run)
     monkeypatch.setattr(module, "write_wout_from_fixed_boundary_run", fake_write_wout)
-    monkeypatch.setattr(module, "write_same_branch_validation_report", fake_write_same_branch_validation_report)
+    monkeypatch.setattr(
+        module,
+        "write_same_branch_validation_report",
+        _same_branch_validation_report_writer(include_current_jvp_cache_probe=True),
+    )
 
     exit_code = module.main(
         [
@@ -2913,60 +2921,11 @@ def test_derivative_proposal_summary_records_rejected_trial_as_complete_solve_re
     def fake_write_wout(path, _run, *, include_fsq):
         path.write_text(f"include_fsq={include_fsq}\n")
 
-    def fake_write_same_branch_validation_report(**kwargs):
-        path = Path(kwargs["outdir"]) / "same_branch_complete_solve_report.json"
-        path.write_text(
-            json.dumps(
-                {
-                    "direction_x": [1.0, 0.0],
-                    "current_only_coil_geometry_cache": {"available": True, "reason": ""},
-                    "branch_compatibility": {"same_branch": True},
-                    "branch_local_vector_gate": {
-                        "available": True,
-                        "passed": True,
-                        "physical_scalar_gate": {"passed": True},
-                    },
-                    "accepted_rejected_controller_slot_gate": {
-                        "requested": True,
-                        "available": True,
-                        "passed": True,
-                        "scope": "fixed accepted/rejected controller-slot replay",
-                        "same_stacked_step_policy_branch": True,
-                        "fixed_rejected_controller_slots": 1,
-                        "controller_slot_summary": {"accepted_slots": 2, "rejected_slots": 1},
-                    },
-                    "branch_local_vector_jacobian": {
-                        "available": True,
-                        "uses_production_forward": True,
-                        "differentiates_adaptive_controller": False,
-                        "differentiates_run_free_boundary": False,
-                        "differentiates_fixed_accepted_branch": True,
-                        "replay_ad_mode": "direct",
-                        "derivative_mode": "directional_jvp",
-                        "directional_jvp_fast_path": "current_only",
-                        "directional_uses_fixed_coil_geometry": True,
-                        "replay_option_flags": {
-                            "directional_jvp_fast_path": "current_only",
-                            "directional_uses_fixed_coil_geometry": True,
-                            "current_only_coil_geometry_source": "cached",
-                        },
-                        "max_base_abs_delta": 0.0,
-                        "scalars": {
-                            "qs_total": {"value": 0.25, "exact_directional": 1.0, "base_abs_delta": 0.0},
-                            "aspect": {"value": 6.0, "exact_directional": 0.0, "base_abs_delta": 0.0},
-                        },
-                    },
-                }
-            )
-            + "\n"
-        )
-        return path
-
     monkeypatch.setattr(module, "make_free_boundary_indata", fake_make_free_boundary_indata)
     monkeypatch.setattr(module, "run_direct_free_boundary", fake_run_direct_free_boundary)
     monkeypatch.setattr(module, "summarize_run", fake_summarize_run)
     monkeypatch.setattr(module, "write_wout_from_fixed_boundary_run", fake_write_wout)
-    monkeypatch.setattr(module, "write_same_branch_validation_report", fake_write_same_branch_validation_report)
+    monkeypatch.setattr(module, "write_same_branch_validation_report", _same_branch_validation_report_writer())
 
     exit_code = module.main(
         [
