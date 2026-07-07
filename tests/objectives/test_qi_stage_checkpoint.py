@@ -1,24 +1,17 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 from types import SimpleNamespace
-import sys
 
+from conftest import load_python_module
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "examples" / "optimization" / "qi_optimization_support.py"
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("qi_optimization_support_checkpoint_test", SCRIPT)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(SCRIPT, name="qi_optimization_support_checkpoint_test")
 
 
 def test_public_qi_optimization_module_and_compat_shim_share_api() -> None:

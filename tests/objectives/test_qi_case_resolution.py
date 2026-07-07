@@ -1,23 +1,17 @@
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
-import sys
 
 import pytest
+
+from conftest import load_python_module
 
 
 SCRIPT = Path(__file__).resolve().parents[2] / "examples" / "optimization" / "qi_optimization_cases.py"
 
 
 def _load_cases_module(name: str = "qi_optimization_cases_test"):
-    spec = importlib.util.spec_from_file_location(name, SCRIPT)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(SCRIPT, name=name)
 
 
 def test_resolve_qi_case_defaults_and_aliases(monkeypatch, tmp_path: Path) -> None:

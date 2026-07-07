@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import importlib.util
 from dataclasses import fields, replace
 import json
-import sys
 from pathlib import Path
+import sys
 
 import numpy as np
 import pytest
+
+from conftest import load_python_module
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -15,13 +16,7 @@ DIAGNOSTIC_OPT_DIR = ROOT / "tools" / "diagnostics" / "optimization"
 
 
 def _load_module(name: str, script_name: str):
-    script = DIAGNOSTIC_OPT_DIR / script_name
-    spec = importlib.util.spec_from_file_location(name, script)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(DIAGNOSTIC_OPT_DIR / script_name, name=name)
 
 
 def test_minimal_seed_showcase_case_map_uses_three_coefficient_inputs() -> None:

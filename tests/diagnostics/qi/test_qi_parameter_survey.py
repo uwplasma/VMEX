@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
+
+from conftest import load_python_module
 
 
 SCRIPT = (
@@ -15,15 +16,7 @@ SCRIPT = (
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("qi_parameter_survey", SCRIPT)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    import sys
-
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(SCRIPT, name="qi_parameter_survey")
 
 
 def test_generate_cases_uses_supported_flags_and_keeps_metadata(tmp_path: Path) -> None:

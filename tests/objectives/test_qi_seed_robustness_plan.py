@@ -1,34 +1,21 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 from pathlib import Path
 import re
-import sys
 
+from conftest import load_python_module
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = REPO_ROOT / "tools" / "diagnostics" / "qi" / "qi_seed_robustness_plan.py"
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("qi_seed_robustness_plan", SCRIPT)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(SCRIPT, name="qi_seed_robustness_plan")
 
 
 def _load_test_module(path: Path):
-    spec = importlib.util.spec_from_file_location(path.stem, path)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(path)
 
 
 def _test_nodes_from_command(command: str) -> list[tuple[Path, str | None]]:

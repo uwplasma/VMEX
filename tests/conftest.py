@@ -8,6 +8,8 @@ Allows running tests directly from the repo without requiring an editable instal
 
 import sys
 from pathlib import Path
+import importlib.util
+from types import ModuleType
 from typing import Any
 
 import pytest
@@ -35,6 +37,26 @@ def require_slow() -> None:
     """Skip tests marked as slow unless RUN_SLOW=1 is set."""
     if os.environ.get("RUN_SLOW", "") != "1":
         pytest.skip("Set RUN_SLOW=1 to run slow gradient/implicit tests")
+
+
+def load_python_module(path: Path, *, name: str | None = None, register: bool = True) -> ModuleType:
+    """Load a repository script as an importable module for contract tests.
+
+    Diagnostics and example tests often need to inspect a standalone script
+    without executing it as a subprocess.  Centralizing the importlib dance here
+    keeps those tests focused on the scientific contract they validate instead
+    of repeating fragile loader boilerplate.
+    """
+
+    module_name = name or Path(path).stem
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    if register:
+        sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def circular_coil_dofs(

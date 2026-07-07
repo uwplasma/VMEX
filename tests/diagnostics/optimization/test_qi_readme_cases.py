@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import csv
-import importlib.util
 from pathlib import Path
 import subprocess
 import sys
 
 import numpy as np
 import pytest
+
+from conftest import load_python_module
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -16,23 +17,11 @@ CASES_SCRIPT = ROOT / "examples" / "optimization" / "qi_optimization_cases.py"
 
 
 def _load_module():
-    spec = importlib.util.spec_from_file_location("render_qi_readme_cases_test", SCRIPT)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(SCRIPT, name="render_qi_readme_cases_test")
 
 
 def _load_cases_module():
-    spec = importlib.util.spec_from_file_location("qi_optimization_cases_test", CASES_SCRIPT)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(CASES_SCRIPT, name="qi_optimization_cases_test")
 
 
 def test_qi_readme_renderer_help_exits_without_rendering() -> None:

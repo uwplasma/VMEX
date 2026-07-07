@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import csv
-import importlib.util
 import json
 from pathlib import Path
-import sys
 from types import SimpleNamespace
 
 import pytest
+
+from conftest import load_python_module
 
 
 SCRIPT = Path(__file__).resolve().parents[3] / "tools/diagnostics/qi/audit_qi_seed_suitability.py"
@@ -15,13 +15,7 @@ SCRIPT = Path(__file__).resolve().parents[3] / "tools/diagnostics/qi/audit_qi_se
 
 def _load_module():
     pytest.importorskip("jax")
-    spec = importlib.util.spec_from_file_location("audit_qi_seed_suitability", SCRIPT)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(SCRIPT, name="audit_qi_seed_suitability")
 
 
 def test_parse_case_and_default_families_cover_seed_types():
