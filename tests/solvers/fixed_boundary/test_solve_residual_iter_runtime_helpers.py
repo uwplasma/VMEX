@@ -29,9 +29,11 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     record_elapsed_timing,
     record_update_state_ready_timing,
     record_update_total_timing,
+    promote_free_boundary_vacuum_turnon_if_needed,
     resolve_free_boundary_iteration_controls,
     resolve_residual_profile_window,
     resume_free_boundary_loop_state,
+    stop_residual_profile_trace_if_window_completed,
     trial_residual_total_runtime,
 )
 from vmec_jax.solvers.fixed_boundary.residual.update import ResidualVelocityBlocks
@@ -973,3 +975,82 @@ def test_build_resume_state_base_counts_optional_free_boundary_runtime():
     )
     assert base_none["freeb_nestor_update_count"] == 0
     assert base_none["freeb_nestor_reuse_count"] == 0
+
+
+def test_stop_residual_profile_trace_only_at_requested_iteration():
+    class State:
+        Rcos = np.asarray([1.0])
+
+    class FakeProfiler:
+        stopped = 0
+
+        @classmethod
+        def stop_trace(cls):
+            cls.stopped += 1
+
+    class FakeJax:
+        profiler = FakeProfiler
+        ready = 0
+
+        @classmethod
+        def block_until_ready(cls, value):
+            cls.ready += 1
+            return value
+
+    unchanged = stop_residual_profile_trace_if_window_completed(
+        profile_started=True,
+        profile_active=True,
+        profile_start_iter=4,
+        iter2=3,
+        state=State(),
+        has_jax_func=lambda: True,
+        jax_module=FakeJax,
+    )
+    assert unchanged == (True, True)
+    assert FakeJax.ready == 0
+    assert FakeProfiler.stopped == 0
+
+    stopped = stop_residual_profile_trace_if_window_completed(
+        profile_started=True,
+        profile_active=True,
+        profile_start_iter=4,
+        iter2=4,
+        state=State(),
+        has_jax_func=lambda: True,
+        jax_module=FakeJax,
+    )
+    assert stopped == (False, False)
+    assert FakeJax.ready == 1
+    assert FakeProfiler.stopped == 1
+
+
+def test_promote_free_boundary_vacuum_turnon_prints_once():
+    messages = []
+
+    def fake_print(*args, **kwargs):
+        messages.append((args, kwargs))
+
+    assert (
+        promote_free_boundary_vacuum_turnon_if_needed(
+            free_boundary_enabled=False,
+            freeb_ivac=1,
+            iter2=8,
+            verbose=True,
+            verbose_vmec2000_table=True,
+            print_fn=fake_print,
+        )
+        == 1
+    )
+    assert messages == []
+
+    promoted = promote_free_boundary_vacuum_turnon_if_needed(
+        free_boundary_enabled=True,
+        freeb_ivac=1,
+        iter2=8,
+        verbose=True,
+        verbose_vmec2000_table=True,
+        print_fn=fake_print,
+    )
+    assert promoted == 2
+    assert "VACUUM PRESSURE TURNED ON AT    8 ITERATIONS" in messages[0][0][0]
+    assert messages[0][1]["flush"] is True

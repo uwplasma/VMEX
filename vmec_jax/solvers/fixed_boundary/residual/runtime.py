@@ -537,6 +537,47 @@ def initialize_residual_iteration_bookkeeping(
     )
 
 
+def stop_residual_profile_trace_if_window_completed(
+    *,
+    profile_started: bool,
+    profile_active: bool,
+    profile_start_iter: int | None,
+    iter2: int,
+    state: Any,
+    has_jax_func: Callable[[], bool],
+    jax_module: Any,
+) -> tuple[bool, bool]:
+    """Stop the optional JAX trace at the requested residual-iteration window."""
+
+    if not (bool(profile_started) and (profile_start_iter is not None) and int(iter2) == int(profile_start_iter)):
+        return bool(profile_started), bool(profile_active)
+    if has_jax_func():
+        try:
+            jax_module.block_until_ready(state.Rcos)
+            jax_module.profiler.stop_trace()
+        except Exception:
+            pass
+    return False, False
+
+
+def promote_free_boundary_vacuum_turnon_if_needed(
+    *,
+    free_boundary_enabled: bool,
+    freeb_ivac: int,
+    iter2: int,
+    verbose: bool,
+    verbose_vmec2000_table: bool,
+    print_fn: Callable[..., Any] = print,
+) -> int:
+    """Apply VMEC's one-time vacuum-pressure turn-on print and ivac promotion."""
+
+    if not (bool(free_boundary_enabled) and int(freeb_ivac) == 1):
+        return int(freeb_ivac)
+    if bool(verbose) and bool(verbose_vmec2000_table):
+        print_fn(f"\n  VACUUM PRESSURE TURNED ON AT {int(iter2):4d} ITERATIONS\n", flush=True)
+    return int(freeb_ivac) + 1
+
+
 def _device_get_floats(*vals: Any, jax_module: Any | None = None) -> tuple[float, ...]:
     """Batch host materialization for scalar diagnostics."""
 

@@ -58,6 +58,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     initialize_residual_setup_timing as _runtime_initialize_residual_setup_timing,
     _maybe_dump_ptau as _runtime_maybe_dump_ptau,
     _maybe_print_nonscan_state_debug,
+    promote_free_boundary_vacuum_turnon_if_needed as _runtime_promote_free_boundary_vacuum_turnon_if_needed,
     _vmec_freeb_plascur_from_bcovar as _runtime_vmec_freeb_plascur_from_bcovar,
     dump_xc_with_velocity_blocks as _dump_xc_with_velocity_blocks,
     edge_bsqvac_from_nestor as _edge_bsqvac_from_nestor,
@@ -66,6 +67,7 @@ from vmec_jax.solvers.fixed_boundary.residual.runtime import (
     resume_free_boundary_loop_state as _runtime_resume_free_boundary_loop_state,
     resolve_free_boundary_coupling_runtime as _runtime_resolve_free_boundary_coupling_runtime,
     resolve_free_boundary_iteration_controls as _runtime_resolve_free_boundary_iteration_controls,
+    stop_residual_profile_trace_if_window_completed as _runtime_stop_residual_profile_trace_if_window_completed,
     trial_residual_total_runtime as _runtime_trial_residual_total,
 )
 from vmec_jax.solvers.fixed_boundary.residual.accelerated_scan import (
@@ -2707,15 +2709,15 @@ def solve_fixed_boundary_residual_iter(
 
             _record_timing("iteration_control_restart", t_iteration_control_restart_start)
             break
-        if profile_started and (profile_start_iter is not None) and (iter2 == profile_start_iter):
-            if has_jax():
-                try:
-                    jax.block_until_ready(state.Rcos)
-                    jax.profiler.stop_trace()
-                except Exception:
-                    pass
-            profile_started = False
-            profile_active = False
+        profile_started, profile_active = _runtime_stop_residual_profile_trace_if_window_completed(
+            profile_started=bool(profile_started),
+            profile_active=bool(profile_active),
+            profile_start_iter=profile_start_iter,
+            iter2=int(iter2),
+            state=state,
+            has_jax_func=has_jax,
+            jax_module=jax,
+        )
         if converged:
             break
         t_iteration_control_evolve_start = time.perf_counter() if timing_enabled else None
@@ -3097,10 +3099,13 @@ def solve_fixed_boundary_residual_iter(
         )
         # VMEC eqsolve behavior: when `ivac==1`, print turn-on and promote to
         # `ivac=2` for subsequent iterations.
-        if free_boundary_enabled and int(freeb_ivac) == 1:
-            if verbose and bool(verbose_vmec2000_table):
-                print(f"\n  VACUUM PRESSURE TURNED ON AT {int(iter2):4d} ITERATIONS\n", flush=True)
-            freeb_ivac = int(freeb_ivac) + 1
+        freeb_ivac = _runtime_promote_free_boundary_vacuum_turnon_if_needed(
+            free_boundary_enabled=bool(free_boundary_enabled),
+            freeb_ivac=int(freeb_ivac),
+            iter2=int(iter2),
+            verbose=bool(verbose),
+            verbose_vmec2000_table=bool(verbose_vmec2000_table),
+        )
         skip_time_control = False
         _record_timing("iteration_post_update", t_iteration_post_update_start)
 
