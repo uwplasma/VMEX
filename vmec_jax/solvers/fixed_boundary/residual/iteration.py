@@ -109,7 +109,6 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     ResidualControllerState as _ResidualControllerState,
     apply_controller_state_update as _apply_controller_state_update,
     backtracking_momentum_search as _backtracking_momentum_search,
-    build_strict_momentum_proposal_from_policy as _build_strict_momentum_proposal_from_policy,
     candidate_state_from_deltas as _candidate_state_from_deltas_helper,
     candidate_state_from_delta_tuple as _candidate_state_from_delta_tuple_helper,
     controller_state_after_catastrophic_restart_update as _controller_state_after_catastrophic_restart_update,
@@ -133,9 +132,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     initial_residual_controller_state as _initial_residual_controller_state,
     initial_residual_velocity_state as _initial_residual_velocity_state,
     residual_evolve_coefficients as _residual_evolve_coefficients,
-    select_strict_catastrophic_restart_branch as _select_strict_catastrophic_restart_branch,
-    resolve_strict_update_control_policy as _resolve_strict_update_control_policy,
-    select_strict_trial_branch_result as _select_strict_trial_branch_result,
+    run_strict_update_dispatch as _run_strict_update_dispatch,
     strict_step_branch_application as _strict_step_branch_application,
     velocity_blocks_from_force_blocks as _velocity_blocks_from_force_blocks,
     velocity_blocks_from_resume_state as _velocity_blocks_from_resume_state,
@@ -2772,11 +2769,17 @@ def solve_fixed_boundary_residual_iter(
                 )
             _record_timing("update_trace_build", t_trace_build_start)
             t_state_update_start = time.perf_counter() if timing_enabled else None
-            strict_update_policy = _resolve_strict_update_control_policy(
+            strict_dispatch = _run_strict_update_dispatch(
+                state=state,
+                static=static,
+                velocities=velocity_blocks,
+                forces=force_blocks,
+                state_backup=state_backup,
+                w_curr=float(w_curr),
                 time_step=float(time_step),
                 limit_dt_from_force=bool(limit_dt_from_force),
                 max_coeff_delta_rms=float(max_coeff_delta_rms),
-                force_blocks_for_dt=_force_blocks_from_update_order(force_blocks),
+                max_update_rms=float(max_update_rms),
                 limit_update_rms=bool(limit_update_rms),
                 track_history=bool(track_history),
                 verbose=bool(verbose),
@@ -2787,107 +2790,61 @@ def solve_fixed_boundary_residual_iter(
                 use_direct_fallback=bool(use_direct_fallback),
                 jit_strict_update_enabled=bool(jit_strict_update_enabled),
                 host_update_assembly=bool(host_update_assembly),
-                state=state,
                 safe_dt_from_force_blocks_func=_safe_dt_from_force_blocks,
                 tree_has_tracer_func=_tree_has_tracer,
-            )
-            dt_eff = strict_update_policy.dt_eff
-            force_scale = strict_update_policy.force_scale
-            need_update_rms = strict_update_policy.need_update_rms
-            need_trial_eval = strict_update_policy.need_trial_eval
-            update_proposal = _build_strict_momentum_proposal_from_policy(
-                policy=strict_update_policy,
-                state=state,
-                static=static,
-                velocities=velocity_blocks,
-                forces=force_blocks,
-                max_update_rms=float(max_update_rms),
+                force_blocks_for_dt_func=_force_blocks_from_update_order,
                 b1=float(b1),
                 fac=float(fac),
                 flip_sign=float(flip_sign),
                 divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
                 free_boundary_enabled=bool(free_boundary_enabled),
                 strict_update_step_jit_func=_strict_update_step_jit,
-                host_update_assembly=bool(host_update_assembly),
-                materialize_update_rms=(
-                    bool(limit_update_rms)
-                    or bool(backtracking)
-                    or (bool(adjoint_trace) and adjoint_trace_mode == "full")
-                ),
-                limit_update_rms=bool(limit_update_rms),
-                delta_transforms=_physical_delta_transforms,
+                physical_delta_transforms=_physical_delta_transforms,
+                internal_delta_transforms=_internal_delta_transforms,
                 delta_tuple_from_blocks=_delta_tuple_from_blocks,
                 candidate_state_from_delta_tuple=_candidate_state_from_delta_tuple,
-            )
-            velocity_blocks = update_proposal.velocities
-            update_rms_j = update_proposal.update_rms_j
-            update_rms = update_proposal.update_rms
-            update_rms_preclip = update_proposal.update_rms_preclip
-            scl = update_proposal.scale
-            update_deltas = update_proposal.update_deltas
-            branch_selection = _select_strict_trial_branch_result(
-                policy=strict_update_policy,
-                proposal=update_proposal,
-                state_backup=state_backup,
-                w_curr=float(w_curr),
-                backtracking=bool(backtracking),
-                reference_mode=bool(reference_mode),
-                host_update_assembly=bool(host_update_assembly),
                 zero_m1_value=zero_m1,
                 zero_m1_host=float(np.asarray(zero_m1)),
-                zero_m1_probe_value=jnp.asarray(0.0, dtype=zero_m1.dtype),
-                candidate_state_from_delta_tuple=_candidate_state_from_delta_tuple,
                 freeb_bsqvac_half_for_trial_state=_freeb_bsqvac_half_for_trial_state,
                 trial_residual_total=_trial_residual_total,
-                use_direct_fallback=bool(use_direct_fallback),
-                forces=force_blocks,
-                max_update_rms=float(max_update_rms),
-                flip_sign=float(flip_sign),
-                delta_transforms=_internal_delta_transforms,
-                delta_tuple_from_blocks=_delta_tuple_from_blocks,
                 vmec2000_control=bool(vmec2000_control),
                 huge_force_restart_count=int(huge_force_restart_count),
+                restart_badjac_factor=float(restart_badjac_factor),
+                restart_badprog_factor=float(restart_badprog_factor),
+                step_size=float(step_size),
+                ijacob=int(ijacob),
+                bad_resets=int(bad_resets),
+                iter2=int(iter2),
+                fsq_prev_before=float(fsq_prev_before),
+                fsq0_prev_before=float(fsq0_prev_before),
+                k_ndamp=int(k_ndamp),
             )
-            branch_result = branch_selection.branch_result
-            velocity_blocks = branch_selection.velocities
-            dt_eff = branch_selection.dt_eff
-            update_rms = branch_selection.update_rms
-            w_try = branch_selection.w_try
-            w_try_ratio = branch_selection.w_try_ratio
-            probe_bad_jacobian = branch_selection.probe_bad_jacobian
-            if adjoint_trace and branch_result.fallback_direct_dt is not None:
-                trace_entry["fallback_direct_dt"] = float(branch_result.fallback_direct_dt)
-            branch_application = _apply_strict_step_branch(branch_result)
-            if not branch_result.accepted:
-                catastrophic_restart = branch_result.catastrophic_restart
-                if catastrophic_restart:
-                    catastrophic_selection = _select_strict_catastrophic_restart_branch(
-                        branch=branch_result,
-                        state_backup=state_backup,
-                        probe_bad_jacobian=bool(probe_bad_jacobian),
-                        w_try=float(w_try),
-                        time_step=float(time_step),
-                        restart_badjac_factor=float(restart_badjac_factor),
-                        restart_badprog_factor=float(restart_badprog_factor),
-                        step_size=float(step_size),
-                        ijacob=int(ijacob),
-                        bad_resets=int(bad_resets),
-                        iter2=int(iter2),
-                        fsq_prev_before=float(fsq_prev_before),
-                        fsq0_prev_before=float(fsq0_prev_before),
-                        k_ndamp=int(k_ndamp),
-                        max_coeff_delta_rms=float(max_coeff_delta_rms),
-                        max_update_rms=float(max_update_rms),
-                    )
-                    restart_update = catastrophic_selection.restart_update
-                    _apply_controller_update(_controller_state_after_catastrophic_restart_update, restart_update)
-                    branch_result = catastrophic_selection.branch_result
-                    branch_application = catastrophic_selection.branch_application
-                    _apply_strict_step_branch(
-                        branch_result,
-                        branch_application=branch_application,
-                        after_catastrophic_restart=True,
-                    )
+            strict_update_policy = strict_dispatch.policy
+            update_proposal = strict_dispatch.proposal
+            branch_selection = strict_dispatch.branch_selection
+            velocity_blocks = strict_dispatch.velocity_blocks
+            update_rms_j = update_proposal.update_rms_j
+            dt_eff = strict_dispatch.dt_eff
+            update_rms = strict_dispatch.update_rms
+            w_try = strict_dispatch.w_try
+            w_try_ratio = strict_dispatch.w_try_ratio
+            branch_result = strict_dispatch.initial_branch_result
+            if adjoint_trace and strict_dispatch.final_branch_result.fallback_direct_dt is not None:
+                trace_entry["fallback_direct_dt"] = float(strict_dispatch.final_branch_result.fallback_direct_dt)
+            branch_application = _apply_strict_step_branch(
+                branch_result,
+                branch_application=strict_dispatch.initial_branch_application,
+            )
+            if strict_dispatch.catastrophic_selection is not None:
+                restart_update = strict_dispatch.catastrophic_selection.restart_update
+                _apply_controller_update(_controller_state_after_catastrophic_restart_update, restart_update)
+                branch_result = strict_dispatch.final_branch_result
+                branch_application = strict_dispatch.final_branch_application
+                _apply_strict_step_branch(
+                    branch_result,
+                    branch_application=branch_application,
+                    after_catastrophic_restart=True,
+                )
             _record_update_state_ready_timing(
                 timing_enabled=bool(timing_enabled),
                 timing_stats=timing_stats,

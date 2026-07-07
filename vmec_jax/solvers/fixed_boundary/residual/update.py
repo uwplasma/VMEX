@@ -779,6 +779,26 @@ class StrictCatastrophicRestartSelection(NamedTuple):
     branch_application: StrictStepBranchApplication
 
 
+class StrictUpdateDispatch(NamedTuple):
+    """Strict residual update proposal, branch choices, and trace payload inputs."""
+
+    policy: StrictUpdateControlPolicy
+    proposal: StrictMomentumProposal
+    branch_selection: StrictTrialBranchSelection
+    initial_branch_result: StrictStepBranchResult
+    initial_branch_application: StrictStepBranchApplication
+    catastrophic_selection: StrictCatastrophicRestartSelection | None
+    final_branch_result: StrictStepBranchResult
+    final_branch_application: StrictStepBranchApplication
+    w_curr: float
+    velocity_blocks: ResidualVelocityBlocks
+    dt_eff: float
+    update_rms: float | None
+    w_try: float
+    w_try_ratio: float
+    probe_bad_jacobian: bool
+
+
 class InitialResidualVelocityState(NamedTuple):
     """Initial residual-loop velocity memory and conservative update caps."""
 
@@ -1826,6 +1846,175 @@ def select_strict_catastrophic_restart_branch(
         restart_update=restart_update,
         branch_result=branch_after_restart,
         branch_application=branch_application,
+    )
+
+
+def run_strict_update_dispatch(
+    *,
+    state: Any,
+    static: Any,
+    velocities: ResidualVelocityBlocks,
+    forces: ResidualVelocityBlocks,
+    state_backup: Any,
+    w_curr: float,
+    time_step: float,
+    limit_dt_from_force: bool,
+    max_coeff_delta_rms: float,
+    max_update_rms: float,
+    limit_update_rms: bool,
+    track_history: bool,
+    verbose: bool,
+    backtracking: bool,
+    adjoint_trace: bool,
+    adjoint_trace_mode: str,
+    reference_mode: bool,
+    use_direct_fallback: bool,
+    jit_strict_update_enabled: bool,
+    host_update_assembly: bool,
+    safe_dt_from_force_blocks_func: Callable[..., float],
+    tree_has_tracer_func: Callable[[Any], bool],
+    force_blocks_for_dt_func: Callable[[ResidualVelocityBlocks], tuple[Any, ...]],
+    b1: float,
+    fac: float,
+    flip_sign: float,
+    divide_by_scalxc_for_update: bool,
+    free_boundary_enabled: bool,
+    strict_update_step_jit_func: Callable[..., Any] | None,
+    physical_delta_transforms: tuple,
+    internal_delta_transforms: tuple,
+    delta_tuple_from_blocks: Callable[..., tuple[Any, ...]],
+    candidate_state_from_delta_tuple: Callable[..., Any],
+    zero_m1_value: Any,
+    zero_m1_host: float,
+    freeb_bsqvac_half_for_trial_state: Callable[[Any], Any],
+    trial_residual_total: Callable[..., float],
+    vmec2000_control: bool,
+    huge_force_restart_count: int,
+    restart_badjac_factor: float,
+    restart_badprog_factor: float,
+    step_size: float,
+    ijacob: int,
+    bad_resets: int,
+    iter2: int,
+    fsq_prev_before: float,
+    fsq0_prev_before: float,
+    k_ndamp: int,
+) -> StrictUpdateDispatch:
+    """Build the strict update proposal and select its VMEC branch contracts."""
+
+    policy = resolve_strict_update_control_policy(
+        time_step=float(time_step),
+        limit_dt_from_force=bool(limit_dt_from_force),
+        max_coeff_delta_rms=float(max_coeff_delta_rms),
+        force_blocks_for_dt=force_blocks_for_dt_func(forces),
+        limit_update_rms=bool(limit_update_rms),
+        track_history=bool(track_history),
+        verbose=bool(verbose),
+        backtracking=bool(backtracking),
+        adjoint_trace=bool(adjoint_trace),
+        adjoint_trace_mode=adjoint_trace_mode,
+        reference_mode=bool(reference_mode),
+        use_direct_fallback=bool(use_direct_fallback),
+        jit_strict_update_enabled=bool(jit_strict_update_enabled),
+        host_update_assembly=bool(host_update_assembly),
+        state=state,
+        safe_dt_from_force_blocks_func=safe_dt_from_force_blocks_func,
+        tree_has_tracer_func=tree_has_tracer_func,
+    )
+    proposal = build_strict_momentum_proposal_from_policy(
+        policy=policy,
+        state=state,
+        static=static,
+        velocities=velocities,
+        forces=forces,
+        max_update_rms=float(max_update_rms),
+        b1=float(b1),
+        fac=float(fac),
+        flip_sign=float(flip_sign),
+        divide_by_scalxc_for_update=bool(divide_by_scalxc_for_update),
+        free_boundary_enabled=bool(free_boundary_enabled),
+        strict_update_step_jit_func=strict_update_step_jit_func,
+        host_update_assembly=bool(host_update_assembly),
+        materialize_update_rms=(
+            bool(limit_update_rms)
+            or bool(backtracking)
+            or (bool(adjoint_trace) and str(adjoint_trace_mode) == "full")
+        ),
+        limit_update_rms=bool(limit_update_rms),
+        delta_transforms=physical_delta_transforms,
+        delta_tuple_from_blocks=delta_tuple_from_blocks,
+        candidate_state_from_delta_tuple=candidate_state_from_delta_tuple,
+    )
+    branch_selection = select_strict_trial_branch_result(
+        policy=policy,
+        proposal=proposal,
+        state_backup=state_backup,
+        w_curr=float(w_curr),
+        backtracking=bool(backtracking),
+        reference_mode=bool(reference_mode),
+        host_update_assembly=bool(host_update_assembly),
+        zero_m1_value=zero_m1_value,
+        zero_m1_host=float(zero_m1_host),
+        zero_m1_probe_value=jnp.asarray(0.0, dtype=jnp.asarray(zero_m1_value).dtype),
+        candidate_state_from_delta_tuple=candidate_state_from_delta_tuple,
+        freeb_bsqvac_half_for_trial_state=freeb_bsqvac_half_for_trial_state,
+        trial_residual_total=trial_residual_total,
+        use_direct_fallback=bool(use_direct_fallback),
+        forces=forces,
+        max_update_rms=float(max_update_rms),
+        flip_sign=float(flip_sign),
+        delta_transforms=internal_delta_transforms,
+        delta_tuple_from_blocks=delta_tuple_from_blocks,
+        vmec2000_control=bool(vmec2000_control),
+        huge_force_restart_count=int(huge_force_restart_count),
+    )
+    initial_branch = branch_selection.branch_result
+    initial_application = strict_step_branch_application(
+        initial_branch,
+        max_coeff_delta_rms=float(max_coeff_delta_rms),
+        max_update_rms=float(max_update_rms),
+    )
+    catastrophic_selection = None
+    final_branch = initial_branch
+    final_application = initial_application
+    if (not initial_branch.accepted) and bool(initial_branch.catastrophic_restart):
+        catastrophic_selection = select_strict_catastrophic_restart_branch(
+            branch=initial_branch,
+            state_backup=state_backup,
+            probe_bad_jacobian=bool(branch_selection.probe_bad_jacobian),
+            w_try=float(branch_selection.w_try),
+            time_step=float(time_step),
+            restart_badjac_factor=float(restart_badjac_factor),
+            restart_badprog_factor=float(restart_badprog_factor),
+            step_size=float(step_size),
+            ijacob=int(ijacob),
+            bad_resets=int(bad_resets),
+            iter2=int(iter2),
+            fsq_prev_before=float(fsq_prev_before),
+            fsq0_prev_before=float(fsq0_prev_before),
+            k_ndamp=int(k_ndamp),
+            max_coeff_delta_rms=float(max_coeff_delta_rms),
+            max_update_rms=float(max_update_rms),
+        )
+        final_branch = catastrophic_selection.branch_result
+        final_application = catastrophic_selection.branch_application
+
+    return StrictUpdateDispatch(
+        policy=policy,
+        proposal=proposal,
+        branch_selection=branch_selection,
+        initial_branch_result=initial_branch,
+        initial_branch_application=initial_application,
+        catastrophic_selection=catastrophic_selection,
+        final_branch_result=final_branch,
+        final_branch_application=final_application,
+        w_curr=float(w_curr),
+        velocity_blocks=branch_selection.velocities,
+        dt_eff=float(branch_selection.dt_eff),
+        update_rms=branch_selection.update_rms,
+        w_try=float(branch_selection.w_try),
+        w_try_ratio=float(branch_selection.w_try_ratio),
+        probe_bad_jacobian=bool(branch_selection.probe_bad_jacobian),
     )
 
 
