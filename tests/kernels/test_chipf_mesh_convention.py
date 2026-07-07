@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import pytest
-
-
-import numpy as np
 from pathlib import Path
 
-from vmec_jax.field import chips_from_wout_chipf, full_mesh_from_half_mesh_avg
+import numpy as np
+import pytest
+
+from vmec_jax._compat import has_jax
+from vmec_jax.field import chips_from_chipf, chips_from_wout_chipf, full_mesh_from_half_mesh_avg
 from vmec_jax.wout import read_wout
+
 pytestmark = pytest.mark.full
 
 
@@ -15,6 +16,27 @@ def _rel_rms(a: np.ndarray, b: np.ndarray) -> float:
     num = np.sqrt(np.mean((a - b) ** 2))
     den = np.sqrt(np.mean(b**2))
     return float(num / den) if den > 0 else float("inf")
+
+
+@pytest.mark.parametrize(
+    "wout_rel",
+    [
+        "examples/data/wout_circular_tokamak_reference.nc",
+        "examples/data/wout_LandremanPaul2021_QA_reactorScale_lowres_reference.nc",
+    ],
+)
+def test_chips_from_chipf_matches_iotas_phips_when_ncurr0(wout_rel: str):
+    """VMEC's no-current chip profile equals iota times toroidal flux."""
+    pytest.importorskip("netCDF4")
+    if not has_jax():
+        pytest.skip("chips_from_chipf requires JAX")
+
+    root = Path(__file__).resolve().parents[2]
+    wout = read_wout(root / wout_rel)
+
+    chips = np.asarray(chips_from_chipf(wout.chipf))
+    chips_expected = (2.0 * np.pi * float(wout.signgs)) * (np.asarray(wout.iotas) * np.asarray(wout.phips))
+    np.testing.assert_allclose(chips, chips_expected, rtol=0.0, atol=1e-10)
 
 
 def test_chips_from_wout_chipf_detects_half_mesh_vmec2000_style():
