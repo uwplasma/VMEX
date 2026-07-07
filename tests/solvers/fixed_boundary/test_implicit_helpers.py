@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -426,3 +428,189 @@ def test_implicit_linear_algebra_and_state_packing_helpers():
     assert float(_zero_m1_zforce_flag_from_result(Result(0, []), dtype=np.float64)) == 1.0
     assert float(_zero_m1_zforce_flag_from_result(Result(4, [1.0e-8]), dtype=np.float64)) == 1.0
     assert float(_zero_m1_zforce_flag_from_result(Result(4, [1.0e-3]), dtype=np.float64)) == 0.0
+
+
+def test_flatten_unflatten_lambda_blocks_round_trip_in_cos_then_sin_order():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+    from vmec_jax.implicit import _flatten_L, _unflatten_L
+
+    lcos = jnp.arange(6.0).reshape(2, 3)
+    lsin = lcos + 10.0
+
+    flat = _flatten_L(lcos, lsin)
+    out_lcos, out_lsin = _unflatten_L(flat, shape=(2, 3))
+
+    assert flat.shape == (12,)
+    np.testing.assert_allclose(np.asarray(flat[:6]), np.asarray(lcos).reshape(-1))
+    np.testing.assert_allclose(np.asarray(flat[6:]), np.asarray(lsin).reshape(-1))
+    np.testing.assert_allclose(np.asarray(out_lcos), np.asarray(lcos))
+    np.testing.assert_allclose(np.asarray(out_lsin), np.asarray(lsin))
+
+
+def test_cg_solve_matches_spd_solution_and_accepts_exact_initial_guess():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+    from vmec_jax.implicit import _cg_solve
+
+    matrix = jnp.asarray([[4.0, 1.0], [1.0, 3.0]])
+    rhs = jnp.asarray([1.0, 2.0])
+    expected = np.linalg.solve(np.asarray(matrix), np.asarray(rhs))
+
+    out = _cg_solve(lambda x: matrix @ x, rhs, tol=1e-14, max_iter=8)
+    exact_x0 = _cg_solve(lambda x: matrix @ x, rhs, x0=jnp.asarray(expected), tol=1e-14, max_iter=8)
+
+    np.testing.assert_allclose(np.asarray(out), expected, rtol=1e-12, atol=1e-12)
+    np.testing.assert_allclose(np.asarray(exact_x0), expected, rtol=1e-12, atol=1e-12)
+
+
+def test_implicit_entry_points_report_jax_import_guard(monkeypatch):
+    import vmec_jax.implicit as implicit
+
+    monkeypatch.setattr(implicit, "has_jax", lambda: False)
+
+    with pytest.raises(ImportError, match="solve_lambda_state_implicit requires JAX"):
+        implicit.solve_lambda_state_implicit(object(), object(), phipf=1.0, chipf=1.0, signgs=1, lamscale=1.0)
+
+    with pytest.raises(ImportError, match="solve_fixed_boundary_state_implicit requires JAX"):
+        implicit.solve_fixed_boundary_state_implicit(
+            object(),
+            object(),
+            phipf=1.0,
+            chipf=1.0,
+            signgs=1,
+            lamscale=1.0,
+            pressure=0.0,
+        )
+
+
+def test_fixed_boundary_implicit_rejects_unknown_solver_before_building_state():
+    pytest.importorskip("jax")
+    from vmec_jax.implicit import solve_fixed_boundary_state_implicit
+
+    with pytest.raises(ValueError, match="solver must be 'gd' or 'lbfgs'"):
+        solve_fixed_boundary_state_implicit(
+            object(),
+            object(),
+            phipf=1.0,
+            chipf=1.0,
+            signgs=1,
+            lamscale=1.0,
+            pressure=0.0,
+            solver="newton",
+        )
+
+
+def test_cg_solve_computes_adjoint_sensitivity_for_linear_implicit_system():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+    from vmec_jax.implicit import _cg_solve
+
+    hessian = jnp.asarray([[5.0, 1.0], [1.0, 2.0]])
+    param_jacobian = jnp.asarray([[2.0, -1.0], [0.5, 3.0]])
+    cotangent = jnp.asarray([4.0, -2.0])
+
+    adjoint = _cg_solve(lambda x: hessian @ x, cotangent, tol=1e-14, max_iter=8)
+    actual_grad = -(param_jacobian.T @ adjoint)
+    expected_grad = -(np.asarray(param_jacobian).T @ np.linalg.solve(np.asarray(hessian), np.asarray(cotangent)))
+
+    np.testing.assert_allclose(np.asarray(actual_grad), expected_grad, rtol=1e-12, atol=1e-12)
+
+
+def test_profile_log_helpers_include_elapsed_payloads_when_enabled(monkeypatch, capsys):
+    pytest.importorskip("jax")
+    import vmec_jax.implicit as implicit
+
+    monkeypatch.setenv("VMEC_JAX_PROFILE_BACKWARD", "yes")
+    monkeypatch.setenv("VMEC_JAX_PROFILE_RESIDUAL", "yes")
+    monkeypatch.setattr(implicit.time, "perf_counter", lambda: 12.5)
+
+    implicit._vmec_backward_profile_log("adjoint", start=10.0, size=3)
+    implicit._vmec_residual_profile_log("residual", start=11.0, projected=True)
+
+    out = capsys.readouterr().out
+    assert "[vmec_jax backward]" in out
+    assert "'elapsed_s': 2.5" in out
+    assert "'size': 3" in out
+    assert "[vmec_jax residual]" in out
+    assert "'elapsed_s': 1.5" in out
+    assert "'projected': True" in out
+
+
+def test_dense_transpose_lstsq_host_matches_tikhonov_normal_equations():
+    from vmec_jax.implicit import _dense_transpose_lstsq_host
+
+    jac = np.asarray([[1.0, 2.0, -1.0], [0.5, -0.25, 1.5]])
+    rhs = np.asarray([0.75, -1.25, 0.5])
+    damping = 0.2
+
+    lam = _dense_transpose_lstsq_host(jac, rhs, damping)
+    lhs = jac @ jac.T + damping * np.eye(jac.shape[0])
+    expected = np.linalg.solve(lhs, jac @ rhs)
+
+    np.testing.assert_allclose(lam, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_linear_map_jacobian_columns_chunks_exact_columns():
+    pytest.importorskip("jax")
+    from vmec_jax._compat import jnp
+    from vmec_jax.implicit import _linear_map_jacobian_columns
+
+    matrix = jnp.asarray([[1.0, -2.0, 0.5], [0.25, 3.0, -1.5]])
+    jac = _linear_map_jacobian_columns(
+        lambda x: matrix @ x,
+        input_size=3,
+        output_size=2,
+        dtype=matrix.dtype,
+        chunk_size=2,
+    )
+
+    np.testing.assert_allclose(np.asarray(jac), np.asarray(matrix), rtol=1e-12, atol=1e-12)
+
+    with pytest.raises(ValueError, match="chunk_size must be positive"):
+        _linear_map_jacobian_columns(lambda x: x, input_size=1, output_size=1, dtype=matrix.dtype, chunk_size=0)
+
+
+def test_lineax_bicgstab_wrapper_handles_optional_x0_and_device_get_failure(monkeypatch):
+    pytest.importorskip("jax")
+    import vmec_jax.implicit as implicit
+    from vmec_jax._compat import jnp
+
+    calls = {}
+
+    class FakeLineax:
+        class FunctionLinearOperator:
+            def __init__(self, matvec, input_structure):
+                calls["operator_shape"] = tuple(input_structure.shape)
+                calls["operator_dtype"] = input_structure.dtype
+                self.matvec = matvec
+
+        class BiCGStab:
+            def __init__(self, *, rtol, atol, max_steps):
+                calls["solver"] = (rtol, atol, max_steps)
+
+        @staticmethod
+        def linear_solve(operator, b, *, solver, options, throw):
+            del operator, solver
+            calls["b"] = np.asarray(b)
+            calls["options"] = dict(options)
+            calls["throw"] = bool(throw)
+            return SimpleNamespace(value=jnp.asarray([1.0, -1.0]), stats={"num_steps": 2})
+
+    monkeypatch.setattr(implicit, "lx", FakeLineax)
+    monkeypatch.setattr(implicit.jax, "device_get", lambda _value: (_ for _ in ()).throw(RuntimeError("host read")))
+
+    value, success, stats = implicit._lineax_bicgstab_solve(
+        lambda x: x,
+        jnp.asarray([2.0, 3.0]),
+        x0=jnp.asarray([0.1, 0.2]),
+        tol=1e-7,
+        max_iter=9,
+    )
+
+    np.testing.assert_allclose(np.asarray(value), [1.0, -1.0])
+    assert success is False
+    assert stats == {"num_steps": 2}
+    np.testing.assert_allclose(calls["options"]["y0"], [0.1, 0.2])
+    assert calls["solver"] == (1e-7, 0.0, 9)
+    assert calls["throw"] is False
