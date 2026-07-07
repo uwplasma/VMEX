@@ -47,6 +47,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     jit_strict_momentum_update_proposal,
     momentum_update_jax,
     residual_evolve_coefficients,
+    resolve_strict_update_control_policy,
     scale_velocity_blocks,
     DirectForceFallbackTrial,
     strict_step_branch_application,
@@ -1557,6 +1558,95 @@ def test_host_force_update_rms_matches_inline_force_formula() -> None:
 
     assert host_force_update_rms(scale, *blocks) == pytest.approx(expected)
     assert host_force_update_rms(scale) == pytest.approx(0.0)
+
+
+def test_resolve_strict_update_control_policy_selects_fast_jit_path() -> None:
+    policy = resolve_strict_update_control_policy(
+        time_step=0.2,
+        limit_dt_from_force=False,
+        max_coeff_delta_rms=1.0e-3,
+        force_blocks_for_dt=(np.ones(2),),
+        limit_update_rms=False,
+        track_history=False,
+        verbose=False,
+        backtracking=False,
+        adjoint_trace=False,
+        adjoint_trace_mode="branch",
+        reference_mode=False,
+        use_direct_fallback=False,
+        jit_strict_update_enabled=True,
+        host_update_assembly=False,
+        state=object(),
+        safe_dt_from_force_blocks_func=lambda **kwargs: 0.01,
+        tree_has_tracer_func=lambda state: False,
+    )
+
+    assert policy.dt_eff == pytest.approx(0.2)
+    assert policy.force_scale == pytest.approx(0.2)
+    assert policy.need_update_rms is False
+    assert policy.need_trial_eval is False
+    assert policy.use_jit_step is True
+
+
+def test_resolve_strict_update_control_policy_disables_jit_when_trial_or_dt_limit_needed() -> None:
+    calls = []
+
+    def fake_safe_dt(**kwargs):
+        calls.append(kwargs)
+        return 0.075
+
+    policy = resolve_strict_update_control_policy(
+        time_step=0.2,
+        limit_dt_from_force=True,
+        max_coeff_delta_rms=1.0e-3,
+        force_blocks_for_dt=("force-blocks",),
+        limit_update_rms=False,
+        track_history=True,
+        verbose=False,
+        backtracking=True,
+        adjoint_trace=True,
+        adjoint_trace_mode="full",
+        reference_mode=False,
+        use_direct_fallback=False,
+        jit_strict_update_enabled=True,
+        host_update_assembly=False,
+        state=object(),
+        safe_dt_from_force_blocks_func=fake_safe_dt,
+        tree_has_tracer_func=lambda state: False,
+    )
+
+    assert policy.dt_eff == pytest.approx(0.075)
+    assert policy.force_scale == pytest.approx(0.075)
+    assert policy.need_update_rms is True
+    assert policy.need_trial_eval is True
+    assert policy.use_jit_step is False
+    assert calls[0]["dt_nominal"] == pytest.approx(0.2)
+    assert calls[0]["max_coeff_delta_rms"] == pytest.approx(1.0e-3)
+    assert calls[0]["blocks"] == ("force-blocks",)
+
+
+def test_resolve_strict_update_control_policy_disables_jit_for_traced_state() -> None:
+    policy = resolve_strict_update_control_policy(
+        time_step=0.2,
+        limit_dt_from_force=False,
+        max_coeff_delta_rms=1.0e-3,
+        force_blocks_for_dt=(np.ones(2),),
+        limit_update_rms=False,
+        track_history=False,
+        verbose=False,
+        backtracking=False,
+        adjoint_trace=False,
+        adjoint_trace_mode="branch",
+        reference_mode=False,
+        use_direct_fallback=False,
+        jit_strict_update_enabled=True,
+        host_update_assembly=False,
+        state=object(),
+        safe_dt_from_force_blocks_func=lambda **kwargs: 0.01,
+        tree_has_tracer_func=lambda state: True,
+    )
+
+    assert policy.use_jit_step is False
 
 
 def test_force_update_rms_is_jax_visible_and_matches_host_wrapper() -> None:

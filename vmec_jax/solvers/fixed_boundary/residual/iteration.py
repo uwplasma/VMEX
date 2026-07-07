@@ -135,6 +135,7 @@ from vmec_jax.solvers.fixed_boundary.residual.update import (
     initial_residual_velocity_state as _initial_residual_velocity_state,
     jit_strict_momentum_update_proposal as _jit_strict_momentum_update_proposal,
     residual_evolve_coefficients as _residual_evolve_coefficients,
+    resolve_strict_update_control_policy as _resolve_strict_update_control_policy,
     strict_momentum_update_proposal as _strict_momentum_update_proposal,
     strict_step_branch_application as _strict_step_branch_application,
     strict_step_branch_result as _strict_step_branch_result,
@@ -2772,36 +2773,30 @@ def solve_fixed_boundary_residual_iter(
                 )
             _record_timing("update_trace_build", t_trace_build_start)
             t_state_update_start = time.perf_counter() if timing_enabled else None
-            dt_eff = float(time_step)
-            if bool(limit_dt_from_force):
-                dt_eff = _safe_dt_from_force_blocks(
-                    dt_nominal=time_step,
-                    max_coeff_delta_rms=max_coeff_delta_rms,
-                    blocks=_force_blocks_from_update_order(force_blocks),
-                )
-
-            # Momentum semantics: v <- fac*(b1*v + dt*F), x <- x + dt*v.
-            # Do not drop the dt factor in the force term; otherwise updates
-            # scale like O(dt) instead of O(dt^2) and can immediately blow up.
-            force_scale = float(dt_eff)
-
-            need_update_rms = (
-                bool(limit_update_rms)
-                or bool(track_history)
-                or bool(verbose)
-                or bool(backtracking)
-                or (bool(adjoint_trace) and adjoint_trace_mode == "full")
+            strict_update_policy = _resolve_strict_update_control_policy(
+                time_step=float(time_step),
+                limit_dt_from_force=bool(limit_dt_from_force),
+                max_coeff_delta_rms=float(max_coeff_delta_rms),
+                force_blocks_for_dt=_force_blocks_from_update_order(force_blocks),
+                limit_update_rms=bool(limit_update_rms),
+                track_history=bool(track_history),
+                verbose=bool(verbose),
+                backtracking=bool(backtracking),
+                adjoint_trace=bool(adjoint_trace),
+                adjoint_trace_mode=adjoint_trace_mode,
+                reference_mode=bool(reference_mode),
+                use_direct_fallback=bool(use_direct_fallback),
+                jit_strict_update_enabled=bool(jit_strict_update_enabled),
+                host_update_assembly=bool(host_update_assembly),
+                state=state,
+                safe_dt_from_force_blocks_func=_safe_dt_from_force_blocks,
+                tree_has_tracer_func=_tree_has_tracer,
             )
-            need_trial_eval = bool(backtracking) or bool(reference_mode) or bool(use_direct_fallback)
-            use_jit_strict_update_step = (
-                bool(jit_strict_update_enabled)
-                and (not bool(host_update_assembly))
-                and (not bool(limit_dt_from_force))
-                and (not bool(limit_update_rms))
-                and (not bool(need_trial_eval))
-                and (not _tree_has_tracer(state))
-            )
-            if use_jit_strict_update_step:
+            dt_eff = strict_update_policy.dt_eff
+            force_scale = strict_update_policy.force_scale
+            need_update_rms = strict_update_policy.need_update_rms
+            need_trial_eval = strict_update_policy.need_trial_eval
+            if strict_update_policy.use_jit_step:
                 update_proposal = _jit_strict_momentum_update_proposal(
                     state=state,
                     static=static,

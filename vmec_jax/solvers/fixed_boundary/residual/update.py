@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 import numpy as np
 
@@ -684,6 +684,16 @@ class StrictTrialEvaluation(NamedTuple):
     alpha: float
 
 
+class StrictUpdateControlPolicy(NamedTuple):
+    """Host policy flags that select one strict residual update implementation."""
+
+    dt_eff: float
+    force_scale: float
+    need_update_rms: bool
+    need_trial_eval: bool
+    use_jit_step: bool
+
+
 class StrictStepAcceptanceDecision(NamedTuple):
     """Host decision for accepting or rejecting one strict trial update."""
 
@@ -1224,6 +1234,66 @@ def jit_strict_momentum_update_proposal(
     return StrictMomentumProposal(
         state=step_out["state_post"], velocities=updated_velocities, update_deltas=None,
         update_rms_j=update_rms_j, update_rms=None, update_rms_preclip=None, scale=1.0,
+    )
+
+
+def resolve_strict_update_control_policy(
+    *,
+    time_step: float,
+    limit_dt_from_force: bool,
+    max_coeff_delta_rms: float,
+    force_blocks_for_dt: Any,
+    limit_update_rms: bool,
+    track_history: bool,
+    verbose: bool,
+    backtracking: bool,
+    adjoint_trace: bool,
+    adjoint_trace_mode: str,
+    reference_mode: bool,
+    use_direct_fallback: bool,
+    jit_strict_update_enabled: bool,
+    host_update_assembly: bool,
+    state: Any,
+    safe_dt_from_force_blocks_func: Callable[..., float],
+    tree_has_tracer_func: Callable[[Any], bool] = _tree_has_tracer,
+) -> StrictUpdateControlPolicy:
+    """Resolve host policy flags for one strict VMEC residual update.
+
+    The policy is intentionally array-light: it decides whether to cap the
+    effective time step, whether update RMS/trial residuals are needed, and
+    whether the compiled strict-update kernel is legal for this branch.
+    """
+
+    dt_eff = float(time_step)
+    if bool(limit_dt_from_force):
+        dt_eff = safe_dt_from_force_blocks_func(
+            dt_nominal=float(time_step),
+            max_coeff_delta_rms=float(max_coeff_delta_rms),
+            blocks=force_blocks_for_dt,
+        )
+
+    need_update_rms = (
+        bool(limit_update_rms)
+        or bool(track_history)
+        or bool(verbose)
+        or bool(backtracking)
+        or (bool(adjoint_trace) and str(adjoint_trace_mode) == "full")
+    )
+    need_trial_eval = bool(backtracking) or bool(reference_mode) or bool(use_direct_fallback)
+    use_jit_step = (
+        bool(jit_strict_update_enabled)
+        and (not bool(host_update_assembly))
+        and (not bool(limit_dt_from_force))
+        and (not bool(limit_update_rms))
+        and (not bool(need_trial_eval))
+        and (not tree_has_tracer_func(state))
+    )
+    return StrictUpdateControlPolicy(
+        dt_eff=float(dt_eff),
+        force_scale=float(dt_eff),
+        need_update_rms=bool(need_update_rms),
+        need_trial_eval=bool(need_trial_eval),
+        use_jit_step=bool(use_jit_step),
     )
 
 
