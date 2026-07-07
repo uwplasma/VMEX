@@ -15,7 +15,7 @@ from vmec_jax.vmec2000_exec import find_vmec2000_exec, run_xvmec2000
 from vmec_jax.wout import read_wout
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 LPQA_INPUT = ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
 FINITE_PRESSURE_SCALE = 1000.0
 FREE_BOUNDARY_PHIEDGE = -0.025

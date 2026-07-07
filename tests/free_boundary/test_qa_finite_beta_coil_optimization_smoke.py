@@ -9,7 +9,7 @@ import sys
 import pytest
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = ROOT / "examples" / "optimization" / "free_boundary_QA_finite_beta_coil_optimization.py"
 
 

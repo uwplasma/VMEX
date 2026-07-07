@@ -12,7 +12,7 @@ import pytest
 
 from vmec_jax.bootstrap_current import BootstrapCurrentIteration, BootstrapCurrentResult
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = ROOT / "examples" / "free_boundary_essos_coils_forward.py"
 BETA_SCAN_SCRIPT_PATH = ROOT / "examples" / "free_boundary_essos_coils_beta_scan.py"
 

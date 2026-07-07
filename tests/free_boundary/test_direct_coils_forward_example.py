@@ -10,7 +10,7 @@ import numpy as np
 from vmec_jax.external_fields import CoilFieldParams
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SCRIPT_PATH = ROOT / "examples" / "free_boundary_direct_coils_forward.py"
 
 

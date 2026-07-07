@@ -18,7 +18,7 @@ from vmec_jax.namelist import read_indata, write_indata
 from vmec_jax.wout import read_wout
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_free_boundary_response_metrics_are_zero_for_same_wout() -> None:

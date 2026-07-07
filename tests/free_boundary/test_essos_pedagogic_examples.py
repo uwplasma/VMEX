@@ -10,7 +10,7 @@ from vmec_jax._compat import jnp
 from vmec_jax.external_fields import CoilFieldParams
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 MGRID_SCRIPT = ROOT / "examples" / "free_boundary_essos_mgrid_forward.py"
 DIRECT_SCRIPT = ROOT / "examples" / "free_boundary_essos_direct_forward.py"
 

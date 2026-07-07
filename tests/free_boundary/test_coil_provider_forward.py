@@ -17,7 +17,7 @@ from vmec_jax.free_boundary import ExternalBoundarySample, sample_free_boundary_
 from vmec_jax.namelist import read_indata, write_indata
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 LPQA_UNIT_INPUT = ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
 LPQA_UNIT_FREE_BOUNDARY_PHIEDGE = -0.025
 

@@ -143,7 +143,7 @@ Use the optional active direct-coil gate when changing this path:
    RUN_FREEB_BOOTSTRAP_BETA_SCAN=1 \
    PYTHONPATH=.:$ESSOS_ROOT:$PYTHONPATH \
      pytest -q \
-     tests/test_free_boundary_essos_coils_forward_example.py::test_beta_scan_bootstrap_current_direct_coil_active_smoke
+     tests/free_boundary/test_essos_coils_forward_example.py::test_beta_scan_bootstrap_current_direct_coil_active_smoke
 
 This gate is intentionally not a default CI test: it imports ESSOS assets and
 launches real free-boundary solves.  It checks that the finite-beta direct-coil

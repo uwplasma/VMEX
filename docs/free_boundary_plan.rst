@@ -148,7 +148,7 @@ with runtime and memory optimization on the validated parity path.
 Current tests and benchmark coverage
 ------------------------------------
 
-Implemented coverage (``tests/test_free_boundary_wp0.py``):
+Implemented coverage (``tests/free_boundary/test_wp0.py``):
 
 - parser/default behavior parity for ``LFREEB``, ``MGRID_FILE``, ``NVACSKIP``,
   and indexed ``EXTCUR(i)``,

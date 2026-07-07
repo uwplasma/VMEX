@@ -120,8 +120,8 @@ The focused derivative tests used for this evidence include:
      tests/test_quasisymmetry.py::test_quasisymmetry_wout_residual_gradient_matches_finite_difference \
      tests/test_quasisymmetry.py::test_quasisymmetry_wout_residual_jvp_and_vjp_match_finite_difference \
      tests/test_quasi_isodynamic.py::test_qi_weighted_shuffle_profile_residual_is_finite_and_differentiable \
-     tests/test_free_boundary_qs_coil_optimization_smoke.py::test_branch_local_scalar_report_adapter_records_gate_evidence \
-     tests/test_free_boundary_qs_coil_optimization_smoke.py::test_branch_local_scalar_report_adapter_records_failure_modes
+     tests/free_boundary/test_qs_coil_optimization_smoke.py::test_branch_local_scalar_report_adapter_records_gate_evidence \
+     tests/free_boundary/test_qs_coil_optimization_smoke.py::test_branch_local_scalar_report_adapter_records_failure_modes
 
 Automated parity tests
 ----------------------
@@ -742,7 +742,7 @@ The corresponding optional pytest gate is:
 
    VMEC2000_EXEC=~/bin/xvmec2000 \
    VMEC2000_INTEGRATION=1 \
-   pytest -q tests/test_free_boundary_essos_coil_parity.py::test_vmec2000_w7x_generated_mgrid_fixture_reaches_active_vacuum_and_finite_wout
+   pytest -q tests/free_boundary/test_essos_coil_parity.py::test_vmec2000_w7x_generated_mgrid_fixture_reaches_active_vacuum_and_finite_wout
 
 The promotion criteria are intentionally stricter than "VMEC2000 returned":
 active vacuum evidence must be present, a parseable WOUT must be written,
