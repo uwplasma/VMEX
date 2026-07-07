@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from contextlib import ExitStack, nullcontext
-from dataclasses import fields, is_dataclass, replace
 import json
 import math
 import os
@@ -14,7 +12,6 @@ from typing import Callable, Sequence
 
 import numpy as np
 
-from . import _compat as _compat_module
 from ._compat import jax, jnp
 from .boundary import BoundaryCoeffs
 from .energy import flux_profiles_from_indata
@@ -55,9 +52,15 @@ from .optimizers.fixed_boundary.qs_residuals import (
 )
 from .optimizers.fixed_boundary.replay_policy import (
     chunked_projected_replay_projection_enabled, fused_projected_replay_enabled,
+    ensure_solver_policy_defaults, env_bool_override, exact_tape_backend_name,
     exact_replay_policy_metadata, lasym_replay_column_chunk, optimizer_backend_name,
+    gpu_like_exact_tape_backend, move_to_solver_device, resolve_optimizer_method,
+    resolve_solver_device, run_in_solver_device_context, select_exact_path,
+    solver_device_context,
     precompute_linear_operator_initial_tangents_enabled, projected_replay_projection_column_chunk,
     projected_replay_residuals_enabled, scalar_gradient_initial_tangents_enabled,
+    trial_solver_scan_policy, use_precomputed_tridi_for_exact_tape,
+    use_scan_for_trial_solves,
 )
 from .optimizers.fixed_boundary.scalar_gradient import exact_objective_and_gradient
 from .optimizers.fixed_boundary.scalar_lbfgs import run_lbfgs_adjoint_exact_optimizer
@@ -307,30 +310,6 @@ class FixedBoundaryExactOptimizer:
 
         return self._flux
 
-    def _resolve_solver_device(self, solver_device: str | None) -> str | None:
-        name = "auto" if solver_device is None else str(solver_device).strip().lower()
-        if name in ("", "none", "auto", "default"):
-            return None
-        try:
-            jax_module = _compat_module.jax
-            current_backend = str(jax_module.default_backend()).strip().lower() if jax_module is not None else ""
-        except Exception:
-            current_backend = ""
-        aliases = {
-            "gpu": {"gpu", "cuda", "rocm", "tpu"},
-            "cuda": {"gpu", "cuda"},
-            "rocm": {"gpu", "rocm"},
-            "tpu": {"tpu"},
-            "cpu": {"cpu"},
-        }
-        if current_backend in aliases.get(name, {name}):
-            # Explicitly requesting the already-active backend should not wrap
-            # every callback in a default_device context or move static data a
-            # second time.  On GPU this path is materially slower for new
-            # accepted-point exact tapes.
-            return None
-        return name
-
     def _resolve_exact_path_request(self, exact_path: str | None) -> str | None:
         """Validate the optional accepted-point differentiation path request."""
 
@@ -362,259 +341,19 @@ class FixedBoundaryExactOptimizer:
                 pass
         return bool(getattr(getattr(self._static, "cfg", None), "lasym", False))
 
-    def _resolve_optimizer_method(self, method: str, scipy_lsmr_maxiter: int | None) -> tuple[str, int | None, str | None]:
-        """Resolve optimizer method aliases and the opt-in automatic policy.
-
-        ``method="auto"`` is intentionally conservative and device-preserving:
-        it keeps the dense SciPy trust-region path unless the user explicitly
-        requests a specialized method. Short-route CPU profiling on QA/QH/QP
-        showed that the matrix-free SciPy interface can spend more time in
-        repeated VJPs than it saves by avoiding dense Jacobian materialization.
-        The matrix-free path remains available through
-        ``method="scipy_matrix_free"`` for memory-constrained experiments, while
-        ``method="auto_scalar"`` selects the scalar-trust route for high-mode
-        differentiable production studies.
-        """
-
-        method_key = str(method).strip().lower().replace("-", "_")
-        aliases = {
-            "matrix_free": "scipy_matrix_free",
-            "scipy_mf": "scipy_matrix_free",
-            "trf": "scipy",
-        }
-        method_key = aliases.get(method_key, method_key)
-        scalar_auto_requested = method_key in ("auto_scalar", "auto_adjoint", "adaptive_scalar", "adaptive_adjoint")
-        if method_key not in ("auto", "adaptive") and not scalar_auto_requested:
-            return method_key, scipy_lsmr_maxiter, None
-
-        if self._has_stellarator_asymmetric_configuration():
-            prefix = "auto_scalar" if scalar_auto_requested else "auto"
-            return "scipy", scipy_lsmr_maxiter, f"{prefix}:dense-lasym"
-
-        backend = _optimizer_backend_name(getattr(self, "_solver_device_name", None))
-        helicity_m = None if self._helicity_m is None else int(self._helicity_m)
-        helicity_n = None if self._helicity_n is None else int(self._helicity_n)
-        if self._spec_max_mode() >= 3 and self._objective_family in ("qs", "qi"):
-            if scalar_auto_requested:
-                suffix = f"{backend}-" if backend in ("gpu", "cuda", "rocm", "tpu", "metal") else ""
-                return "scalar_trust", scipy_lsmr_maxiter, f"auto_scalar:{suffix}high-mode-scalar-trust"
-            if backend in ("gpu", "cuda", "rocm", "tpu", "metal"):
-                return "scipy", scipy_lsmr_maxiter, f"auto:dense-preserves-{backend}"
-            if helicity_m == 1 and helicity_n == 0:
-                family = "qa"
-            elif helicity_m == 0 and helicity_n not in (None, 0):
-                family = "qp"
-            elif helicity_m == 1 and helicity_n not in (None, 0):
-                family = "qh"
-            else:
-                family = str(self._objective_family or "qs")
-            return "scipy", scipy_lsmr_maxiter, f"auto:{family}-dense-default"
-
-        if backend in ("gpu", "cuda", "rocm", "tpu", "metal"):
-            prefix = "auto_scalar" if scalar_auto_requested else "auto"
-            return "scipy", scipy_lsmr_maxiter, f"{prefix}:dense-preserves-{backend}"
-        prefix = "auto_scalar" if scalar_auto_requested else "auto"
-        return "scipy", scipy_lsmr_maxiter, f"{prefix}:dense-default"
-
-    def _select_exact_path(self) -> str:
-        """Choose the accepted-point differentiation path.
-
-        The established non-scan discrete-adjoint tape is the default on CPU
-        and GPU. May 2026 cold and warm ``office`` RTX A4000 profiling showed
-        the scan-differentiated exact path can be useful for targeted parity
-        studies but is not a robust GPU default for accepted-point Jacobians.
-        The environment override ``VMEC_JAX_OPT_EXACT_PATH={tape,scan}``
-        remains available for profiling and parity studies.
-        """
-        requested = getattr(self, "_exact_path_request", None)
-        if requested in ("scan", "tape"):
-            return str(requested)
-        forced = os.getenv("VMEC_JAX_OPT_EXACT_PATH", "").strip().lower()
-        if forced in ("scan", "tape"):
-            return forced
-        return "tape"
-
-    def _use_precomputed_tridi_for_exact_tape(self) -> bool | None:
-        """Use precomputed Thomas coefficients for accepted GPU tape solves.
-
-        This is deliberately scoped to accepted-point exact solves. May 2026
-        office RTX A4000 profiles show it reduces dense-Jacobian tape cost for
-        mode-2 and mode-3 stellarator-symmetric tapes (24 and 48 DOFs), while
-        larger parameter spaces can lose more in replay payload cost than they
-        gain in preconditioner cost. ``None`` preserves the solver's legacy
-        environment-controlled default for CPU/default backends.
-        """
-
-        forced = self._env_bool_override("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE")
-        if forced is not None:
-            return forced
-        backend = self._exact_tape_backend_name()
-        if backend not in ("gpu", "cuda", "tpu", "rocm"):
-            return None
-        try:
-            max_dofs = int(os.getenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS", "48"))
-        except ValueError:
-            max_dofs = 48
-        if max_dofs < 0:
-            return False
-        return True if len(self._specs) <= max_dofs else None
-
-    def _trial_solver_scan_policy(self, *, max_nfev: int | None = None) -> tuple[bool, str, str]:
-        """Return the optimization trial-solve scan decision and provenance.
-
-        Exact-optimizer trial residuals are short VMEC solves called repeatedly
-        by SciPy's trust-region line search.  They do not need an adjoint tape.
-        The VMEC2000-compatible scan path can reuse compiled runners across
-        boundary updates, but it has a cold setup cost and can perturb SciPy's
-        accepted trust-region trajectory by changing trial convergence details.
-        Public-budget CPU policy matrices currently show family-specific
-        candidates rather than a safe universal promotion: QA can benefit from
-        accelerated scan in short probes, QP can benefit from VMEC2000-scan in
-        noisy short probes, and QH accelerated scan changes the trust-region
-        endpoint.  Therefore all CPU QS/QI example families keep trial scan
-        opt-in until complete-solve speed and quality evidence supports a
-        family-specific default.  Environment overrides always win so
-        regressions can be isolated per machine/problem.
-        """
-        forced = os.getenv("VMEC_JAX_OPT_TRIAL_SCAN", "").strip().lower()
-        if forced in ("1", "true", "yes", "on", "scan"):
-            return True, "environment", "VMEC_JAX_OPT_TRIAL_SCAN=scan"
-        if forced in ("0", "false", "no", "off", "loop", "none"):
-            return False, "environment", "VMEC_JAX_OPT_TRIAL_SCAN=loop"
-        if max_nfev is not None and int(max_nfev) <= 2:
-            return False, "stage_budget", "max_nfev<=2"
-        family = str(getattr(self, "_objective_family", "")).strip().lower()
-        if family == "qi":
-            return False, "objective_family", "qi_trial_loop_default"
-        try:
-            helicity_m = None if self._helicity_m is None else int(self._helicity_m)
-            helicity_n = None if self._helicity_n is None else int(self._helicity_n)
-        except Exception:
-            helicity_m = None
-            helicity_n = None
-        if family == "qs" and helicity_m == 0 and helicity_n not in (None, 0):
-            return False, "objective_family", "quasi_poloidal_trial_loop_default"
-        backend = self._exact_tape_backend_name()
-        use_scan = backend in ("gpu", "cuda", "tpu", "rocm")
-        detail = f"{backend}_trial_{'scan' if use_scan else 'loop'}_default"
-        return use_scan, "backend_default", detail
-
-    def _use_scan_for_trial_solves(self, *, max_nfev: int | None = None) -> bool:
-        """Return whether trial residual solves should use the scan loop."""
-
-        return bool(self._trial_solver_scan_policy(max_nfev=max_nfev)[0])
-
-    def _ensure_solver_policy_defaults(self) -> None:
-        """Install minimal solve-policy dictionaries for test stubs.
-
-        Normal optimizers build these dictionaries in ``__init__`` from the
-        VMEC input deck.  Some focused optimizer tests construct instances with
-        ``object.__new__`` to exercise optimizer control flow without a full
-        VMEC solve.  Keeping this guard at the run boundary prevents those
-        stubs from carrying unrelated setup burden while preserving production
-        defaults for real optimizers.
-        """
-
-        if not isinstance(getattr(self, "_exact_solver_kwargs", None), dict):
-            self._exact_solver_kwargs = {"use_scan": False, "light_history": True, "resume_state_mode": "none"}
-        if not isinstance(getattr(self, "_trial_solver_kwargs", None), dict):
-            self._trial_solver_kwargs = {"use_scan": False, "light_history": True, "resume_state_mode": "none"}
-        if not hasattr(self, "_trial_solver_scan_policy_source"):
-            self._trial_solver_scan_policy_source = "stub_default"
-        if not hasattr(self, "_trial_solver_scan_policy_detail"):
-            self._trial_solver_scan_policy_detail = "optimizer_run_default"
-
-    def _exact_tape_backend_name(self) -> str:
-        """Return the backend name used for exact-tape optimization policy."""
-
-        backend = str(getattr(self, "_solver_device_name", None) or "").strip().lower()
-        if backend:
-            return backend
-        try:
-            jax_module = _compat_module.jax
-            return str(jax_module.default_backend()).strip().lower() if jax_module is not None else "cpu"
-        except Exception:
-            return "cpu"
-
-    def _env_bool_override(self, name: str) -> bool | None:
-        value = os.getenv(str(name), "").strip().lower()
-        if value in ("1", "true", "yes", "on"):
-            return True
-        if value in ("0", "false", "no", "off"):
-            return False
-        return None
-
-    def _gpu_like_exact_tape_backend(self) -> bool:
-        return self._exact_tape_backend_name() in ("gpu", "cuda", "rocm", "tpu", "metal")
-
-    def _solver_device_context(self):
-        if self._solver_device_name is None:
-            return nullcontext()
-        try:
-            jax_module = _compat_module.jax
-            if jax_module is None:
-                return nullcontext()
-            devices = jax_module.devices(self._solver_device_name)
-            if not devices:
-                return nullcontext()
-            return jax_module.default_device(devices[0])
-        except Exception:
-            return nullcontext()
-
-    def _move_to_solver_device(self, value):
-        if self._solver_device_name is None:
-            return value
-        try:
-            jax_module = _compat_module.jax
-            if jax_module is None:
-                return value
-            device = jax_module.devices(self._solver_device_name)[0]
-            jax_array_type = jax_module.Array
-        except Exception:
-            return value
-
-        def _move(obj):
-            if obj is None or isinstance(obj, (str, bytes, int, float, complex, bool)):
-                return obj
-            if isinstance(obj, (np.ndarray, jax_array_type)):
-                return jax_module.device_put(obj, device)
-            if is_dataclass(obj) and not isinstance(obj, type):
-                return replace(
-                    obj,
-                    **{field.name: _move(getattr(obj, field.name)) for field in fields(obj)},
-                )
-            if isinstance(obj, dict):
-                return {key: _move(val) for key, val in obj.items()}
-            if isinstance(obj, list):
-                return [_move(item) for item in obj]
-            if isinstance(obj, tuple):
-                moved = tuple(_move(item) for item in obj)
-                if hasattr(obj, "_fields"):
-                    return type(obj)(*moved)
-                return moved
-            return obj
-
-        return _move(value)
-
-    def _run_in_solver_device_context(self, fn, *args, **kwargs):
-        if self._solver_device_name is None or self._inside_solver_device_context:
-            return fn(*args, **kwargs)
-        from .kernels.tomnsp import tomnsps_fft_policy_override
-
-        backend_name = str(self._solver_device_name).strip().lower()
-        tomnsps_fft_override = (
-            backend_name in ("gpu", "cuda", "rocm", "tpu")
-            if os.getenv("VMEC_JAX_TOMNSPS_FFT") is None
-            else None
-        )
-        with ExitStack() as stack:
-            stack.enter_context(self._solver_device_context())
-            stack.enter_context(tomnsps_fft_policy_override(tomnsps_fft_override))
-            self._inside_solver_device_context = True
-            try:
-                return fn(*args, **kwargs)
-            finally:
-                self._inside_solver_device_context = False
+    _resolve_optimizer_method = resolve_optimizer_method
+    _select_exact_path = select_exact_path
+    _use_precomputed_tridi_for_exact_tape = use_precomputed_tridi_for_exact_tape
+    _trial_solver_scan_policy = trial_solver_scan_policy
+    _use_scan_for_trial_solves = use_scan_for_trial_solves
+    _ensure_solver_policy_defaults = ensure_solver_policy_defaults
+    _exact_tape_backend_name = exact_tape_backend_name
+    _env_bool_override = staticmethod(env_bool_override)
+    _gpu_like_exact_tape_backend = gpu_like_exact_tape_backend
+    _resolve_solver_device = staticmethod(resolve_solver_device)
+    _solver_device_context = solver_device_context
+    _move_to_solver_device = move_to_solver_device
+    _run_in_solver_device_context = run_in_solver_device_context
 
     def _read_last_array(self, array_key: str, scalar_key: str, default, cast):
         value = self._indata.get(array_key, None)
@@ -700,67 +439,9 @@ class FixedBoundaryExactOptimizer:
             initial_guess_from_boundary_func=initial_guess_from_boundary,
         )
 
-    def _use_jit_initial_state(self) -> bool:
-        flag = os.getenv("VMEC_JAX_OPT_JIT_INITIAL_STATE")
-        if flag is not None:
-            return flag.strip().lower() not in ("", "0", "false", "no", "off")
-        # The projected initial-state map is small enough that JIT compile and
-        # dispatch overhead dominates cold CPU exact callbacks.  Keep the JIT
-        # helper opt-in until a workload has enough same-shape reuse to amortize
-        # compilation.
-        return False
-
-    def _initial_state_from_params_jit(self, params) -> VMECState | None:
-        """Return the projected initial state using a cached JIT helper when safe."""
-
-        if not self._use_jit_initial_state():
-            return None
-        try:
-            from .init_guess import initial_guess_from_boundary as _ig
-            from .state import pack_state, unpack_state
-        except Exception:
-            return None
-
-        helper = getattr(self, "_initial_state_packed_helper", None)
-        if helper is None:
-
-            @jax.jit
-            def _packed_initial_state(p):
-                bdy = self._boundary_from_params(p)
-                axis_override = getattr(self, "_initial_axis_override", None)
-                if axis_override is None:
-                    state = _ig(
-                        self._static,
-                        bdy,
-                        self._indata,
-                        vmec_project=True,
-                    )
-                else:
-                    state = _ig(
-                        self._static,
-                        bdy,
-                        self._indata,
-                        vmec_project=True,
-                        axis_override=axis_override,
-                    )
-                return jnp.asarray(pack_state(state), dtype=jnp.float64)
-
-            helper = _packed_initial_state
-            self._initial_state_packed_helper = helper
-
-        try:
-            packed = helper(jnp.asarray(params, dtype=jnp.float64))
-            if self._sync_initial_state_projection_enabled():
-                packed = jax.block_until_ready(packed)
-            return unpack_state(packed, self._layout)
-        except Exception:
-            return None
-
-    def _sync_initial_state_projection_enabled(self) -> bool:
-        """Return whether the JIT initial-state projection should synchronize."""
-
-        flag = os.getenv("VMEC_JAX_OPT_SYNC_INITIAL_STATE", "").strip().lower()
-        return flag in ("1", "true", "yes", "on")
+    _use_jit_initial_state = _state_cache.use_jit_initial_state
+    _initial_state_from_params_jit = _state_cache.initial_state_from_params_jit
+    _sync_initial_state_projection_enabled = _state_cache.sync_initial_state_projection_enabled
 
     _remember_exact_state = _state_cache.remember_exact_state
     _state_matches_params = _state_cache.state_matches_params
@@ -772,16 +453,7 @@ class FixedBoundaryExactOptimizer:
     _attach_run_private_payload = _state_cache.attach_run_private_payload
     _initial_run_evaluation = _state_cache.initial_run_evaluation
 
-    def _exact_history_accepts(self, cost: float) -> bool:
-        """Return whether an exact callback row should enter accepted history."""
-
-        if not np.isfinite(float(cost)):
-            return False
-        best_cost = float(getattr(self, "_best_exact_cost", math.inf))
-        if not np.isfinite(best_cost):
-            return True
-        tol = max(1.0e-14, 1.0e-9 * max(1.0, abs(best_cost), abs(float(cost))))
-        return float(cost) <= best_cost + tol
+    _exact_history_accepts = _state_cache.exact_history_accepts
 
     _cached_exact_residual = _state_cache.cached_exact_residual
     _cached_exact_state = _state_cache.cached_exact_state

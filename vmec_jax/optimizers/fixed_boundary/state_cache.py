@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections import OrderedDict
 import math
+import os
 import time
 
 import numpy as np
 
+from ..._compat import jax, jnp
 from ...boundary import BoundaryCoeffs
 from ...namelist import InData
 from ...state import VMECState
@@ -93,6 +95,72 @@ def initial_state_from_params(
     optimizer._remember_initial_state(params, state0)
     optimizer._profile_add(profile_name, time.perf_counter() - t_guess)
     return state0
+
+
+def use_jit_initial_state(optimizer) -> bool:
+    """Return whether the projected initial-state helper should be JIT compiled."""
+
+    flag = os.getenv("VMEC_JAX_OPT_JIT_INITIAL_STATE")
+    if flag is not None:
+        return flag.strip().lower() not in ("", "0", "false", "no", "off")
+    # The projected initial-state map is small enough that JIT compile and
+    # dispatch overhead dominates cold CPU exact callbacks. Keep the helper
+    # opt-in until a workload has enough same-shape reuse to amortize compile.
+    return False
+
+
+def initial_state_from_params_jit(optimizer, params) -> VMECState | None:
+    """Return the projected initial state using a cached JIT helper when safe."""
+
+    if not optimizer._use_jit_initial_state():
+        return None
+    try:
+        from ...init_guess import initial_guess_from_boundary as _ig
+        from ...state import pack_state, unpack_state
+    except Exception:
+        return None
+
+    helper = getattr(optimizer, "_initial_state_packed_helper", None)
+    if helper is None:
+
+        @jax.jit
+        def _packed_initial_state(p):
+            bdy = optimizer._boundary_from_params(p)
+            axis_override = getattr(optimizer, "_initial_axis_override", None)
+            if axis_override is None:
+                state = _ig(
+                    optimizer._static,
+                    bdy,
+                    optimizer._indata,
+                    vmec_project=True,
+                )
+            else:
+                state = _ig(
+                    optimizer._static,
+                    bdy,
+                    optimizer._indata,
+                    vmec_project=True,
+                    axis_override=axis_override,
+                )
+            return jnp.asarray(pack_state(state), dtype=jnp.float64)
+
+        helper = _packed_initial_state
+        optimizer._initial_state_packed_helper = helper
+
+    try:
+        packed = helper(jnp.asarray(params, dtype=jnp.float64))
+        if optimizer._sync_initial_state_projection_enabled():
+            packed = jax.block_until_ready(packed)
+        return unpack_state(packed, optimizer._layout)
+    except Exception:
+        return None
+
+
+def sync_initial_state_projection_enabled(optimizer) -> bool:
+    """Return whether the JIT initial-state projection should synchronize."""
+
+    flag = os.getenv("VMEC_JAX_OPT_SYNC_INITIAL_STATE", "").strip().lower()
+    return flag in ("1", "true", "yes", "on")
 
 
 def remember_exact_state(optimizer, cache_key: bytes, state: VMECState) -> None:
@@ -181,6 +249,18 @@ def append_exact_history_entry(
     if exact_residual is not None:
         optimizer._remember_best_exact_point(params, exact_residual, entry_cost, state=state)
     return True
+
+
+def exact_history_accepts(optimizer, cost: float) -> bool:
+    """Return whether an exact callback row should enter accepted history."""
+
+    if not np.isfinite(float(cost)):
+        return False
+    best_cost = float(getattr(optimizer, "_best_exact_cost", math.inf))
+    if not np.isfinite(best_cost):
+        return True
+    tol = max(1.0e-14, 1.0e-9 * max(1.0, abs(best_cost), abs(float(cost))))
+    return float(cost) <= best_cost + tol
 
 
 def final_history_wall_time(optimizer) -> float:

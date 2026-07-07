@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack, nullcontext
+from dataclasses import fields, is_dataclass, replace
 import os
+
+import numpy as np
 
 
 def _env_flag(name: str) -> bool | None:
@@ -59,6 +63,259 @@ def optimizer_backend_name(solver_device_name: str | None) -> str:
         return str(_jax.default_backend()).strip().lower() if _jax is not None else "cpu"
     except Exception:
         return "cpu"
+
+
+def exact_tape_backend_name(optimizer) -> str:
+    """Return the backend name used for exact-tape optimization policy."""
+
+    backend = str(getattr(optimizer, "_solver_device_name", None) or "").strip().lower()
+    if backend:
+        return backend
+    return optimizer_backend_name(None)
+
+
+def env_bool_override(name: str) -> bool | None:
+    """Return a boolean optimizer environment override, or ``None`` if unset."""
+
+    value = os.getenv(str(name), "").strip().lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off"):
+        return False
+    return None
+
+
+def resolve_solver_device(solver_device: str | None) -> str | None:
+    """Normalize an optimizer device request without wrapping the active backend."""
+
+    name = "auto" if solver_device is None else str(solver_device).strip().lower()
+    if name in ("", "none", "auto", "default"):
+        return None
+    try:
+        from ... import _compat as _compat_module
+
+        jax_module = _compat_module.jax
+        current_backend = str(jax_module.default_backend()).strip().lower() if jax_module is not None else ""
+    except Exception:
+        current_backend = ""
+    aliases = {
+        "gpu": {"gpu", "cuda", "rocm", "tpu"},
+        "cuda": {"gpu", "cuda"},
+        "rocm": {"gpu", "rocm"},
+        "tpu": {"tpu"},
+        "cpu": {"cpu"},
+    }
+    if current_backend in aliases.get(name, {name}):
+        return None
+    return name
+
+
+def solver_device_context(optimizer):
+    """Return the JAX default-device context for optimizer callbacks."""
+
+    if optimizer._solver_device_name is None:
+        return nullcontext()
+    try:
+        from ... import _compat as _compat_module
+
+        jax_module = _compat_module.jax
+        if jax_module is None:
+            return nullcontext()
+        devices = jax_module.devices(optimizer._solver_device_name)
+        if not devices:
+            return nullcontext()
+        return jax_module.default_device(devices[0])
+    except Exception:
+        return nullcontext()
+
+
+def move_to_solver_device(optimizer, value):
+    """Move optimizer pytrees to the requested JAX callback device."""
+
+    if optimizer._solver_device_name is None:
+        return value
+    try:
+        from ... import _compat as _compat_module
+
+        jax_module = _compat_module.jax
+        if jax_module is None:
+            return value
+        device = jax_module.devices(optimizer._solver_device_name)[0]
+        jax_array_type = jax_module.Array
+    except Exception:
+        return value
+
+    def _move(obj):
+        if obj is None or isinstance(obj, (str, bytes, int, float, complex, bool)):
+            return obj
+        if isinstance(obj, (np.ndarray, jax_array_type)):
+            return jax_module.device_put(obj, device)
+        if is_dataclass(obj) and not isinstance(obj, type):
+            return replace(
+                obj,
+                **{field.name: _move(getattr(obj, field.name)) for field in fields(obj)},
+            )
+        if isinstance(obj, dict):
+            return {key: _move(val) for key, val in obj.items()}
+        if isinstance(obj, list):
+            return [_move(item) for item in obj]
+        if isinstance(obj, tuple):
+            moved = tuple(_move(item) for item in obj)
+            if hasattr(obj, "_fields"):
+                return type(obj)(*moved)
+            return moved
+        return obj
+
+    return _move(value)
+
+
+def run_in_solver_device_context(optimizer, fn, *args, **kwargs):
+    """Run a callback in the requested solver-device and FFT policy contexts."""
+
+    if optimizer._solver_device_name is None or optimizer._inside_solver_device_context:
+        return fn(*args, **kwargs)
+    from ...kernels.tomnsp import tomnsps_fft_policy_override
+
+    backend_name = str(optimizer._solver_device_name).strip().lower()
+    tomnsps_fft_override = (
+        backend_name in ("gpu", "cuda", "rocm", "tpu")
+        if os.getenv("VMEC_JAX_TOMNSPS_FFT") is None
+        else None
+    )
+    with ExitStack() as stack:
+        stack.enter_context(optimizer._solver_device_context())
+        stack.enter_context(tomnsps_fft_policy_override(tomnsps_fft_override))
+        optimizer._inside_solver_device_context = True
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            optimizer._inside_solver_device_context = False
+
+
+def gpu_like_exact_tape_backend(optimizer) -> bool:
+    """Return whether exact-tape callbacks target a GPU-like backend."""
+
+    return exact_tape_backend_name(optimizer) in ("gpu", "cuda", "rocm", "tpu", "metal")
+
+
+def resolve_optimizer_method(optimizer, method: str, scipy_lsmr_maxiter: int | None) -> tuple[str, int | None, str | None]:
+    """Resolve public optimizer method aliases and the conservative auto policy."""
+
+    method_key = str(method).strip().lower().replace("-", "_")
+    aliases = {
+        "matrix_free": "scipy_matrix_free",
+        "scipy_mf": "scipy_matrix_free",
+        "trf": "scipy",
+    }
+    method_key = aliases.get(method_key, method_key)
+    scalar_auto_requested = method_key in ("auto_scalar", "auto_adjoint", "adaptive_scalar", "adaptive_adjoint")
+    if method_key not in ("auto", "adaptive") and not scalar_auto_requested:
+        return method_key, scipy_lsmr_maxiter, None
+
+    if optimizer._has_stellarator_asymmetric_configuration():
+        prefix = "auto_scalar" if scalar_auto_requested else "auto"
+        return "scipy", scipy_lsmr_maxiter, f"{prefix}:dense-lasym"
+
+    backend = optimizer_backend_name(getattr(optimizer, "_solver_device_name", None))
+    helicity_m = None if optimizer._helicity_m is None else int(optimizer._helicity_m)
+    helicity_n = None if optimizer._helicity_n is None else int(optimizer._helicity_n)
+    if optimizer._spec_max_mode() >= 3 and optimizer._objective_family in ("qs", "qi"):
+        if scalar_auto_requested:
+            suffix = f"{backend}-" if backend in ("gpu", "cuda", "rocm", "tpu", "metal") else ""
+            return "scalar_trust", scipy_lsmr_maxiter, f"auto_scalar:{suffix}high-mode-scalar-trust"
+        if backend in ("gpu", "cuda", "rocm", "tpu", "metal"):
+            return "scipy", scipy_lsmr_maxiter, f"auto:dense-preserves-{backend}"
+        if helicity_m == 1 and helicity_n == 0:
+            family = "qa"
+        elif helicity_m == 0 and helicity_n not in (None, 0):
+            family = "qp"
+        elif helicity_m == 1 and helicity_n not in (None, 0):
+            family = "qh"
+        else:
+            family = str(optimizer._objective_family or "qs")
+        return "scipy", scipy_lsmr_maxiter, f"auto:{family}-dense-default"
+
+    if backend in ("gpu", "cuda", "rocm", "tpu", "metal"):
+        prefix = "auto_scalar" if scalar_auto_requested else "auto"
+        return "scipy", scipy_lsmr_maxiter, f"{prefix}:dense-preserves-{backend}"
+    prefix = "auto_scalar" if scalar_auto_requested else "auto"
+    return "scipy", scipy_lsmr_maxiter, f"{prefix}:dense-default"
+
+
+def select_exact_path(optimizer) -> str:
+    """Choose the accepted-point differentiation path for exact callbacks."""
+
+    requested = getattr(optimizer, "_exact_path_request", None)
+    if requested in ("scan", "tape"):
+        return str(requested)
+    forced = os.getenv("VMEC_JAX_OPT_EXACT_PATH", "").strip().lower()
+    if forced in ("scan", "tape"):
+        return forced
+    return "tape"
+
+
+def use_precomputed_tridi_for_exact_tape(optimizer) -> bool | None:
+    """Return whether accepted exact-tape solves should precompute tridiagonal factors."""
+
+    forced = optimizer._env_bool_override("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE")
+    if forced is not None:
+        return forced
+    backend = optimizer._exact_tape_backend_name()
+    if backend not in ("gpu", "cuda", "tpu", "rocm"):
+        return None
+    try:
+        max_dofs = int(os.getenv("VMEC_JAX_OPT_EXACT_TRIDI_PRECOMPUTE_MAX_DOFS", "48"))
+    except ValueError:
+        max_dofs = 48
+    if max_dofs < 0:
+        return False
+    return True if len(optimizer._specs) <= max_dofs else None
+
+
+def trial_solver_scan_policy(optimizer, *, max_nfev: int | None = None) -> tuple[bool, str, str]:
+    """Return trial-solve scan policy and provenance for exact optimization."""
+
+    forced = os.getenv("VMEC_JAX_OPT_TRIAL_SCAN", "").strip().lower()
+    if forced in ("1", "true", "yes", "on", "scan"):
+        return True, "environment", "VMEC_JAX_OPT_TRIAL_SCAN=scan"
+    if forced in ("0", "false", "no", "off", "loop", "none"):
+        return False, "environment", "VMEC_JAX_OPT_TRIAL_SCAN=loop"
+    if max_nfev is not None and int(max_nfev) <= 2:
+        return False, "stage_budget", "max_nfev<=2"
+    family = str(getattr(optimizer, "_objective_family", "")).strip().lower()
+    if family == "qi":
+        return False, "objective_family", "qi_trial_loop_default"
+    try:
+        helicity_m = None if optimizer._helicity_m is None else int(optimizer._helicity_m)
+        helicity_n = None if optimizer._helicity_n is None else int(optimizer._helicity_n)
+    except Exception:
+        helicity_m = None
+        helicity_n = None
+    if family == "qs" and helicity_m == 0 and helicity_n not in (None, 0):
+        return False, "objective_family", "quasi_poloidal_trial_loop_default"
+    backend = optimizer._exact_tape_backend_name()
+    use_scan = backend in ("gpu", "cuda", "tpu", "rocm")
+    detail = f"{backend}_trial_{'scan' if use_scan else 'loop'}_default"
+    return use_scan, "backend_default", detail
+
+
+def use_scan_for_trial_solves(optimizer, *, max_nfev: int | None = None) -> bool:
+    """Return whether trial residual solves should use the scan loop."""
+
+    return bool(optimizer._trial_solver_scan_policy(max_nfev=max_nfev)[0])
+
+
+def ensure_solver_policy_defaults(optimizer) -> None:
+    """Install minimal solve-policy dictionaries for lightweight optimizer stubs."""
+
+    if not isinstance(getattr(optimizer, "_exact_solver_kwargs", None), dict):
+        optimizer._exact_solver_kwargs = {"use_scan": False, "light_history": True, "resume_state_mode": "none"}
+    if not isinstance(getattr(optimizer, "_trial_solver_kwargs", None), dict):
+        optimizer._trial_solver_kwargs = {"use_scan": False, "light_history": True, "resume_state_mode": "none"}
+    if not hasattr(optimizer, "_trial_solver_scan_policy_source"):
+        optimizer._trial_solver_scan_policy_source = "stub_default"
+    if not hasattr(optimizer, "_trial_solver_scan_policy_detail"):
+        optimizer._trial_solver_scan_policy_detail = "optimizer_run_default"
 
 
 def _backend_is_accelerator(backend: str) -> bool:
