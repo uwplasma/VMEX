@@ -274,403 +274,114 @@ def test_qs_budget_probe_objective_reduction_fraction() -> None:
     assert qs_budget_probe._objective_reduction_fraction(float("nan"), 1.0) is None
 
 
+def _profile_counter(count: int, wall_time_s: float, mean_wall_time_s: float | None = None) -> dict[str, float | int]:
+    """Build one synthetic timing counter for optimizer-profile summary tests."""
+
+    wall = float(wall_time_s)
+    mean = wall if mean_wall_time_s is None else float(mean_wall_time_s)
+    return {"count": int(count), "wall_time_s": wall, "mean_wall_time_s": mean}
+
+
+def _qs_budget_probe_synthetic_history() -> dict[str, dict[str, dict[str, float | int]]]:
+    """Return a compact optimizer profile exercising scan, replay, and route summaries."""
+
+    entries = [
+        ("trial_solver_scan_runner_cache_hit_count", 3, 3.0, 1.0),
+        ("trial_solver_scan_runner_cache_miss_count", 1, 1.0, 1.0),
+        ("trial_solver_scan_runner_cache_bypass_count", 1, 2.0, 2.0),
+        ("trial_solver_scan_runner_cache_miss_category_iteration_budget_count", 2, 2.0, 1.0),
+        ("trial_solver_scan_runner_arg_leaf_count", 1, 40.0, 40.0),
+        ("trial_solver_scan_runner_arg_array_leaf_count", 1, 24.0, 24.0),
+        ("trial_solver_scan_runner_arg_scalar_leaf_count", 1, 16.0, 16.0),
+        ("trial_solver_scan_runner_arg_array_nbytes", 1, 4096.0, 4096.0),
+        ("trial_solver_scan_runner_arg_category_state_leaf_count", 1, 8.0, 8.0),
+        ("trial_solver_scan_runner_arg_category_state_array_leaf_count", 1, 8.0, 8.0),
+        ("trial_solver_scan_runner_arg_category_state_array_nbytes", 1, 2048.0, 2048.0),
+        ("trial_solver_scan_runner_arg_category_velocity_leaf_count", 1, 6.0, 6.0),
+        ("trial_solver_scan_runner_arg_category_velocity_array_leaf_count", 1, 6.0, 6.0),
+        ("trial_solver_scan_runner_arg_category_velocity_array_nbytes", 1, 1536.0, 1536.0),
+        ("trial_solver_scan_runner_arg_subcategory_velocity_R_array_nbytes", 1, 512.0, 512.0),
+        ("trial_solver_scan_runner_arg_subcategory_velocity_Z_array_nbytes", 1, 768.0, 768.0),
+        ("trial_solver_scan_runner_arg_subcategory_velocity_lambda_array_nbytes", 1, 256.0, 256.0),
+        ("trial_solver_scan_runner_arg_category_preconditioner_leaf_count", 1, 4.0, 4.0),
+        ("trial_solver_scan_runner_arg_category_preconditioner_array_leaf_count", 1, 4.0, 4.0),
+        ("trial_solver_scan_runner_arg_category_preconditioner_array_nbytes", 1, 512.0, 512.0),
+        (
+            "trial_solver_scan_runner_arg_subcategory_preconditioner_rz_apply_array_nbytes",
+            1,
+            384.0,
+            384.0,
+        ),
+        (
+            "trial_solver_scan_runner_arg_subcategory_preconditioner_rz_derived_array_nbytes",
+            1,
+            128.0,
+            128.0,
+        ),
+        ("trial_solver_scan_runner_arg_path_arg0_state_leaf_count", 1, 8.0, 8.0),
+        ("trial_solver_scan_runner_arg_path_arg0_state_array_leaf_count", 1, 8.0, 8.0),
+        ("trial_solver_scan_runner_arg_path_arg0_state_array_nbytes", 1, 2048.0, 2048.0),
+        ("trial_solver_scan_runner_arg_preconditioner_rz_mats_key_count", 1, 18.0, 18.0),
+        ("trial_solver_scan_runner_arg_preconditioner_rz_mats_unexpected_key_count", 0, 0.0, 0.0),
+        ("trial_solver_scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count", 0, 0.0, 0.0),
+        ("trial_solver_scan_runner_arg_preconditioner_rz_mats_compact_ok_count", 1, 1.0, 1.0),
+        ("trial_solver_scan_history_none", 1, 0.0, 0.0),
+        ("trial_solver_scan_history_leaf_count", 1, 9.0, 9.0),
+        ("trial_solver_scan_history_array_leaf_count", 1, 9.0, 9.0),
+        ("trial_solver_scan_history_scalar_leaf_count", 1, 0.0, 0.0),
+        ("trial_solver_scan_history_array_nbytes", 1, 288.0, 288.0),
+        ("exact_tape_build", 1, 9.0, 9.0),
+        ("jacobian_total", 1, 12.0, 12.0),
+        ("jacobian_tape_replay", 1, 6.0, 6.0),
+        ("jacobian_tape_replay_dispatch", 1, 4.5, 4.5),
+        ("jacobian_tape_replay_ready", 1, 1.5, 1.5),
+        ("jacobian_projected_replay_total", 1, 6.5, 6.5),
+        ("jacobian_projected_tape_replay_dispatch", 1, 4.25, 4.25),
+        ("jacobian_residual_tangents", 1, 3.0, 3.0),
+        ("jacobian_residual_tangents_dispatch", 1, 0.5, 0.5),
+        ("jacobian_residual_tangents_ready", 1, 2.5, 2.5),
+        ("linear_operator_total", 1, 8.0, 8.0),
+        ("linear_operator_setup", 1, 1.0, 1.0),
+        ("linear_operator_matvec", 2, 2.0, 1.0),
+        ("linear_operator_matmat", 1, 1.5, 1.5),
+        ("linear_operator_rmatvec", 3, 3.0, 1.0),
+        ("linear_operator_residual_vjp", 3, 2.4, 0.8),
+        ("linear_operator_tape_vjp", 3, 2.1, 0.7),
+        ("gradient_total", 1, 5.0, 5.0),
+        ("gradient_residual_vjp", 1, 1.2, 1.2),
+        ("gradient_tape_replay", 1, 2.3, 2.3),
+        ("gradient_initial_vjp", 1, 0.4, 0.4),
+        ("solve_forward_trial_total", 1, 4.0, 4.0),
+        ("trial_solver_scan_total", 1, 3.0, 3.0),
+        ("scan_runner_explicit_compile_s", 1, 2.0, 2.0),
+        ("jacobian_replay_diag_replay_jvp_columns_dynamic_basepoint_count", 1, 3.0, 3.0),
+        ("jacobian_replay_diag_replay_jvp_columns_generic_scan_count", 1, 1.0, 1.0),
+        ("jacobian_replay_diag_replay_jvp_columns_leaf_call_count", 1, 4.0, 4.0),
+        ("jacobian_replay_diag_replay_jvp_columns_input_column_count", 1, 12.0, 12.0),
+        ("jacobian_replay_diag_replay_jvp_columns_chunked_call_count", 1, 1.0, 1.0),
+        ("jacobian_replay_diag_replay_jvp_columns_chunk_count", 1, 3.0, 3.0),
+        ("jacobian_replay_diag_replay_jvp_columns_last_chunk_size", 1, 4.0, 4.0),
+        ("jacobian_replay_diag_replay_dynamic_basepoint_initial_carry_array_leaf_count", 1, 14.0, 14.0),
+        ("jacobian_replay_diag_replay_dynamic_basepoint_initial_carry_none_slot_count", 1, 6.0, 6.0),
+        ("jacobian_replay_diag_replay_dynamic_basepoint_initial_carry_nbytes", 1, 2048.0, 2048.0),
+        ("jacobian_replay_diag_replay_dynamic_basepoint_scan_cache_hit_count", 1, 2.0, 2.0),
+        ("jacobian_replay_diag_replay_dynamic_basepoint_scan_cache_miss_count", 1, 1.0, 1.0),
+        ("jacobian_replay_diag_replay_dynamic_basepoint_scan_cache_build_s", 1, 0.7, 0.7),
+        ("gradient_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_hit_count", 1, 5.0, 5.0),
+        ("gradient_replay_diag_replay_vjp_dynamic_basepoint_count", 1, 2.0, 2.0),
+        ("gradient_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_miss_count", 1, 2.0, 2.0),
+        ("gradient_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_build_s", 1, 0.3, 0.3),
+        ("linear_operator_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_miss_count", 1, 1.0, 1.0),
+        ("linear_operator_replay_diag_replay_vjp_dynamic_basepoint_count", 1, 1.0, 1.0),
+        ("linear_operator_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_build_s", 1, 0.2, 0.2),
+    ]
+    return {"profile": {key: _profile_counter(count, wall, mean) for key, count, wall, mean in entries}}
+
+
 def test_qs_budget_probe_compacts_profile_scan_and_cache_buckets() -> None:
     from tools.diagnostics.optimization import qs_budget_probe
 
-    history = {
-        "profile": {
-            "trial_solver_scan_runner_cache_hit_count": {
-                "count": 3,
-                "wall_time_s": 3.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "trial_solver_scan_runner_cache_miss_count": {
-                "count": 1,
-                "wall_time_s": 1.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "trial_solver_scan_runner_cache_bypass_count": {
-                "count": 1,
-                "wall_time_s": 2.0,
-                "mean_wall_time_s": 2.0,
-            },
-            "trial_solver_scan_runner_cache_miss_category_iteration_budget_count": {
-                "count": 2,
-                "wall_time_s": 2.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "trial_solver_scan_runner_arg_leaf_count": {
-                "count": 1,
-                "wall_time_s": 40.0,
-                "mean_wall_time_s": 40.0,
-            },
-            "trial_solver_scan_runner_arg_array_leaf_count": {
-                "count": 1,
-                "wall_time_s": 24.0,
-                "mean_wall_time_s": 24.0,
-            },
-            "trial_solver_scan_runner_arg_scalar_leaf_count": {
-                "count": 1,
-                "wall_time_s": 16.0,
-                "mean_wall_time_s": 16.0,
-            },
-            "trial_solver_scan_runner_arg_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 4096.0,
-                "mean_wall_time_s": 4096.0,
-            },
-            "trial_solver_scan_runner_arg_category_state_leaf_count": {
-                "count": 1,
-                "wall_time_s": 8.0,
-                "mean_wall_time_s": 8.0,
-            },
-            "trial_solver_scan_runner_arg_category_state_array_leaf_count": {
-                "count": 1,
-                "wall_time_s": 8.0,
-                "mean_wall_time_s": 8.0,
-            },
-            "trial_solver_scan_runner_arg_category_state_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 2048.0,
-                "mean_wall_time_s": 2048.0,
-            },
-            "trial_solver_scan_runner_arg_category_velocity_leaf_count": {
-                "count": 1,
-                "wall_time_s": 6.0,
-                "mean_wall_time_s": 6.0,
-            },
-            "trial_solver_scan_runner_arg_category_velocity_array_leaf_count": {
-                "count": 1,
-                "wall_time_s": 6.0,
-                "mean_wall_time_s": 6.0,
-            },
-            "trial_solver_scan_runner_arg_category_velocity_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 1536.0,
-                "mean_wall_time_s": 1536.0,
-            },
-            "trial_solver_scan_runner_arg_subcategory_velocity_R_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 512.0,
-                "mean_wall_time_s": 512.0,
-            },
-            "trial_solver_scan_runner_arg_subcategory_velocity_Z_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 768.0,
-                "mean_wall_time_s": 768.0,
-            },
-            "trial_solver_scan_runner_arg_subcategory_velocity_lambda_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 256.0,
-                "mean_wall_time_s": 256.0,
-            },
-            "trial_solver_scan_runner_arg_category_preconditioner_leaf_count": {
-                "count": 1,
-                "wall_time_s": 4.0,
-                "mean_wall_time_s": 4.0,
-            },
-            "trial_solver_scan_runner_arg_category_preconditioner_array_leaf_count": {
-                "count": 1,
-                "wall_time_s": 4.0,
-                "mean_wall_time_s": 4.0,
-            },
-            "trial_solver_scan_runner_arg_category_preconditioner_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 512.0,
-                "mean_wall_time_s": 512.0,
-            },
-            "trial_solver_scan_runner_arg_subcategory_preconditioner_rz_apply_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 384.0,
-                "mean_wall_time_s": 384.0,
-            },
-            "trial_solver_scan_runner_arg_subcategory_preconditioner_rz_derived_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 128.0,
-                "mean_wall_time_s": 128.0,
-            },
-            "trial_solver_scan_runner_arg_path_arg0_state_leaf_count": {
-                "count": 1,
-                "wall_time_s": 8.0,
-                "mean_wall_time_s": 8.0,
-            },
-            "trial_solver_scan_runner_arg_path_arg0_state_array_leaf_count": {
-                "count": 1,
-                "wall_time_s": 8.0,
-                "mean_wall_time_s": 8.0,
-            },
-            "trial_solver_scan_runner_arg_path_arg0_state_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 2048.0,
-                "mean_wall_time_s": 2048.0,
-            },
-            "trial_solver_scan_runner_arg_preconditioner_rz_mats_key_count": {
-                "count": 1,
-                "wall_time_s": 18.0,
-                "mean_wall_time_s": 18.0,
-            },
-            "trial_solver_scan_runner_arg_preconditioner_rz_mats_unexpected_key_count": {
-                "count": 0,
-                "wall_time_s": 0.0,
-                "mean_wall_time_s": 0.0,
-            },
-            "trial_solver_scan_runner_arg_preconditioner_rz_mats_missing_mandatory_key_count": {
-                "count": 0,
-                "wall_time_s": 0.0,
-                "mean_wall_time_s": 0.0,
-            },
-            "trial_solver_scan_runner_arg_preconditioner_rz_mats_compact_ok_count": {
-                "count": 1,
-                "wall_time_s": 1.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "trial_solver_scan_history_none": {
-                "count": 1,
-                "wall_time_s": 0.0,
-                "mean_wall_time_s": 0.0,
-            },
-            "trial_solver_scan_history_leaf_count": {
-                "count": 1,
-                "wall_time_s": 9.0,
-                "mean_wall_time_s": 9.0,
-            },
-            "trial_solver_scan_history_array_leaf_count": {
-                "count": 1,
-                "wall_time_s": 9.0,
-                "mean_wall_time_s": 9.0,
-            },
-            "trial_solver_scan_history_scalar_leaf_count": {
-                "count": 1,
-                "wall_time_s": 0.0,
-                "mean_wall_time_s": 0.0,
-            },
-            "trial_solver_scan_history_array_nbytes": {
-                "count": 1,
-                "wall_time_s": 288.0,
-                "mean_wall_time_s": 288.0,
-            },
-            "exact_tape_build": {
-                "count": 1,
-                "wall_time_s": 9.0,
-                "mean_wall_time_s": 9.0,
-            },
-            "jacobian_total": {
-                "count": 1,
-                "wall_time_s": 12.0,
-                "mean_wall_time_s": 12.0,
-            },
-            "jacobian_tape_replay": {
-                "count": 1,
-                "wall_time_s": 6.0,
-                "mean_wall_time_s": 6.0,
-            },
-            "jacobian_tape_replay_dispatch": {
-                "count": 1,
-                "wall_time_s": 4.5,
-                "mean_wall_time_s": 4.5,
-            },
-            "jacobian_tape_replay_ready": {
-                "count": 1,
-                "wall_time_s": 1.5,
-                "mean_wall_time_s": 1.5,
-            },
-            "jacobian_projected_replay_total": {
-                "count": 1,
-                "wall_time_s": 6.5,
-                "mean_wall_time_s": 6.5,
-            },
-            "jacobian_projected_tape_replay_dispatch": {
-                "count": 1,
-                "wall_time_s": 4.25,
-                "mean_wall_time_s": 4.25,
-            },
-            "jacobian_residual_tangents": {
-                "count": 1,
-                "wall_time_s": 3.0,
-                "mean_wall_time_s": 3.0,
-            },
-            "jacobian_residual_tangents_dispatch": {
-                "count": 1,
-                "wall_time_s": 0.5,
-                "mean_wall_time_s": 0.5,
-            },
-            "jacobian_residual_tangents_ready": {
-                "count": 1,
-                "wall_time_s": 2.5,
-                "mean_wall_time_s": 2.5,
-            },
-            "linear_operator_total": {
-                "count": 1,
-                "wall_time_s": 8.0,
-                "mean_wall_time_s": 8.0,
-            },
-            "linear_operator_setup": {
-                "count": 1,
-                "wall_time_s": 1.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "linear_operator_matvec": {
-                "count": 2,
-                "wall_time_s": 2.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "linear_operator_matmat": {
-                "count": 1,
-                "wall_time_s": 1.5,
-                "mean_wall_time_s": 1.5,
-            },
-            "linear_operator_rmatvec": {
-                "count": 3,
-                "wall_time_s": 3.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "linear_operator_residual_vjp": {
-                "count": 3,
-                "wall_time_s": 2.4,
-                "mean_wall_time_s": 0.8,
-            },
-            "linear_operator_tape_vjp": {
-                "count": 3,
-                "wall_time_s": 2.1,
-                "mean_wall_time_s": 0.7,
-            },
-            "gradient_total": {
-                "count": 1,
-                "wall_time_s": 5.0,
-                "mean_wall_time_s": 5.0,
-            },
-            "gradient_residual_vjp": {
-                "count": 1,
-                "wall_time_s": 1.2,
-                "mean_wall_time_s": 1.2,
-            },
-            "gradient_tape_replay": {
-                "count": 1,
-                "wall_time_s": 2.3,
-                "mean_wall_time_s": 2.3,
-            },
-            "gradient_initial_vjp": {
-                "count": 1,
-                "wall_time_s": 0.4,
-                "mean_wall_time_s": 0.4,
-            },
-            "solve_forward_trial_total": {
-                "count": 1,
-                "wall_time_s": 4.0,
-                "mean_wall_time_s": 4.0,
-            },
-            "trial_solver_scan_total": {
-                "count": 1,
-                "wall_time_s": 3.0,
-                "mean_wall_time_s": 3.0,
-            },
-            "scan_runner_explicit_compile_s": {
-                "count": 1,
-                "wall_time_s": 2.0,
-                "mean_wall_time_s": 2.0,
-            },
-            "jacobian_replay_diag_replay_jvp_columns_dynamic_basepoint_count": {
-                "count": 1,
-                "wall_time_s": 3.0,
-                "mean_wall_time_s": 3.0,
-            },
-            "jacobian_replay_diag_replay_jvp_columns_generic_scan_count": {
-                "count": 1,
-                "wall_time_s": 1.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "jacobian_replay_diag_replay_jvp_columns_leaf_call_count": {
-                "count": 1,
-                "wall_time_s": 4.0,
-                "mean_wall_time_s": 4.0,
-            },
-            "jacobian_replay_diag_replay_jvp_columns_input_column_count": {
-                "count": 1,
-                "wall_time_s": 12.0,
-                "mean_wall_time_s": 12.0,
-            },
-            "jacobian_replay_diag_replay_jvp_columns_chunked_call_count": {
-                "count": 1,
-                "wall_time_s": 1.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "jacobian_replay_diag_replay_jvp_columns_chunk_count": {
-                "count": 1,
-                "wall_time_s": 3.0,
-                "mean_wall_time_s": 3.0,
-            },
-            "jacobian_replay_diag_replay_jvp_columns_last_chunk_size": {
-                "count": 1,
-                "wall_time_s": 4.0,
-                "mean_wall_time_s": 4.0,
-            },
-            "jacobian_replay_diag_replay_dynamic_basepoint_initial_carry_array_leaf_count": {
-                "count": 1,
-                "wall_time_s": 14.0,
-                "mean_wall_time_s": 14.0,
-            },
-            "jacobian_replay_diag_replay_dynamic_basepoint_initial_carry_none_slot_count": {
-                "count": 1,
-                "wall_time_s": 6.0,
-                "mean_wall_time_s": 6.0,
-            },
-            "jacobian_replay_diag_replay_dynamic_basepoint_initial_carry_nbytes": {
-                "count": 1,
-                "wall_time_s": 2048.0,
-                "mean_wall_time_s": 2048.0,
-            },
-            "jacobian_replay_diag_replay_dynamic_basepoint_scan_cache_hit_count": {
-                "count": 1,
-                "wall_time_s": 2.0,
-                "mean_wall_time_s": 2.0,
-            },
-            "jacobian_replay_diag_replay_dynamic_basepoint_scan_cache_miss_count": {
-                "count": 1,
-                "wall_time_s": 1.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "jacobian_replay_diag_replay_dynamic_basepoint_scan_cache_build_s": {
-                "count": 1,
-                "wall_time_s": 0.7,
-                "mean_wall_time_s": 0.7,
-            },
-            "gradient_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_hit_count": {
-                "count": 1,
-                "wall_time_s": 5.0,
-                "mean_wall_time_s": 5.0,
-            },
-            "gradient_replay_diag_replay_vjp_dynamic_basepoint_count": {
-                "count": 1,
-                "wall_time_s": 2.0,
-                "mean_wall_time_s": 2.0,
-            },
-            "gradient_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_miss_count": {
-                "count": 1,
-                "wall_time_s": 2.0,
-                "mean_wall_time_s": 2.0,
-            },
-            "gradient_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_build_s": {
-                "count": 1,
-                "wall_time_s": 0.3,
-                "mean_wall_time_s": 0.3,
-            },
-            "linear_operator_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_miss_count": {
-                "count": 1,
-                "wall_time_s": 1.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "linear_operator_replay_diag_replay_vjp_dynamic_basepoint_count": {
-                "count": 1,
-                "wall_time_s": 1.0,
-                "mean_wall_time_s": 1.0,
-            },
-            "linear_operator_replay_diag_replay_dynamic_basepoint_vjp_scan_cache_build_s": {
-                "count": 1,
-                "wall_time_s": 0.2,
-                "mean_wall_time_s": 0.2,
-            },
-        }
-    }
+    history = _qs_budget_probe_synthetic_history()
 
     compact = qs_budget_probe._compact_optimizer_profile(history, top_n=2)
 
