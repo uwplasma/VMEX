@@ -29,7 +29,7 @@ def test_chips_from_chipf_matches_iotas_phips_when_ncurr0(wout_rel: str):
     if not has_jax():
         pytest.skip("chips_from_chipf requires JAX")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     wout_path = root / wout_rel
     assert wout_path.exists()
 

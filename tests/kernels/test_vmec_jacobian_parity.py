@@ -48,7 +48,7 @@ def _rel_rms(a: np.ndarray, b: np.ndarray) -> float:
 def test_vmec_halfmesh_jacobian_matches_wout_gmnc(case_name: str, input_rel: str, wout_rel: str):
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / input_rel
     wout_path = root / wout_rel
     assert input_path.exists()

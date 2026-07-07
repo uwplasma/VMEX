@@ -24,7 +24,7 @@ pytestmark = pytest.mark.full
 
 
 def test_finite_beta_scalars_are_finite_on_bundled_qi_input():
-    path = Path(__file__).resolve().parents[1] / "examples" / "data" / "input.nfp4_QI_finite_beta"
+    path = Path(__file__).resolve().parents[2] / "examples" / "data" / "input.nfp4_QI_finite_beta"
     cfg, indata = load_config(str(path))
     static = build_static(cfg)
     boundary = boundary_from_indata(indata, static.modes)
@@ -45,7 +45,7 @@ def test_finite_beta_scalars_are_finite_on_bundled_qi_input():
 
 
 def test_mercier_terms_are_finite_on_bundled_qi_input():
-    path = Path(__file__).resolve().parents[1] / "examples" / "data" / "input.nfp4_QI_finite_beta"
+    path = Path(__file__).resolve().parents[2] / "examples" / "data" / "input.nfp4_QI_finite_beta"
     cfg, indata = load_config(str(path))
     static = build_static(cfg)
     boundary = boundary_from_indata(indata, static.modes)
@@ -68,7 +68,7 @@ def test_mercier_terms_are_finite_on_bundled_qi_input():
 
 
 def test_mercier_terms_from_state_matches_wout_mercier_path_on_bundled_qi_input():
-    path = Path(__file__).resolve().parents[1] / "examples" / "data" / "input.nfp4_QI_finite_beta"
+    path = Path(__file__).resolve().parents[2] / "examples" / "data" / "input.nfp4_QI_finite_beta"
     cfg, indata = load_config(str(path))
     static = build_static(cfg)
     boundary = boundary_from_indata(indata, static.modes)
@@ -173,7 +173,7 @@ def test_mercier_terms_from_state_dmerc_and_dr_ad_match_fd_on_bundled_qi_input()
 
     jax = pytest.importorskip("jax")
 
-    path = Path(__file__).resolve().parents[1] / "examples" / "data" / "input.nfp4_QI_finite_beta"
+    path = Path(__file__).resolve().parents[2] / "examples" / "data" / "input.nfp4_QI_finite_beta"
     cfg, indata = load_config(str(path))
     static = build_static(cfg)
     boundary = boundary_from_indata(indata, static.modes)

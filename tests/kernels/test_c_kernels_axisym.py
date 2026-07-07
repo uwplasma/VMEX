@@ -18,7 +18,7 @@ def test_c_kernels_nonzero_for_axisym_reference():
     """VMEC2000 computes C-kernels for axisym cases; ensure vmec_jax does too."""
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.circular_tokamak"
     wout_path = root / "examples/data/wout_circular_tokamak_reference.nc"
     assert input_path.exists()

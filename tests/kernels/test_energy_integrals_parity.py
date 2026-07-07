@@ -57,7 +57,7 @@ def test_wb_wp_integrals_match_wout(case_name: str, input_rel: str, wout_rel: st
     """Energy/pressure integrals match VMEC2000 `wout` scalars on the internal grid."""
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / input_rel
     wout_path = root / wout_rel
     assert input_path.exists()

@@ -18,7 +18,7 @@ def _rel_rms(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def test_chips_from_wout_chipf_detects_half_mesh_vmec2000_style():
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
     wout = read_wout(
         repo_root / "examples" / "data" / "wout_LandremanPaul2021_QH_reactorScale_lowres_reference.nc"
     )

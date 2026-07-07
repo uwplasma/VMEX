@@ -9,6 +9,8 @@ The test suite is organized by the code path or artifact being validated:
 - `tests/free_boundary/`: production free-boundary, direct-coil, ESSOS, and
   branch-local derivative behavior.
 - `tests/io/`: public file formats and interchange artifacts, currently WOUT.
+- `tests/kernels/`: low-level VMEC physics kernels, finite-beta terms,
+  real-space geometry, force/residue helpers, and small parity identities.
 - `tests/parity/`: VMEC2000/VMEC++ agreement, bundled parity fixtures, and
   physics parity gates.
 - `tests/postprocessing/`: Boozer, plotting, profile examples, bootstrap

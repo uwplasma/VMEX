@@ -27,7 +27,7 @@ def test_vmec_bcovar_halfmesh_smoke_circular_tokamak():
     """Smoke test: bcovar half-mesh kernels run and reproduce vp reasonably."""
     pytest.importorskip("netCDF4")
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     input_path = root / "examples/data/input.circular_tokamak"
     wout_path = root / "examples/data/wout_circular_tokamak_reference.nc"
     assert input_path.exists()
