@@ -246,7 +246,7 @@ the recommended local escalation path.
        artifact for the candidate being checked; the gate itself is 95%
        while optional executable validation stays in separate opt-in lanes.
    * - Optimization workflow smoke
-     - ``pytest -q tests/test_optimization_examples.py tests/test_qs_ess_render_smoke.py``
+     - ``pytest -q tests/test_optimization_examples.py tests/diagnostics/optimization/test_qs_ess_render_smoke.py``
      - After changing objective tuple construction, examples, or sweep
        rendering docs.
    * - QI objective checks
@@ -258,7 +258,7 @@ the recommended local escalation path.
        ``input.QI_stel_seed_3127`` solved seed when optional Boozer dependencies
        are installed.
    * - QI ranking/report smoke
-     - ``pytest -q tests/test_qi_objective_component_report.py tests/diagnostics/qi/test_qi_seed_suitability_audit.py tests/test_qs_ess_render_smoke.py``
+     - ``pytest -q tests/test_qi_objective_component_report.py tests/diagnostics/qi/test_qi_seed_suitability_audit.py tests/diagnostics/optimization/test_qs_ess_render_smoke.py``
      - After changing QI branch-ranking metrics, seed audit/prefine manifests,
        sweep summary fields, or renderer selection rules.
    * - Optional validation plan helper

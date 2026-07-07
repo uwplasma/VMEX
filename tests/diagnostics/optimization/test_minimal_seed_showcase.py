@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 DIAGNOSTIC_OPT_DIR = ROOT / "tools" / "diagnostics" / "optimization"
 
 
