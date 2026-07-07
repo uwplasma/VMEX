@@ -62,7 +62,12 @@ branch logic, VMEC staggering, JAX custom-derivative behavior, or physics
 normalization.
 
 The ``examples/`` folder contains user-facing scripts and curated parity demos.
-Developer-only diagnostics and research utilities live under ``tools/``:
+Anything in ``examples/`` should teach a user-facing workflow and should run
+without unpublished local state, except where the script explicitly documents an
+optional executable or fetched asset.
+
+Developer-only diagnostics and research utilities live under ``tools/``.  These
+are not stable public examples:
 
 - ``tools/diagnostics/source_health.py``: report largest Python source files
   and optionally fail above line-count or public-docstring thresholds for
@@ -71,6 +76,26 @@ Developer-only diagnostics and research utilities live under ``tools/``:
   VMEC2000 vs vmec_jax parity comparator.
 - ``tools/diagnostics/qh_vmec_vs_vmecjax.py``: QH comparison figures.
 - ``tools/diagnostics/readme_fsq_trace.py``: README fsq_total traces.
+
+Use ``tools/diagnostics/`` for reproducibility, profiling, parity-breakdown, and
+release-artifact generators.  Use ``tools/benchmarks/`` for stable benchmark
+entry points.  Do not put one-off investigation scripts or large generated
+outputs in ``examples/``.
+
+The ``validation/`` folder stores compact reviewed evidence and manifests only:
+external-asset manifests, small JSON summaries, and structured validation plans.
+It is not a second test suite and not a dump directory for WOUT, Boozer, mgrid,
+or optimization-output files.  Required automated checks belong under
+``tests/``; optional executable/GPU/nightly checks should be driven from
+``tools/diagnostics/`` or ``tools/benchmarks/``.
+
+Test organization is being migrated away from one flat directory.  New tests
+should use domain folders such as ``tests/fixed_boundary/``,
+``tests/free_boundary/``, ``tests/io_wout/``, ``tests/physics/``,
+``tests/optimization/``, ``tests/differentiation/``, ``tests/performance/``,
+``tests/examples/``, ``tests/cli/``, and ``tests/release/``.  Avoid adding
+``wave`` or ``more_coverage`` files; merge those assertions into behavior-named
+domain tests with shared fixtures.
 
 For most scripts, prefer ``import vmec_jax as vj`` or ``import vmec_jax.api as
 vj``.  Import lower-level modules directly only when developing kernels,
@@ -141,6 +166,8 @@ physics, and parity tests are green.
 Current review guardrails:
 
 - Do not add new root-level implementation modules.
+- Move obsolete or experimental code to ``tools/diagnostics/`` or a feature PR
+  unless it is documented, tested, and intentionally part of the package API.
 - Keep compatibility facades outside hot JAX/VMEC loops.
 - Put new fixed-boundary solver work under ``solvers/fixed_boundary/`` and new
   free-boundary/direct-coil work under ``solvers/free_boundary/`` or
@@ -150,3 +177,6 @@ Current review guardrails:
   docs exist.
 - Keep branch-local free-boundary derivative claims separate from arbitrary
   adaptive host-branch differentiation claims.
+- Run ``source_health.py`` before and after large tranches; source simplification
+  is not complete while monolithic solver/test files remain above the ratcheted
+  thresholds in the umbrella plan.
