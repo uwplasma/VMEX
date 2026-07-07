@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "tools" / "diagnostics" / "local_ci_gate.py"
+SCRIPT = ROOT / "tools" / "diagnostics" / "repo_health" / "local_ci_gate.py"
 
 
 def test_local_ci_gate_documents_required_local_lanes() -> None:
@@ -25,8 +25,8 @@ def test_local_ci_gate_documents_required_local_lanes() -> None:
         '"docs-full"',
         "not full and not vmec2000 and not simsopt",
         "--cov-fail-under={COVERAGE_FAIL_UNDER}",
-        "tools/diagnostics/repo_size_audit.py",
-        "tools/diagnostics/source_health.py",
+        "tools/diagnostics/repo_health/repo_size_audit.py",
+        "tools/diagnostics/repo_health/source_health.py",
         "--max-function-lines-at",
         "solve_fixed_boundary_residual_iter=2440",
         "run_fixed_boundary=424",

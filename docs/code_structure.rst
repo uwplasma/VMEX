@@ -71,7 +71,7 @@ optional executable or fetched asset.
 Developer-only diagnostics and research utilities live under ``tools/``.  These
 are not stable public examples:
 
-- ``tools/diagnostics/source_health.py``: report largest Python source files
+- ``tools/diagnostics/repo_health/source_health.py``: report largest Python source files
   and optionally fail above line-count or public-docstring thresholds for
   staged refactor ratchets.
 - ``tools/diagnostics/vmec2000_exec_stage_trace_compare.py``: per-iteration
@@ -158,7 +158,7 @@ Before starting a large extraction, run:
 
 .. code-block:: bash
 
-   python tools/diagnostics/source_health.py --top 30
+   python tools/diagnostics/repo_health/source_health.py --top 30
 
 The diagnostic is report-only by default on this draft PR so it can guide
 large tranches without creating a brittle gate.  Ratchet it with

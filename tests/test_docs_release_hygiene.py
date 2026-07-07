@@ -234,7 +234,7 @@ def test_repo_size_audit_can_report_ignored_local_artifacts() -> None:
     result = subprocess.run(
         [
             "python",
-            "tools/diagnostics/repo_size_audit.py",
+            "tools/diagnostics/repo_health/repo_size_audit.py",
             "--top",
             "1",
             "--include-ignored",

@@ -40,7 +40,7 @@ jobs:
 
       - name: Source namespace gate
         run: |
-          python tools/diagnostics/source_health.py --top 20 --max-root-helper-prefix-files 2 \
+          python tools/diagnostics/repo_health/source_health.py --top 20 --max-root-helper-prefix-files 2 \
             --require-public-docstrings --public-docstring-root vmec_jax \
             --max-function-lines-at vmec_jax/solvers/fixed_boundary/residual/iteration.py:solve_fixed_boundary_residual_iter=2440 \
             --max-function-lines-at vmec_jax/driver.py:run_fixed_boundary=424
@@ -74,7 +74,7 @@ jobs:
 
       - name: Repository size audit
         run: |
-          python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2
+          python tools/diagnostics/repo_health/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2
 
       - name: Run tests
         env:
@@ -126,7 +126,7 @@ jobs:
 
       - name: Repository size audit
         run: |
-          python tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2
+          python tools/diagnostics/repo_health/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2
 
       - name: Fetch optional WOUT fixtures
         if: matrix.bucket != 'driver-solve-discrete'
@@ -141,7 +141,7 @@ jobs:
           while true; do sleep 60; echo "::notice::core coverage pytest still running at $(date -u +%H:%M:%S)"; done &
           heartbeat_pid=$!
           trap 'kill "$heartbeat_pid" 2>/dev/null || true' EXIT
-          python tools/diagnostics/ci_core_bucket_args.py "${{ matrix.bucket }}" > /tmp/py311-core-args.txt
+          python tools/diagnostics/repo_health/ci_core_bucket_args.py "${{ matrix.bucket }}" > /tmp/py311-core-args.txt
           xargs pytest -q -n 4 -m "not full and not vmec2000 and not simsopt" --durations=50 --cov=vmec_jax --cov-report= < /tmp/py311-core-args.txt
           cp .coverage coverage.py311-core-${{ matrix.bucket }}
 

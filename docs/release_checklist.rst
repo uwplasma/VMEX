@@ -13,7 +13,7 @@ Run the opt-in local CI gate before pushing a release-candidate commit:
 
 .. code-block:: bash
 
-   python tools/diagnostics/local_ci_gate.py
+   python tools/diagnostics/repo_health/local_ci_gate.py
 
 This mirrors the hosted CI lanes that should be safe on a normal developer
 machine: CLI smoke, compile check, repository size audit, fast pytest with the
@@ -26,7 +26,7 @@ The authoritative expanded command form is printed by:
 
 .. code-block:: bash
 
-   python tools/diagnostics/local_ci_gate.py --dry-run
+   python tools/diagnostics/repo_health/local_ci_gate.py --dry-run
 
 These tests cover the required local lanes: continuation semantics, exact
 accepted-point history/output selection, no-executable VMEC residual parity,
@@ -96,8 +96,8 @@ Before tagging, keep the repository free of transient outputs:
 
    git status --short
    rm -rf build dist vmec_jax.egg-info
-   python tools/diagnostics/repo_size_audit.py --top 40 --max-total-mib 50 --max-file-mib 2
-   python tools/diagnostics/repo_size_audit.py --top 40 --include-ignored
+   python tools/diagnostics/repo_health/repo_size_audit.py --top 40 --max-total-mib 50 --max-file-mib 2
+   python tools/diagnostics/repo_health/repo_size_audit.py --top 40 --include-ignored
    git check-ignore -v docs/_build/html/index.html docs/api/generated/vmec_jax.solve.rst .DS_Store
 
 Do not commit optimization result trees, rerun ``wout`` files, profiler traces,

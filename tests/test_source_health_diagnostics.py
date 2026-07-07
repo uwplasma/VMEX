@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tools.diagnostics import source_health
+from tools.diagnostics.repo_health import source_health
 
 
 def test_source_health_collects_and_sorts_python_files(tmp_path: Path) -> None:

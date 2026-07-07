@@ -180,7 +180,7 @@ the local CI gate from the repository root:
 
 .. code-block:: bash
 
-   python tools/diagnostics/local_ci_gate.py
+   python tools/diagnostics/repo_health/local_ci_gate.py
 
 This command is opt-in; it is not installed as a Git hook and it does not run
 automatically on every push.  It mirrors the required hosted CI lanes that are
@@ -191,7 +191,7 @@ safe to run on a normal developer machine:
 - Python compile check for package, examples, tests, tools, and validation
   helpers.
 - Repository size audit using
-  ``tools/diagnostics/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2``.
+  ``tools/diagnostics/repo_health/repo_size_audit.py --top 20 --max-total-mib 50 --max-file-mib 2``.
 - Fast required pytest suite with the current ``95%`` coverage fail-under:
   ``JAX_ENABLE_X64=1 pytest -q -m "not full and not vmec2000 and not simsopt"``
   plus ``--cov=vmec_jax`` and ``--cov-fail-under=95``.
@@ -200,7 +200,7 @@ safe to run on a normal developer machine:
 - Fast Sphinx docs with ``SPHINX_FAST=1``.
 - Full Sphinx docs with warnings as errors.
 
-Use ``python tools/diagnostics/local_ci_gate.py --dry-run`` to inspect the
+Use ``python tools/diagnostics/repo_health/local_ci_gate.py --dry-run`` to inspect the
 commands without running them.  Use ``--list`` to see stage names, ``--only
 STAGE`` to run a single lane, and ``--skip STAGE`` to omit a lane when the
 change scope or local environment makes that appropriate.  Keep VMEC2000,
@@ -267,7 +267,7 @@ the recommended local escalation path.
        lanes and concrete bounded parity commands before a local or scheduled
        validation run.
    * - Bounded physics smoke
-     - ``python tools/diagnostics/local_ci_gate.py --only fetch-assets --only physics-smoke``
+     - ``python tools/diagnostics/repo_health/local_ci_gate.py --only fetch-assets --only physics-smoke``
      - Before merging solver changes that affect fixed/free-boundary physics.
        Use ``--dry-run`` on the same command to print the current expanded
        fixture list instead of copying a stale hand-maintained command.
@@ -638,7 +638,7 @@ Run the current audit with:
 
 .. code-block:: bash
 
-   python tools/diagnostics/repo_size_audit.py --top 40 --max-total-mib 50 --max-file-mib 2
+   python tools/diagnostics/repo_health/repo_size_audit.py --top 40 --max-total-mib 50 --max-file-mib 2
 
 Required CI also runs the audit with a source-tree ceiling of
 ``50 MiB`` total and ``2 MiB`` per tracked file.  Increase those limits only
