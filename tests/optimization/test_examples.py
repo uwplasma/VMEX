@@ -56,6 +56,12 @@ def _least_squares_solve_keyword_names(script: Path) -> list[set[str]]:
     return keyword_sets
 
 
+def _centered_fd(fn, x0, eps=1.0e-6):
+    """Return a central finite-difference slope for scalar objective tests."""
+
+    return (float(fn(x0 + eps)) - float(fn(x0 - eps))) / (2.0 * eps)
+
+
 def test_fixed_boundary_qs_examples_are_standalone_workflows() -> None:
     scripts = [
         ROOT / "examples" / "optimization" / "QH_optimization.py",
@@ -3551,9 +3557,6 @@ def test_jxbforce_and_current_objective_gradients_match_finite_difference(monkey
     )
     ctx = SimpleNamespace(static=SimpleNamespace(s=np.asarray([0.0, 0.25, 0.75, 1.0])), indata=None, signgs=1)
 
-    def centered_fd(fn, x0, eps=1.0e-6):
-        return (float(fn(x0 + eps)) - float(fn(x0 - eps))) / (2.0 * eps)
-
     import jax
 
     for objective in (
@@ -3564,7 +3567,7 @@ def test_jxbforce_and_current_objective_gradients_match_finite_difference(monkey
     ):
         fn = lambda x, objective=objective: jnp.sum(objective.J(ctx, jnp.asarray(x, dtype=jnp.float64)))
         ad_grad = float(jax.grad(fn)(jnp.asarray(1.3, dtype=jnp.float64)))
-        fd_grad = centered_fd(fn, 1.3)
+        fd_grad = _centered_fd(fn, 1.3)
         np.testing.assert_allclose(ad_grad, fd_grad, rtol=1e-6, atol=1e-8)
 
 
@@ -3599,9 +3602,6 @@ def test_dmerc_and_glasser_objective_gradients_match_finite_difference(monkeypat
     monkeypatch.setattr(finite_beta_objectives, "mercier_terms_from_state", fake_mercier_terms_from_state)
     ctx = SimpleNamespace(static=SimpleNamespace(s=np.asarray([0.0, 0.25, 0.75, 1.0])), indata=None, signgs=1)
 
-    def centered_fd(fn, x0, eps=1.0e-6):
-        return (float(fn(x0 + eps)) - float(fn(x0 - eps))) / (2.0 * eps)
-
     import jax
 
     for objective in (
@@ -3611,5 +3611,5 @@ def test_dmerc_and_glasser_objective_gradients_match_finite_difference(monkeypat
     ):
         fn = lambda x, objective=objective: jnp.sum(objective.J(ctx, jnp.asarray(x, dtype=jnp.float64)))
         ad_grad = float(jax.grad(fn)(jnp.asarray(1.1, dtype=jnp.float64)))
-        fd_grad = centered_fd(fn, 1.1)
+        fd_grad = _centered_fd(fn, 1.1)
         np.testing.assert_allclose(ad_grad, fd_grad, rtol=1e-6, atol=1e-8)
