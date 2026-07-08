@@ -14,6 +14,7 @@ from conftest import (
     direct_free_boundary_initial_guess as _run_direct_initial_guess,
     direct_free_boundary_solve as _run_direct_solve,
     direct_nestor_step as _direct_nestor_step,
+    lpqa_essos_coil_file,
     tiny_direct_freeb_input as _write_tiny_direct_freeb_input,
 )
 from vmec_jax._compat import enable_x64, has_jax
@@ -28,32 +29,7 @@ ROOT = Path(__file__).resolve().parents[2]
 LPQA_INPUT = ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
 FINITE_PRESSURE_SCALE = 1000.0
 FREE_BOUNDARY_PHIEDGE = -0.025
-LPQA_COIL_FILE = "ESSOS_biot_savart_LandremanPaulQA.json"
-
-
-def _candidate_essos_input_dirs() -> list[Path]:
-    candidates: list[Path] = []
-    if os.getenv("ESSOS_INPUT_DIR"):
-        candidates.append(Path(os.environ["ESSOS_INPUT_DIR"]).expanduser())
-    candidates.extend(
-        [
-            ROOT.parent / "ESSOS_mgrid_pr" / "examples" / "input_files",
-            ROOT.parent / "ESSOS" / "examples" / "input_files",
-            Path.cwd() / "examples" / "input_files",
-        ]
-    )
-    return candidates
-
-
-def _find_lpqa_coils() -> Path:
-    for directory in _candidate_essos_input_dirs():
-        path = directory / LPQA_COIL_FILE
-        if path.exists():
-            return path
-    return _candidate_essos_input_dirs()[0] / LPQA_COIL_FILE
-
-
-LPQA_COILS = _find_lpqa_coils()
+LPQA_COILS = lpqa_essos_coil_file()
 
 
 pytestmark = pytest.mark.skipif(not has_jax(), reason="direct-coil finite-pressure sensitivity tests require JAX")

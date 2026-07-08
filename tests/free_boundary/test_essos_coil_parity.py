@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from conftest import essos_input_dirs, lpqa_essos_coil_file
 from vmec_jax.external_fields import from_essos_coils
 from vmec_jax.namelist import read_indata, write_indata
 from vmec_jax.vmec2000_exec import find_vmec2000_exec, run_xvmec2000
@@ -19,32 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 LPQA_INPUT = ROOT / "examples" / "data" / "input.LandremanPaul2021_QA_lowres"
 FINITE_PRESSURE_SCALE = 1000.0
 FREE_BOUNDARY_PHIEDGE = -0.025
-LPQA_COIL_FILE = "ESSOS_biot_savart_LandremanPaulQA.json"
-
-
-def _candidate_essos_input_dirs() -> list[Path]:
-    candidates: list[Path] = []
-    if os.getenv("ESSOS_INPUT_DIR"):
-        candidates.append(Path(os.environ["ESSOS_INPUT_DIR"]).expanduser())
-    candidates.extend(
-        [
-            ROOT.parent / "ESSOS_mgrid_pr" / "examples" / "input_files",
-            ROOT.parent / "ESSOS" / "examples" / "input_files",
-            Path.cwd() / "examples" / "input_files",
-        ]
-    )
-    return candidates
-
-
-def _find_lpqa_coils() -> Path:
-    for directory in _candidate_essos_input_dirs():
-        path = directory / LPQA_COIL_FILE
-        if path.exists():
-            return path
-    return _candidate_essos_input_dirs()[0] / LPQA_COIL_FILE
-
-
-LPQA_COILS = _find_lpqa_coils()
+LPQA_COILS = lpqa_essos_coil_file()
 
 
 def test_generated_mgrid_diagnostic_boundary_domain_check_flags_outside_surface() -> None:
@@ -146,7 +122,7 @@ def test_vmec2000_unreadable_error_wout_classifies_phiedge_wrong_sign(tmp_path: 
 def _load_lpqa_essos_coils():
     essos_coils = pytest.importorskip("essos.coils")
     if not LPQA_COILS.exists():
-        searched = ", ".join(str(path) for path in _candidate_essos_input_dirs())
+        searched = ", ".join(str(path) for path in essos_input_dirs())
         pytest.skip(f"missing ESSOS Landreman-Paul QA coils; set ESSOS_INPUT_DIR. Searched: {searched}")
     coils = essos_coils.Coils_from_json(str(LPQA_COILS))
     if not hasattr(coils, "to_mgrid"):

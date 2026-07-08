@@ -23,6 +23,8 @@ _ROOT = Path(__file__).resolve().parents[1]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
+ESSOS_LPQA_COIL_FILE = "ESSOS_biot_savart_LandremanPaulQA.json"
+
 # Keep the test suite fast: avoid JAX compilation in unit tests.
 # Tests cover correctness on small arrays; compilation dominates runtime.
 try:  # pragma: no cover
@@ -57,6 +59,38 @@ def load_python_module(path: Path, *, name: str | None = None, register: bool = 
         sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def essos_input_dirs() -> list[Path]:
+    """Return the local ESSOS input-file search path used by optional parity tests.
+
+    ESSOS is an optional external dependency, so tests must skip cleanly when
+    its example coil files are not installed.  Keeping the search convention in
+    one place avoids subtle disagreements between free-boundary parity tests and
+    makes the skip messages report the same directories.
+    """
+
+    candidates: list[Path] = []
+    if os.getenv("ESSOS_INPUT_DIR"):
+        candidates.append(Path(os.environ["ESSOS_INPUT_DIR"]).expanduser())
+    candidates.extend(
+        [
+            _ROOT.parent / "ESSOS_mgrid_pr" / "examples" / "input_files",
+            _ROOT.parent / "ESSOS" / "examples" / "input_files",
+            Path.cwd() / "examples" / "input_files",
+        ]
+    )
+    return candidates
+
+
+def lpqa_essos_coil_file() -> Path:
+    """Locate the ESSOS Landreman-Paul QA coil file or return its first candidate path."""
+
+    for directory in essos_input_dirs():
+        path = directory / ESSOS_LPQA_COIL_FILE
+        if path.exists():
+            return path
+    return essos_input_dirs()[0] / ESSOS_LPQA_COIL_FILE
 
 
 def circular_coil_dofs(
