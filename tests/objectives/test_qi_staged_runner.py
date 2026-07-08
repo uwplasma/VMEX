@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import json
 import subprocess
 import sys
@@ -8,21 +7,18 @@ from pathlib import Path
 
 import pytest
 
+from conftest import load_python_module
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def _load_runner():
     script = ROOT / "examples" / "optimization" / "qi_staged_runner.py"
-    spec = importlib.util.spec_from_file_location("qi_staged_runner_test", script)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
     optimization_dir = str(script.parent)
     if optimization_dir not in sys.path:
         sys.path.insert(0, optimization_dir)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(script, name="qi_staged_runner_test")
 
 
 def test_qi_staged_runner_builds_external_input_cli_and_environment(tmp_path: Path) -> None:

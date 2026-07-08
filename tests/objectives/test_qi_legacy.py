@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import importlib.util
 import numpy as np
 from pathlib import Path
 import pytest
+
+from conftest import load_python_module
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -203,10 +204,7 @@ def test_qi_boozer_mode_scan_reports_smooth_and_legacy_metrics(monkeypatch):
     pytest.importorskip("jax")
 
     script = ROOT / "tools" / "diagnostics" / "qi" / "scan_qi_boozer_mode.py"
-    spec = importlib.util.spec_from_file_location("scan_qi_boozer_mode", script)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
+    module = load_python_module(script, name="scan_qi_boozer_mode", register=False)
 
     monkeypatch.setattr(module, "QI_NPHI", 21)
     monkeypatch.setattr(module, "QI_NALPHA", 7)

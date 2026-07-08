@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import subprocess
 from dataclasses import dataclass
-import importlib.util
 from pathlib import Path
-import sys
 
 import numpy as np
 import pytest
 
+from conftest import load_python_module
 from vmec_jax.namelist import read_indata
 from vmec_jax.wout import read_wout
 from vmec_jax.io.wout_files.schema import assert_main_modes_match_wout
@@ -54,12 +53,7 @@ def _tracked_wout_fixtures(repo: Path) -> set[str]:
 
 
 def _load_fetch_assets_module(repo: Path):
-    spec = importlib.util.spec_from_file_location("fetch_assets", repo / "tools" / "fetch_assets.py")
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(repo / "tools" / "fetch_assets.py", name="fetch_assets")
 
 
 def test_wout_fixtures_are_not_tracked_in_git() -> None:

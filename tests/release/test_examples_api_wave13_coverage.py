@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 
+from conftest import load_python_module
 import vmec_jax.driver as driver
 from vmec_jax.free_boundary import MGridMetadata, PreparedMGrid
 from vmec_jax.optimization_workflow import BoundaryModeLimits
@@ -17,13 +16,7 @@ QI_SUPPORT = ROOT / "examples" / "optimization" / "qi_optimization_support.py"
 
 
 def _load_qi_support_module(name: str = "qi_optimization_support_wave13_test"):
-    spec = importlib.util.spec_from_file_location(name, QI_SUPPORT)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(QI_SUPPORT, name=name)
 
 
 def test_example_paths_prefers_reference_wout_then_default_wout(tmp_path: Path) -> None:

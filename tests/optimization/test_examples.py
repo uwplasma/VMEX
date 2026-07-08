@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 from dataclasses import replace
-import importlib.util
 from pathlib import Path
 import subprocess
 import sys
@@ -11,6 +10,7 @@ from types import ModuleType, SimpleNamespace
 import numpy as np
 import pytest
 
+from conftest import load_python_module
 from vmec_jax.quasi_isodynamic import optimization_terms as qi_objectives
 
 
@@ -1655,11 +1655,11 @@ def test_qi_example_uses_qi_problem_api() -> None:
 
 def test_qi_seed3127_example_exposes_reviewed_readme_preset(tmp_path: Path) -> None:
     text = QI_SEED_OPTIMIZATION_SCRIPT.read_text()
-    spec = importlib.util.spec_from_file_location("qi_optimization_seed_for_test", QI_SEED_OPTIMIZATION_SCRIPT)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
+    module = load_python_module(
+        QI_SEED_OPTIMIZATION_SCRIPT,
+        name="qi_optimization_seed_for_test",
+        register=False,
+    )
 
     config = module.boundary_reference_config()
     json_path = tmp_path / "boundary_reference.json"
@@ -1765,11 +1765,7 @@ def test_qi_minimal_seed_nfp_examples_compile_without_running() -> None:
 
 def test_qi_case_resolver_respects_editable_default_and_env(monkeypatch) -> None:
     module_path = ROOT / "examples" / "optimization" / "qi_optimization_cases.py"
-    spec = importlib.util.spec_from_file_location("qi_optimization_cases_for_test", module_path)
-    assert spec is not None
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
+    module = load_python_module(module_path, name="qi_optimization_cases_for_test", register=False)
 
     monkeypatch.delenv("VMEC_JAX_QI_RUN_CASE", raising=False)
     monkeypatch.delenv("VMEC_JAX_QI_INPUT", raising=False)

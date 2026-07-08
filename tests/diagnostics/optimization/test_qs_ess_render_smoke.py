@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import importlib.util
 import json
 import os
 import shutil
@@ -13,59 +12,46 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from conftest import load_python_module
+
 
 ROOT = Path(__file__).resolve().parents[3]
 DIAGNOSTIC_OPT_DIR = ROOT / "tools" / "diagnostics" / "optimization"
 
 
 def _load_renderer_module():
-    script = DIAGNOSTIC_OPT_DIR / "render_qs_ess_publication_panel.py"
-    spec = importlib.util.spec_from_file_location("render_qs_ess_publication_panel", script)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(
+        DIAGNOSTIC_OPT_DIR / "render_qs_ess_publication_panel.py",
+        name="render_qs_ess_publication_panel",
+    )
 
 
 def _load_sweep_module():
-    script = DIAGNOSTIC_OPT_DIR / "generate_qs_ess_sweep.py"
-    spec = importlib.util.spec_from_file_location("generate_qs_ess_sweep", script)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(
+        DIAGNOSTIC_OPT_DIR / "generate_qs_ess_sweep.py",
+        name="generate_qs_ess_sweep",
+    )
 
 
 def _load_readme_renderer_module():
-    script = DIAGNOSTIC_OPT_DIR / "render_readme_best_optimizations.py"
-    spec = importlib.util.spec_from_file_location("render_readme_best_optimizations", script)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(
+        DIAGNOSTIC_OPT_DIR / "render_readme_best_optimizations.py",
+        name="render_readme_best_optimizations",
+    )
 
 
 def _load_qi_renderer_module():
-    script = DIAGNOSTIC_OPT_DIR / "render_qi_constrained_sweep.py"
-    spec = importlib.util.spec_from_file_location("render_qi_constrained_sweep", script)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(
+        DIAGNOSTIC_OPT_DIR / "render_qi_constrained_sweep.py",
+        name="render_qi_constrained_sweep",
+    )
 
 
 def _load_qi_readme_cases_module():
-    script = DIAGNOSTIC_OPT_DIR / "render_qi_readme_cases.py"
-    spec = importlib.util.spec_from_file_location("render_qi_readme_cases", script)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    return load_python_module(
+        DIAGNOSTIC_OPT_DIR / "render_qi_readme_cases.py",
+        name="render_qi_readme_cases",
+    )
 
 
 def test_readme_renderer_scripts_help_exits_without_rendering() -> None:
