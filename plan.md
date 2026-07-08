@@ -211,6 +211,14 @@ Fortran behavior VMEC++ dropped; we keep it and test it).
 
 ## 3. Phase 0 — Baselines, profiling, branch triage
 
+**STATUS: COMPLETE (2026-07-08).** Artifacts: `benchmarks/baseline.json` (committed) and
+`~/vmec_jax_notes/{NOTES.md, wout_gap.md, profile_findings.md}` (local). Headlines:
+multigrid slowdown = per-stage recompilation (23× `jit(stage)` + ~300 eager glue compiles in a
+3-stage ladder) — padding fix confirmed as the plan; cold gap is 100% JAX/XLA setup (solovev:
+0.10 s VMEC2000 vs 3.4 s cold / 0.01 s warm); wout is missing 39 variables (list in wout_gap.md);
+mirror-geometry branch triaged (all solver experiments DROP; mirror physics design KEEP) and
+deleted; QP optimization must default to max_mode=3.
+
 Most of the audit is done (§1). What remains before touching code:
 
 1. **NOTES.md** (scratch area, not committed): distill the five `vmec_jax_plan/*.md` files (the
@@ -241,6 +249,13 @@ a ranked list of multigrid slowdown causes with profile evidence, and the wout g
 ---
 
 ## 4. Phase 1 — Repository consolidation and history rewrite
+
+**STATUS: COMPLETE (2026-07-08).** History rewritten with git-filter-repo (57.4 → 11.8 MiB
+packed; 0 Claude trailers; contributors = rogeriojorge + matthewfeickert), force-pushed; 4 stale
+branches deleted; vmec_jax_plan/, validation/, tools/diagnostics, examples/data/single_grid
+removed; figures pruned/compressed (4.8 → 1.8 MB); interim CI (fast tests + smoke + build + size
+check) green locally; pre-commit 200 KB guard added. Mirror backup at ~/vmec_jax_backup.git
+(keep until v0.1.0).
 
 Goal: one branch, ≤10 MB fresh clone, no Claude in contributors, drastically fewer files.
 
