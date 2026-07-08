@@ -677,64 +677,10 @@ def _assert_trace_fingerprint_status_and_replay_gate_contracts(trace0: dict, tra
     return synthetic_report, branch_metadata
 
 
-@pytest.mark.py311_coverage_only
-def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatch: pytest.MonkeyPatch) -> None:
-    from vmec_jax._compat import jax, jnp
-
-    z = np.arange(6.0).reshape(2, 3)
-    trace0 = _synthetic_direct_coil_trace(z)
-    trace1 = _synthetic_direct_coil_trace(z, dt_eff=0.25, bsqvac_scale=3.0)
-    trace2 = _synthetic_direct_coil_trace(z, dt_eff=0.125, bsqvac_scale=4.0)
-    _assert_direct_coil_trace_control_array_contracts(trace0, trace1, z)
-    axis_trace0, changed_static_trace = _assert_direct_coil_trace_replay_graph_contracts(trace0, trace1, z)
-    synthetic_report, branch_metadata = _assert_trace_fingerprint_status_and_replay_gate_contracts(
-        trace0,
-        trace1,
-        trace2,
-    )
-
+def _assert_branch_local_scalar_input_validation(scalar_call, scalars_call, invalid_mode_payload: dict) -> None:
     from vmec_jax.solvers.free_boundary.adjoint.branch_local_derivatives import (
-        _block_until_ready_for_timing,
-        _pytree_batched_directional_vdot_jax,
-        direct_coil_accepted_trace_fingerprint,
-        direct_coil_accepted_trace_fingerprint_delta,
-        direct_coil_accepted_trace_fingerprint_delta_summary,
-        direct_coil_accepted_trace_preconditioner_controls_jax,
-        direct_coil_accepted_trace_preconditioner_policy_segments,
-        direct_coil_accepted_trace_controller_custom_vjp_scalars_jax,
-        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
         direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
-        direct_coil_same_branch_controller_scalar_custom_vjp_report,
-        direct_coil_same_branch_controller_scalars_custom_vjp_report,
-        _accepted_step_policy_signature_for_complete_payload,
-        _accepted_step_policy_summary_for_complete_payload,
-        _pytree_pullback_basis_jax,
-        _pytree_unstack_leading_axis_jax,
     )
-
-    physical_synthetic_report, physical_scalars_report = _synthetic_physical_scalar_inputs(
-        synthetic_report, branch_metadata, trace0, trace1
-    )
-    _assert_synthetic_physical_and_adaptive_gate_reports(
-        physical_synthetic_report=physical_synthetic_report,
-        physical_scalars_report=physical_scalars_report,
-        trace0=trace0,
-        trace1=trace1,
-    )
-
-    def scalar_call(**kwargs):
-        return direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fn=lambda replay, payload: 0.0,
-            **kwargs,
-        )
-
-    def scalars_call(**kwargs):
-        return direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
-            scalar_fn=lambda payload: {"objective": 0.0},
-            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
-            **kwargs,
-        )
 
     with pytest.raises(ValueError, match="input_path and params"):
         scalar_call()
@@ -778,17 +724,6 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     ):
         with pytest.raises(error_type, match=match):
             call(**kwargs)
-    invalid_mode_payload = {
-        "params": {},
-        "init": SimpleNamespace(static=None, signgs=1),
-        "traces": (
-            {
-                "freeb_bsqvac_half": np.ones(1),
-                "freeb_nestor_trace": {"active": True},
-                "state_pre": object(),
-            },
-        ),
-    }
     for call in (scalar_call, scalars_call):
         with pytest.raises(ValueError, match="replay_ad_mode"):
             call(complete_payload=invalid_mode_payload, replay_ad_mode="invalid")
@@ -800,6 +735,13 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
             replay_ad_mode="custom_vjp",
         )
 
+
+def _assert_synthetic_directional_jvp_reports(monkeypatch: pytest.MonkeyPatch, axis_trace0: dict) -> None:
+    from vmec_jax._compat import jnp
+    from vmec_jax.solvers.free_boundary.adjoint.branch_local_derivatives import (
+        _block_until_ready_for_timing,
+        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
+    )
     import vmec_jax.solvers.free_boundary.adjoint.branch_local_derivatives as freeb_adj
 
     replay_options_seen: list[dict[str, object]] = []
@@ -848,14 +790,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     assert synthetic_jvp_report["includes_replay_graph_metadata"] is False
     assert synthetic_jvp_report["replay_graph_metadata"]["omitted"] is True
     assert synthetic_jvp_report["replay_graph_metadata"]["differentiates_adaptive_controller"] is False
-    np.testing.assert_allclose(
-        np.asarray(synthetic_jvp_report["replay_values"]),
-        np.asarray([4.0, 4.0]),
-    )
-    np.testing.assert_allclose(
-        np.asarray(synthetic_jvp_report["directional_derivatives"]["linear"]),
-        np.asarray(0.5),
-    )
+    np.testing.assert_allclose(np.asarray(synthetic_jvp_report["replay_values"]), np.asarray([4.0, 4.0]))
+    np.testing.assert_allclose(np.asarray(synthetic_jvp_report["directional_derivatives"]["linear"]), np.asarray(0.5))
     np.testing.assert_allclose(
         np.asarray(synthetic_jvp_report["directional_derivatives"]["quadratic"]),
         np.asarray(1.0),
@@ -888,14 +824,8 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     assert current_only_report["replay_option_flags"]["directional_jvp_fast_path"] == "current_only"
     assert current_only_report["replay_option_flags"]["directional_uses_fixed_coil_geometry"] is True
     assert replay_options_seen[-1]["coil_geometry"] is not None
-    np.testing.assert_allclose(
-        np.asarray(current_only_report["replay_values"]),
-        np.asarray([6.0, 9.0]),
-    )
-    np.testing.assert_allclose(
-        np.asarray(current_only_report["directional_derivatives"]["linear"]),
-        np.asarray(0.5),
-    )
+    np.testing.assert_allclose(np.asarray(current_only_report["replay_values"]), np.asarray([6.0, 9.0]))
+    np.testing.assert_allclose(np.asarray(current_only_report["directional_derivatives"]["linear"]), np.asarray(0.5))
     np.testing.assert_allclose(
         np.asarray(current_only_report["directional_derivatives"]["quadratic"]),
         np.asarray(1.5),
@@ -904,6 +834,17 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     ready_tree = _block_until_ready_for_timing({"value": jnp.asarray([1.0, 2.0])})
     np.testing.assert_allclose(np.asarray(ready_tree["value"]), np.asarray([1.0, 2.0]))
 
+
+def _assert_branch_local_jax_tree_utility_contracts(axis_trace0: dict, changed_static_trace: dict) -> None:
+    from vmec_jax._compat import jax, jnp
+    from vmec_jax.solvers.free_boundary.adjoint.branch_local_derivatives import (
+        _accepted_step_policy_signature_for_complete_payload,
+        _accepted_step_policy_summary_for_complete_payload,
+        _pytree_batched_directional_vdot_jax,
+        _pytree_pullback_basis_jax,
+        _pytree_unstack_leading_axis_jax,
+    )
+
     jacobian_tree = {
         "a": jnp.asarray([[1.0, 2.0], [3.0, 4.0]]),
         "b": jnp.asarray([[0.5], [-1.0]]),
@@ -911,10 +852,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     direction_tree = {"a": jnp.asarray([10.0, -2.0]), "b": jnp.asarray([4.0])}
     contracted = _pytree_batched_directional_vdot_jax(jacobian_tree, direction_tree, 2)
     np.testing.assert_allclose(np.asarray(contracted), np.asarray([8.0, 18.0]))
-    np.testing.assert_allclose(
-        np.asarray(_pytree_batched_directional_vdot_jax({}, {}, 3)),
-        np.zeros(3),
-    )
+    np.testing.assert_allclose(np.asarray(_pytree_batched_directional_vdot_jax({}, {}, 3)), np.zeros(3))
     step_signature_empty = _accepted_step_policy_signature_for_complete_payload({})
     assert step_signature_empty == ()
     step_summary_empty = _accepted_step_policy_summary_for_complete_payload({})
@@ -941,6 +879,14 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
     np.testing.assert_allclose(np.asarray(unstacked_pullback[0]["x"]), np.asarray(4.0))
     np.testing.assert_allclose(np.asarray(unstacked_pullback[1]["x"]), np.asarray(3.0))
 
+
+def _assert_controller_custom_vjp_validation_errors(trace0: dict) -> None:
+    from vmec_jax.solvers.free_boundary.adjoint.branch_local_derivatives import (
+        direct_coil_accepted_trace_controller_custom_vjp_scalars_jax,
+        direct_coil_same_branch_controller_scalar_custom_vjp_report,
+        direct_coil_same_branch_controller_scalars_custom_vjp_report,
+    )
+
     with pytest.raises(ValueError, match="replay_scalar_fns"):
         direct_coil_same_branch_controller_scalars_custom_vjp_report(
             {"objective_values": {}},
@@ -949,11 +895,7 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
             replay_scalar_fns={},
         )
     with pytest.raises(ValueError, match="scalar_fns"):
-        direct_coil_accepted_trace_controller_custom_vjp_scalars_jax(
-            {},
-            None,
-            scalar_fns=(),
-        )
+        direct_coil_accepted_trace_controller_custom_vjp_scalars_jax({}, None, scalar_fns=())
     with pytest.raises(KeyError, match="not present"):
         direct_coil_same_branch_controller_scalar_custom_vjp_report(
             {"objective_values": {}},
@@ -1006,6 +948,16 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
             replay_scalar_fns={"known": lambda _replay, _payload: 0.0},
             replay_kwargs={"traces": ()},
         )
+
+
+def _assert_trace_fingerprint_delta_contracts(trace0: dict, trace1: dict, z: np.ndarray) -> None:
+    from vmec_jax.solvers.free_boundary.adjoint.branch_local_derivatives import (
+        direct_coil_accepted_trace_fingerprint,
+        direct_coil_accepted_trace_fingerprint_delta,
+        direct_coil_accepted_trace_fingerprint_delta_summary,
+        direct_coil_accepted_trace_preconditioner_controls_jax,
+        direct_coil_accepted_trace_preconditioner_policy_segments,
+    )
 
     bad_preconditioner_shape = dict(trace1)
     bad_preconditioner_shape["precond_mats"] = {"ar": np.ones((3, 3)), "br": z + 7.0}
@@ -1073,6 +1025,67 @@ def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatc
         assert delta["compatible"] is compatible
         for field in changed_fields:
             assert field in delta["changed_fields"]
+
+
+@pytest.mark.py311_coverage_only
+def test_direct_coil_trace_fingerprint_detects_control_branch_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    z = np.arange(6.0).reshape(2, 3)
+    trace0 = _synthetic_direct_coil_trace(z)
+    trace1 = _synthetic_direct_coil_trace(z, dt_eff=0.25, bsqvac_scale=3.0)
+    trace2 = _synthetic_direct_coil_trace(z, dt_eff=0.125, bsqvac_scale=4.0)
+    _assert_direct_coil_trace_control_array_contracts(trace0, trace1, z)
+    axis_trace0, changed_static_trace = _assert_direct_coil_trace_replay_graph_contracts(trace0, trace1, z)
+    synthetic_report, branch_metadata = _assert_trace_fingerprint_status_and_replay_gate_contracts(
+        trace0,
+        trace1,
+        trace2,
+    )
+
+    from vmec_jax.solvers.free_boundary.adjoint.branch_local_derivatives import (
+        direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax,
+        direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax,
+    )
+
+    physical_synthetic_report, physical_scalars_report = _synthetic_physical_scalar_inputs(
+        synthetic_report, branch_metadata, trace0, trace1
+    )
+    _assert_synthetic_physical_and_adaptive_gate_reports(
+        physical_synthetic_report=physical_synthetic_report,
+        physical_scalars_report=physical_scalars_report,
+        trace0=trace0,
+        trace1=trace1,
+    )
+
+    def scalar_call(**kwargs):
+        return direct_coil_run_free_boundary_branch_local_scalar_value_and_grad_jax(
+            scalar_fn=lambda payload: {"objective": 0.0},
+            replay_scalar_fn=lambda replay, payload: 0.0,
+            **kwargs,
+        )
+
+    def scalars_call(**kwargs):
+        return direct_coil_run_free_boundary_branch_local_scalars_value_and_jacobian_jax(
+            scalar_fn=lambda payload: {"objective": 0.0},
+            replay_scalar_fns={"objective": lambda replay, payload: 0.0},
+            **kwargs,
+        )
+
+    invalid_mode_payload = {
+        "params": {},
+        "init": SimpleNamespace(static=None, signgs=1),
+        "traces": (
+            {
+                "freeb_bsqvac_half": np.ones(1),
+                "freeb_nestor_trace": {"active": True},
+                "state_pre": object(),
+            },
+        ),
+    }
+    _assert_branch_local_scalar_input_validation(scalar_call, scalars_call, invalid_mode_payload)
+    _assert_synthetic_directional_jvp_reports(monkeypatch, axis_trace0)
+    _assert_branch_local_jax_tree_utility_contracts(axis_trace0, changed_static_trace)
+    _assert_controller_custom_vjp_validation_errors(trace0)
+    _assert_trace_fingerprint_delta_contracts(trace0, trace1, z)
 
 
 def _relative_rms_delta(a, b) -> float:
