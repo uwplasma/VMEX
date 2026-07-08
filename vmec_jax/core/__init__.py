@@ -1,12 +1,21 @@
-"""Clean-room core of vmec_jax; will replace the legacy modules — see plan.md §5.
+"""Clean-room core of vmec_jax (plan.md §5) — will replace the legacy modules.
 
-Modules
--------
-- :mod:`vmec_jax.core.fourier`    — mode/grid/trig bookkeeping (VMEC2000 ``fixaray.f``).
-- :mod:`vmec_jax.core.transforms` — spectral transforms (VMEC2000 ``totzsp_mod.f`` /
-  ``tomnsp_mod.f`` / ``symforce.f``).
+Module map (each header docstring names its VMEC2000 counterpart):
 
-The numerical conventions here are ported verbatim from the parity-proven
-legacy kernels (``vmec_jax/kernels/tomnsp.py``, ``vmec_jax/kernels/realspace.py``)
-and are validated A/B against them in ``tests/core_new/``.
+- ``errors``          typed zero-crash exceptions + werror table
+- ``printing``        VMEC2000-format console output (byte-exact)
+- ``input``           VmecInput: INDATA + VMEC++-JSON parsing, round-trip writers
+- ``profiles``        pressure/iota/current parameterizations (pure jnp)
+- ``fourier``         Resolution, ModeTable, trig tables (fixaray.f)
+- ``transforms``      totzsps/totzspa/tomnsps/tomnspa as batched matmuls
+- ``geometry``        real-space R/Z/lambda, half-mesh jacobian (jacobian.f)
+- ``fields``          metrics, B components, energies, tcon (bcovar.f)
+- ``forces``          MHD force kernels + spectral condensation (forces.f, alias.f)
+- ``residuals``       m=1 constraint, fsqr/fsqz/fsql, preconditioned lane (residue.f90)
+- ``preconditioner``  1D radial tridiagonal preconditioner (precondn.f, scalfor.f)
+- ``step``            Richardson stepping + restart control (evolve.f, restart.f)
+- ``setup``           radial profiles + initial guess (profil1d/3d.f, readin.f)
+
+Every module is validated by A/B equivalence tests against the legacy
+parity-proven implementation in ``tests/core_new/``.
 """
