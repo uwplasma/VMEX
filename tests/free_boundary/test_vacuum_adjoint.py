@@ -480,14 +480,29 @@ def test_jax_visible_controller_plain_step_outputs_and_segment_validation():
 
     params = {"scale": jnp.asarray(0.5)}
     controls = jnp.asarray([1.0, 2.0, 3.0])
+    initial_state = jnp.asarray(0.0)
+    controls_until_convergence = controls[:2]
+    controls_initial_done = controls[:1]
 
-    run = jax_visible_nonlinear_controller_jax(step_plain, jnp.asarray(0.0), params, controls)
+    def accept_under_two(_state, proposed, _params, _control, _aux):
+        return proposed < 2.0
+
+    def converged_after_one(state, _params, _control, _aux):
+        return state > 1.0
+
+    def always_accept(*_args):
+        return True
+
+    def never_converged(*_args):
+        return False
+
+    run = jax_visible_nonlinear_controller_jax(step_plain, initial_state, params, controls)
     np.testing.assert_allclose(np.asarray(run["state"]), 3.0)
 
     masked = jax_visible_masked_nonlinear_controller_jax(
         step_plain,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
+        converged_after_one,
+        initial_state,
         params,
         controls,
     )
@@ -496,9 +511,9 @@ def test_jax_visible_controller_plain_step_outputs_and_segment_validation():
 
     accepted = jax_visible_accepted_nonlinear_controller_jax(
         step_plain,
-        lambda _state, proposed, _params, _control, _aux: proposed < 2.0,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
+        accept_under_two,
+        converged_after_one,
+        initial_state,
         params,
         controls,
     )
@@ -507,9 +522,9 @@ def test_jax_visible_controller_plain_step_outputs_and_segment_validation():
 
     state_only_accepted = jax_visible_state_only_accepted_nonlinear_controller_jax(
         step_plain,
-        lambda _state, proposed, _params, _control, _aux: proposed < 2.0,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
+        accept_under_two,
+        converged_after_one,
+        initial_state,
         params,
         controls,
     )
@@ -519,10 +534,10 @@ def test_jax_visible_controller_plain_step_outputs_and_segment_validation():
 
     accepted_only = jax_visible_accepted_only_nonlinear_controller_jax(
         step_plain,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
+        converged_after_one,
+        initial_state,
         params,
-        controls[:2],
+        controls_until_convergence,
     )
     np.testing.assert_allclose(np.asarray(accepted_only["state"]), 1.5)
     np.testing.assert_array_equal(np.asarray(accepted_only["history"]["active"]), [True, True])
@@ -532,10 +547,10 @@ def test_jax_visible_controller_plain_step_outputs_and_segment_validation():
 
     unrolled_accepted_only = jax_visible_unrolled_accepted_only_nonlinear_controller_jax(
         step_plain,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
+        converged_after_one,
+        initial_state,
         params,
-        controls[:2],
+        controls_until_convergence,
     )
     np.testing.assert_allclose(np.asarray(unrolled_accepted_only["state"]), np.asarray(accepted_only["state"]))
     for key in ("active", "accepted", "rejected", "done"):
@@ -544,151 +559,100 @@ def test_jax_visible_controller_plain_step_outputs_and_segment_validation():
             np.asarray(accepted_only["history"][key]),
         )
 
-    state_only_accepted_only = jax_visible_state_only_accepted_only_nonlinear_controller_jax(
-        step_plain,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
-        params,
-        controls[:2],
-    )
-    np.testing.assert_allclose(np.asarray(state_only_accepted_only["state"]), np.asarray(accepted_only["state"]))
-    assert bool(state_only_accepted_only["done"]) == bool(accepted_only["done"])
-    assert state_only_accepted_only["history"] == {}
+    for state_only_controller in (
+        jax_visible_state_only_accepted_only_nonlinear_controller_jax,
+        jax_visible_unrolled_state_only_accepted_only_nonlinear_controller_jax,
+    ):
+        state_only_accepted_only = state_only_controller(
+            step_plain,
+            converged_after_one,
+            initial_state,
+            params,
+            controls_until_convergence,
+        )
+        np.testing.assert_allclose(
+            np.asarray(state_only_accepted_only["state"]),
+            np.asarray(accepted_only["state"]),
+        )
+        assert bool(state_only_accepted_only["done"]) == bool(accepted_only["done"])
+        assert state_only_accepted_only["history"] == {}
 
-    unrolled_state_only_accepted_only = jax_visible_unrolled_state_only_accepted_only_nonlinear_controller_jax(
-        step_plain,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
-        params,
-        controls[:2],
-    )
-    np.testing.assert_allclose(
-        np.asarray(unrolled_state_only_accepted_only["state"]),
-        np.asarray(accepted_only["state"]),
-    )
-    assert bool(unrolled_state_only_accepted_only["done"]) == bool(accepted_only["done"])
-    assert unrolled_state_only_accepted_only["history"] == {}
-
-    accepted_only_initial_done = jax_visible_accepted_only_nonlinear_controller_jax(
-        step_plain,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
-        params,
-        controls[:1],
-        initial_done=True,
-    )
-    np.testing.assert_allclose(np.asarray(accepted_only_initial_done["state"]), 0.0)
-    np.testing.assert_array_equal(np.asarray(accepted_only_initial_done["history"]["active"]), [False])
-    np.testing.assert_array_equal(np.asarray(accepted_only_initial_done["history"]["accepted"]), [False])
-    np.testing.assert_array_equal(np.asarray(accepted_only_initial_done["history"]["rejected"]), [False])
-    np.testing.assert_array_equal(np.asarray(accepted_only_initial_done["history"]["done"]), [True])
-
-    unrolled_accepted_only_initial_done = jax_visible_unrolled_accepted_only_nonlinear_controller_jax(
-        step_plain,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
-        params,
-        controls[:1],
-        initial_done=True,
-    )
-    np.testing.assert_allclose(np.asarray(unrolled_accepted_only_initial_done["state"]), 0.0)
-    np.testing.assert_array_equal(np.asarray(unrolled_accepted_only_initial_done["history"]["active"]), [False])
-    np.testing.assert_array_equal(np.asarray(unrolled_accepted_only_initial_done["history"]["done"]), [True])
+    for accepted_only_controller in (
+        jax_visible_accepted_only_nonlinear_controller_jax,
+        jax_visible_unrolled_accepted_only_nonlinear_controller_jax,
+    ):
+        accepted_only_initial_done = accepted_only_controller(
+            step_plain,
+            converged_after_one,
+            initial_state,
+            params,
+            controls_initial_done,
+            initial_done=True,
+        )
+        np.testing.assert_allclose(np.asarray(accepted_only_initial_done["state"]), 0.0)
+        np.testing.assert_array_equal(np.asarray(accepted_only_initial_done["history"]["active"]), [False])
+        np.testing.assert_array_equal(np.asarray(accepted_only_initial_done["history"]["done"]), [True])
 
     state_only_accepted_initial_done = jax_visible_state_only_accepted_nonlinear_controller_jax(
         step_plain,
-        lambda *_args: True,
-        lambda *_args: False,
-        jnp.asarray(0.0),
+        always_accept,
+        never_converged,
+        initial_state,
         params,
-        controls[:1],
+        controls_initial_done,
         initial_done=True,
     )
     np.testing.assert_allclose(np.asarray(state_only_accepted_initial_done["state"]), 0.0)
     assert bool(state_only_accepted_initial_done["done"]) is True
     assert state_only_accepted_initial_done["history"] == {}
 
-    state_only_accepted_only_initial_done = jax_visible_state_only_accepted_only_nonlinear_controller_jax(
-        step_plain,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
-        params,
-        controls[:1],
-        initial_done=True,
-    )
-    np.testing.assert_allclose(np.asarray(state_only_accepted_only_initial_done["state"]), 0.0)
-    assert bool(state_only_accepted_only_initial_done["done"]) is True
-    assert state_only_accepted_only_initial_done["history"] == {}
-
-    unrolled_state_only_initial_done = jax_visible_unrolled_state_only_accepted_only_nonlinear_controller_jax(
-        step_plain,
-        lambda state, _params, _control, _aux: state > 1.0,
-        jnp.asarray(0.0),
-        params,
-        controls[:1],
-        initial_done=True,
-    )
-    np.testing.assert_allclose(np.asarray(unrolled_state_only_initial_done["state"]), 0.0)
-    assert bool(unrolled_state_only_initial_done["done"]) is True
-    assert unrolled_state_only_initial_done["history"] == {}
-
-    with pytest.raises(ValueError, match="at least one segment"):
-        jax_visible_segmented_accepted_nonlinear_controller_jax(
+    for state_only_controller in (
+        jax_visible_state_only_accepted_only_nonlinear_controller_jax,
+        jax_visible_unrolled_state_only_accepted_only_nonlinear_controller_jax,
+    ):
+        state_only_initial_done = state_only_controller(
             step_plain,
-            lambda *_args: True,
-            lambda *_args: False,
-            jnp.asarray(0.0),
+            converged_after_one,
+            initial_state,
+            params,
+            controls_initial_done,
+            initial_done=True,
+        )
+        np.testing.assert_allclose(np.asarray(state_only_initial_done["state"]), 0.0)
+        assert bool(state_only_initial_done["done"]) is True
+        assert state_only_initial_done["history"] == {}
+
+    for segmented_controller in (
+        jax_visible_segmented_accepted_nonlinear_controller_jax,
+        jax_visible_segmented_state_only_accepted_nonlinear_controller_jax,
+    ):
+        _assert_value_error(
+            "at least one segment",
+            segmented_controller,
+            step_plain,
+            always_accept,
+            never_converged,
+            initial_state,
             params,
             (),
         )
-
-    with pytest.raises(ValueError, match="step_fns length"):
-        jax_visible_segmented_accepted_nonlinear_controller_jax(
+        _assert_value_error(
+            "step_fns length",
+            segmented_controller,
             (step_plain,),
-            lambda *_args: True,
-            lambda *_args: False,
-            jnp.asarray(0.0),
+            always_accept,
+            never_converged,
+            initial_state,
             params,
             (controls[:1], controls[1:]),
         )
-
-    with pytest.raises(ValueError, match="accepted_only_segments length"):
-        jax_visible_segmented_accepted_nonlinear_controller_jax(
+        _assert_value_error(
+            "accepted_only_segments length",
+            segmented_controller,
             (step_plain, step_plain),
-            lambda *_args: True,
-            lambda *_args: False,
-            jnp.asarray(0.0),
-            params,
-            (controls[:1], controls[1:]),
-            accepted_only_segments=(True,),
-        )
-
-    with pytest.raises(ValueError, match="at least one segment"):
-        jax_visible_segmented_state_only_accepted_nonlinear_controller_jax(
-            step_plain,
-            lambda *_args: True,
-            lambda *_args: False,
-            jnp.asarray(0.0),
-            params,
-            (),
-        )
-
-    with pytest.raises(ValueError, match="step_fns length"):
-        jax_visible_segmented_state_only_accepted_nonlinear_controller_jax(
-            (step_plain,),
-            lambda *_args: True,
-            lambda *_args: False,
-            jnp.asarray(0.0),
-            params,
-            (controls[:1], controls[1:]),
-        )
-
-    with pytest.raises(ValueError, match="accepted_only_segments length"):
-        jax_visible_segmented_state_only_accepted_nonlinear_controller_jax(
-            (step_plain, step_plain),
-            lambda *_args: True,
-            lambda *_args: False,
-            jnp.asarray(0.0),
+            always_accept,
+            never_converged,
+            initial_state,
             params,
             (controls[:1], controls[1:]),
             accepted_only_segments=(True,),
