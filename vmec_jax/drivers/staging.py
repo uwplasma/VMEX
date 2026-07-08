@@ -53,7 +53,7 @@ class FixedBoundaryStageRunnerContext:
 
     @classmethod
     def from_namespace(cls, namespace: dict[str, Any], /, **overrides: Any) -> "FixedBoundaryStageRunnerContext":
-        """Construct from namespace for high-level VMEC driver orchestration."""
+        """Build the staged-runner context from the public driver's locals."""
         return _dataclass_from_namespace(cls, namespace, label="fixed-boundary stage-runner", overrides=overrides)
 
 
@@ -145,7 +145,7 @@ class Vmec2000StagedSolveContext:
 
     @classmethod
     def from_namespace(cls, namespace: dict[str, Any], /, **overrides: Any) -> "Vmec2000StagedSolveContext":
-        """Construct from namespace for high-level VMEC driver orchestration."""
+        """Build the VMEC2000-style staged-solve context from driver locals."""
         return _dataclass_from_namespace(cls, namespace, label="VMEC2000 staged-solve", overrides=overrides)
 
 
@@ -877,7 +877,7 @@ def run_vmec2000_staged_solve(ctx: Vmec2000StagedSolveContext) -> Vmec2000Staged
         )
 
         def run_stage_solve(*, state, solve_kwargs, jit_forces):
-            """Run run stage solve for high-level VMEC driver orchestration."""
+            """Run one staged VMEC residual solve with local overrides applied."""
             return ctx.run_fixed_boundary_stage_solve(
                 state=state,
                 static=static_i,

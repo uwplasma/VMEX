@@ -34,7 +34,7 @@ class FinishAttemptLog:
         budget_i: int,
         mode_i: str,
     ) -> tuple[float, bool]:
-        """Record record for high-level VMEC driver orchestration."""
+        """Append one finish-attempt result and return its residual/convergence."""
         trial_fsq = float(ctx.result_final_fsq(trial.result))
         trial_conv = bool(ctx.result_meets_requested_ftol(trial.result, ftol=float(requested_ftol)))
         self.budgets.append(int(budget_i))
@@ -52,14 +52,14 @@ class FinishBudgetTracker:
     used: int = 0
 
     def bounded(self, requested: int) -> int:
-        """Evaluate bounded for high-level VMEC driver orchestration."""
+        """Clip a requested finish budget to the remaining explicit cap."""
         if self.cap is None:
             return int(requested)
         remaining = int(self.cap) - int(self.used)
         return 0 if remaining <= 0 else min(int(requested), int(remaining))
 
     def add(self, budget: int) -> None:
-        """Add add for high-level VMEC driver orchestration."""
+        """Record consumed finish iterations against the explicit cap."""
         self.used += int(budget)
 
 
@@ -78,7 +78,7 @@ class StagedFollowupDiagnostics:
 
     @classmethod
     def from_run(cls, run: Any, *, policy: str) -> "StagedFollowupDiagnostics":
-        """Construct from run for high-level VMEC driver orchestration."""
+        """Copy staged-followup arrays from a completed fixed-boundary run."""
         diag = dict(run.result.diagnostics)
         return cls(
             used=True,
@@ -187,7 +187,7 @@ class FixedBoundaryFinishContext:
 
     @classmethod
     def from_namespace(cls, namespace: dict[str, Any], /, **overrides: Any) -> "FixedBoundaryFinishContext":
-        """Construct from namespace for high-level VMEC driver orchestration."""
+        """Build the finish context from the public driver's local namespace."""
         return _dataclass_from_namespace(cls, namespace, label="fixed-boundary finish", overrides=overrides)
 
 
@@ -379,6 +379,19 @@ def _run_finish_attempt(
     return replace(best_run, state=res_i.state, result=res_i)
 
 
+def _stamp_staged_followup_diagnostics(diag: dict[str, Any], staged_followup: StagedFollowupDiagnostics) -> None:
+    """Write staged-followup provenance into the selected run diagnostics."""
+
+    diag["cli_fixed_boundary_staged_followup_used"] = bool(staged_followup.used)
+    diag["cli_fixed_boundary_staged_followup_policy"] = str(staged_followup.policy)
+    diag["cli_fixed_boundary_staged_followup_ns"] = staged_followup.ns
+    diag["cli_fixed_boundary_staged_followup_niter"] = staged_followup.niter
+    diag["cli_fixed_boundary_staged_followup_modes"] = staged_followup.modes
+    diag["cli_fixed_boundary_staged_followup_fsq"] = staged_followup.fsq
+    diag["cli_fixed_boundary_staged_followup_wall_s"] = staged_followup.wall_s
+    diag["cli_fixed_boundary_staged_followup_solve_total_s"] = staged_followup.solve_total_s
+
+
 def _finish_run_with_diagnostics(info: FinishDiagnosticInputs) -> Any:
     """Attach CLI finish diagnostics to the selected fixed-boundary run."""
 
@@ -418,14 +431,7 @@ def _finish_run_with_diagnostics(info: FinishDiagnosticInputs) -> Any:
         and not bool(strict_converged)
     )
     diag["cli_fixed_boundary_full_parity_fallback"] = bool(info.fallback_used)
-    diag["cli_fixed_boundary_staged_followup_used"] = bool(staged_followup.used)
-    diag["cli_fixed_boundary_staged_followup_policy"] = str(staged_followup.policy)
-    diag["cli_fixed_boundary_staged_followup_ns"] = staged_followup.ns
-    diag["cli_fixed_boundary_staged_followup_niter"] = staged_followup.niter
-    diag["cli_fixed_boundary_staged_followup_modes"] = staged_followup.modes
-    diag["cli_fixed_boundary_staged_followup_fsq"] = staged_followup.fsq
-    diag["cli_fixed_boundary_staged_followup_wall_s"] = staged_followup.wall_s
-    diag["cli_fixed_boundary_staged_followup_solve_total_s"] = staged_followup.solve_total_s
+    _stamp_staged_followup_diagnostics(diag, staged_followup)
     diag["multigrid_user_provided"] = bool(ctx.multigrid_user_provided)
     diag["accelerated_single_grid_default"] = bool(ctx.accelerated_single_grid_default)
     if bool(ctx.accelerated_mode):
