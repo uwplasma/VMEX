@@ -458,6 +458,313 @@ def _qs_matrix_options(**overrides) -> SimpleNamespace:
     return SimpleNamespace(**defaults)
 
 
+def _trial_policy_flattening_summary() -> dict:
+    """Return a synthetic trial-policy diagnostic payload with every promoted field."""
+
+    return {
+        "objective_final": 1.0,
+        "optimizer_route_timing_summary": {
+            "active_derivative_route": "dense_jacobian",
+            "dense_jacobian_total_s": 12.0,
+            "projected_replay_total_s": 6.5,
+            "matrix_free_total_s": 8.0,
+            "scalar_gradient_total_s": 5.0,
+        },
+        "exact_replay_timing_summary": {
+            "jacobian_total_s": 12.0,
+            "replay_total_s": 6.5,
+            "projected_replay_dispatch_s": 4.25,
+            "residual_tangents_s": 3.0,
+            "residual_tangents_dispatch_s": 0.5,
+            "residual_tangents_ready_s": 2.5,
+            "replay_share_of_jacobian": 6.5 / 12.0,
+            "residual_tangent_share_of_jacobian": 0.25,
+        },
+        "replay_scan_diagnostics_summary": {
+            "dominant_path": "dynamic_basepoint",
+            "leaf_call_count": 4,
+            "input_column_count": 12,
+            "chunked_call_count": 1,
+            "chunk_count": 3,
+            "last_chunk_size": 4,
+            "dynamic_basepoint_initial_carry_array_leaf_count": 14,
+            "dynamic_basepoint_initial_carry_none_slot_count": 6,
+            "dynamic_basepoint_initial_carry_nbytes": 2048,
+            "cache": {
+                "dynamic_basepoint": {
+                    "hit_count": 2,
+                    "miss_count": 1,
+                    "hit_fraction": 2 / 3,
+                    "build_s": 0.7,
+                }
+            },
+        },
+        "gradient_replay_scan_diagnostics_summary": {
+            "dominant_path": None,
+            "dominant_vjp_path": "dynamic_basepoint",
+            "cache": {
+                "dynamic_basepoint_vjp": {
+                    "hit_count": 5,
+                    "miss_count": 2,
+                    "hit_fraction": 5 / 7,
+                    "build_s": 0.3,
+                }
+            },
+        },
+        "linear_operator_replay_scan_diagnostics_summary": {
+            "dominant_path": None,
+            "dominant_vjp_path": "dynamic_basepoint",
+            "cache": {
+                "dynamic_basepoint_vjp": {
+                    "hit_count": 0,
+                    "miss_count": 1,
+                    "hit_fraction": 0.0,
+                    "build_s": 0.2,
+                }
+            },
+        },
+        "trial_scan_cache_summary": {},
+        "trial_scan_arg_breadth_summary": {
+            "leaf_count": 172,
+            "array_leaf_count": 166,
+            "array_nbytes": 72932,
+            "categories": {
+                "velocity": {"array_leaf_count": 24, "array_nbytes": 40416, "leaf_count": 24},
+                "preconditioner": {"array_leaf_count": 32, "array_nbytes": 30256, "leaf_count": 34},
+                "controller": {"array_leaf_count": 44, "array_nbytes": 354, "leaf_count": 44},
+                "state": {"array_leaf_count": 2, "array_nbytes": 0, "leaf_count": 4},
+                "runtime_input": {"array_leaf_count": 18, "array_nbytes": 144, "leaf_count": 18},
+            },
+            "subcategories": {
+                "velocity_R": {"array_leaf_count": 8, "array_nbytes": 14000, "leaf_count": 8},
+                "velocity_Z": {"array_leaf_count": 8, "array_nbytes": 15000, "leaf_count": 8},
+                "velocity_lambda": {"array_leaf_count": 8, "array_nbytes": 11416, "leaf_count": 8},
+                "preconditioner_rz_apply": {"array_leaf_count": 24, "array_nbytes": 28000, "leaf_count": 24},
+                "preconditioner_rz_derived": {"array_leaf_count": 8, "array_nbytes": 2256, "leaf_count": 8},
+                "state_checkpoint": {"array_leaf_count": 1, "array_nbytes": 0, "leaf_count": 2},
+            },
+        },
+        "trial_scan_history_summary": {
+            "none": False,
+            "leaf_count": 9,
+            "array_leaf_count": 9,
+            "scalar_leaf_count": 0,
+            "array_nbytes": 288,
+        },
+        "exact_callback_metadata": {
+            "last_jacobian_source": "exact_tape_projected_replay",
+            "exact_replay_policy": {
+                "dynamic_replay_mode": "basepoint",
+                "dynamic_replay_bucket": 128,
+                "projected_replay": True,
+                "projected_replay_reason": "enabled",
+                "fused_projected_replay": False,
+                "column_chunk": None,
+                "projected_replay_projection_column_chunk": None,
+                "requested_replay_column_chunk": None,
+                "requested_replay_column_chunk_policy": "unset",
+                "chunked_projected_replay_projection": False,
+                "scalar_gradient_initial_tangents": True,
+                "linear_operator_initial_tangents": False,
+                "jvp_only_exact_tape": True,
+                "jvp_only_basepoint_carries": True,
+                "accelerator_backend": True,
+            },
+        },
+        "summary": {
+            "objective_initial": 2.0,
+        },
+    }
+
+
+def _budget_matrix_flattening_summary() -> dict:
+    """Return a synthetic budget-matrix diagnostic payload with promoted timing fields."""
+
+    return {
+        "optimizer_route_timing_summary": {
+            "active_derivative_route": "dense_jacobian",
+            "dense_jacobian_total_s": 12.0,
+            "trial_forward_total_s": 4.0,
+            "trial_scan_total_s": 2.0,
+            "trial_scan_share_of_trial_forward": 0.5,
+            "matrix_free_total_s": 8.0,
+            "scalar_gradient_total_s": 5.0,
+        },
+        "trial_scan_cache_summary": {
+            "hit_fraction": 2 / 3,
+            "miss_count": 1,
+            "largest_miss_category": "static",
+        },
+        "trial_scan_arg_breadth_summary": {
+            "leaf_count": 172,
+            "array_leaf_count": 166,
+            "array_nbytes": 72932,
+            "categories": {
+                "velocity": {"array_leaf_count": 24, "array_nbytes": 40416},
+                "preconditioner": {"array_leaf_count": 32, "array_nbytes": 30256},
+                "controller": {"array_leaf_count": 44, "array_nbytes": 354},
+                "state": {"array_leaf_count": 2, "array_nbytes": 0},
+                "runtime_input": {"array_leaf_count": 18, "array_nbytes": 144},
+            },
+            "subcategories": {
+                "velocity_R": {"array_leaf_count": 8, "array_nbytes": 14000},
+                "velocity_Z": {"array_leaf_count": 8, "array_nbytes": 15000},
+                "velocity_lambda": {"array_leaf_count": 8, "array_nbytes": 11416},
+                "preconditioner_rz_apply": {"array_leaf_count": 24, "array_nbytes": 28000},
+                "preconditioner_rz_derived": {"array_leaf_count": 8, "array_nbytes": 2256},
+                "state_checkpoint": {"array_leaf_count": 1, "array_nbytes": 0},
+            },
+        },
+        "trial_scan_history_summary": {
+            "none": True,
+            "leaf_count": 0,
+            "array_leaf_count": 0,
+            "array_nbytes": 0,
+        },
+        "exact_replay_timing_summary": {
+            "jacobian_total_s": 12.0,
+            "exact_tape_build_s": 1.5,
+            "exact_solve_with_tape_total_s": 7.0,
+            "replay_total_s": 6.5,
+            "tape_replay_s": 6.0,
+            "tape_replay_dispatch_s": 1.0,
+            "tape_replay_ready_s": 5.0,
+            "projected_replay_total_s": 6.5,
+            "projected_replay_dispatch_s": 4.25,
+            "fused_projected_replay_total_s": 0.0,
+            "chunked_projected_replay_total_s": 0.0,
+            "initial_tangents_s": 0.75,
+            "initial_tangents_jacfwd_s": 0.5,
+            "initial_tangents_linearize_s": 0.25,
+            "residual_tangents_s": 3.0,
+            "residual_tangents_dispatch_s": 0.5,
+            "residual_tangents_ready_s": 2.5,
+            "replay_share_of_jacobian": 6.5 / 12.0,
+            "residual_tangent_share_of_jacobian": 0.25,
+        },
+        "trial_solver_use_scan": True,
+        "trial_solver_vmec2000_control": False,
+        "trial_solver_scan_policy_source": "cli",
+        "trial_solver_scan_policy_detail": "forced",
+        "exact_callback_metadata": {"last_jacobian_source": "exact_tape_projected_replay"},
+    }
+
+
+def _budget_quality_rows() -> list[dict]:
+    """Return budget rows used to select the fastest quality-matched candidate."""
+
+    return [
+        _budget_matrix_row(
+            "qa",
+            "60:1e-8",
+            1.01,
+            6.0,
+            60,
+            1.0e-8,
+            **{
+                "max_mode": 4,
+                "method": "auto",
+                "fused_projected_replay": "on",
+                "replay_column_chunk": "8",
+                "chunked_projected_replay_projection": "off",
+                "use_ess": True,
+                "target_helicity_seed": True,
+                "trial_scan_arg_array_leaf_count": 83,
+                "trial_scan_arg_array_nbytes": 36322,
+                "trial_scan_arg_velocity_array_nbytes": 20208,
+                "trial_scan_arg_velocity_r_array_nbytes": 6800,
+                "trial_scan_arg_velocity_z_array_nbytes": 6700,
+                "trial_scan_arg_velocity_lambda_array_nbytes": 6708,
+                "trial_scan_arg_preconditioner_array_nbytes": 15128,
+                "trial_scan_arg_preconditioner_rz_apply_array_nbytes": 11200,
+                "trial_scan_arg_preconditioner_rz_derived_array_nbytes": 600,
+                "trial_scan_arg_state_checkpoint_array_nbytes": 128,
+                "trial_scan_history_none": True,
+            },
+        ),
+        _budget_matrix_row(
+            "qa",
+            "80:1e-8",
+            1.0,
+            8.0,
+            80,
+            1.0e-8,
+            **{
+                "trial_scan_arg_array_leaf_count": 90,
+                "trial_scan_arg_array_nbytes": 40000,
+                "trial_scan_arg_velocity_array_nbytes": 21000,
+                "trial_scan_arg_velocity_r_array_nbytes": 7000,
+                "trial_scan_arg_velocity_z_array_nbytes": 7000,
+                "trial_scan_arg_velocity_lambda_array_nbytes": 7000,
+                "trial_scan_arg_preconditioner_array_nbytes": 16000,
+                "trial_scan_arg_preconditioner_rz_apply_array_nbytes": 12000,
+                "trial_scan_arg_preconditioner_rz_derived_array_nbytes": 700,
+                "trial_scan_arg_state_checkpoint_array_nbytes": 256,
+                "trial_scan_history_none": False,
+            },
+        ),
+        _budget_matrix_row(
+            "qa",
+            "120:1e-9",
+            1.0,
+            12.0,
+            120,
+            1.0e-9,
+            **{"trial_scan_history_none": True},
+        ),
+    ]
+
+
+def _budget_diagnostic_rows() -> list[dict]:
+    """Return rows where aspect diagnostics should veto objective-only matching."""
+
+    return [
+        _budget_matrix_row(
+            "qh",
+            "60:1e-8",
+            1.0,
+            4.0,
+            60,
+            1.0e-8,
+            **{"aspect_final": 5.2, "iota_final": 0.41, "qs_final": 0.01},
+        ),
+        _budget_matrix_row(
+            "qh",
+            "120:1e-9",
+            1.0,
+            8.0,
+            120,
+            1.0e-9,
+            **{"aspect_final": 5.0, "iota_final": 0.41, "qs_final": 0.01},
+        ),
+    ]
+
+
+def _budget_floor_rows() -> list[dict]:
+    """Return rows showing iota-floor quality can match despite lower objective."""
+
+    return [
+        _budget_matrix_row(
+            "qh",
+            "60:1e-8",
+            0.34,
+            4.0,
+            60,
+            1.0e-8,
+            **{"aspect_final": 5.08, "iota_final": -0.71, "qs_final": 0.33},
+        ),
+        _budget_matrix_row(
+            "qh",
+            "80:1e-8",
+            1.15,
+            8.0,
+            80,
+            1.0e-8,
+            **{"aspect_final": 5.41, "iota_final": -0.411, "qs_final": 0.98},
+        ),
+    ]
+
+
 def test_qs_budget_report_compacts_profile_scan_and_cache_buckets() -> None:
     from tools.diagnostics.optimization import qs_budget_report
 
@@ -770,128 +1077,7 @@ def test_qs_trial_policy_matrix_builds_policy_commands(tmp_path) -> None:
         returncode=0,
         elapsed_s=1.25,
         stdout_tail="tail",
-        summary={
-            "objective_final": 1.0,
-            "optimizer_route_timing_summary": {
-                "active_derivative_route": "dense_jacobian",
-                "dense_jacobian_total_s": 12.0,
-                "projected_replay_total_s": 6.5,
-                "matrix_free_total_s": 8.0,
-                "scalar_gradient_total_s": 5.0,
-            },
-            "exact_replay_timing_summary": {
-                "jacobian_total_s": 12.0,
-                "replay_total_s": 6.5,
-                "projected_replay_dispatch_s": 4.25,
-                "residual_tangents_s": 3.0,
-                "residual_tangents_dispatch_s": 0.5,
-                "residual_tangents_ready_s": 2.5,
-                "replay_share_of_jacobian": 6.5 / 12.0,
-                "residual_tangent_share_of_jacobian": 0.25,
-            },
-            "replay_scan_diagnostics_summary": {
-                "dominant_path": "dynamic_basepoint",
-                "leaf_call_count": 4,
-                "input_column_count": 12,
-                "chunked_call_count": 1,
-                "chunk_count": 3,
-                "last_chunk_size": 4,
-                "dynamic_basepoint_initial_carry_array_leaf_count": 14,
-                "dynamic_basepoint_initial_carry_none_slot_count": 6,
-                "dynamic_basepoint_initial_carry_nbytes": 2048,
-                "cache": {
-                    "dynamic_basepoint": {
-                        "hit_count": 2,
-                        "miss_count": 1,
-                        "hit_fraction": 2 / 3,
-                        "build_s": 0.7,
-                    }
-                },
-            },
-            "gradient_replay_scan_diagnostics_summary": {
-                "dominant_path": None,
-                "dominant_vjp_path": "dynamic_basepoint",
-                "cache": {
-                    "dynamic_basepoint_vjp": {
-                        "hit_count": 5,
-                        "miss_count": 2,
-                        "hit_fraction": 5 / 7,
-                        "build_s": 0.3,
-                    }
-                },
-            },
-            "linear_operator_replay_scan_diagnostics_summary": {
-                "dominant_path": None,
-                "dominant_vjp_path": "dynamic_basepoint",
-                "cache": {
-                    "dynamic_basepoint_vjp": {
-                        "hit_count": 0,
-                        "miss_count": 1,
-                        "hit_fraction": 0.0,
-                        "build_s": 0.2,
-                    }
-                },
-            },
-            "trial_scan_cache_summary": {},
-            "trial_scan_arg_breadth_summary": {
-                "leaf_count": 172,
-                "array_leaf_count": 166,
-                "array_nbytes": 72932,
-                "categories": {
-                    "velocity": {"array_leaf_count": 24, "array_nbytes": 40416, "leaf_count": 24},
-                    "preconditioner": {"array_leaf_count": 32, "array_nbytes": 30256, "leaf_count": 34},
-                    "controller": {"array_leaf_count": 44, "array_nbytes": 354, "leaf_count": 44},
-                    "state": {"array_leaf_count": 2, "array_nbytes": 0, "leaf_count": 4},
-                    "runtime_input": {"array_leaf_count": 18, "array_nbytes": 144, "leaf_count": 18},
-                },
-                "subcategories": {
-                    "velocity_R": {"array_leaf_count": 8, "array_nbytes": 14000, "leaf_count": 8},
-                    "velocity_Z": {"array_leaf_count": 8, "array_nbytes": 15000, "leaf_count": 8},
-                    "velocity_lambda": {"array_leaf_count": 8, "array_nbytes": 11416, "leaf_count": 8},
-                    "preconditioner_rz_apply": {
-                        "array_leaf_count": 24,
-                        "array_nbytes": 28000,
-                        "leaf_count": 24,
-                    },
-                    "preconditioner_rz_derived": {
-                        "array_leaf_count": 8,
-                        "array_nbytes": 2256,
-                        "leaf_count": 8,
-                    },
-                    "state_checkpoint": {"array_leaf_count": 1, "array_nbytes": 0, "leaf_count": 2},
-                },
-            },
-            "trial_scan_history_summary": {
-                "none": False,
-                "leaf_count": 9,
-                "array_leaf_count": 9,
-                "scalar_leaf_count": 0,
-                "array_nbytes": 288,
-            },
-            "exact_callback_metadata": {
-                "last_jacobian_source": "exact_tape_projected_replay",
-                "exact_replay_policy": {
-                    "dynamic_replay_mode": "basepoint",
-                    "dynamic_replay_bucket": 128,
-                    "projected_replay": True,
-                    "projected_replay_reason": "enabled",
-                    "fused_projected_replay": False,
-                    "column_chunk": None,
-                    "projected_replay_projection_column_chunk": None,
-                    "requested_replay_column_chunk": None,
-                    "requested_replay_column_chunk_policy": "unset",
-                    "chunked_projected_replay_projection": False,
-                    "scalar_gradient_initial_tangents": True,
-                    "linear_operator_initial_tangents": False,
-                    "jvp_only_exact_tape": True,
-                    "jvp_only_basepoint_carries": True,
-                    "accelerator_backend": True,
-                },
-            },
-            "summary": {
-                "objective_initial": 2.0,
-            },
-        },
+        summary=_trial_policy_flattening_summary(),
     )
     assert row["objective_initial"] == 2.0
     assert row["objective_reduction_fraction"] == pytest.approx(0.5)
@@ -1071,74 +1257,7 @@ def test_qs_budget_matrix_builds_budget_commands_and_recommendations(tmp_path) -
         returncode=0,
         elapsed_s=1.25,
         stdout_tail="tail",
-        summary={
-            "optimizer_route_timing_summary": {
-                "active_derivative_route": "dense_jacobian",
-                "dense_jacobian_total_s": 12.0,
-                "trial_forward_total_s": 4.0,
-                "trial_scan_total_s": 2.0,
-                "trial_scan_share_of_trial_forward": 0.5,
-                "matrix_free_total_s": 8.0,
-                "scalar_gradient_total_s": 5.0,
-            },
-            "trial_scan_cache_summary": {
-                "hit_fraction": 2 / 3,
-                "miss_count": 1,
-                "largest_miss_category": "static",
-            },
-            "trial_scan_arg_breadth_summary": {
-                "leaf_count": 172,
-                "array_leaf_count": 166,
-                "array_nbytes": 72932,
-                "categories": {
-                    "velocity": {"array_leaf_count": 24, "array_nbytes": 40416},
-                    "preconditioner": {"array_leaf_count": 32, "array_nbytes": 30256},
-                    "controller": {"array_leaf_count": 44, "array_nbytes": 354},
-                    "state": {"array_leaf_count": 2, "array_nbytes": 0},
-                    "runtime_input": {"array_leaf_count": 18, "array_nbytes": 144},
-                },
-                "subcategories": {
-                    "velocity_R": {"array_leaf_count": 8, "array_nbytes": 14000},
-                    "velocity_Z": {"array_leaf_count": 8, "array_nbytes": 15000},
-                    "velocity_lambda": {"array_leaf_count": 8, "array_nbytes": 11416},
-                    "preconditioner_rz_apply": {"array_leaf_count": 24, "array_nbytes": 28000},
-                    "preconditioner_rz_derived": {"array_leaf_count": 8, "array_nbytes": 2256},
-                    "state_checkpoint": {"array_leaf_count": 1, "array_nbytes": 0},
-                },
-            },
-            "trial_scan_history_summary": {
-                "none": True,
-                "leaf_count": 0,
-                "array_leaf_count": 0,
-                "array_nbytes": 0,
-            },
-            "exact_replay_timing_summary": {
-                "jacobian_total_s": 12.0,
-                "exact_tape_build_s": 1.5,
-                "exact_solve_with_tape_total_s": 7.0,
-                "replay_total_s": 6.5,
-                "tape_replay_s": 6.0,
-                "tape_replay_dispatch_s": 1.0,
-                "tape_replay_ready_s": 5.0,
-                "projected_replay_total_s": 6.5,
-                "projected_replay_dispatch_s": 4.25,
-                "fused_projected_replay_total_s": 0.0,
-                "chunked_projected_replay_total_s": 0.0,
-                "initial_tangents_s": 0.75,
-                "initial_tangents_jacfwd_s": 0.5,
-                "initial_tangents_linearize_s": 0.25,
-                "residual_tangents_s": 3.0,
-                "residual_tangents_dispatch_s": 0.5,
-                "residual_tangents_ready_s": 2.5,
-                "replay_share_of_jacobian": 6.5 / 12.0,
-                "residual_tangent_share_of_jacobian": 0.25,
-            },
-            "trial_solver_use_scan": True,
-            "trial_solver_vmec2000_control": False,
-            "trial_solver_scan_policy_source": "cli",
-            "trial_solver_scan_policy_detail": "forced",
-            "exact_callback_metadata": {"last_jacobian_source": "exact_tape_projected_replay"},
-        },
+        summary=_budget_matrix_flattening_summary(),
     )
     assert flattened["trial_forward_total_s"] == 4.0
     assert flattened["trial_scan_total_s"] == 2.0
@@ -1168,68 +1287,8 @@ def test_qs_budget_matrix_builds_budget_commands_and_recommendations(tmp_path) -
     assert flattened["replay_share_of_jacobian"] == pytest.approx(6.5 / 12.0)
     assert flattened["last_jacobian_source"] == "exact_tape_projected_replay"
 
-    rows = [
-        _budget_matrix_row(
-            "qa",
-            "60:1e-8",
-            1.01,
-            6.0,
-            60,
-            1.0e-8,
-            **{
-                "max_mode": 4,
-                "method": "auto",
-                "fused_projected_replay": "on",
-                "replay_column_chunk": "8",
-                "chunked_projected_replay_projection": "off",
-                "use_ess": True,
-                "target_helicity_seed": True,
-                "trial_scan_arg_array_leaf_count": 83,
-                "trial_scan_arg_array_nbytes": 36322,
-                "trial_scan_arg_velocity_array_nbytes": 20208,
-                "trial_scan_arg_velocity_r_array_nbytes": 6800,
-                "trial_scan_arg_velocity_z_array_nbytes": 6700,
-                "trial_scan_arg_velocity_lambda_array_nbytes": 6708,
-                "trial_scan_arg_preconditioner_array_nbytes": 15128,
-                "trial_scan_arg_preconditioner_rz_apply_array_nbytes": 11200,
-                "trial_scan_arg_preconditioner_rz_derived_array_nbytes": 600,
-                "trial_scan_arg_state_checkpoint_array_nbytes": 128,
-                "trial_scan_history_none": True,
-            },
-        ),
-        _budget_matrix_row(
-            "qa",
-            "80:1e-8",
-            1.0,
-            8.0,
-            80,
-            1.0e-8,
-            **{
-                "trial_scan_arg_array_leaf_count": 90,
-                "trial_scan_arg_array_nbytes": 40000,
-                "trial_scan_arg_velocity_array_nbytes": 21000,
-                "trial_scan_arg_velocity_r_array_nbytes": 7000,
-                "trial_scan_arg_velocity_z_array_nbytes": 7000,
-                "trial_scan_arg_velocity_lambda_array_nbytes": 7000,
-                "trial_scan_arg_preconditioner_array_nbytes": 16000,
-                "trial_scan_arg_preconditioner_rz_apply_array_nbytes": 12000,
-                "trial_scan_arg_preconditioner_rz_derived_array_nbytes": 700,
-                "trial_scan_arg_state_checkpoint_array_nbytes": 256,
-                "trial_scan_history_none": False,
-            },
-        ),
-        _budget_matrix_row(
-            "qa",
-            "120:1e-9",
-            1.0,
-            12.0,
-            120,
-            1.0e-9,
-            **{"trial_scan_history_none": True},
-        ),
-    ]
     annotated = qs_budget_matrix.annotate_budget_comparisons(
-        rows,
+        _budget_quality_rows(),
         reference_budget_label="120:1e-9",
         objective_rel_tol=0.02,
     )
@@ -1258,28 +1317,8 @@ def test_qs_budget_matrix_builds_budget_commands_and_recommendations(tmp_path) -
         {"problem": "qa", "budget": "80:1e-8"},
     ]
 
-    diag_rows = [
-        _budget_matrix_row(
-            "qh",
-            "60:1e-8",
-            1.0,
-            4.0,
-            60,
-            1.0e-8,
-            **{"aspect_final": 5.2, "iota_final": 0.41, "qs_final": 0.01},
-        ),
-        _budget_matrix_row(
-            "qh",
-            "120:1e-9",
-            1.0,
-            8.0,
-            120,
-            1.0e-9,
-            **{"aspect_final": 5.0, "iota_final": 0.41, "qs_final": 0.01},
-        ),
-    ]
     diag_annotated = qs_budget_matrix.annotate_budget_comparisons(
-        diag_rows,
+        _budget_diagnostic_rows(),
         reference_budget_label="120:1e-9",
         objective_rel_tol=0.02,
         aspect_abs_tol=0.05,
@@ -1290,28 +1329,8 @@ def test_qs_budget_matrix_builds_budget_commands_and_recommendations(tmp_path) -
     assert diag_annotated[0]["quality_mismatch_reasons"] == ["aspect"]
     assert diag_annotated[0]["budget_classification_vs_reference"] == "objective_regression"
 
-    floor_rows = [
-        _budget_matrix_row(
-            "qh",
-            "60:1e-8",
-            0.34,
-            4.0,
-            60,
-            1.0e-8,
-            **{"aspect_final": 5.08, "iota_final": -0.71, "qs_final": 0.33},
-        ),
-        _budget_matrix_row(
-            "qh",
-            "80:1e-8",
-            1.15,
-            8.0,
-            80,
-            1.0e-8,
-            **{"aspect_final": 5.41, "iota_final": -0.411, "qs_final": 0.98},
-        ),
-    ]
     floor_annotated = qs_budget_matrix.annotate_budget_comparisons(
-        floor_rows,
+        _budget_floor_rows(),
         reference_budget_label="80:1e-8",
         objective_rel_tol=0.02,
         aspect_abs_tol=0.05,
