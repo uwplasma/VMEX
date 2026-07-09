@@ -11,6 +11,10 @@ the working tree **and from git history** in Phase 1. Keep this plan.md under 20
 document, updated with a short status line per phase as work proceeds, and moved to `docs/dev/` (or
 deleted) at the v0.1.0 release.
 
+**Mirror status (2026-07-09): FINAL IMPLEMENTATION PLAN.** Straight-axis finite-beta free boundary
+is a supported target under the anisotropic `fixed_flux_cut` model in Phase 5; implementation proceeds
+through M0–M10 without reopening the archived solver architecture.
+
 ---
 
 ## 0. Mission statement
@@ -45,6 +49,10 @@ Turn `vmec_jax` into the reference JAX implementation of the VMEC ideal-MHD equi
     free boundary for tokamaks (`ntor=0`) and stellarators, fixed-boundary fallback on missing
     mgrid, spline/pedestal profile types, and a 2D preconditioner option — while borrowing VMEC++'s
     hot restart, JSON input, zero-crash policy, and validation methodology.
+11. **Production mirror equilibria**: fixed- and free-boundary straight-axis mirrors at finite beta,
+    axisymmetric and nonaxisymmetric, with open axial field lines, isotropic and consistent
+    anisotropic pressure closures, external coils, implicit derivatives, and mirror-native output;
+    plus closed toroidal stellarator–mirror hybrids using the ordinary VMEC backend.
 
 Every decision below optimizes for: *simpler to use, fewer files, faster, more manageable*.
 
@@ -294,8 +302,8 @@ tree (tests may be temporarily reduced — full restructure lands in Phase 9).
 
 ## 5. Phase 2 — Core library refactor (architecture, naming, fixed-boundary parity)
 
-**STATUS (2026-07-09): core landed, integration/perf hardening next.** `vmec_jax/core/` has 20
-modules (~10k lines), each A/B-proven vs the legacy kernels (420+ tests) — including the solve
+**STATUS (2026-07-09): core landed, integration/perf hardening next.** `vmec_jax/core/` has 22
+modules (~11.6k lines), each A/B-proven vs the legacy kernels (420+ tests) — including the solve
 loop (solovev 215/215 iterations vs VMEC2000, cth 434, machine-precision wout parity), the
 complete wout writer (all 39 missing variables; found legacy lasym output bugs: buco/jcur*/ctor
 x1/2, jdotb x1/16, fast-bcovar bsubsmns corruption), mgrid IO/field (ESSOS PR#33 cross-verified),
@@ -534,63 +542,146 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
    from coils via a quadratic-flux surface or direct constraint) and free-boundary single-stage
    (coils → direct field → free-boundary equilibrium → QS/aspect targets; gradients via §6).
    One example each, marked advanced.
-5. **Mirror geometry migration (after the fixed-boundary core and 1D preconditioner are stable).**
-   This is a finite sequence, not a parallel solver rewrite:
+5. **Mirror physics (production scope finalized 2026-07-09).** Open mirrors are not toroidal VMEC
+   with a long major radius. They use a mirror-native inverse-coordinate backend, while sharing
+   numerical and software components with the toroidal core. The closed stellarator–mirror hybrid
+   remains on the ordinary VMEC backend.
 
-   a. **Shared foundations.** Use the same force kernels, time stepping, multigrid, exact VMEC 1D
-      preconditioner, output model, and exception policy as toroidal VMEC. Do not promote the
-      archived `JᵀJ` block-CG or frozen-vacuum prototypes: they did not solve the physical
-      equilibrium residual. Keep optimizer termination (`ftol`, `gtol`) separate from the physical
-      convergence contract (`fsqr`, `fsqz`, `fsql`, normalized force, and boundary residuals).
-   b. **Fixed-boundary axisymmetric mirror.** Add one compact open-axis geometry module using a
-      Chebyshev/spline axial basis and Fourier poloidal basis, with explicit regularity and equal,
-      poloidally symmetric end-cap conditions. Validate geometry and fields against a cylinder,
-      circular-loop Biot–Savart `B_z`/`B_r`, a two-coil on-axis analytic field, and a manufactured
-      force-balance case. Provide convergence histories, cross sections, horizontal-axis 3D plots,
-      coils, field lines, `|B|`, iota/current diagnostics where defined, and resolution studies.
-   c. **Fixed-boundary nonaxisymmetric mirror.** Reuse the same open-axis state and solver only
-      after (b) passes. Add helical/finite-current perturbations with closed poloidal sections and
-      verify convergence in axial and poloidal resolution. No second solver stack.
-   d. **Toroidal stellarator–mirror hybrid.** This remains a closed torus: straight mirror-like
-      sides joined by curved stellarator corners. Solve the equilibrium in the ordinary VMEC
-      Fourier state. Splines are initially low-dimensional design controls for the piecewise axis
-      and boundary, projected once to a resolution-controlled Fourier representation. Benchmark
-      mode convergence and `wout` quantities against VMEC2000 before considering a native spline
-      equilibrium state.
-   e. **Free-boundary toroidal hybrid.** Build this only on the validated NESTOR/mgrid/direct-coil
-      path above. Circular/elliptical coil helpers belong in the library; examples contain only
-      input parameters and calls. A beta continuation must solve every boundary, trace total-field
-      lines for every beta, and report plasma, vacuum, and total `B·n` plus force residuals. Never
-      label a surface converged when `ier_flag` is nonzero or only a quadratic-flux fit succeeded.
-   f. **Straight-axis finite-beta free boundary is diagnostic/deferred.** Isotropic scalar-pressure
-      VMEC does not by itself provide the end closure and anisotropic mirror physics needed to call
-      an arbitrary open LCFS a physical mirror equilibrium. Retain coil-field and vacuum-surface
-      benchmarks, but defer a production finite-beta claim until the pressure model and end
-      boundary conditions are specified and validated against mirror literature or another code.
-   g. **Differentiability follows primal robustness.** Differentiate the converged residual with
-      implicit/custom-VJP solves preconditioned by the exact 1D operator. Do not unroll production
-      iterations or restore fingerprint/replay machinery. The CLI may use non-differentiable
-      early exits, buffer donation, and host control flow.
+   **5.1 Supported physical model**
 
-   Keep this addition small: at most eight focused library modules, one test module per module,
-   and short root examples that do not duplicate geometry, coil, diagnostics, or plotting helpers.
-   Generated figures and result tables are ignored; documentation may commit only compressed,
-   reproducible showcase figures.
+   - Coordinates are `(s, theta, xi)`, with `s in [0,1]`, periodic `theta`, and nonperiodic
+     `xi in [-1,1]`. Use the VMEC radial mesh, Fourier in `theta`, and Chebyshev–Gauss–Lobatto in
+     `xi`; retain an axial-basis protocol so multi-domain Chebyshev or B-splines can replace a
+     poorly conditioned global polynomial without changing physics kernels.
+   - The field representation is divergence-free by construction:
+     `J B^s = 0`, `J B^theta = I'(s) - d_xi(lambda)`, and
+     `J B^xi = Psi'(s) + d_theta(lambda)`. The lambda surface mean is the removed gauge mode.
+   - The pressure tensor is
+     `P = p_perp I + (p_parallel - p_perp) b b`. A `PressureClosure` supplies a generating energy
+     density, `p_parallel(s,B)`, `p_perp(s,B)`, and analytic/JAX derivatives. It must enforce the
+     parallel-force consistency relation
+     `p_perp = p_parallel - B (partial p_parallel / partial B)_s`; independent arbitrary pressure
+     arrays are invalid inputs. Ship an isotropic flux-function closure, an ANIMEC-compatible
+     bi-Maxwellian closure, and a consistency-checked tabulated `(s,B)` closure for kinetic-code
+     moments. The isotropic limit must reduce exactly to the scalar-pressure kernels.
+   - The equilibrium residual is the physical tensor-force balance
+     `R = J x B - div(P)`, projected onto admissible geometry/lambda variations. The variational
+     energy is used when the closure provides a valid generating functional; the direct tensor
+     residual is always computed independently as the convergence and validation diagnostic.
+   - Firehose/mirror ellipticity indicators are mandatory outputs:
+     `sigma = 1/mu0 + (p_perp-p_parallel)/B^2 > 0` and
+     `partial_B(sigma B) > 0`. Failing either condition is a typed invalid-equilibrium result, not
+     solver convergence. These checks are necessary model-validity gates, not a full stability
+     claim.
 
-   **Mirror exit criteria:**
+   **5.2 Boundary model**
 
-   - Axisymmetric fixed-boundary reference cases reach `max(fsqr, fsqz, fsql) <= 1e-12` in the
-     force components that are nonzero for the case, with normalized force and boundary residuals
-     reported independently; resolution refinement must preserve the result.
-   - The nonaxisymmetric fixed-boundary reference monotonically reduces the physical residual and
-     passes axial/poloidal resolution studies before it is called supported.
-   - The toroidal Fourier hybrid converges without a nonzero `ier_flag`; its geometry, force
-     residuals, and selected `wout` quantities agree with VMEC2000 within Appendix-A tolerances.
-     A native spline state remains deferred unless Fourier mode studies show a measured need.
-   - The free-boundary toroidal hybrid uses solved boundaries at each beta and passes total `B·n`,
-     force, mgrid/direct-field agreement, hot-restart, and field-line visualization tests.
-   - Every example has a fast CI smoke configuration and a documented research configuration;
-     plots are generated from saved solver outputs, never from prescribed stand-in surfaces.
+   - The side `s=1` is the lateral plasma-vacuum interface and is fixed or varied depending on the
+     solve. Both plasma and vacuum fields are tangent there. Free boundary enforces the anisotropic
+     normal-stress jump
+     `p_perp + B_plasma^2/(2 mu0) = B_vacuum^2/(2 mu0)` and reports plasma, vacuum, and total
+     normalized `B.n`. The first production profiles vanish smoothly at `s=1`; finite edge pressure
+     is added only with an explicit surface-current model and diagnostic.
+   - `xi=+/-1` are fixed computational cuts crossed by open field lines, not free plasma-vacuum
+     interfaces or periodic caps. The production `fixed_flux_cut` policy prescribes the end
+     geometry, normal magnetic flux, and lambda gauge from the coil/vacuum reference state; equal
+     reflected data give the default up-down-symmetric mirror. Variations vanish at the cuts, while
+     field lines and flux pass through. This is a static equilibrium model between specified end
+     planes; end loss, sheath, sources, ambipolar potential, and transport are documented non-goals.
+   - The vacuum annulus uses `B_v = B_coil + grad(nu)` with `laplacian(nu)=0`, Fourier×Chebyshev
+     discretization, Neumann data on the moving side interface, and prescribed external-field data
+     at the end cuts and outer computational boundary. Demonstrate convergence as that outer
+     boundary is expanded before claiming an unbounded-vacuum result. NESTOR algorithms and
+     cadence are reused where topology permits, but its toroidal Green function is not reused
+     blindly for an open surface.
+
+   **5.3 Architecture and reuse**
+
+   Add only `vmec_jax/mirror/{model,basis,geometry,forces,vacuum,solver,output}.py` plus a small
+   `__init__.py`. Reuse `core/coils.py`, transforms, radial interpolation, state stepping,
+   tridiagonal/Krylov utilities, implicit-diff helpers, typed errors, and plotting styles. Extend
+   `core/plotting.py` to dispatch mirror output rather than creating a plotting package. Root
+   examples contain parameters and public calls only; geometry, normals, coil construction,
+   summaries, tracing, and plots belong in library code. The archived head at `e4a7f05d` is an
+   evidence source only: port equations or focused tests, never its solver stacks or broad commits.
+
+   Use one physical residual and two execution lanes, as for toroidal VMEC: a JAX-traceable solver
+   and a faster host-controlled CLI solver. Adapt the exact 1D radial preconditioner first; tensor
+   it with an axial Chebyshev Helmholtz/line solve, then add matrix-free Newton–GMRES with that
+   separable operator as preconditioner. The archived normal-equation `JᵀJ` block-CG method is not a
+   production preconditioner because it squares the condition number.
+
+   **5.4 Finite implementation sequence**
+
+   1. **M0 — specification and migration.** Freeze signs, units, nondimensional residual norms,
+      input schema, `mout` schema, end-cut contract, and analytic fixtures. Extract only the
+      two-coil formulas, CGL tests, MMS cases, and plotting requirements from the archive.
+   2. **M1 — basis and geometry.** Implement CGL nodes/differentiation/quadrature, transforms,
+      axis regularity, axisymmetric and 3D embeddings, metrics, and divergence-free field. Test
+      polynomial exactness, integration by parts, positive Jacobian, flux conservation, and
+      spectral convergence before adding a nonlinear solve.
+   3. **M2 — fixed-boundary isotropic axisymmetry.** Implement energy, tensor residual, lambda
+      gauge, VMEC-like stepping, separable preconditioner, continuation, and diagnostics. Validate
+      cylinder, flared tube, two circular coils (`B_z` on axis and low-radius `B_r,B_z`), and MMS.
+   4. **M3 — anisotropic fixed boundary.** Implement isotropic, bi-Maxwellian, and tabulated
+      closures; port the ANIMEC pressure/force identities from `fbal.f`, `bcovar.f`, `forces.f`, and
+      `funct3d.f` rather than translating preprocessor structure. Verify closure derivatives,
+      isotropic-limit identity, energy-gradient/tensor-force agreement, and ellipticity gates.
+   5. **M4 — fixed-boundary 3D mirror.** Add nonaxisymmetric/helical boundaries and finite axial
+      current. Demonstrate visible pitch, nonzero lambda response, and convergence under radial,
+      poloidal, and axial refinement using the same solver and residual.
+   6. **M5 — open-vacuum solver.** Implement the annular scalar-potential solve and couple direct
+      coils/mgrid fields. Validate Laplace MMS, reciprocity, gauge removal, coil-only fields,
+      side-interface `B.n`, end flux, outer-boundary convergence, and axisymmetric comparisons
+      against direct circular-loop fields.
+   7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior
+      state jointly, with beta continuation `0, 0.01, 0.03, 0.10` and hot restarts. Validate
+      isotropic and anisotropic cases against an independently generated Pleiades/WHAM-style
+      reference, paraxial pressure balance, outward flux-surface expansion, and the expected
+      central diamagnetic trend `B0/Bvac approximately sqrt(1-beta)` in its validity regime.
+   8. **M7 — nonaxisymmetric finite-beta free boundary.** Add helical coils/boundaries, then require
+      3D force, interface, field-line, and resolution gates. This lane is supported only after M6;
+      no axisymmetric boundary replicated in theta counts as a 3D validation.
+   9. **M8 — toroidal stellarator–mirror hybrid.** Model the closed square/rounded-square torus with
+      straight mirror sides and stellarator corners using ordinary VMEC Fourier equilibrium.
+      Piecewise splines are low-dimensional axis/boundary design controls projected to Fourier.
+      Validate mode convergence and `wout` parity with VMEC2000 before considering a native spline
+      equilibrium state. Then run the 16-coil free-boundary beta scan using solved boundaries.
+   10. **M9 — implicit differentiation and optimization.** Wrap the converged mirror residual in a
+       `custom_vjp`; solve JVP/VJP systems matrix-free with the primal preconditioner. Validate
+       boundary, pressure, current, and coil derivatives against central differences. Do not
+       differentiate through iteration histories or restore fingerprint/replay machinery.
+   11. **M10 — performance, outputs, and promotion.** Benchmark CPU/GPU cold/warm time, memory,
+       scaling, and CLI versus JAX lanes; add mirror-native `mout` output, restart, `--plot`, docs,
+       and short root examples. Remove obsolete archived implementations only after parity data are
+       recorded. Mark the feature supported only when every gate below passes.
+
+   **5.5 Convergence, validation, and presentation gates**
+
+   - A requested `ftol=1e-12` means every active nondimensional physical force component is
+     `<=1e-12`; optimizer status alone is never convergence. Report raw/component-normalized force,
+     energy change, Jacobian minimum, step norm, linear residual, `B.n`, normal-stress jump, and
+     closure consistency versus iteration. Stalling is a failed solve with a typed reason.
+   - Reference cases pass `ns`, `mpol`, `nxi` (and `ntor` for 3D) studies. Observables converge at
+     the expected order or spectrally until roundoff; a tighter nonlinear tolerance may not conceal
+     discretization error. Research runs use `max_iter >= 1000` when needed, but CI uses small
+     deterministic cases with the same equations.
+   - Axisymmetric finite-beta free boundary must match independent reference curves for boundary,
+     on-axis `B`, flux, and pressure to documented combined tolerances; M6 also requires monotonic
+     continuation from beta zero, positive ellipticity indicators, and independence from reasonable
+     initial boundaries. M7 requires the corresponding 3D manufactured/reference evidence.
+   - Every beta is an actual equilibrium solve. Saved output drives field-line tracing and plots;
+     no prescribed stand-in boundary is plotted as a result. Required figures are horizontal in
+     mirror `z`, show coils, solved surfaces, field vectors and cap-to-cap field lines, `|B|`, cross
+     sections, pressure moments, on-axis analytic/reference comparisons, residual histories,
+     spectra, beta trends, current/twist, and mirror/well diagnostics. Render tests inspect artists
+     and nonblank pixels; documentation commits only compressed showcase images.
+   - Mirror outputs are `mout_*.nc`, never fake toroidal `wout`. They store geometry, fields,
+     `p_parallel`, `p_perp`, closure metadata, force/interface histories, stability indicators,
+     end-cut data, coils, and provenance. Toroidal hybrids continue to use `wout` and Boozer.
+   - Supported means API/CLI documentation, restart compatibility, typed failures, >=95% focused
+     coverage, CPU and office-GPU benchmarks, examples, and no known case labelled converged with a
+     nonzero solver flag. Free-boundary axisymmetric and 3D mirrors are separate capability flags.
 
 ---
 
@@ -670,7 +761,8 @@ cross-sections evolving with β for both machines, overlay mgrid vs direct, repo
 - Property tests: transform round-trip (tomnsp∘totzsp = identity on band-limited data), residual
   invariance under nfp rotation, lasym-off ≡ symmetric path, CLI-lane ≡ jit-lane per block,
   JSON↔INDATA round-trip.
-- Delete the wave/coverage-padding files and the 3–4k-line lane tests. Budget: ≤ ~6k lines total.
+- Delete the wave/coverage-padding files and the 3–4k-line lane tests. Budget: ≤ ~10k lines total,
+  including the mirror scientific-validation suite.
 - Keep the `VMEC2000_INTEGRATION=1` opt-in gate that runs xvmec2000 side-by-side locally/nightly.
 
 ---
@@ -720,19 +812,22 @@ Structure:
 
 - [ ] Fresh clone ≤ 10 MB; single branch; zero `Co-Authored-By: Claude` trailers in history; Claude
       absent from the GitHub contributors panel; all new commits authored by rogeriojorge.
-- [ ] `vmec_jax/` ≤ ~35 files / ~15k lines; no file >~1000 lines; docstrings + VMEC2000 cross-refs
-      everywhere; ruff and mypy pass without today's blanket ignores.
+- [ ] `vmec_jax/` remains within the §0.5 budget of 30–40 files / ~25–30k lines after the
+      mirror backend lands; no new mirror file exceeds ~800 lines; docstrings and source/equation
+      cross-references are complete; ruff and mypy pass without blanket ignores.
 - [ ] Fixed + free boundary (mgrid and direct-coil; tokamak and stellarator; sym and lasym)
       converge with wout + print parity vs VMEC2000 per Appendix-A tolerances; missing-mgrid
       fixed-boundary fallback works and is tested.
 - [ ] Fixed-boundary axisymmetric mirror meets the component-wise `1e-12` force contract and its
-      analytic field, end-cap, and resolution tests; nonaxisymmetric mirror is supported only after
-      its physical-residual and resolution gates pass.
+      analytic field, fixed-flux end-cut, anisotropic-closure, and resolution tests;
+      nonaxisymmetric mirror is supported only after its physical-residual and resolution gates.
+- [ ] Straight-axis finite-beta free-boundary mirrors are supported in axisymmetric and 3D modes:
+      solved lateral interfaces satisfy total `B·n` and anisotropic normal-stress balance, every
+      beta scan point is a converged equilibrium, ellipticity gates pass, and axisymmetric results
+      agree with independent Pleiades/WHAM-style reference data.
 - [ ] Toroidal stellarator–mirror hybrid converges in the Fourier representation with VMEC2000
       parity; its spline parameterization demonstrably reduces design variables without changing
       the equilibrium equations. Free-boundary beta scans use solved surfaces and total `B·n`.
-- [ ] Straight-axis finite-beta free-boundary mirror remains explicitly diagnostic until a
-      validated pressure model and end closure are selected; documentation does not overclaim it.
 - [ ] CLI ≥ VMEC2000 speed on ≥80% of suite rows (cold CPU); multigrid faster than VMEC2000
       multigrid on the suite median and faster than our own single-grid; GPU benchmarked;
       hot restart works and is used by examples.
@@ -743,7 +838,7 @@ Structure:
       coils (mgrid + direct, agreeing) featured in README.
 - [ ] VMEC++-schema JSON inputs accepted and round-trip converted; `--booz` works out of the box;
       typed zero-crash exceptions throughout.
-- [ ] Coverage ≥95% with tests ≤ ~6k lines; goldens in release assets; CI green including example
+- [ ] Coverage ≥95% with tests ≤ ~10k lines; goldens in release assets; CI green including example
       smoke tests and a repo-size check.
 - [ ] Docs rebuilt per §12 with equations linked to source; README benchmark plot regenerated;
       v0.1.0 on PyPI + conda-forge.
@@ -771,6 +866,17 @@ Structure:
 - **float32 GPUs** → require x64 at solver import; document the performance implication.
 - **Parity tolerance fights** → per-quantity rel+abs tolerances (CompareWOut methodology) with a
   looser current-density tolerance; never invent ad-hoc tolerances per test.
+- **Open-end ambiguity** → support one explicit `fixed_flux_cut` model first: fixed geometry,
+  prescribed normal flux, and no end-plane variations. State clearly that this is equilibrium in a
+  truncated open tube, not a sheath, end-loss, source, or transport model.
+- **Anisotropic closure inconsistency** → accept only closures generated by `p_parallel(s,B)` (or
+  a thermodynamically consistent energy) and derive/check `p_perp`; reject independent tables and
+  fail on firehose/mirror ellipticity violations.
+- **Open-vacuum truncation error** → solve on expanding outer domains and require convergence;
+  never reuse toroidal NESTOR kernels without open-surface MMS and flux tests.
+- **High-beta bifurcation or solver stall** → beta continuation from vacuum, hot restart,
+  separable preconditioning, and explicit ellipticity/conditioning diagnostics; do not return a
+  best iterate as a converged equilibrium.
 
 ---
 
@@ -792,6 +898,23 @@ Structure:
   arXiv:2211.09829 — QI objective; ntor-faster-than-mpol continuation.
 - simsopt `examples/2_Intermediate/QH_fixed_resolution.py` — style target for optimization examples.
 - STELLOPT VMEC wiki (princetonuniversity.github.io/STELLOPT/VMEC) — INDATA semantics.
+- Cooper et al., *Three-dimensional anisotropic pressure free boundary equilibria*, CPC 180,
+  1524–1533 (2009), DOI 10.1016/j.cpc.2009.04.006 — ANIMEC energy, pressure closure, normal-stress
+  interface condition, and anisotropic free-boundary reference.
+- STELLOPT `_ANIMEC` sources `fbal.f`, `bcovar.f`, `forces.f`, `funct3d.f`, and `jxbforce.f` —
+  implementation anchors for pressure moments, effective current, edge force, and diagnostics.
+- Endrizzi et al., *Physics basis for the Wisconsin HTS Axisymmetric Mirror (WHAM)*, JPP 89 (2023),
+  DOI 10.1017/S0022377823000806 — finite-beta anisotropic mirror validation context.
+- Frank et al., *Integrated modelling of equilibrium and transport in axisymmetric magnetic mirror
+  fusion devices*, JPP 91 E110 (2025), DOI 10.1017/S002237782510055X — Pleiades anisotropic force
+  balance, diamagnetic expansion, paraxial check, and ellipticity criteria.
+- Frank et al., *Nonlinear anisotropic equilibrium reconstruction in axisymmetric magnetic
+  mirrors*, arXiv:2509.17288 — current WHAM high-beta reconstruction benchmark context.
+- Pleiades (`github.com/eepeterson/pleiades`) — independent axisymmetric circular-coil, flux, and
+  scalar-pressure regression reference; its Green-function algorithm is validation, not the 3D
+  mirror backend.
+- Trefethen, *Spectral Methods in MATLAB*; Boyd, *Chebyshev and Fourier Spectral Methods* — CGL
+  differentiation, quadrature, filtering, and convergence references.
 
 ---
 
