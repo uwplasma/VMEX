@@ -573,8 +573,10 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
    Firehose `sigma` and mirror ellipticity are computed and tested, including the isotropic limit,
    trapped/passing continuity, tabulated interpolation, and coefficient gradients. The remaining
    M3 half-mesh ANIMEC energy now reproduces the isotropic passing-particle cylinder and matches
-   central-difference shape derivatives. Remaining M3 work is the anisotropic tensor force,
-   interface stress, and solved finite-beta benchmarks.
+   central-difference shape derivatives. A coordinate-invariant tensor divergence computes
+   `J x B - div(P)` with metric connection terms; it recovers a constant-pressure cylinder at
+   `1.46e-13` normalized residual and separately verifies parallel force balance in shaped 3D
+   states. Remaining M3 work is interface stress and solved finite-beta benchmarks.
 
    **5.1 Supported physical model**
 

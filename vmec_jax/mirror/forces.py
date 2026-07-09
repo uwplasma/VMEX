@@ -156,11 +156,25 @@ class AnisotropicMirrorEnergy:
     field: ContravariantField
 
 
+@dataclass(frozen=True)
+class AnisotropicForceResidual:
+    """Cartesian ``J x B - div(P)`` and parallel-balance diagnostics."""
+
+    force_xyz: Array
+    divergence_pressure_xyz: Array
+    current_xyz: Array
+    physical_rms: Array
+    normalized_rms: Array
+    component_rms: Array
+    parallel_pressure_rms: Array
+
+
 for _cls in (
     MirrorEnergy,
     IsotropicForceResidual,
     VariationalResidual,
     AnisotropicMirrorEnergy,
+    AnisotropicForceResidual,
 ):
     jax.tree_util.register_dataclass(
         _cls,
@@ -301,6 +315,206 @@ def anisotropic_fixed_boundary_energy_gradient(
         ).total
 
     return jax.grad(objective)(state)
+
+
+def _coordinate_basis(geometry: MirrorGeometry, grid: "MirrorGrid") -> Array:
+    """Return Cartesian covariant basis vectors as ``[..., xyz, q]``."""
+
+    radius = geometry.radius
+    r_s = jnp.where(
+        jnp.abs(radius) > jnp.finfo(radius.dtype).eps,
+        geometry.d_radius_ds_regular / jnp.where(radius != 0.0, radius, 1.0),
+        0.0,
+    )
+    r_s = r_s.at[0].set(r_s[1])
+    theta = jnp.asarray(grid.theta)[None, :, None]
+    cosine, sine = jnp.cos(theta), jnp.sin(theta)
+    zeros = jnp.zeros_like(radius)
+    e_s = jnp.stack([r_s * cosine, r_s * sine, zeros], axis=-1)
+    e_theta = jnp.stack(
+        [
+            geometry.d_radius_dtheta * cosine - radius * sine,
+            geometry.d_radius_dtheta * sine + radius * cosine,
+            zeros,
+        ],
+        axis=-1,
+    )
+    e_xi = jnp.stack(
+        [
+            geometry.d_radius_dxi * cosine,
+            geometry.d_radius_dxi * sine,
+            jnp.full_like(radius, float(grid.dz_dxi)),
+        ],
+        axis=-1,
+    )
+    return jnp.stack([e_s, e_theta, e_xi], axis=-1)
+
+
+def _current_contravariant(
+    geometry: MirrorGeometry,
+    field: ContravariantField,
+    grid: "MirrorGrid",
+    mu0: float,
+) -> Array:
+    """Return contravariant ``curl(B)/mu0`` components."""
+
+    bs, bt, bx = field.b_sup_s, field.b_sup_theta, field.b_sup_xi
+    b_cov_s = geometry.g_ss * bs + geometry.g_stheta * bt + geometry.g_sxi * bx
+    b_cov_theta = geometry.g_stheta * bs + geometry.g_thetatheta * bt + geometry.g_thetaxi * bx
+    b_cov_xi = geometry.g_sxi * bs + geometry.g_thetaxi * bt + geometry.g_xixi * bx
+    ds = float(grid.s[1] - grid.s[0])
+    inverse_mu0_jac = 1.0 / (float(mu0) * geometry.sqrt_g)
+    return jnp.stack(
+        [
+            (
+                grid.theta_basis.differentiate(b_cov_xi, axis=1)
+                - grid.axial_basis.differentiate(b_cov_theta, axis=2)
+            )
+            * inverse_mu0_jac,
+            (
+                grid.axial_basis.differentiate(b_cov_s, axis=2)
+                - radial_derivative(b_cov_xi, ds)
+            )
+            * inverse_mu0_jac,
+            (
+                radial_derivative(b_cov_theta, ds)
+                - grid.theta_basis.differentiate(b_cov_s, axis=1)
+            )
+            * inverse_mu0_jac,
+        ],
+        axis=-1,
+    )
+
+
+def anisotropic_force_residual(
+    state: MirrorState,
+    energy: AnisotropicMirrorEnergy,
+    grid: "MirrorGrid",
+    closure: PressureClosure,
+    *,
+    mu0: float = MU0,
+) -> AnisotropicForceResidual:
+    """Evaluate the continuum anisotropic tensor-force residual."""
+
+    geometry, field = energy.geometry, energy.field
+    basis = _coordinate_basis(geometry, grid)
+    b_contravariant = jnp.stack(
+        [field.b_sup_s, field.b_sup_theta, field.b_sup_xi], axis=-1
+    )
+    b_xyz = jnp.einsum("...ai,...i->...a", basis, b_contravariant)
+    b_magnitude = jnp.linalg.norm(b_xyz, axis=-1)
+    unit_b = b_xyz / b_magnitude[..., None]
+    s = jnp.asarray(grid.s)[:, None, None]
+    moments = closure.moments(s, b_magnitude)
+
+    metric = jnp.stack(
+        [
+            jnp.stack([geometry.g_ss, geometry.g_stheta, geometry.g_sxi], axis=-1),
+            jnp.stack([geometry.g_stheta, geometry.g_thetatheta, geometry.g_thetaxi], axis=-1),
+            jnp.stack([geometry.g_sxi, geometry.g_thetaxi, geometry.g_xixi], axis=-1),
+        ],
+        axis=-2,
+    )
+    # Cylindrical coordinates are singular at s=0.  Copying the first regular
+    # metric row supplies the radial stencil; all reported norms exclude the
+    # zero-volume axis row.
+    metric_regular = metric.at[0].set(metric[1])
+    inverse_metric = jnp.linalg.inv(metric_regular)
+    anisotropic_pressure_contravariant = (
+        (moments.parallel - moments.perpendicular)[..., None, None]
+        * b_contravariant[..., :, None]
+        * b_contravariant[..., None, :]
+        / b_magnitude[..., None, None] ** 2
+    )
+
+    ds = float(grid.s[1] - grid.s[0])
+    metric_derivatives = jnp.stack(
+        [
+            radial_derivative(metric_regular, ds),
+            grid.theta_basis.differentiate(metric_regular, axis=1),
+            grid.axial_basis.differentiate(metric_regular, axis=2),
+        ],
+        axis=-3,
+    )
+    christoffel = jnp.zeros(metric.shape[:-2] + (3, 3, 3), dtype=metric.dtype)
+    for j in range(3):
+        for k in range(3):
+            derivative_combination = (
+                metric_derivatives[..., j, :, k]
+                + metric_derivatives[..., k, :, j]
+                - metric_derivatives[..., :, j, k]
+            )
+            gamma_jk = 0.5 * jnp.einsum(
+                "...il,...l->...i", inverse_metric, derivative_combination
+            )
+            christoffel = christoffel.at[..., :, j, k].set(gamma_jk)
+
+    pressure_flux = geometry.sqrt_g[..., None, None] * anisotropic_pressure_contravariant
+    d_s_flux = radial_derivative(pressure_flux, ds)
+    d_theta_flux = grid.theta_basis.differentiate(pressure_flux, axis=1)
+    d_xi_flux = grid.axial_basis.differentiate(pressure_flux, axis=2)
+    coordinate_divergence = (
+        d_s_flux[..., :, 0]
+        + d_theta_flux[..., :, 1]
+        + d_xi_flux[..., :, 2]
+    ) / geometry.sqrt_g[..., None]
+    coordinate_divergence += jnp.einsum(
+        "...ijk,...jk->...i", christoffel, anisotropic_pressure_contravariant
+    )
+    divergence_anisotropic = jnp.einsum(
+        "...ai,...i->...a", basis[1:], coordinate_divergence[1:]
+    )
+    perpendicular_derivatives = jnp.stack(
+        [
+            radial_derivative(moments.perpendicular, ds),
+            grid.theta_basis.differentiate(moments.perpendicular, axis=1),
+            grid.axial_basis.differentiate(moments.perpendicular, axis=2),
+        ],
+        axis=-1,
+    )
+    perpendicular_gradient_contravariant = jnp.einsum(
+        "...ij,...j->...i", inverse_metric[1:], perpendicular_derivatives[1:]
+    )
+    perpendicular_gradient_xyz = jnp.einsum(
+        "...ai,...i->...a", basis[1:], perpendicular_gradient_contravariant
+    )
+    divergence_pressure = perpendicular_gradient_xyz + divergence_anisotropic
+    current_contravariant = _current_contravariant(geometry, field, grid, mu0)
+    current_xyz = jnp.einsum(
+        "...ai,...i->...a", basis[1:], current_contravariant[1:]
+    )
+    lorentz = jnp.cross(current_xyz, b_xyz[1:])
+    force_xyz = lorentz - divergence_pressure
+
+    weights = (
+        jnp.asarray(grid.radial_weights[1:])[:, None, None]
+        * jnp.asarray(grid.theta_basis.weights)[None, :, None]
+        * jnp.asarray(grid.axial_basis.weights)[None, None, :]
+        * geometry.sqrt_g[1:]
+    )
+    force_squared = jnp.sum(force_xyz**2, axis=-1)
+    physical_rms = jnp.sqrt(jnp.sum(weights * force_squared) / jnp.sum(weights))
+    component_rms = jnp.sqrt(
+        jnp.sum(weights[..., None] * force_xyz**2, axis=(0, 1, 2)) / jnp.sum(weights)
+    )
+    length = float(grid.z[-1] - grid.z[0])
+    pressure_scale = jnp.abs(moments.parallel[1:]) + 2.0 * jnp.abs(moments.perpendicular[1:])
+    reference = (energy.b_squared_half / float(mu0) + pressure_scale) / length
+    reference_rms = jnp.sqrt(jnp.sum(weights * reference**2) / jnp.sum(weights))
+    parallel_pressure = jnp.sum(divergence_pressure * unit_b[1:], axis=-1)
+    parallel_pressure_rms = jnp.sqrt(
+        jnp.sum(weights * parallel_pressure**2) / jnp.sum(weights)
+    )
+    return AnisotropicForceResidual(
+        force_xyz=force_xyz,
+        divergence_pressure_xyz=divergence_pressure,
+        current_xyz=current_xyz,
+        physical_rms=physical_rms,
+        normalized_rms=physical_rms
+        / jnp.maximum(reference_rms, jnp.finfo(physical_rms.dtype).tiny),
+        component_rms=component_rms,
+        parallel_pressure_rms=parallel_pressure_rms,
+    )
 
 
 def fixed_boundary_energy_gradient(

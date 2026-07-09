@@ -20,10 +20,12 @@ from .geometry import (
 )
 from .forces import (
     AnisotropicMirrorEnergy,
+    AnisotropicForceResidual,
     IsotropicForceResidual,
     MirrorEnergy,
     VariationalResidual,
     anisotropic_fixed_boundary_energy_gradient,
+    anisotropic_force_residual,
     anisotropic_mirror_energy,
     fixed_boundary_energy_gradient,
     fixed_boundary_variational_residual,
@@ -62,6 +64,7 @@ __all__ = [
     "EndCondition",
     "AnisotropyIndicators",
     "AnisotropicMirrorEnergy",
+    "AnisotropicForceResidual",
     "BiMaxwellianPressureClosure",
     "IsotropicForceResidual",
     "IsotropicPressureClosure",
@@ -82,6 +85,7 @@ __all__ = [
     "build_mirror_grid",
     "anisotropy_indicators",
     "anisotropic_fixed_boundary_energy_gradient",
+    "anisotropic_force_residual",
     "anisotropic_mirror_energy",
     "contravariant_field",
     "divergence_b",

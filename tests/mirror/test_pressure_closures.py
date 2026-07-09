@@ -18,6 +18,7 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorState,
     TabulatedPressureClosure,
     anisotropic_fixed_boundary_energy_gradient,
+    anisotropic_force_residual,
     anisotropic_mirror_energy,
     anisotropy_indicators,
 )
@@ -154,6 +155,9 @@ def test_animec_energy_recovers_isotropic_passing_cylinder_limit() -> None:
         atol=3.0e-10,
     )
     assert bool(energy.indicators_half.valid)
+    residual = anisotropic_force_residual(state, energy, grid, closure)
+    assert float(residual.normalized_rms) < 3.0e-13
+    assert float(residual.parallel_pressure_rms) < 1.0e-9
 
 
 def test_animec_energy_shape_gradient_matches_central_difference() -> None:
@@ -195,3 +199,36 @@ def test_animec_energy_shape_gradient_matches_central_difference() -> None:
     epsilon = 2.0e-6
     directional_fd = (objective(epsilon) - objective(-epsilon)) / (2.0 * epsilon)
     np.testing.assert_allclose(directional_ad, directional_fd, rtol=3.0e-7, atol=3.0e-5)
+
+
+def test_anisotropic_tensor_divergence_satisfies_parallel_force_balance() -> None:
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=9, mpol=2, ntheta=7, nxi=21),
+        z_min=-1.0,
+        z_max=1.0,
+    ).build_grid()
+    theta = jnp.asarray(grid.theta)[:, None]
+    xi = jnp.asarray(grid.xi)[None, :]
+    boundary = MirrorBoundary.from_radius(
+        0.3 * (1.0 + 0.05 * xi**2 + 0.03 * jnp.cos(2.0 * theta) * (1.0 - xi**2)),
+        grid,
+    )
+    state = MirrorState.from_boundary(boundary, grid)
+    closure = BiMaxwellianPressureClosure(
+        mass_coefficients=jnp.asarray([2.0e4, -1.0e4]),
+        hot_fraction_coefficients=jnp.asarray([0.3]),
+        temperature_ratio=0.3,
+        critical_field=0.8,
+    )
+    energy = anisotropic_mirror_energy(
+        state,
+        grid,
+        closure,
+        axial_flux_derivative=0.1,
+    )
+    residual = anisotropic_force_residual(state, energy, grid, closure)
+    assert float(residual.parallel_pressure_rms) < 1.0e-7
+    assert np.all(np.isfinite(np.asarray(residual.force_xyz)))
+    # This prescribed shaped state is intentionally not an equilibrium; only
+    # the closure's parallel force identity should vanish before solving.
+    assert float(residual.normalized_rms) > 1.0e-3
