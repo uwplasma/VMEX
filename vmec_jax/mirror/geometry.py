@@ -21,7 +21,7 @@ import jax.numpy as jnp
 Array = Any
 
 
-def _radial_derivative(values: Array, spacing: float) -> Array:
+def radial_derivative(values: Array, spacing: float) -> Array:
     """Second-order derivative on the uniform full radial mesh."""
 
     values = jnp.asarray(values)
@@ -91,7 +91,7 @@ def evaluate_geometry(state: "MirrorState", grid: "MirrorGrid") -> MirrorGeometr
 
     ds = float(grid.s[1] - grid.s[0])
     # r * r_s is regular even though r_s itself is singular at s=0.
-    r_r_s = 0.5 * _radial_derivative(radius * radius, ds)
+    r_r_s = 0.5 * radial_derivative(radius * radius, ds)
     r_s = _safe_divide(r_r_s, radius)
     r_s = r_s.at[0].set(r_s[1])
 

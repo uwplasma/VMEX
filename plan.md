@@ -554,6 +554,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
    polynomial exactness, integration by parts, spectral interpolation, analytic cylinder/flared/3D
    metrics, flux conservation, `div(B)`, direct Biot–Savart parity, and shape gradients. M2 is next.
 
+   **M2 STATUS (2026-07-09): physical reference solve in progress.** Mass-conserving isotropic
+   energy now uses VMEC-style radial half cells; an independent `curl(B)/mu0 x B - grad(p)` tensor
+   residual caught and prevented a nonvariational full-mesh discretization. The host reference lane
+   combines L-BFGS with an exact-JAX residual-Newton polish and accepts a result only by physical
+   force. A perturbed cylinder reduced normalized force from `5.79` to `6.09e-14`; forced short runs
+   raise a typed convergence error. Two-coil/MMS and production preconditioning remain M2 gates.
+
    **5.1 Supported physical model**
 
    - Coordinates are `(s, theta, xi)`, with `s in [0,1]`, periodic `theta`, and nonperiodic

@@ -18,6 +18,14 @@ from .geometry import (
     evaluate_geometry,
     magnetic_field_squared,
 )
+from .forces import (
+    IsotropicForceResidual,
+    MirrorEnergy,
+    fixed_boundary_energy_gradient,
+    isotropic_force_residual,
+    mass_profile_from_pressure,
+    mirror_energy,
+)
 from .model import (
     MIRROR_INPUT_SCHEMA,
     MIRROR_OUTPUT_SCHEMA,
@@ -28,6 +36,12 @@ from .model import (
     MirrorState,
     PressureClosure,
     PressureMoments,
+    project_fixed_boundary_state,
+)
+from .solver import (
+    MirrorConvergenceError,
+    MirrorSolveResult,
+    solve_fixed_boundary_cli,
 )
 
 __all__ = [
@@ -36,11 +50,15 @@ __all__ = [
     "ChebyshevBasis",
     "ContravariantField",
     "EndCondition",
+    "IsotropicForceResidual",
     "MirrorBoundary",
     "MirrorConfig",
+    "MirrorConvergenceError",
     "MirrorGeometry",
     "MirrorGrid",
+    "MirrorEnergy",
     "MirrorResolution",
+    "MirrorSolveResult",
     "MirrorState",
     "PressureClosure",
     "PressureMoments",
@@ -49,5 +67,11 @@ __all__ = [
     "contravariant_field",
     "divergence_b",
     "evaluate_geometry",
+    "fixed_boundary_energy_gradient",
+    "isotropic_force_residual",
     "magnetic_field_squared",
+    "mass_profile_from_pressure",
+    "mirror_energy",
+    "project_fixed_boundary_state",
+    "solve_fixed_boundary_cli",
 ]

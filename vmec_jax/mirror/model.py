@@ -178,6 +178,37 @@ class MirrorState:
             raise ValueError(f"lambda_stream shape {self.lambda_stream.shape} does not match {expected}")
 
 
+def project_fixed_boundary_state(
+    state: MirrorState,
+    boundary: MirrorBoundary,
+    grid: "MirrorGrid",
+) -> MirrorState:
+    """Apply fixed side/end geometry, axis regularity, and lambda gauge.
+
+    End geometry is radial-self-similar at both fixed-flux cuts.  The lambda
+    surface mean is removed with tensor-product theta/CGL quadrature; this is
+    a pure gauge operation and does not change ``B``.
+    """
+
+    state.validate_shape(grid)
+    boundary_radius = jnp.asarray(boundary.radius_scale)
+    if boundary_radius.shape != (grid.ntheta, grid.nxi):
+        raise ValueError("boundary shape does not match mirror grid")
+    radius_scale = jnp.asarray(state.radius_scale)
+    radius_scale = radius_scale.at[-1].set(boundary_radius)
+    radius_scale = radius_scale.at[:, :, 0].set(boundary_radius[:, 0][None, :])
+    radius_scale = radius_scale.at[:, :, -1].set(boundary_radius[:, -1][None, :])
+    radius_scale = radius_scale.at[0].set(radius_scale[1])
+
+    lam = jnp.asarray(state.lambda_stream)
+    theta_weights = jnp.asarray(grid.theta_basis.weights)
+    xi_weights = jnp.asarray(grid.axial_basis.weights)
+    denominator = jnp.sum(theta_weights) * jnp.sum(xi_weights)
+    surface_mean = jnp.einsum("j,k,ijk->i", theta_weights, xi_weights, lam) / denominator
+    lam = lam - surface_mean[:, None, None]
+    return MirrorState(radius_scale=radius_scale, lambda_stream=lam)
+
+
 @dataclass(frozen=True)
 class PressureMoments:
     """Closure output sampled on the equilibrium grid."""

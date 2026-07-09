@@ -1,0 +1,198 @@
+"""M2 isotropic energy, constraints, and physical-force diagnostics."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+import numpy as np
+import pytest
+
+jax = pytest.importorskip("jax")
+jax.config.update("jax_enable_x64", True)
+import jax.numpy as jnp  # noqa: E402
+
+from vmec_jax.mirror import (  # noqa: E402
+    MirrorBoundary,
+    MirrorConfig,
+    MirrorConvergenceError,
+    MirrorResolution,
+    MirrorState,
+    fixed_boundary_energy_gradient,
+    isotropic_force_residual,
+    mass_profile_from_pressure,
+    mirror_energy,
+    project_fixed_boundary_state,
+    solve_fixed_boundary_cli,
+)
+from vmec_jax.mirror.forces import MU0  # noqa: E402
+
+
+def _cylinder(*, ns: int = 11, nxi: int = 21, radius: float = 0.3, half_length: float = 1.2):
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=ns, mpol=0, ntheta=1, nxi=nxi),
+        z_min=-half_length,
+        z_max=half_length,
+    ).build_grid()
+    boundary = MirrorBoundary.from_radius(radius, grid)
+    return grid, boundary, MirrorState.from_boundary(boundary, grid)
+
+
+def test_fixed_boundary_projection_enforces_geometry_and_lambda_gauge() -> None:
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=7, mpol=2, ntheta=7, nxi=13)
+    ).build_grid()
+    theta = jnp.asarray(grid.theta)[:, None]
+    xi = jnp.asarray(grid.xi)[None, :]
+    boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.05 * jnp.cos(2.0 * theta) * xi**2), grid)
+    rng = np.random.default_rng(17)
+    state = MirrorState(
+        radius_scale=jnp.asarray(0.2 + 0.1 * rng.random(grid.shape)),
+        lambda_stream=jnp.asarray(1.0 + rng.normal(size=grid.shape)),
+    )
+    projected = project_fixed_boundary_state(state, boundary, grid)
+    np.testing.assert_allclose(projected.radius_scale[-1], boundary.radius_scale)
+    np.testing.assert_allclose(
+        projected.radius_scale[:, :, 0],
+        np.broadcast_to(np.asarray(boundary.radius_scale[:, 0]), (grid.ns, grid.ntheta)),
+    )
+    np.testing.assert_allclose(projected.radius_scale[0], projected.radius_scale[1])
+    surface_mean = np.einsum(
+        "j,k,ijk->i",
+        grid.theta_basis.weights,
+        grid.axial_basis.weights,
+        np.asarray(projected.lambda_stream),
+    ) / (4.0 * np.pi)
+    np.testing.assert_allclose(surface_mean, 0.0, atol=8.0e-16)
+
+
+def test_vacuum_cylinder_has_exact_energy_and_negligible_physical_force() -> None:
+    radius, half_length, psi_prime = 0.3, 1.2, 0.1
+    grid, boundary, state = _cylinder(radius=radius, half_length=half_length)
+    energy = mirror_energy(state, grid, axial_flux_derivative=psi_prime)
+    expected_b = 2.0 * psi_prime / radius**2
+    expected_volume = 2.0 * np.pi * half_length * radius**2
+    expected_energy = expected_b**2 * expected_volume / (2.0 * MU0)
+    np.testing.assert_allclose(energy.magnetic, expected_energy, rtol=3.0e-14, atol=3.0e-9)
+    np.testing.assert_allclose(energy.pressure_energy, 0.0)
+
+    residual = isotropic_force_residual(energy, grid)
+    assert float(residual.normalized_rms) < 2.0e-13
+    np.testing.assert_allclose(residual.component_rms[1:], 0.0, atol=2.0e-14)
+
+    gradient = fixed_boundary_energy_gradient(
+        state,
+        boundary,
+        grid,
+        axial_flux_derivative=psi_prime,
+    )
+    assert float(jnp.max(jnp.abs(gradient.radius_scale))) / expected_energy < 5.0e-14
+    np.testing.assert_allclose(gradient.lambda_stream, 0.0, atol=2.0e-12)
+
+
+def test_mass_profile_recovers_reference_isotropic_pressure() -> None:
+    pressure = 2.5e4
+    grid, _, state = _cylinder()
+    vacuum = mirror_energy(state, grid, axial_flux_derivative=0.1)
+    mass = mass_profile_from_pressure(pressure, vacuum.volume_derivative)
+    finite_beta = mirror_energy(
+        state,
+        grid,
+        axial_flux_derivative=0.1,
+        mass_profile=mass,
+    )
+    np.testing.assert_allclose(finite_beta.pressure, pressure, rtol=2.0e-14, atol=2.0e-10)
+    expected = pressure * float(vacuum.volume_derivative[0]) / (5.0 / 3.0 - 1.0)
+    np.testing.assert_allclose(finite_beta.pressure_energy, expected, rtol=3.0e-14, atol=3.0e-9)
+    assert float(isotropic_force_residual(finite_beta, grid).normalized_rms) < 2.0e-13
+
+
+def test_energy_gradient_matches_central_difference_for_interior_shape() -> None:
+    grid, boundary, base = _cylinder(ns=9, nxi=17)
+    s = jnp.asarray(grid.s)[:, None, None]
+    xi = jnp.asarray(grid.xi)[None, None, :]
+    perturbation = s * (1.0 - s) * (1.0 - xi**2) * (1.0 + 0.2 * xi)
+    state = replace(base, radius_scale=base.radius_scale + 0.015 * perturbation)
+    direction = MirrorState(radius_scale=perturbation, lambda_stream=jnp.zeros_like(perturbation))
+
+    kwargs = {"axial_flux_derivative": 0.1}
+    gradient = fixed_boundary_energy_gradient(state, boundary, grid, **kwargs)
+    directional_ad = jnp.vdot(gradient.radius_scale, direction.radius_scale)
+    directional_ad += jnp.vdot(gradient.lambda_stream, direction.lambda_stream)
+
+    def objective(alpha):
+        trial = MirrorState(
+            radius_scale=state.radius_scale + alpha * direction.radius_scale,
+            lambda_stream=state.lambda_stream,
+        )
+        projected = project_fixed_boundary_state(trial, boundary, grid)
+        return mirror_energy(projected, grid, **kwargs).total
+
+    epsilon = 2.0e-6
+    directional_fd = (objective(epsilon) - objective(-epsilon)) / (2.0 * epsilon)
+    np.testing.assert_allclose(directional_ad, directional_fd, rtol=2.0e-7, atol=2.0e-5)
+
+
+def test_reference_solver_polishes_perturbed_cylinder_to_physical_ftol() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=7, mpol=0, ntheta=1, nxi=9),
+        z_min=-1.2,
+        z_max=1.2,
+        ftol=1.0e-12,
+        max_iterations=300,
+    )
+    grid = config.build_grid()
+    boundary = MirrorBoundary.from_radius(0.3, grid)
+    base = MirrorState.from_boundary(boundary, grid)
+    s = jnp.asarray(grid.s)[:, None, None]
+    xi = jnp.asarray(grid.xi)[None, None, :]
+    perturbation = 0.03 * s * (1.0 - s) * (1.0 - xi**2)
+    initial = replace(base, radius_scale=base.radius_scale + perturbation)
+    initial_force = isotropic_force_residual(
+        mirror_energy(initial, grid, axial_flux_derivative=0.1), grid
+    )
+    assert float(initial_force.normalized_rms) > 1.0e-2
+
+    result = solve_fixed_boundary_cli(
+        initial,
+        boundary,
+        grid,
+        config,
+        axial_flux_derivative=0.1,
+        gradient_tolerance=1.0e-12,
+        require_convergence=True,
+    )
+    assert result.converged
+    assert result.optimizer_success
+    assert result.iterations > 0
+    assert float(result.force.normalized_rms) <= config.ftol
+    assert result.history.shape[1] == 4
+    assert float(result.history[-1, 3]) <= config.ftol
+    np.testing.assert_allclose(result.state.radius_scale, 0.3, atol=2.0e-13)
+
+
+def test_reference_solver_raises_instead_of_returning_best_unconverged_state() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=7, mpol=0, ntheta=1, nxi=9),
+        ftol=1.0e-14,
+        max_iterations=1,
+    )
+    grid = config.build_grid()
+    boundary = MirrorBoundary.from_radius(0.3, grid)
+    base = MirrorState.from_boundary(boundary, grid)
+    s = jnp.asarray(grid.s)[:, None, None]
+    xi = jnp.asarray(grid.xi)[None, None, :]
+    initial = replace(
+        base,
+        radius_scale=base.radius_scale + 0.04 * s * (1.0 - s) * (1.0 - xi**2),
+    )
+    with pytest.raises(MirrorConvergenceError) as caught:
+        solve_fixed_boundary_cli(
+            initial,
+            boundary,
+            grid,
+            config,
+            axial_flux_derivative=0.1,
+            require_convergence=True,
+        )
+    assert not caught.value.result.converged
+    assert float(caught.value.result.force.normalized_rms) > config.ftol
