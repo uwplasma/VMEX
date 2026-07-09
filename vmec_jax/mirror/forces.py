@@ -497,22 +497,34 @@ def anisotropic_force_residual(
     lorentz = jnp.cross(current_xyz, b_xyz[1:])
     force_xyz = lorentz - divergence_pressure
 
+    # The side boundary and axial cuts are prescribed data, not active
+    # Euler-Lagrange equations.  Keep their pointwise forces in ``force_xyz``
+    # but exclude them from the equilibrium norm; interface/cut diagnostics
+    # report those constraints separately.
+    force_active = force_xyz[:-1, :, 1:-1]
     weights = (
-        jnp.asarray(grid.radial_weights[1:])[:, None, None]
+        jnp.asarray(grid.radial_weights[1:-1])[:, None, None]
         * jnp.asarray(grid.theta_basis.weights)[None, :, None]
-        * jnp.asarray(grid.axial_basis.weights)[None, None, :]
-        * geometry.sqrt_g[1:]
+        * jnp.asarray(grid.axial_basis.weights)[None, None, 1:-1]
+        * geometry.sqrt_g[1:-1, :, 1:-1]
     )
-    force_squared = jnp.sum(force_xyz**2, axis=-1)
+    force_squared = jnp.sum(force_active**2, axis=-1)
     physical_rms = jnp.sqrt(jnp.sum(weights * force_squared) / jnp.sum(weights))
     component_rms = jnp.sqrt(
-        jnp.sum(weights[..., None] * force_xyz**2, axis=(0, 1, 2)) / jnp.sum(weights)
+        jnp.sum(weights[..., None] * force_active**2, axis=(0, 1, 2)) / jnp.sum(weights)
     )
     length = float(grid.z[-1] - grid.z[0])
-    pressure_scale = jnp.abs(moments.parallel[1:]) + 2.0 * jnp.abs(moments.perpendicular[1:])
-    reference = (energy.b_squared_half / float(mu0) + pressure_scale) / length
+    pressure_scale = (
+        jnp.abs(moments.parallel[1:-1, :, 1:-1])
+        + 2.0 * jnp.abs(moments.perpendicular[1:-1, :, 1:-1])
+    )
+    reference = (
+        energy.b_squared_half[:-1, :, 1:-1] / float(mu0) + pressure_scale
+    ) / length
     reference_rms = jnp.sqrt(jnp.sum(weights * reference**2) / jnp.sum(weights))
-    parallel_pressure = jnp.sum(divergence_pressure * unit_b[1:], axis=-1)
+    parallel_pressure = jnp.sum(
+        divergence_pressure[:-1, :, 1:-1] * unit_b[1:-1, :, 1:-1], axis=-1
+    )
     parallel_pressure_rms = jnp.sqrt(
         jnp.sum(weights * parallel_pressure**2) / jnp.sum(weights)
     )
@@ -721,27 +733,28 @@ def isotropic_force_residual(
         axis=-2,
     )
     force_covariant = jnp.stack([force_s, force_theta, force_xi], axis=-1)
-    # The cylindrical coordinate metric is singular at s=0; the physical
-    # volume of that row vanishes, so norms use the regular interior rows.
-    inverse_metric = jnp.linalg.inv(metric[1:])
+    # The axis, side boundary, and end cuts are constrained rather than active
+    # force equations. Keep their pointwise values but norm the free interior.
+    force_active = force_covariant[1:-1, :, 1:-1]
+    inverse_metric = jnp.linalg.inv(metric[1:-1, :, 1:-1])
     force_squared = jnp.einsum(
         "...i,...ij,...j->...",
-        force_covariant[1:],
+        force_active,
         inverse_metric,
-        force_covariant[1:],
+        force_active,
     )
     weights = (
-        jnp.asarray(grid.radial_weights[1:])[:, None, None]
+        jnp.asarray(grid.radial_weights[1:-1])[:, None, None]
         * jnp.asarray(grid.theta_basis.weights)[None, :, None]
-        * jnp.asarray(grid.axial_basis.weights)[None, None, :]
-        * geometry.sqrt_g[1:]
+        * jnp.asarray(grid.axial_basis.weights)[None, None, 1:-1]
+        * geometry.sqrt_g[1:-1, :, 1:-1]
     )
     physical_rms = jnp.sqrt(jnp.sum(weights * force_squared) / jnp.sum(weights))
     component_rms = jnp.sqrt(
-        jnp.sum(weights[..., None] * force_covariant[1:] ** 2, axis=(0, 1, 2)) / jnp.sum(weights)
+        jnp.sum(weights[..., None] * force_active**2, axis=(0, 1, 2)) / jnp.sum(weights)
     )
     length = float(grid.z[-1] - grid.z[0])
-    magnetic_force_scale = energy.b_squared[1:] / (float(mu0) * length)
+    magnetic_force_scale = energy.b_squared[1:-1, :, 1:-1] / (float(mu0) * length)
     reference_rms = jnp.sqrt(jnp.sum(weights * magnetic_force_scale**2) / jnp.sum(weights))
     normalized_rms = physical_rms / jnp.maximum(reference_rms, jnp.finfo(physical_rms.dtype).tiny)
     return IsotropicForceResidual(

@@ -602,9 +602,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
    states. The lateral diagnostic now independently reports plasma/vacuum tangency and the ANIMEC
    normal-stress jump. A perturbed finite-beta bi-Maxwellian cylinder now solves to `1.50e-15`
    variational force, `1.11e-13` tensor force, and `1.03e-11` parallel residual with valid
-   ellipticity. Radially varying pressure still requires a refinement study before M3 promotion:
-   its coarse-grid variational solve exposed a `~5e-3` continuum residual and is not accepted as
-   converged physics.
+   ellipticity. Radially varying pressure is an open M3 blocker. An initial `ns=7,9,13,17` study
+   exposed a nearly flat `~5e-3` tensor residual, but also found that the norm incorrectly included
+   constrained side/end-cut nodes where force is not an active Euler-Lagrange equation. Norms now
+   use free interior nodes (the `ns=7` mismatch falls to `2.66e-3`); rerun the resolution study and
+   reconcile the half-mesh ANIMEC functional with the tensor divergence if the active residual does
+   not converge before beginning M4.
 
    **5.1 Supported physical model**
 
