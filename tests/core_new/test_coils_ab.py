@@ -25,7 +25,9 @@ from vmec_jax.core.coils import (  # noqa: E402
     CoilSet,
     b_cyl,
     biot_savart,
+    circular_loop_on_axis_bz,
     field_on_cylindrical_grid,
+    two_coil_on_axis_bz,
     to_mgrid_data,
 )
 from vmec_jax.core.mgrid import read_mgrid, write_mgrid  # noqa: E402
@@ -135,6 +137,36 @@ def test_biot_savart_chunked_matches_unchunked(coilset: CoilSet) -> None:
 
     b_chunk = np.asarray(biot_savart(replace(coilset, chunk_size=8), points))
     np.testing.assert_allclose(b_chunk, b_full, rtol=1e-12, atol=1e-15 * np.max(np.abs(b_full)))
+
+
+def test_two_coil_on_axis_formula_matches_discretized_biot_savart() -> None:
+    radius, separation, current = 0.8, 1.6, 2.5e5
+    dofs = np.zeros((2, 3, 3))
+    dofs[:, 0, 2] = radius  # x = radius*cos(2*pi*t)
+    dofs[:, 1, 1] = radius  # y = radius*sin(2*pi*t)
+    dofs[:, 2, 0] = np.array([-0.5 * separation, 0.5 * separation])
+    coils = CoilSet(
+        base_curve_dofs=jnp.asarray(dofs),
+        base_currents=jnp.asarray([current, current]),
+        n_segments=512,
+    )
+    z = jnp.linspace(-0.7, 0.7, 15)
+    points = jnp.stack([jnp.zeros_like(z), jnp.zeros_like(z), z], axis=-1)
+    direct = biot_savart(coils, points)
+    analytic = two_coil_on_axis_bz(
+        z,
+        coil_radius=radius,
+        separation=separation,
+        current=current,
+    )
+    np.testing.assert_allclose(direct[:, :2], 0.0, atol=2.0e-16)
+    np.testing.assert_allclose(direct[:, 2], analytic, rtol=2.0e-12, atol=2.0e-15)
+    np.testing.assert_allclose(
+        circular_loop_on_axis_bz(0.0, loop_radius=radius, current=current),
+        4.0e-7 * np.pi * current / (2.0 * radius),
+        rtol=2.0e-14,
+    )
+    assert np.isfinite(float(jax.grad(lambda a: two_coil_on_axis_bz(0.0, coil_radius=a, separation=separation, current=current))(radius)))
 
 
 # ---------------------------------------------------------------------------

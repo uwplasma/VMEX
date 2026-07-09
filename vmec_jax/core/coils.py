@@ -9,6 +9,8 @@ This module is the clean-core home of direct-coil free-boundary inputs:
 - :func:`biot_savart` / :func:`b_cyl` — pure-JAX Biot-Savart evaluation at
   Cartesian / cylindrical points, jit- and grad-compatible with respect to
   coil dofs and currents.
+- :func:`circular_loop_on_axis_bz` / :func:`two_coil_on_axis_bz` — analytic
+  mirror benchmarks for one or two coaxial circular loops.
 - :func:`field_on_cylindrical_grid` / :func:`to_mgrid_data` — sample the coil
   field on a VMEC cylindrical grid and package it as
   :class:`vmec_jax.core.mgrid.MgridData` so :func:`vmec_jax.core.mgrid
@@ -55,6 +57,58 @@ _TWO_PI = 2.0 * _PI
 
 #: mu0 / (4 pi) — the ESSOS-established Biot-Savart prefactor.
 _BIOT_SAVART_PREFACTOR = 1.0e-7
+
+#: Vacuum permeability, used by the analytic circular-loop benchmarks.
+MU0 = 4.0e-7 * _PI
+
+
+def circular_loop_on_axis_bz(
+    z: Any,
+    *,
+    loop_radius: Any,
+    current: Any,
+    loop_z: Any = 0.0,
+) -> Any:
+    """Return the analytic on-axis ``B_z`` of a circular current loop.
+
+    All arguments remain JAX values, so the result is differentiable with
+    respect to position, loop radius, current, and axial loop location.
+
+    ``B_z = mu0 I a^2 / (2 (a^2 + (z-z0)^2)^(3/2))``.
+    """
+
+    z = jnp.asarray(z)
+    radius = jnp.asarray(loop_radius, dtype=z.dtype)
+    current = jnp.asarray(current, dtype=z.dtype)
+    displacement = z - jnp.asarray(loop_z, dtype=z.dtype)
+    return MU0 * current * radius**2 / (2.0 * (radius**2 + displacement**2) ** 1.5)
+
+
+def two_coil_on_axis_bz(
+    z: Any,
+    *,
+    coil_radius: Any,
+    separation: Any,
+    current: Any,
+    center_z: Any = 0.0,
+) -> Any:
+    """Return on-axis ``B_z`` from two equal coaxial circular loops."""
+
+    z = jnp.asarray(z)
+    separation = jnp.asarray(separation, dtype=z.dtype)
+    center = jnp.asarray(center_z, dtype=z.dtype)
+    half = 0.5 * separation
+    return circular_loop_on_axis_bz(
+        z,
+        loop_radius=coil_radius,
+        current=current,
+        loop_z=center - half,
+    ) + circular_loop_on_axis_bz(
+        z,
+        loop_radius=coil_radius,
+        current=current,
+        loop_z=center + half,
+    )
 
 
 # ---------------------------------------------------------------------------

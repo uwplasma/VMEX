@@ -547,6 +547,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
    numerical and software components with the toroidal core. The closed stellarator–mirror hybrid
    remains on the ordinary VMEC backend.
 
+   **STATUS (2026-07-09): M0 contracts and M1 foundation landed.** The clean backend now has
+   mirror schema/config/end-cut contracts, increasing-order CGL differentiation/quadrature and
+   interpolation, FFT theta derivatives, regular-axis 2D/3D geometry, the divergence-free
+   contravariant field, and differentiable analytic one/two-coil benchmarks. Scientific tests cover
+   polynomial exactness, integration by parts, spectral interpolation, analytic cylinder/flared/3D
+   metrics, flux conservation, `div(B)`, direct Biot–Savart parity, and shape gradients. M2 is next.
+
    **5.1 Supported physical model**
 
    - Coordinates are `(s, theta, xi)`, with `s in [0,1]`, periodic `theta`, and nonperiodic
