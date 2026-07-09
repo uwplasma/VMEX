@@ -123,6 +123,40 @@ def _allclose(new, old, name, rtol=RTOL, atol=ATOL):
     )
 
 
+def _fortran_dnorm_trig(trig_old):
+    """Correct the legacy trig tables' inherited lasym ``dnorm`` defect.
+
+    VMEC2000 ``fixaray.f`` uses ``dnorm = 1/(nzeta*(ntheta2-1))`` for the
+    reduced ``[0, pi]`` force projections (``cosmui/sinmui``) in BOTH symmetry
+    modes — for ``lasym`` the kernels are symmetrized first (``symforce.f``),
+    so the endpoint-half-weighted reduced integral needs the ``2/ntheta1``
+    weight to equal the full-grid average.  The legacy port used the
+    full-grid ``1/(nzeta*ntheta3)`` instead, halving every lasym force
+    projection and (through ``alias.f``'s gcon) the constraint force relative
+    to the MHD force, which shifted the lasym fixed point ~3% away from
+    VMEC2000.  The new core fixed this (``vmec_jax/core/fourier.py``); here
+    the *dnorm-derived* legacy tables are rescaled so the legacy chain serves
+    as a Fortran-faithful A/B reference (the ``dnorm3``-derived surface
+    average tables ``cosmui3/cosmumi3/wint`` were already correct and stay
+    untouched).  No-op for symmetric tables.
+    """
+    from dataclasses import replace as _dc_replace
+
+    factor = float(trig_old.ntheta3) / float(trig_old.ntheta2 - 1)
+    if int(trig_old.ntheta3) == int(trig_old.ntheta2):  # lasym=False
+        return trig_old
+    scaled = {
+        name: np.asarray(getattr(trig_old, name)) * factor
+        for name in (
+            "cosmui", "sinmui", "cosmumi", "sinmumi",
+            "cosmui_nt2", "sinmui_nt2", "cosmumi_nt2", "sinmumi_nt2",
+            "basis_theta_cs_nt2", "basis_theta_mu_nt2",
+        )
+        if getattr(trig_old, name) is not None
+    }
+    return _dc_replace(trig_old, dnorm=float(trig_old.dnorm) * factor, **scaled)
+
+
 def _legacy_fnorm1(state, static, cfg):
     """Legacy fnorm1 reference (bcovar.f) via the old parity block conversions."""
     maps = signed_maps_from_modes(static.modes)
@@ -263,14 +297,15 @@ def case(request):
     )
 
     # ------------------------------------------------------------------ old
-    trig_old = vmec_trig_tables(
+    trig_old = _fortran_dnorm_trig(vmec_trig_tables(
         ntheta=int(cfg.ntheta),
         nzeta=int(cfg.nzeta),
         nfp=int(cfg.nfp),
         mmax=int(cfg.mpol) - 1,
         nmax=int(cfg.ntor),
         lasym=bool(cfg.lasym),
-    )
+        cache=False,  # do not poison the shared legacy cache with the patch
+    ))
     k_old = vmec_forces_rz_from_wout(
         state=state,
         static=static,
