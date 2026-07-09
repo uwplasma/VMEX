@@ -602,12 +602,15 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
    states. The lateral diagnostic now independently reports plasma/vacuum tangency and the ANIMEC
    normal-stress jump. A perturbed finite-beta bi-Maxwellian cylinder now solves to `1.50e-15`
    variational force, `1.11e-13` tensor force, and `1.03e-11` parallel residual with valid
-   ellipticity. Radially varying pressure is an open M3 blocker. An initial `ns=7,9,13,17` study
-   exposed a nearly flat `~5e-3` tensor residual, but also found that the norm incorrectly included
-   constrained side/end-cut nodes where force is not an active Euler-Lagrange equation. Norms now
-   use free interior nodes (the `ns=7` mismatch falls to `2.66e-3`); rerun the resolution study and
-   reconcile the half-mesh ANIMEC functional with the tensor divergence if the active residual does
-   not converge before beginning M4.
+   ellipticity. M3 functional consistency is now closed for axisymmetry. Force norms exclude
+   constrained side/end-cut nodes, while pointwise values remain available. For a nonuniform
+   bi-Maxwellian profile, axial refinement at `ns=9` reduces tensor/parallel residuals from
+   `2.52e-3/3.26e-3` (`nxi=9`) to `1.37e-3/6.50e-5` (`nxi=25`); at `nxi=25`, radial refinement
+   reduces tensor residual from `1.77e-3` (`ns=7`) to `1.01e-3` (`ns=17`). The independently
+   projected continuum tensor force is >`0.999` correlated with the discrete ANIMEC gradient and
+   their weak-form discrepancy falls below 3% by `(ns,nxi)=(13,25)`. Thus variational force is the
+   true discrete `fsq` convergence gate and tensor force is the documented spatial-refinement gate,
+   as in M2. M4 may proceed; broader combined refinement remains part of M10 promotion evidence.
 
    **5.1 Supported physical model**
 

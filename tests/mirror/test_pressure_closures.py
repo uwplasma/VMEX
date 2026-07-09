@@ -205,6 +205,66 @@ def test_animec_energy_shape_gradient_matches_central_difference() -> None:
     np.testing.assert_allclose(directional_ad, directional_fd, rtol=3.0e-7, atol=3.0e-5)
 
 
+def test_animec_energy_gradient_converges_to_weak_tensor_force_projection() -> None:
+    previous_jit_setting = bool(jax.config.jax_disable_jit)
+    jax.config.update("jax_disable_jit", False)
+    try:
+        relative_errors = []
+        correlations = []
+        for ns, nxi in ((7, 13), (9, 17), (13, 25)):
+            config = MirrorConfig(
+                resolution=MirrorResolution(ns=ns, mpol=0, ntheta=1, nxi=nxi),
+                z_min=-1.2,
+                z_max=1.2,
+            )
+            grid = config.build_grid()
+            boundary = MirrorBoundary.from_radius(0.3, grid)
+            base = MirrorState.from_boundary(boundary, grid)
+            s = jnp.asarray(grid.s)[:, None, None]
+            xi = jnp.asarray(grid.xi)[None, None, :]
+            state = replace(
+                base,
+                radius_scale=base.radius_scale
+                + 0.01 * s * (1.0 - s) * (1.0 - xi**2),
+            )
+            closure = BiMaxwellianPressureClosure(
+                mass_coefficients=jnp.asarray([2.0e4, -2.0e4]),
+                hot_fraction_coefficients=jnp.asarray([0.3]),
+                temperature_ratio=0.4,
+                critical_field=2.5,
+            )
+            gradient = anisotropic_fixed_boundary_energy_gradient(
+                state,
+                boundary,
+                grid,
+                closure,
+                axial_flux_derivative=0.1,
+            )
+            energy = anisotropic_mirror_energy(
+                state, grid, closure, axial_flux_derivative=0.1
+            )
+            force = anisotropic_force_residual(state, energy, grid, closure)
+            active = np.s_[1:-1, :, 1:-1]
+            discrete = np.asarray(gradient.radius_scale[active]).ravel()
+            continuum = np.asarray(
+                force.radius_variation_projection[active]
+            ).ravel()
+            relative_errors.append(
+                np.linalg.norm(discrete - continuum) / np.linalg.norm(discrete)
+            )
+            correlations.append(
+                np.vdot(discrete, continuum)
+                / (np.linalg.norm(discrete) * np.linalg.norm(continuum))
+            )
+    finally:
+        jax.config.update("jax_disable_jit", previous_jit_setting)
+
+    assert relative_errors[0] > relative_errors[1] > relative_errors[2]
+    assert relative_errors[-1] < 3.0e-2
+    assert correlations[0] > 0.999
+    assert correlations[-1] > 0.9998
+
+
 def test_finite_beta_bimaxwellian_cylinder_solves_both_force_routes() -> None:
     previous_jit_setting = bool(jax.config.jax_disable_jit)
     jax.config.update("jax_disable_jit", False)

@@ -161,6 +161,7 @@ class AnisotropicForceResidual:
     """Cartesian ``J x B - div(P)`` and parallel-balance diagnostics."""
 
     force_xyz: Array
+    radius_variation_projection: Array
     divergence_pressure_xyz: Array
     current_xyz: Array
     physical_rms: Array
@@ -496,6 +497,21 @@ def anisotropic_force_residual(
     )
     lorentz = jnp.cross(current_xyz, b_xyz[1:])
     force_xyz = lorentz - divergence_pressure
+    theta = jnp.asarray(grid.theta)[None, :, None]
+    radial_unit = jnp.stack(
+        [jnp.cos(theta), jnp.sin(theta), jnp.zeros_like(theta)], axis=-1
+    )
+    radial_force = jnp.sum(force_xyz * radial_unit, axis=-1)
+    variation_weights = (
+        jnp.asarray(grid.radial_weights[1:])[:, None, None]
+        * jnp.asarray(grid.theta_basis.weights)[None, :, None]
+        * jnp.asarray(grid.axial_basis.weights)[None, None, :]
+        * geometry.sqrt_g[1:]
+        * jnp.sqrt(jnp.asarray(grid.s[1:]))[:, None, None]
+    )
+    radius_projection = jnp.zeros_like(geometry.radius).at[1:].set(
+        -variation_weights * radial_force
+    )
 
     # The side boundary and axial cuts are prescribed data, not active
     # Euler-Lagrange equations.  Keep their pointwise forces in ``force_xyz``
@@ -530,6 +546,7 @@ def anisotropic_force_residual(
     )
     return AnisotropicForceResidual(
         force_xyz=force_xyz,
+        radius_variation_projection=radius_projection,
         divergence_pressure_xyz=divergence_pressure,
         current_xyz=current_xyz,
         physical_rms=physical_rms,
