@@ -40,6 +40,7 @@ import numpy as np
 
 import jax.numpy as jnp
 
+from .device import device_context
 from .errors import MORE_ITER_FLAG, SUCCESSFUL_TERM_FLAG
 from .fourier import ModeTable
 from .input import VmecInput
@@ -186,6 +187,7 @@ def solve_multigrid(
     initial_state: SpectralState | None = None,
     time_step: float | None = None, tcon0: float | None = None,
     gamma: float | None = None, nstep: int | None = None,
+    device: Any = None,
 ) -> SolveResult:
     """Fixed-boundary multigrid solve over the ``NS_ARRAY`` ladder.
 
@@ -219,6 +221,12 @@ def solve_multigrid(
     recorded follow-up (plan.md §7 item 1); it requires masked radial
     reductions through geometry/fields/forces/preconditioner and is not
     attempted here.
+
+    ``device`` places each stage's jitted lanes (see
+    :func:`vmec_jax.core.solver.solve`): an explicit ``"cpu"``/``"gpu"``/
+    ``jax.Device`` is always honored; ``None`` (default) applies the measured
+    per-stage policy of :mod:`vmec_jax.core.device` (small per-iteration work
+    solves on CPU) unless the user pinned ``JAX_PLATFORMS``.
 
     Returns the final stage's :class:`~vmec_jax.core.solver.SolveResult`.
     """
@@ -265,11 +273,12 @@ def solve_multigrid(
             # funct3d.f: rcon0/zcon0 are set from the state at iter2 == iter1,
             # i.e. from THIS stage's starting state, not the interior guess.
             rt = runtime_with_baselines(rt, state)
-        carry = _solve_stage(
-            rt, state, mode=mode, verbose=verbose, emit=emit,
-            # the eqsolve.f axis re-guess applies to the fresh interior guess
-            try_axis_reguess=first_executed and state is None,
-        )
+        with device_context(device, resolution):
+            carry = _solve_stage(
+                rt, state, mode=mode, verbose=verbose, emit=emit,
+                # the eqsolve.f axis re-guess applies to the fresh interior guess
+                try_axis_reguess=first_executed and state is None,
+            )
         first_executed = False
         ier = int(carry.ier)
         last_stage = not np.any(ns_arr[igrid + 1:] >= nsval)

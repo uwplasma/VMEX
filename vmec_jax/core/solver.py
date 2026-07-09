@@ -68,9 +68,64 @@ import jax
 
 jax.config.update("jax_enable_x64", True)  # float64 mandatory (plan.md §7.7)
 
+
+def _harden_compilation_cache() -> None:
+    """Idempotent persistent compile-cache setup at ``core.solver`` import.
+
+    benchmarks/gpu_baseline.json pitfall (2026-07-09): launching Python from a
+    cwd that contains the repo checkout can resolve ``vmec_jax`` as a
+    *namespace* package, so ``vmec_jax/__init__.py`` — which configures the
+    persistent XLA compilation cache — never runs and every ``solve()`` pays a
+    full recompile (~7 s vs ~1.7 s warm on CUDA for solovev).  This module
+    always executes on any core solve path, so the cache policy is re-applied
+    here: warn on the shadowed import, then configure the ``_compat`` cache
+    defaults *only* when neither the user (``JAX_COMPILATION_CACHE_DIR`` env /
+    an explicit ``jax.config.update``) nor ``vmec_jax/__init__`` already set a
+    cache directory.
+    """
+    import os
+    import sys
+    import warnings
+
+    top = sys.modules.get(__name__.partition(".")[0])
+    if top is not None and getattr(top, "__file__", None) is None:
+        warnings.warn(
+            "vmec_jax was imported as a namespace package (vmec_jax.__file__ is "
+            "missing) — its __init__.py never ran.  This usually means the "
+            "current working directory shadows the installed package (e.g. "
+            "running Python from the directory containing the vmec_jax "
+            "checkout).  Change directory or fix sys.path; package-level "
+            "defaults such as the persistent compilation cache are otherwise "
+            "skipped.",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+    try:
+        current = jax.config.jax_compilation_cache_dir
+    except AttributeError:  # pragma: no cover - very old jax
+        return
+    if current:  # user env/jax.config or vmec_jax/__init__ already set it
+        return
+    try:
+        from .._compat import _configure_compilation_cache, _default_compilation_cache_dir
+    except Exception:  # pragma: no cover - core used standalone
+        return
+    cache_dir = _default_compilation_cache_dir()
+    if cache_dir is None:  # policy says no cache (e.g. CPU-only, not forced)
+        return
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except OSError:  # pragma: no cover - unwritable cache location
+        return
+    _configure_compilation_cache(jax, cache_dir)
+
+
+_harden_compilation_cache()
+
 import jax.numpy as jnp
 from jax import lax
 
+from .device import device_context
 from .errors import (
     BAD_JACOBIAN_FLAG, JAC75_FLAG, MISC_ERROR_FLAG, MORE_ITER_FLAG,
     NORM_TERM_FLAG, SUCCESSFUL_TERM_FLAG, VmecConvergenceError,
@@ -1049,7 +1104,8 @@ def _run_loop(state0: SpectralState, rt: SolverRuntime, *, mode: str,
     if mode != "cli":
         raise ValueError(f"unknown mode {mode!r}; expected 'cli' or 'jit'")
     if verbose:
-        emit(stage_banner(rt.resolution.ns, rt.resolution.mpol, rt.ftol, rt.max_iterations), end="")
+        # initialize_radial.f prints the total Fourier mode count (mnmax), not mpol.
+        emit(stage_banner(rt.resolution.ns, rt.resolution.mnmax, rt.ftol, rt.max_iterations), end="")
         emit(FORCE_ITERATIONS_BANNER, end="")
         emit(screen_header(lasym=rt.resolution.lasym, lfreeb=False), end="")
 
@@ -1138,6 +1194,7 @@ def solve(
     gamma: float | None = None, nstep: int | None = None,
     lconm1: bool = True, verbose: bool = False, emit=print,
     initial_state: SpectralState | None = None,
+    device: Any = None,
 ) -> SolveResult:
     """Single-grid fixed-boundary solve (VMEC2000 ``eqsolve.f``).
 
@@ -1167,6 +1224,12 @@ def solve(
     input's processed boundary (the edge never evolves in fixed-boundary
     mode, so keeping the old row would silently re-solve the old boundary);
     the interior and lambda are kept.
+
+    ``device`` places the jitted iteration lanes: ``"cpu"``/``"gpu"``/
+    ``"cuda"``/``"tpu"`` or a ``jax.Device`` (always honored), or ``None``
+    (default) to apply the measured small-work-to-CPU policy of
+    :mod:`vmec_jax.core.device` — which never overrides a user-pinned
+    ``JAX_PLATFORMS``/``JAX_PLATFORM_NAME``.
     """
     rt = prepare_runtime(
         source, resolution, ftol=ftol, max_iterations=max_iterations,
@@ -1183,5 +1246,6 @@ def solve(
             )
         initial_state = hot_restart_state(rt, initial_state)
         rt = runtime_with_baselines(rt, initial_state)  # funct3d.f iter2==iter1
-    carry = _solve_stage(rt, initial_state, mode=mode, verbose=verbose, emit=emit)
+    with device_context(device, rt.resolution):
+        carry = _solve_stage(rt, initial_state, mode=mode, verbose=verbose, emit=emit)
     return _finalize(carry, rt)
