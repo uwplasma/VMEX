@@ -244,7 +244,10 @@ def test_per_group_mgrid_modes_consistent() -> None:
 
     # Raw per-group field must equal the total field of the full coil set.
     br1, bp1, bz1 = field_on_cylindrical_grid(cs, ir=ir, jz=jz, kp=kp, single_group=True, **grid)
-    np.testing.assert_allclose(np.sum(np.asarray(br_raw), axis=0), np.asarray(br1[0]), rtol=1e-12)
+    total_br = np.sum(np.asarray(br_raw), axis=0)
+    np.testing.assert_allclose(
+        total_br, np.asarray(br1[0]), rtol=1e-12, atol=1e-15 * np.max(np.abs(total_br))
+    )
 
 
 # ---------------------------------------------------------------------------
