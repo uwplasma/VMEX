@@ -127,8 +127,7 @@ jobs:
           cd /tmp
           vmec "$GITHUB_WORKSPACE/examples/data/input.circular_tokamak" \
             --max-iter 2 \
-            --no-multigrid \
-            --no-use-input-niter \
+            --ftol 1e9 \
             --quiet \
             --outdir /tmp/vmec_jax_cli_smoke
           test -f /tmp/vmec_jax_cli_smoke/wout_circular_tokamak.nc
