@@ -572,7 +572,9 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
    `p_parallel - B*partial_B(p_parallel)`; independent inconsistent moments cannot enter the API.
    Firehose `sigma` and mirror ellipticity are computed and tested, including the isotropic limit,
    trapped/passing continuity, tabulated interpolation, and coefficient gradients. The remaining
-   M3 work is anisotropic half-mesh energy, tensor force, interface stress, and solved benchmarks.
+   M3 half-mesh ANIMEC energy now reproduces the isotropic passing-particle cylinder and matches
+   central-difference shape derivatives. Remaining M3 work is the anisotropic tensor force,
+   interface stress, and solved finite-beta benchmarks.
 
    **5.1 Supported physical model**
 

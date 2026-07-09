@@ -12,7 +12,13 @@ import jax.numpy as jnp  # noqa: E402
 from vmec_jax.mirror import (  # noqa: E402
     BiMaxwellianPressureClosure,
     IsotropicPressureClosure,
+    MirrorBoundary,
+    MirrorConfig,
+    MirrorResolution,
+    MirrorState,
     TabulatedPressureClosure,
+    anisotropic_fixed_boundary_energy_gradient,
+    anisotropic_mirror_energy,
     anisotropy_indicators,
 )
 from vmec_jax.mirror.forces import MU0  # noqa: E402
@@ -34,7 +40,7 @@ def test_isotropic_closure_is_exact_limit_and_has_positive_indicators() -> None:
 
 def test_bimaxwellian_form_factor_matches_animec_passing_formula() -> None:
     closure = BiMaxwellianPressureClosure(
-        thermal_coefficients=jnp.asarray([1.0e4, -5.0e3]),
+        mass_coefficients=jnp.asarray([1.0e4, -5.0e3]),
         hot_fraction_coefficients=jnp.asarray([0.4]),
         temperature_ratio=0.3,
         critical_field=0.5,
@@ -52,7 +58,7 @@ def test_bimaxwellian_form_factor_matches_animec_passing_formula() -> None:
 
 def test_bimaxwellian_isotropic_passing_limit_and_parallel_force_identity() -> None:
     isotropic_passing = BiMaxwellianPressureClosure(
-        thermal_coefficients=jnp.asarray([1.2e4, -2.0e3]),
+        mass_coefficients=jnp.asarray([1.2e4, -2.0e3]),
         hot_fraction_coefficients=jnp.asarray([0.25, -0.1]),
         temperature_ratio=1.0,
         critical_field=0.2,
@@ -64,7 +70,7 @@ def test_bimaxwellian_isotropic_passing_limit_and_parallel_force_identity() -> N
     np.testing.assert_allclose(moments.parallel, moments.perpendicular, rtol=3.0e-14, atol=3.0e-10)
 
     anisotropic = BiMaxwellianPressureClosure(
-        thermal_coefficients=jnp.asarray([1.2e4, -2.0e3]),
+        mass_coefficients=jnp.asarray([1.2e4, -2.0e3]),
         hot_fraction_coefficients=jnp.asarray([0.4]),
         temperature_ratio=0.25,
         critical_field=0.6,
@@ -101,7 +107,7 @@ def test_closure_coefficients_are_differentiable_leaves() -> None:
 
     def total_pressure(coefficients):
         closure = BiMaxwellianPressureClosure(
-            thermal_coefficients=coefficients,
+            mass_coefficients=coefficients,
             hot_fraction_coefficients=jnp.asarray([0.3]),
             temperature_ratio=0.4,
             critical_field=0.6,
@@ -112,3 +118,80 @@ def test_closure_coefficients_are_differentiable_leaves() -> None:
     assert derivative.shape == (2,)
     assert np.all(np.isfinite(np.asarray(derivative)))
     assert np.linalg.norm(np.asarray(derivative)) > 0.0
+
+
+def test_animec_energy_recovers_isotropic_passing_cylinder_limit() -> None:
+    radius, half_length, flux = 0.3, 1.2, 0.1
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=9, mpol=0, ntheta=1, nxi=17),
+        z_min=-half_length,
+        z_max=half_length,
+    ).build_grid()
+    boundary = MirrorBoundary.from_radius(radius, grid)
+    state = MirrorState.from_boundary(boundary, grid)
+    closure = BiMaxwellianPressureClosure(
+        mass_coefficients=jnp.asarray([2.0e4]),
+        hot_fraction_coefficients=jnp.asarray([0.25]),
+        temperature_ratio=1.0,
+        critical_field=0.1,
+        gamma=0.0,
+    )
+    energy = anisotropic_mirror_energy(
+        state,
+        grid,
+        closure,
+        axial_flux_derivative=flux,
+    )
+    volume = 2.0 * np.pi * half_length * radius**2
+    pressure = 2.0e4 * 1.25
+    expected_magnetic = (2.0 * flux / radius**2) ** 2 * volume / (2.0 * MU0)
+    np.testing.assert_allclose(energy.magnetic, expected_magnetic, rtol=3.0e-14)
+    np.testing.assert_allclose(energy.pressure_energy, -pressure * volume, rtol=3.0e-14)
+    np.testing.assert_allclose(
+        energy.moments_half.parallel,
+        energy.moments_half.perpendicular,
+        rtol=3.0e-14,
+        atol=3.0e-10,
+    )
+    assert bool(energy.indicators_half.valid)
+
+
+def test_animec_energy_shape_gradient_matches_central_difference() -> None:
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=7, mpol=0, ntheta=1, nxi=13)
+    ).build_grid()
+    boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.05 * jnp.asarray(grid.xi) ** 2), grid)
+    state = MirrorState.from_boundary(boundary, grid)
+    s = jnp.asarray(grid.s)[:, None, None]
+    xi = jnp.asarray(grid.xi)[None, None, :]
+    direction = s * (1.0 - s) * (1.0 - xi**2)
+    closure = BiMaxwellianPressureClosure(
+        mass_coefficients=jnp.asarray([1.5e4, -1.0e4]),
+        hot_fraction_coefficients=jnp.asarray([0.3]),
+        temperature_ratio=0.35,
+        critical_field=0.8,
+    )
+    gradient = anisotropic_fixed_boundary_energy_gradient(
+        state,
+        boundary,
+        grid,
+        closure,
+        axial_flux_derivative=0.1,
+    )
+    directional_ad = jnp.vdot(gradient.radius_scale, direction)
+
+    def objective(alpha):
+        trial = MirrorState(
+            radius_scale=state.radius_scale + alpha * direction,
+            lambda_stream=state.lambda_stream,
+        )
+        return anisotropic_mirror_energy(
+            trial,
+            grid,
+            closure,
+            axial_flux_derivative=0.1,
+        ).total
+
+    epsilon = 2.0e-6
+    directional_fd = (objective(epsilon) - objective(-epsilon)) / (2.0 * epsilon)
+    np.testing.assert_allclose(directional_ad, directional_fd, rtol=3.0e-7, atol=3.0e-5)

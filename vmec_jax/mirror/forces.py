@@ -27,7 +27,15 @@ from .geometry import (
     magnetic_field_squared,
     radial_derivative,
 )
-from .model import MirrorBoundary, MirrorState, project_fixed_boundary_state
+from .model import (
+    AnisotropyIndicators,
+    MirrorBoundary,
+    MirrorState,
+    PressureClosure,
+    PressureMoments,
+    anisotropy_indicators,
+    project_fixed_boundary_state,
+)
 
 Array = Any
 MU0 = 4.0e-7 * pi
@@ -133,7 +141,27 @@ class VariationalResidual:
     maximum: Array
 
 
-for _cls in (MirrorEnergy, IsotropicForceResidual, VariationalResidual):
+@dataclass(frozen=True)
+class AnisotropicMirrorEnergy:
+    """ANIMEC energy and pressure moments on radial half cells."""
+
+    total: Array
+    magnetic: Array
+    pressure_energy: Array
+    b_squared_half: Array
+    jacobian_half: Array
+    moments_half: PressureMoments
+    indicators_half: AnisotropyIndicators
+    geometry: MirrorGeometry
+    field: ContravariantField
+
+
+for _cls in (
+    MirrorEnergy,
+    IsotropicForceResidual,
+    VariationalResidual,
+    AnisotropicMirrorEnergy,
+):
     jax.tree_util.register_dataclass(
         _cls,
         data_fields=[field.name for field in fields(_cls)],
@@ -205,6 +233,74 @@ def mirror_energy(
         geometry=geometry,
         field=field,
     )
+
+
+def anisotropic_mirror_energy(
+    state: MirrorState,
+    grid: "MirrorGrid",
+    closure: PressureClosure,
+    *,
+    axial_flux_derivative: Array,
+    current_derivative: Array = 0.0,
+    mu0: float = MU0,
+) -> AnisotropicMirrorEnergy:
+    """Evaluate the ANIMEC functional with consistent pressure moments."""
+
+    geometry = evaluate_geometry(state, grid)
+    field = contravariant_field(
+        state,
+        geometry,
+        grid,
+        axial_flux_derivative=axial_flux_derivative,
+        current_derivative=current_derivative,
+    )
+    b_squared_half, jacobian_half = _half_mesh_magnetic_terms(
+        state,
+        grid,
+        axial_flux_derivative,
+        current_derivative,
+    )
+    b_half = jnp.sqrt(jnp.maximum(b_squared_half, 0.0))
+    s_half = jnp.asarray(grid.s_half)[:, None, None]
+    moments = closure.moments(s_half, b_half)
+    indicators = anisotropy_indicators(closure, s_half, b_half, mu0=mu0)
+    magnetic_surface = _surface_integral(b_squared_half * jacobian_half, grid) / (2.0 * float(mu0))
+    pressure_surface = _surface_integral(moments.energy_density * jacobian_half, grid)
+    ds = float(grid.s[1] - grid.s[0])
+    magnetic = ds * jnp.sum(magnetic_surface)
+    pressure_energy = ds * jnp.sum(pressure_surface)
+    return AnisotropicMirrorEnergy(
+        total=magnetic + pressure_energy,
+        magnetic=magnetic,
+        pressure_energy=pressure_energy,
+        b_squared_half=b_squared_half,
+        jacobian_half=jacobian_half,
+        moments_half=moments,
+        indicators_half=indicators,
+        geometry=geometry,
+        field=field,
+    )
+
+
+def anisotropic_fixed_boundary_energy_gradient(
+    state: MirrorState,
+    boundary: MirrorBoundary,
+    grid: "MirrorGrid",
+    closure: PressureClosure,
+    **energy_kwargs: Any,
+) -> MirrorState:
+    """Differentiate the ANIMEC energy through fixed-boundary projection."""
+
+    def objective(trial: MirrorState) -> Array:
+        projected = project_fixed_boundary_state(trial, boundary, grid)
+        return anisotropic_mirror_energy(
+            projected,
+            grid,
+            closure,
+            **energy_kwargs,
+        ).total
+
+    return jax.grad(objective)(state)
 
 
 def fixed_boundary_energy_gradient(

@@ -306,19 +306,19 @@ class BiMaxwellianPressureClosure:
     perpendicular moment is derived, never independently prescribed.
     """
 
-    thermal_coefficients: Array
+    mass_coefficients: Array
     hot_fraction_coefficients: Array
     temperature_ratio: float
     critical_field: float
-    gamma: float = 5.0 / 3.0
+    gamma: float = 0.0
 
     def __post_init__(self) -> None:
         if not 0.0 < self.temperature_ratio <= 1.0:
             raise ValueError("temperature_ratio=T_perp/T_parallel must be in (0,1]")
         if self.critical_field <= 0.0:
             raise ValueError("critical_field must be positive")
-        if self.gamma <= 1.0:
-            raise ValueError("pressure closure gamma must be greater than one")
+        if self.gamma == 1.0:
+            raise ValueError("pressure closure gamma cannot equal one")
 
     def form_factor(self, magnetic_field_strength: Array) -> Array:
         """Return the trapped/passing bi-Maxwellian factor ``H(B)``."""
@@ -339,7 +339,7 @@ class BiMaxwellianPressureClosure:
         return jnp.where(b >= 1.0, above, below)
 
     def parallel_pressure(self, s: Array, magnetic_field_strength: Array) -> Array:
-        thermal = _power_series(self.thermal_coefficients, s)
+        thermal = _power_series(self.mass_coefficients, s)
         hot_fraction = _power_series(self.hot_fraction_coefficients, s)
         return thermal * (1.0 + hot_fraction * self.form_factor(magnetic_field_strength))
 
@@ -354,7 +354,7 @@ class TabulatedPressureClosure:
     s_nodes: Array
     b_nodes: Array
     parallel_values: Array
-    gamma: float = 5.0 / 3.0
+    gamma: float = 0.0
 
     def __post_init__(self) -> None:
         s_nodes = np.asarray(self.s_nodes)
@@ -368,8 +368,8 @@ class TabulatedPressureClosure:
             raise ValueError("parallel_values shape must be (len(s_nodes), len(b_nodes))")
         if np.any(np.diff(s_nodes) <= 0.0) or np.any(np.diff(b_nodes) <= 0.0):
             raise ValueError("tabulated pressure nodes must be strictly increasing")
-        if self.gamma <= 1.0:
-            raise ValueError("pressure closure gamma must be greater than one")
+        if self.gamma == 1.0:
+            raise ValueError("pressure closure gamma cannot equal one")
 
     def parallel_pressure(self, s: Array, magnetic_field_strength: Array) -> Array:
         s_nodes = jnp.asarray(self.s_nodes)
@@ -442,7 +442,7 @@ for _closure, _data, _meta in (
     (IsotropicPressureClosure, ["coefficients"], ["gamma"]),
     (
         BiMaxwellianPressureClosure,
-        ["thermal_coefficients", "hot_fraction_coefficients"],
+        ["mass_coefficients", "hot_fraction_coefficients"],
         ["temperature_ratio", "critical_field", "gamma"],
     ),
     (TabulatedPressureClosure, ["s_nodes", "b_nodes", "parallel_values"], ["gamma"]),
