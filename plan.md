@@ -67,11 +67,12 @@ Facts established by direct audit; the executor should trust these and not re-de
   *messages* (strip the trailer), not a mailmap.
 - **Branches:** `origin/codex/differentiability-refactor-plan`,
   `origin/feature/freeb-essos-coil-single-stage`, `origin/phase2/freeb-adjoint-validation` are all
-  **0 commits ahead** of main → delete after the rewrite. `origin/codex/mirror-geometry` is **511
-  commits ahead** with genuinely unmerged experiments: a *native state block preconditioner*,
-  *native spline matrix-free loop*, and *square hybrid solver method lanes*. Phase 0 skims it for
-  ideas (esp. for the 2D preconditioner and mirror/spline work), records conclusions in NOTES.md,
-  then it is deleted too — the rewrite invalidates its ancestry anyway.
+  **0 commits ahead** of main → delete after the rewrite. The pre-rewrite mirror head is preserved
+  locally as `archive/mirror-geometry-pre-rewrite` at `e4a7f05d`; its remote history was deleted
+  because the rewritten `main` made a merge or rebase unusable. It contains a *native state block
+  preconditioner*, *native spline matrix-free loop*, and *square hybrid solver method lanes*.
+  Reuse is behavioral and selective: port compact equations, tests, and plotting ideas only after
+  validating them against the new core. Never merge or broadly cherry-pick the archived history.
 
 ### 1.2 Library (`vmec_jax/`, 229 files, ~123k lines, 49 root modules)
 
@@ -217,16 +218,17 @@ Fortran behavior VMEC++ dropped; we keep it and test it).
 multigrid slowdown = per-stage recompilation (23× `jit(stage)` + ~300 eager glue compiles in a
 3-stage ladder) — padding fix confirmed as the plan; cold gap is 100% JAX/XLA setup (solovev:
 0.10 s VMEC2000 vs 3.4 s cold / 0.01 s warm); wout is missing 39 variables (list in wout_gap.md);
-mirror-geometry branch triaged (all solver experiments DROP; mirror physics design KEEP) and
-deleted; QP optimization must default to max_mode=3.
+mirror-geometry branch triaged (solver experiments are evidence, not production code; mirror
+physics design and validated tests are KEEP) and archived at `e4a7f05d`; QP optimization must
+default to max_mode=3.
 
 Most of the audit is done (§1). What remains before touching code:
 
 1. **NOTES.md** (scratch area, not committed): distill the five `vmec_jax_plan/*.md` files (the
    32k-line log only for still-open items — most of it is historical micro-optimization diary),
-   and skim `origin/codex/mirror-geometry` (511 commits): record what its native block
+   and skim `archive/mirror-geometry-pre-rewrite`: record what its native block
    preconditioner, spline matrix-free loop, and square-hybrid solver actually do and whether any
-   idea survives into §5.4/§7.5. Then those branches/files are doomed (Phase 1).
+   idea survives into §5.4/§7.5. The archive stays local until the mirror migration is complete.
 2. **Baseline benchmark script** `benchmarks/run_baseline.py` (committed, small; results JSON
    committed as `benchmarks/baseline.json`): fixed suite — `solovev`, `DSHAPE`, `HELIOTRON`,
    `cth_like_fixed_bdy` (+ lasym variant), `cth_like_free_bdy`, a DIII-D-like tokamak free-boundary
@@ -532,11 +534,63 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
    from coils via a quadratic-flux surface or direct constraint) and free-boundary single-stage
    (coils → direct field → free-boundary equilibrium → QS/aspect targets; gradients via §6).
    One example each, marked advanced.
-5. **Mirror geometry (design + skeleton; implement only if time remains after Phase 10)**:
-   fixed/free-boundary open-field-period mirror-like configurations; boundary as Fourier series
-   *or* splines (spline boundary + spline geometry representation). Deliver `docs/mirrors.rst`
-   design doc, input-schema extension, and xfail test scaffolds. Mine `codex/mirror-geometry`
-   NOTES for its spline matrix-free loop before discarding.
+5. **Mirror geometry migration (after the fixed-boundary core and 1D preconditioner are stable).**
+   This is a finite sequence, not a parallel solver rewrite:
+
+   a. **Shared foundations.** Use the same force kernels, time stepping, multigrid, exact VMEC 1D
+      preconditioner, output model, and exception policy as toroidal VMEC. Do not promote the
+      archived `JᵀJ` block-CG or frozen-vacuum prototypes: they did not solve the physical
+      equilibrium residual. Keep optimizer termination (`ftol`, `gtol`) separate from the physical
+      convergence contract (`fsqr`, `fsqz`, `fsql`, normalized force, and boundary residuals).
+   b. **Fixed-boundary axisymmetric mirror.** Add one compact open-axis geometry module using a
+      Chebyshev/spline axial basis and Fourier poloidal basis, with explicit regularity and equal,
+      poloidally symmetric end-cap conditions. Validate geometry and fields against a cylinder,
+      circular-loop Biot–Savart `B_z`/`B_r`, a two-coil on-axis analytic field, and a manufactured
+      force-balance case. Provide convergence histories, cross sections, horizontal-axis 3D plots,
+      coils, field lines, `|B|`, iota/current diagnostics where defined, and resolution studies.
+   c. **Fixed-boundary nonaxisymmetric mirror.** Reuse the same open-axis state and solver only
+      after (b) passes. Add helical/finite-current perturbations with closed poloidal sections and
+      verify convergence in axial and poloidal resolution. No second solver stack.
+   d. **Toroidal stellarator–mirror hybrid.** This remains a closed torus: straight mirror-like
+      sides joined by curved stellarator corners. Solve the equilibrium in the ordinary VMEC
+      Fourier state. Splines are initially low-dimensional design controls for the piecewise axis
+      and boundary, projected once to a resolution-controlled Fourier representation. Benchmark
+      mode convergence and `wout` quantities against VMEC2000 before considering a native spline
+      equilibrium state.
+   e. **Free-boundary toroidal hybrid.** Build this only on the validated NESTOR/mgrid/direct-coil
+      path above. Circular/elliptical coil helpers belong in the library; examples contain only
+      input parameters and calls. A beta continuation must solve every boundary, trace total-field
+      lines for every beta, and report plasma, vacuum, and total `B·n` plus force residuals. Never
+      label a surface converged when `ier_flag` is nonzero or only a quadratic-flux fit succeeded.
+   f. **Straight-axis finite-beta free boundary is diagnostic/deferred.** Isotropic scalar-pressure
+      VMEC does not by itself provide the end closure and anisotropic mirror physics needed to call
+      an arbitrary open LCFS a physical mirror equilibrium. Retain coil-field and vacuum-surface
+      benchmarks, but defer a production finite-beta claim until the pressure model and end
+      boundary conditions are specified and validated against mirror literature or another code.
+   g. **Differentiability follows primal robustness.** Differentiate the converged residual with
+      implicit/custom-VJP solves preconditioned by the exact 1D operator. Do not unroll production
+      iterations or restore fingerprint/replay machinery. The CLI may use non-differentiable
+      early exits, buffer donation, and host control flow.
+
+   Keep this addition small: at most eight focused library modules, one test module per module,
+   and short root examples that do not duplicate geometry, coil, diagnostics, or plotting helpers.
+   Generated figures and result tables are ignored; documentation may commit only compressed,
+   reproducible showcase figures.
+
+   **Mirror exit criteria:**
+
+   - Axisymmetric fixed-boundary reference cases reach `max(fsqr, fsqz, fsql) <= 1e-12` in the
+     force components that are nonzero for the case, with normalized force and boundary residuals
+     reported independently; resolution refinement must preserve the result.
+   - The nonaxisymmetric fixed-boundary reference monotonically reduces the physical residual and
+     passes axial/poloidal resolution studies before it is called supported.
+   - The toroidal Fourier hybrid converges without a nonzero `ier_flag`; its geometry, force
+     residuals, and selected `wout` quantities agree with VMEC2000 within Appendix-A tolerances.
+     A native spline state remains deferred unless Fourier mode studies show a measured need.
+   - The free-boundary toroidal hybrid uses solved boundaries at each beta and passes total `B·n`,
+     force, mgrid/direct-field agreement, hot-restart, and field-line visualization tests.
+   - Every example has a fast CI smoke configuration and a documented research configuration;
+     plots are generated from saved solver outputs, never from prescribed stand-in surfaces.
 
 ---
 
@@ -671,6 +725,14 @@ Structure:
 - [ ] Fixed + free boundary (mgrid and direct-coil; tokamak and stellarator; sym and lasym)
       converge with wout + print parity vs VMEC2000 per Appendix-A tolerances; missing-mgrid
       fixed-boundary fallback works and is tested.
+- [ ] Fixed-boundary axisymmetric mirror meets the component-wise `1e-12` force contract and its
+      analytic field, end-cap, and resolution tests; nonaxisymmetric mirror is supported only after
+      its physical-residual and resolution gates pass.
+- [ ] Toroidal stellarator–mirror hybrid converges in the Fourier representation with VMEC2000
+      parity; its spline parameterization demonstrably reduces design variables without changing
+      the equilibrium equations. Free-boundary beta scans use solved surfaces and total `B·n`.
+- [ ] Straight-axis finite-beta free-boundary mirror remains explicitly diagnostic until a
+      validated pressure model and end closure are selected; documentation does not overclaim it.
 - [ ] CLI ≥ VMEC2000 speed on ≥80% of suite rows (cold CPU); multigrid faster than VMEC2000
       multigrid on the suite median and faster than our own single-grid; GPU benchmarked;
       hot restart works and is used by examples.
