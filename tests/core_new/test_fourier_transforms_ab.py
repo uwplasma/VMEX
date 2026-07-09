@@ -73,41 +73,13 @@ def _resolution(case) -> Resolution:
 
 
 def _old_trig(case):
+    # The legacy tables are Fortran-faithful since the fixaray.f lasym dnorm
+    # fix landed in vmec_jax/kernels/tomnsp.py (matching the core fix in
+    # vmec_jax/core/fourier.py); no rescaling compensation is needed.
     mpol, ntor, ntheta, nzeta, nfp, lasym = case
-    old = vmec_trig_tables(
+    return vmec_trig_tables(
         ntheta=ntheta, nzeta=nzeta, nfp=nfp, mmax=mpol - 1, nmax=ntor, lasym=lasym,
-        cache=False,
     )
-    return _fortran_dnorm_trig(old)
-
-
-def _fortran_dnorm_trig(old):
-    """Correct the legacy tables' inherited lasym ``dnorm`` defect (fixaray.f).
-
-    VMEC2000 uses ``dnorm = 1/(nzeta*(ntheta2-1))`` for the reduced-interval
-    force projections in BOTH symmetry modes (lasym kernels are symmetrized
-    by ``symforce.f`` first); the legacy port used the full-grid
-    ``1/(nzeta*ntheta3)``, halving every lasym force projection.  The new
-    core (``vmec_jax/core/fourier.py``) follows the Fortran, so the legacy
-    reference tables are rescaled here — dnorm3-derived surface-average
-    tables (``cosmui3/cosmumi3/wint``) were already correct.  No-op unless
-    ``lasym`` (``ntheta3 != ntheta2``).
-    """
-    from dataclasses import replace as _dc_replace
-
-    if int(old.ntheta3) == int(old.ntheta2):
-        return old
-    factor = float(old.ntheta3) / float(old.ntheta2 - 1)
-    scaled = {
-        name: np.asarray(getattr(old, name)) * factor
-        for name in (
-            "cosmui", "sinmui", "cosmumi", "sinmumi",
-            "cosmui_nt2", "sinmui_nt2", "cosmumi_nt2", "sinmumi_nt2",
-            "basis_theta_cs_nt2", "basis_theta_mu_nt2",
-        )
-        if getattr(old, name) is not None
-    }
-    return _dc_replace(old, dnorm=float(old.dnorm) * factor, **scaled)
 
 
 def _seed(case) -> int:
