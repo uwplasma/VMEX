@@ -292,7 +292,13 @@ tree (tests may be temporarily reduced — full restructure lands in Phase 9).
 
 ## 5. Phase 2 — Core library refactor (architecture, naming, fixed-boundary parity)
 
-**STATUS (2026-07-09): core landed, integration/perf hardening next.** `vmec_jax/core/` has 20
+**STATUS (2026-07-10): PHASE COMPLETE — legacy deleted (3ce3402c).** vmec_jax/ = 33 files /
+19k lines all-core; tests/ = 24 files / 5k lines; 323 tests vs golden; ruff clean; docs -W green.
+Remaining project work tracked in §10 (examples), §12 (tutorials), §13 (release), plus follow-ups:
+free-boundary vacuum tuning + potvac export + freeb ladder, full radial padding, coverage gate,
+mirror design doc.
+
+*(superseded status of 2026-07-09:)* core landed, integration/perf hardening next. `vmec_jax/core/` has 20
 modules (~10k lines), each A/B-proven vs the legacy kernels (420+ tests) — including the solve
 loop (solovev 215/215 iterations vs VMEC2000, cth 434, machine-precision wout parity), the
 complete wout writer (all 39 missing variables; found legacy lasym output bugs: buco/jcur*/ctor
