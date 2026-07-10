@@ -308,7 +308,12 @@ mirror design doc.
    cli-smoke/build; module-scoped JIT fixture landed (solver tests 5-40x faster); the parity long
    pole was test_examples subprocess smokes (QA 145s/QH 101s/QP 81s/QI 67s) — isolated into their
    own shard with QH/QP/QI gated to nightly RUN_FULL; device.py (was 71%, untested) + mgrid/
-   optimize error branches given targeted tests. CI timing + 95% gate being verified on GitHub.
+   optimize error branches given targeted tests. **CI GREEN (run 29110749965)**: 7 parallel
+   shards each under a 9-min timeout (parity-a 8.0m, parity-b 4.3m, gradient 8.8m, others <2m;
+   wall ~9m, meets <=10m) and the **95% coverage gate PASSES** (8521 stmts, 414 missing = 95%).
+   parity split into two balanced shards (a=8 heavy solver modules/104 tests, b=rest/370); one
+   brittle warm-solve wall bound relaxed (0.1s->1.0s; the zero-recompile check remains the gate).
+   PR #23 closed (already on main, pre-deletion base); orphan branch/worktrees cleaned.
 2. **Docs/README honesty**: distinguish validated fixed-boundary implicit differentiation from
    NOT-yet-supported free-boundary/coil derivatives and the optimizer wiring status; fix
    optimization.rst "no special handling" claim; README examples claim must become true when the
