@@ -65,6 +65,8 @@ jax.config.update("jax_enable_x64", True)
 from vmec_jax.core import multigrid, solver
 from vmec_jax.core.input import VmecInput
 
+pytestmark = pytest.mark.usefixtures("_module_jit_enabled")  # full solves: run jitted
+
 DATA_DIR = Path(__file__).resolve().parents[2] / "examples" / "data"
 CACHE_DIR = Path("/tmp/vmec_jax_ladder_cache")
 
