@@ -729,9 +729,13 @@ def solve_fixed_boundary_cli(
             final_x, unpack(jnp.asarray(final_x))
         )
 
-    if float(candidate_variational.maximum) > config.ftol and final_x.size <= 512:
+    # Moderate matrix-free cases may still stall before the physical contract.
+    # A bounded dense fallback is the robust reference lane up to 1024 dofs.
+    if float(candidate_variational.maximum) > config.ftol and final_x.size <= 1024:
         hessian_function = jax.jit(jax.jacfwd(jax.grad(objective)))
-        remaining = max(1, int(config.max_iterations) - int(optimization.nit))
+        remaining = max(
+            1, int(config.max_iterations) - int(optimization.nit) - newton_steps
+        )
         polish = least_squares(
             fun=lambda x: np.asarray(gradient_function(jnp.asarray(x)), dtype=float),
             x0=final_x,
