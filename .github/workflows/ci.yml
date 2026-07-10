@@ -118,10 +118,11 @@ jobs:
         env:
           JAX_ENABLE_X64: "1"
         run: |
+          # Shard a = heaviest solver-golden modules; rebalanced 2026-07-10
+          # (moved test_optimize + test_multigrid_interp to b after the 2D
+          # preconditioner import pushed a over the 9-min budget).
           A_FILES="tests/core_new/test_parity_breadth.py \
                    tests/core_new/test_multigrid_ladder.py \
-                   tests/core_new/test_multigrid_interp.py \
-                   tests/core_new/test_optimize.py \
                    tests/core_new/test_optimize_traceable_qs.py \
                    tests/core_new/test_freeboundary.py \
                    tests/core_new/test_cli_freeboundary.py \
