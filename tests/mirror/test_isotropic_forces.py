@@ -145,6 +145,33 @@ def test_energy_gradient_matches_central_difference_for_interior_shape() -> None
     np.testing.assert_allclose(directional_ad, directional_fd, rtol=2.0e-7, atol=2.0e-5)
 
 
+def test_radial_gauss_quadrature_controls_lambda_checkerboard_mode() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=15, mpol=1, ntheta=3, nxi=15)
+    )
+    grid = config.build_grid()
+    boundary = MirrorBoundary.from_radius(0.3, grid)
+    base = MirrorState.from_boundary(boundary, grid)
+    s = jnp.asarray(grid.s)[:, None, None]
+    theta = jnp.asarray(grid.theta)[None, :, None]
+    xi = jnp.asarray(grid.xi)[None, None, :]
+    mode = 0.01 * jnp.cos(theta) * (1.0 - xi**2)
+    alternating = (-1.0) ** jnp.arange(grid.ns)[:, None, None] * mode
+    smooth = jnp.sin(jnp.pi * s) * mode
+    baseline = mirror_energy(base, grid, axial_flux_derivative=0.1).total
+
+    def excess_energy(lam):
+        state = project_fixed_boundary_state(
+            MirrorState(base.radius_scale, lam), boundary, grid
+        )
+        return mirror_energy(state, grid, axial_flux_derivative=0.1).total - baseline
+
+    alternating_energy = excess_energy(alternating)
+    smooth_energy = excess_energy(smooth)
+    assert float(alternating_energy) > 0.2 * float(smooth_energy)
+    assert float(alternating_energy) < 2.0 * float(smooth_energy)
+
+
 def test_flared_tube_manufactured_lorentz_force_converges_spectrally() -> None:
     """Compare the continuum force to a closed-form divergence-free field."""
 

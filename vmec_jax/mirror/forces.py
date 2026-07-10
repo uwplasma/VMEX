@@ -65,40 +65,52 @@ def _half_mesh_magnetic_terms(
     axial_flux_derivative: Array,
     current_derivative: Array,
 ) -> tuple[Array, Array]:
-    """Return ``(B^2, J)`` on VMEC-style radial half cells.
+    """Return radially integrated ``(B^2, J)`` on each half cell.
 
-    The cell Jacobian uses the conservative difference
-    ``r*r_s = 0.5*d(r^2)/ds``.  Pairing this with a cell sum makes a
-    self-similar cylinder exactly stationary under interior radial mapping
-    variations, unlike a full-mesh one-sided derivative/trapezoid pairing.
+    Two-point Gauss integration prevents the alternating full-mesh lambda
+    mode that one-point midpoint quadrature cannot see. The returned arrays
+    retain shape ``(ns-1, ntheta, nxi)``: ``J`` is the cell-average Jacobian
+    and ``B^2`` is weighted so ``B^2*J`` is the cell-average magnetic density.
     """
 
     a = jnp.asarray(state.radius_scale)
-    s = jnp.asarray(grid.s)[:, None, None]
-    radius_squared = s * a**2
     ds = float(grid.s[1] - grid.s[0])
-    radius_squared_half = 0.5 * (radius_squared[1:] + radius_squared[:-1])
-    radius_half = jnp.sqrt(jnp.maximum(radius_squared_half, 0.0))
-    r_r_s_half = 0.5 * (radius_squared[1:] - radius_squared[:-1]) / ds
-    d_radius_dtheta = grid.theta_basis.differentiate(radius_half, axis=1)
-    d_radius_dxi = grid.axial_basis.differentiate(radius_half, axis=2)
-    jacobian = r_r_s_half * float(grid.dz_dxi)
+    gauss = 0.5 + jnp.asarray([-1.0, 1.0]) / (2.0 * jnp.sqrt(3.0))
+    fraction = gauss[:, None, None, None]
+    s_left = jnp.asarray(grid.s[:-1])[None, :, None, None]
+    s_quadrature = s_left + fraction * ds
+    a_left, a_right = a[:-1][None], a[1:][None]
+    a_quadrature = (1.0 - fraction) * a_left + fraction * a_right
+    da_ds = (a_right - a_left) / ds
+    radius_squared = s_quadrature * a_quadrature**2
+    radius = jnp.sqrt(jnp.maximum(radius_squared, 0.0))
+    r_r_s = 0.5 * (a_quadrature**2 + 2.0 * s_quadrature * a_quadrature * da_ds)
+    d_radius_dtheta = grid.theta_basis.differentiate(radius, axis=2)
+    d_radius_dxi = grid.axial_basis.differentiate(radius, axis=3)
+    jacobian = r_r_s * float(grid.dz_dxi)
 
-    g_thetatheta = d_radius_dtheta**2 + radius_half**2
+    g_thetatheta = d_radius_dtheta**2 + radius**2
     g_thetaxi = d_radius_dtheta * d_radius_dxi
     g_xixi = d_radius_dxi**2 + float(grid.dz_dxi) ** 2
 
-    lambda_half = 0.5 * (state.lambda_stream[1:] + state.lambda_stream[:-1])
-    d_lambda_dtheta = grid.theta_basis.differentiate(lambda_half, axis=1)
-    d_lambda_dxi = grid.axial_basis.differentiate(lambda_half, axis=2)
+    lam = jnp.asarray(state.lambda_stream)
+    lambda_quadrature = (1.0 - fraction) * lam[:-1][None] + fraction * lam[1:][None]
+    d_lambda_dtheta = grid.theta_basis.differentiate(lambda_quadrature, axis=2)
+    d_lambda_dxi = grid.axial_basis.differentiate(lambda_quadrature, axis=3)
     psi = _profile(axial_flux_derivative, grid.ns, a.dtype, name="axial_flux_derivative")
     current = _profile(current_derivative, grid.ns, a.dtype, name="current_derivative")
-    psi_half = 0.5 * (psi[1:] + psi[:-1])[:, None, None]
-    current_half = 0.5 * (current[1:] + current[:-1])[:, None, None]
-    b_theta = (current_half - d_lambda_dxi) / jacobian
-    b_xi = (psi_half + d_lambda_dtheta) / jacobian
+    psi_quadrature = (
+        (1.0 - gauss[:, None]) * psi[:-1][None] + gauss[:, None] * psi[1:][None]
+    )[:, :, None, None]
+    current_quadrature = (
+        (1.0 - gauss[:, None]) * current[:-1][None] + gauss[:, None] * current[1:][None]
+    )[:, :, None, None]
+    b_theta = (current_quadrature - d_lambda_dxi) / jacobian
+    b_xi = (psi_quadrature + d_lambda_dtheta) / jacobian
     b_squared = g_thetatheta * b_theta**2 + 2.0 * g_thetaxi * b_theta * b_xi + g_xixi * b_xi**2
-    return b_squared, jacobian
+    jacobian_cell = jnp.mean(jacobian, axis=0)
+    magnetic_density_cell = jnp.mean(b_squared * jacobian, axis=0)
+    return magnetic_density_cell / jacobian_cell, jacobian_cell
 
 
 @dataclass(frozen=True)

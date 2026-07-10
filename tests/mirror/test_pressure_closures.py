@@ -24,6 +24,7 @@ from vmec_jax.mirror import (  # noqa: E402
     anisotropic_mirror_energy,
     anisotropy_indicators,
     interface_residual,
+    project_fixed_boundary_state,
     solve_anisotropic_fixed_boundary_cli,
 )
 from vmec_jax.mirror.forces import MU0  # noqa: E402
@@ -194,7 +195,7 @@ def test_animec_energy_shape_gradient_matches_central_difference() -> None:
             lambda_stream=state.lambda_stream,
         )
         return anisotropic_mirror_energy(
-            trial,
+            project_fixed_boundary_state(trial, boundary, grid),
             grid,
             closure,
             axial_flux_derivative=0.1,
