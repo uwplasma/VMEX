@@ -1093,31 +1093,25 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
    5. **M4 — fixed-boundary 3D mirror.** Add nonaxisymmetric/helical boundaries and finite axial
       current. Demonstrate visible pitch, nonzero lambda response, and convergence under radial,
       poloidal, and axial refinement using the same solver and residual.
-      **STATUS (2026-07-09): joint geometry/lambda solve landed.** The shared host solver now packs
-      fixed-cut, axis-regular, surface-gauge-free lambda variables and uses the exact packed
-      objective gradient for convergence. An `mpol=1` helical-boundary case with finite current
-      converges below `1e-12`, has nonzero lambda and field-line pitch, and preserves end/gauge
-      constraints. A manual `mpol=1,2,3` study converges every case below `6e-16`; the `mpol=2`
-      and `mpol=3` energies agree to `~2e-13` relative, while lambda amplitude and maximum pitch
-      change by about 2% and 3%.
-      **UPDATE (2026-07-10): refinement and bounded 3D preconditioning landed.** The separable
-      Newton preconditioner now includes normalized radial, Fourier-poloidal, and CGL-axial
-      stiffness, with a symmetric lift/project operation for the eliminated weighted lambda gauge.
-      A scheduled `full` test solves `(ns,nxi)=(5,5),(7,7),(9,9)` to component-wise residuals
-      `4.09e-16, 7.94e-16, 1.10e-15`; the last energy increment is `3.88e-7` relative and smaller
-      than the preceding increment. Reserving residual-Newton work fixed the former `7x7` stall at
-      `6.33e-7`. At `13x13` (747 unknowns), office CPU reaches `1.33e-13` in 41.4 s, while one RTX
-      A4000 reaches `9.73e-16` in 99.9 s after dense fallback; energy agrees to displayed precision
-      (`1.111046094678217e6`) and `max|lambda|=1.0365e-2`, maximum pitch `0.18108` agree within
-      `1e-8` relative. The shared device policy now defaults this launch-bound mirror size to CPU
-      while honoring explicit JAX/device pins.
-      The `15x15` case has 1,039 unknowns and closes without dense fallback at `7.67e-13` in 65.0 s
-      and 1.10 GB peak RSS. Its 13,000 Krylov iterations and `3.02e-1` final linear residual remain
-      too costly for the production preconditioner claim. Independent refinement isolates the
-      remaining error: at `ns=15`, `nxi=13 -> 15` changes maximum lambda/pitch by about `0.03%`,
-      while at `nxi=15`, `ns=13 -> 15` changes them by about `7.5%`. M4 therefore remains open for
-      radial observable convergence and substantially reduced Krylov work; the no-dense-fallback
-      gate and independent-direction diagnosis are complete.
+      **STATUS (2026-07-10): corrected research lane, axis gate still open.** The host solver packs
+      fixed-cut, surface-gauge-free lambda variables and closes the exact packed energy gradient.
+      The original one-point radial midpoint rule was found to admit an alternating lambda
+      hourglass mode: it produced `fsq<1e-12` but a `0.37` independently differenced force residual.
+      Those earlier M4 refinement numbers are rejected. Two-point Gauss integration in every radial
+      cell now resolves both endpoints; a regression test gives the checkerboard mode finite energy,
+      and all 47 non-full mirror tests plus the scheduled `(5,5),(7,7),(9,9)` study pass. At
+      `ns=15,nxi=15,ntheta=5`, lambda and pitch are smooth, variational force is `2.25e-13`, the
+      independent all-row/axis/bulk residuals are `0.0430/0.107/0.00972`, and Krylov work falls from
+      13,000 to 2,000 iterations. CPU takes 35.2 s and one A4000 44.2 s with matching physics.
+      Axial refinement `nxi=15,21,25` changes bulk force only `0.009724,0.009695,0.009687`, so the
+      remaining error is radial/axis. Matrix-free radial runs at `ns=17,19,23,27,31` all reach the
+      component-wise `1e-12` variational contract; bulk force decreases
+      `0.00934,0.00893,0.00779,0.00635,0.00628`. The `ns=31` case has 3,805 unknowns, takes 141 s,
+      uses 10,500 Krylov iterations, and the full three-run process peaks at 1.92 GB RSS. A
+      differentiable coarse/fine full-state interpolation helper is tested. SOLVAX 0.1.0 provides
+      the intended JAX GCROT/Kronecker migration target, but is not added until it replaces rather
+      than layers over the current SciPy path. M4 remains open for mode-regular axis derivatives,
+      a decreasing axis residual, and materially lower Krylov work/memory at `ns>=31`.
    6. **M5 — open-vacuum solver.** Implement the annular scalar-potential solve and couple direct
       coils/mgrid fields. Validate Laplace MMS, reciprocity, gauge removal, coil-only fields,
       side-interface `B.n`, end flux, outer-boundary convergence, and axisymmetric comparisons

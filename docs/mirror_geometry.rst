@@ -39,15 +39,25 @@ definite.
 
 The formal full-physics test refines ``(ns,nxi)`` through ``(5,5)``, ``(7,7)``,
 and ``(9,9)`` at ``mpol=1`` and requires component-wise residuals below
-``1e-12``. A 1,039-unknown ``15x15`` office-CPU run reaches ``7.67e-13`` in
-65.0 seconds without a dense fallback. The Krylov solve is still expensive;
-systems through 2,048 unknowns therefore have a bounded dense residual-Newton
-fallback, while larger systems report matrix-free convergence honestly.
+``1e-12``. Radial magnetic energy uses two-point Gauss integration. This is
+essential: the former midpoint rule admitted an alternating lambda hourglass
+mode and its published refinement data were rejected. The corrected lambda
+and pitch profiles are smooth, and a dedicated regression test assigns the
+alternating mode finite energy.
+
+At ``ns=15,nxi=15,ntheta=5``, the variational force is ``2.25e-13`` and the
+independently differenced all-row/axis/bulk force residuals are
+``0.0430/0.107/0.00972``. The split is intentional: the first two off-axis
+rows expose the still-open mode-regular axis stencil instead of contaminating
+the bulk convergence measure. At ``ns=31`` (3,805 unknowns), the matrix-free
+solve reaches ``6.81e-13`` in 141 seconds and bulk force falls to ``0.00628``.
+The axis residual and 10,500 Krylov iterations remain promotion blockers.
+Systems through 2,048 unknowns have a bounded dense reference polish; larger
+systems report matrix-free convergence honestly.
 
 ``device=None`` uses the shared measured device policy. On the office host,
-the 747-unknown ``13x13`` case took 41.4 seconds on CPU and 99.9 seconds on one
-RTX A4000. CPU and GPU energies agreed to displayed precision, and maximum
-stream function and pitch agreed within ``1e-8`` relative. Explicit
+the corrected ``15x15`` case took 35.2 seconds on CPU and 44.2 seconds on one
+RTX A4000. Energy and force diagnostics agree to numerical precision. Explicit
 ``device=`` arguments and JAX platform environment pins are always honored.
 
 .. image:: _static/figures/mirror_fixed_boundary_3d.png
