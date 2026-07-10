@@ -16,10 +16,18 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
+from scipy.optimize import least_squares
 from scipy.sparse.linalg import LinearOperator, cg
 
 from .basis import ChebyshevBasis, ThetaBasis
-from .model import MirrorBoundary, MirrorConfig
+from .forces import (
+    InterfaceResidual,
+    MirrorEnergy,
+    interface_residual,
+    mass_profile_from_pressure,
+    mirror_energy,
+)
+from .model import MirrorBoundary, MirrorConfig, MirrorState
 
 Array = Any
 MU0 = 4.0e-7 * np.pi
@@ -124,7 +132,25 @@ class VacuumSolveResult:
     message: str
 
 
-for _cls in (VacuumGeometry, VacuumField, VacuumSolveResult):
+@dataclass(frozen=True)
+class FreeBoundaryMirrorResult:
+    """Joint axisymmetric plasma-boundary-vacuum equilibrium result."""
+
+    boundary: MirrorBoundary
+    plasma_state: MirrorState
+    plasma_energy: MirrorEnergy
+    vacuum_geometry: VacuumGeometry
+    vacuum_field: VacuumField
+    interface: InterfaceResidual
+    history: Array
+    variational_max: Array
+    iterations: int
+    converged: bool
+    optimizer_success: bool
+    message: str
+
+
+for _cls in (VacuumGeometry, VacuumField, VacuumSolveResult, FreeBoundaryMirrorResult):
     data = [field.name for field in fields(_cls) if field.name not in {"iterations", "converged", "message"}]
     meta = [field.name for field in fields(_cls) if field.name in {"iterations", "converged", "message"}]
     jax.tree_util.register_dataclass(_cls, data_fields=data, meta_fields=meta)
@@ -472,6 +498,290 @@ def solve_vacuum_potential(
         converged=converged,
         message=message,
     )
+
+
+def solve_axisymmetric_free_boundary_cli(
+    initial_boundary: MirrorBoundary,
+    plasma_grid: "MirrorGrid",
+    vacuum_grid: VacuumGrid,
+    config: MirrorConfig,
+    coilset: Any,
+    *,
+    outer_radius: float,
+    axial_flux_derivative: Array,
+    mass_profile: Array = 0.0,
+    current_derivative: Array = 0.0,
+    gamma: float = 5.0 / 3.0,
+    require_convergence: bool = False,
+) -> FreeBoundaryMirrorResult:
+    """Jointly solve an isotropic axisymmetric plasma and open vacuum.
+
+    The active vector contains the lateral boundary away from the fixed cuts,
+    the plasma interior map, and every vacuum-potential node except one gauge
+    value. The direct coil field is reevaluated on each moving annulus.
+    """
+
+    if plasma_grid.ntheta != 1 or vacuum_grid.ntheta != 1:
+        raise ValueError("axisymmetric free-boundary solve requires ntheta=1")
+    if plasma_grid.nxi != vacuum_grid.nxi:
+        raise ValueError("plasma and vacuum grids must share axial nodes")
+    initial_boundary_radius = np.asarray(initial_boundary.radius_scale, dtype=float)
+    if initial_boundary_radius.shape != (1, plasma_grid.nxi):
+        raise ValueError("initial boundary does not match the axisymmetric grid")
+    boundary_scale = float(np.mean(initial_boundary_radius))
+    flux = np.asarray(axial_flux_derivative, dtype=float)
+    flux_scale = max(float(np.max(np.abs(flux))), np.finfo(float).tiny)
+    potential_scale = max(
+        2.0 * flux_scale / boundary_scale**2 * float(plasma_grid.dz_dxi),
+        np.finfo(float).tiny,
+    )
+
+    boundary_indices = np.arange(1, plasma_grid.nxi - 1)
+    plasma_mask = np.zeros(plasma_grid.shape, dtype=bool)
+    plasma_mask[1:-1, 0, 1:-1] = True
+    plasma_indices = tuple(np.asarray(index) for index in np.nonzero(plasma_mask))
+    vacuum_mask = np.ones(vacuum_grid.shape, dtype=bool)
+    vacuum_mask[-1, 0, 0] = False
+    vacuum_indices = tuple(np.asarray(index) for index in np.nonzero(vacuum_mask))
+    nb = boundary_indices.size
+    np_state = plasma_indices[0].size
+    nv = vacuum_indices[0].size
+
+    base_state = MirrorState.from_boundary(initial_boundary, plasma_grid)
+    x0 = np.concatenate(
+        [
+            initial_boundary_radius[0, boundary_indices] / boundary_scale,
+            np.asarray(base_state.radius_scale)[plasma_indices] / boundary_scale,
+            np.zeros(nv),
+        ]
+    )
+    geometric_upper = 0.98 * float(outer_radius) / boundary_scale
+    if np.max(x0[:nb]) >= geometric_upper:
+        raise ValueError("initial plasma boundary must lie inside the outer vacuum cylinder")
+    lower = np.concatenate([np.full(nb + np_state, 0.2), np.full(nv, -np.inf)])
+    upper = np.concatenate(
+        [np.full(nb + np_state, geometric_upper), np.full(nv, np.inf)]
+    )
+
+    def unpack(vector: Array) -> tuple[MirrorBoundary, MirrorState, Array]:
+        vector = jnp.asarray(vector)
+        boundary_radius = jnp.asarray(initial_boundary_radius).at[
+            0, jnp.asarray(boundary_indices)
+        ].set(vector[:nb] * boundary_scale)
+        boundary = MirrorBoundary(boundary_radius)
+        radius = base_state.radius_scale.at[plasma_indices].set(
+            vector[nb : nb + np_state] * boundary_scale
+        )
+        radius = radius.at[-1].set(boundary_radius)
+        radius = radius.at[:, :, 0].set(boundary_radius[:, 0])
+        radius = radius.at[:, :, -1].set(boundary_radius[:, -1])
+        radius = radius.at[0].set(radius[1])
+        state = MirrorState(radius, base_state.lambda_stream)
+        potential = jnp.zeros(vacuum_grid.shape).at[vacuum_indices].set(
+            vector[nb + np_state :] * potential_scale
+        )
+        return boundary, state, potential
+
+    def components(vector: Array):
+        boundary, state, potential = unpack(vector)
+        plasma = mirror_energy(
+            state,
+            plasma_grid,
+            axial_flux_derivative=axial_flux_derivative,
+            mass_profile=mass_profile,
+            current_derivative=current_derivative,
+            gamma=gamma,
+        )
+        vacuum_geometry = evaluate_vacuum_geometry(
+            boundary, vacuum_grid, outer_radius=outer_radius
+        )
+        external = external_field_from_coils(coilset, vacuum_geometry)
+        vacuum_functional = vacuum_energy_functional(
+            potential, vacuum_geometry, vacuum_grid, external
+        )
+        vacuum_field = evaluate_vacuum_field(
+            potential, vacuum_geometry, vacuum_grid, external
+        )
+        return plasma, vacuum_geometry, vacuum_field, vacuum_functional
+
+    initial_components = components(jnp.asarray(x0))
+    plasma_scale = max(abs(float(initial_components[0].total)), 1.0)
+    vacuum_scale = max(abs(float(initial_components[3])), 1.0)
+
+    def plasma_objective(vector: Array) -> Array:
+        return components(vector)[0].total / plasma_scale
+
+    def vacuum_objective(vector: Array) -> Array:
+        return components(vector)[3] / vacuum_scale
+
+    def residual_function(vector: Array) -> Array:
+        plasma, _, vacuum_field, _ = components(vector)
+        plasma_gradient = jax.grad(plasma_objective)(vector)[nb : nb + np_state]
+        vacuum_gradient = jax.grad(vacuum_objective)(vector)[nb + np_state :]
+        plasma_b_squared = plasma.b_squared[-1, 0, 1:-1]
+        vacuum_b_squared = jnp.sum(
+            vacuum_field.total_xyz[0, 0, 1:-1] ** 2, axis=-1
+        )
+        pressure = jnp.broadcast_to(plasma.pressure[-1], plasma_b_squared.shape)
+        jump = pressure + plasma_b_squared / (2.0 * MU0) - vacuum_b_squared / (
+            2.0 * MU0
+        )
+        stress_scale = (
+            jnp.abs(pressure)
+            + plasma_b_squared / (2.0 * MU0)
+            + vacuum_b_squared / (2.0 * MU0)
+        )
+        stress = jump / jnp.maximum(
+            stress_scale, jnp.finfo(stress_scale.dtype).tiny
+        )
+        return jnp.concatenate([stress, plasma_gradient, vacuum_gradient])
+
+    residual_jit = jax.jit(residual_function)
+    jacobian_jit = jax.jit(jax.jacfwd(residual_function))
+
+    history: list[tuple[float, float, float, float, float]] = []
+    last_recorded: np.ndarray | None = None
+
+    def residual_host(vector: np.ndarray) -> np.ndarray:
+        nonlocal last_recorded
+        residual = np.asarray(residual_jit(jnp.asarray(vector)), dtype=float)
+        if last_recorded is None or not np.array_equal(vector, last_recorded):
+            history.append(
+                (
+                    float(len(history)),
+                    float(np.sqrt(np.mean(residual[:nb] ** 2))),
+                    float(np.sqrt(np.mean(residual[nb : nb + np_state] ** 2))),
+                    float(np.sqrt(np.mean(residual[nb + np_state :] ** 2))),
+                    float(np.max(np.abs(residual))),
+                )
+            )
+            last_recorded = np.array(vector, copy=True)
+        return residual
+
+    solve = least_squares(
+        fun=residual_host,
+        x0=x0,
+        jac=lambda vector: np.asarray(jacobian_jit(jnp.asarray(vector)), dtype=float),
+        bounds=(lower, upper),
+        method="trf",
+        ftol=1.0e-14,
+        xtol=1.0e-14,
+        gtol=1.0e-14,
+        x_scale="jac",
+        max_nfev=config.max_iterations,
+    )
+    solution = np.asarray(solve.x)
+
+    boundary, state, potential = unpack(jnp.asarray(solution))
+    plasma = mirror_energy(
+        state,
+        plasma_grid,
+        axial_flux_derivative=axial_flux_derivative,
+        mass_profile=mass_profile,
+        current_derivative=current_derivative,
+        gamma=gamma,
+    )
+    vacuum_geometry = evaluate_vacuum_geometry(
+        boundary, vacuum_grid, outer_radius=outer_radius
+    )
+    external = external_field_from_coils(coilset, vacuum_geometry)
+    vacuum_field = evaluate_vacuum_field(
+        potential, vacuum_geometry, vacuum_grid, external
+    )
+    plasma_b_squared = plasma.b_squared[-1]
+    vacuum_b_squared = jnp.sum(vacuum_field.total_xyz[0] ** 2, axis=-1)
+    active_axial_weights = jnp.asarray(plasma_grid.axial_basis.weights).at[
+        jnp.asarray([0, plasma_grid.nxi - 1])
+    ].set(0.0)
+    interface = interface_residual(
+        perpendicular_pressure=jnp.broadcast_to(plasma.pressure[-1], plasma_b_squared.shape),
+        plasma_b_squared=plasma_b_squared,
+        vacuum_b_squared=vacuum_b_squared,
+        plasma_b_normal=jnp.zeros_like(plasma_b_squared),
+        vacuum_b_normal=vacuum_field.b_normal_inner,
+        theta_weights=jnp.asarray(plasma_grid.theta_basis.weights),
+        axial_weights=active_axial_weights,
+    )
+    final_residual = np.asarray(residual_jit(jnp.asarray(solution)), dtype=float)
+    variational_max = float(np.max(np.abs(final_residual)))
+    converged = bool(
+        variational_max <= config.ftol
+        and not bool(plasma.geometry.jacobian_sign_changed)
+        and bool(vacuum_geometry.valid)
+    )
+    message = str(solve.message)
+    if not converged:
+        message += f"; variational force={variational_max:.3e}"
+    result = FreeBoundaryMirrorResult(
+        boundary=boundary,
+        plasma_state=state,
+        plasma_energy=plasma,
+        vacuum_geometry=vacuum_geometry,
+        vacuum_field=vacuum_field,
+        interface=interface,
+        history=jnp.asarray(history),
+        variational_max=jnp.asarray(variational_max),
+        iterations=int(solve.nfev),
+        converged=converged,
+        optimizer_success=bool(solve.success),
+        message=message,
+    )
+    if require_convergence and not converged:
+        raise RuntimeError(message)
+    return result
+
+
+def solve_axisymmetric_beta_scan_cli(
+    initial_boundary: MirrorBoundary,
+    plasma_grid: "MirrorGrid",
+    vacuum_grid: VacuumGrid,
+    config: MirrorConfig,
+    coilset: Any,
+    beta_values: Array,
+    *,
+    outer_radius: float,
+    axial_flux_derivative: Array,
+    reference_field: float,
+    gamma: float = 5.0 / 3.0,
+) -> tuple[FreeBoundaryMirrorResult, ...]:
+    """Solve a hot-started axisymmetric free-boundary beta continuation."""
+
+    beta_values = np.asarray(beta_values, dtype=float)
+    if beta_values.ndim != 1 or beta_values.size < 1:
+        raise ValueError("beta_values must be a nonempty one-dimensional array")
+    if np.any(beta_values < 0.0) or np.any(np.diff(beta_values) < 0.0):
+        raise ValueError("beta_values must be nonnegative and increasing")
+    reference_state = MirrorState.from_boundary(initial_boundary, plasma_grid)
+    reference_energy = mirror_energy(
+        reference_state,
+        plasma_grid,
+        axial_flux_derivative=axial_flux_derivative,
+    )
+    pressure_shape = 1.0 - jnp.asarray(plasma_grid.s)
+    boundary = initial_boundary
+    results = []
+    for beta in beta_values:
+        central_pressure = float(beta) * float(reference_field) ** 2 / (2.0 * MU0)
+        mass = mass_profile_from_pressure(
+            central_pressure * pressure_shape,
+            reference_energy.volume_derivative,
+            gamma=gamma,
+        )
+        result = solve_axisymmetric_free_boundary_cli(
+            boundary,
+            plasma_grid,
+            vacuum_grid,
+            config,
+            coilset,
+            outer_radius=outer_radius,
+            axial_flux_derivative=axial_flux_derivative,
+            mass_profile=mass,
+            gamma=gamma,
+            require_convergence=True,
+        )
+        results.append(result)
+        boundary = result.boundary
+    return tuple(results)
 
 
 from typing import TYPE_CHECKING

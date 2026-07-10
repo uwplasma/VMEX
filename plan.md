@@ -724,6 +724,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       isotropic and anisotropic cases against an independently generated Pleiades/WHAM-style
       reference, paraxial pressure balance, outward flux-surface expansion, and the expected
       central diamagnetic trend `B0/Bvac approximately sqrt(1-beta)` in its validity regime.
+      **STATUS (2026-07-09): first coupled isotropic beta scan landed.** The production residual
+      solves plasma interior force, vacuum-potential stationarity, and free-side normal stress as a
+      square system; it does not vary the Neumann vacuum functional as a shape energy. Direct
+      two-coil solves at beta `0,1%,3%,10%` all reach `<3.6e-15` residual and `<1.7e-15` active
+      stress error. Solved center radii increase monotonically
+      `0.253176,0.253443,0.253979,0.255863`. Resolution/initial-boundary independence,
+      diamagnetic-field/reference parity, anisotropy, and hot state/potential restarts remain.
    8. **M7 — nonaxisymmetric finite-beta free boundary.** Add helical coils/boundaries, then require
       3D force, interface, field-line, and resolution gates. This lane is supported only after M6;
       no axisymmetric boundary replicated in theta counts as a 3D validation.

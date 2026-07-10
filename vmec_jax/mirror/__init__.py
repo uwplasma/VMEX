@@ -62,6 +62,7 @@ from .solver import (
 )
 from .vacuum import (
     VacuumField,
+    FreeBoundaryMirrorResult,
     VacuumGeometry,
     VacuumGrid,
     VacuumSolveResult,
@@ -70,6 +71,8 @@ from .vacuum import (
     evaluate_vacuum_geometry,
     external_field_from_coils,
     solve_vacuum_potential,
+    solve_axisymmetric_free_boundary_cli,
+    solve_axisymmetric_beta_scan_cli,
     vacuum_energy_functional,
     vacuum_laplacian,
 )
@@ -102,6 +105,7 @@ __all__ = [
     "TabulatedPressureClosure",
     "VariationalResidual",
     "VacuumField",
+    "FreeBoundaryMirrorResult",
     "VacuumGeometry",
     "VacuumGrid",
     "VacuumSolveResult",
@@ -130,6 +134,8 @@ __all__ = [
     "solve_anisotropic_fixed_boundary_cli",
     "solve_fixed_boundary_cli",
     "solve_vacuum_potential",
+    "solve_axisymmetric_free_boundary_cli",
+    "solve_axisymmetric_beta_scan_cli",
     "vacuum_energy_functional",
     "vacuum_laplacian",
 ]

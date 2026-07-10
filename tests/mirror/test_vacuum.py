@@ -18,10 +18,11 @@ from vmec_jax.mirror import (  # noqa: E402
     evaluate_vacuum_geometry,
     external_field_from_coils,
     solve_vacuum_potential,
+    solve_axisymmetric_beta_scan_cli,
     vacuum_energy_functional,
     vacuum_laplacian,
 )
-from vmec_jax.core.coils import CoilSet  # noqa: E402
+from vmec_jax.core.coils import CoilSet, two_coil_on_axis_bz  # noqa: E402
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -211,3 +212,46 @@ def test_two_coil_vacuum_solve_reduces_plasma_normal_field_under_refinement() ->
         )
         / field_scale
     ) < 3.0e-3
+
+
+def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=7),
+        z_min=-0.8,
+        z_max=0.8,
+        ftol=1.0e-12,
+        max_iterations=1000,
+    )
+    plasma_grid = config.build_grid()
+    vacuum_grid = build_vacuum_grid(plasma_grid, nrho=5)
+    on_axis_field = two_coil_on_axis_bz(
+        jnp.asarray(plasma_grid.z),
+        coil_radius=0.9,
+        separation=2.0,
+        current=2.0e5,
+    )
+    center = plasma_grid.nxi // 2
+    flux = 0.5 * on_axis_field[center] * 0.25**2
+    boundary = MirrorBoundary.from_axis_field(flux, on_axis_field, plasma_grid)
+    results = solve_axisymmetric_beta_scan_cli(
+        boundary,
+        plasma_grid,
+        vacuum_grid,
+        config,
+        _two_end_coils(),
+        jnp.asarray([0.0, 0.01, 0.03, 0.10]),
+        outer_radius=0.65,
+        axial_flux_derivative=flux,
+        reference_field=float(on_axis_field[center]),
+    )
+    center_radii = np.asarray(
+        [result.boundary.radius_scale[0, center] for result in results]
+    )
+
+    assert len(results) == 4
+    assert all(result.converged for result in results)
+    assert all(float(result.variational_max) <= config.ftol for result in results)
+    assert all(float(result.interface.normal_stress_rms) < 1.0e-12 for result in results)
+    assert np.all(np.diff(center_radii) > 0.0)
+    assert center_radii[-1] > 1.005 * center_radii[0]
+    assert all(np.all(np.isfinite(np.asarray(result.vacuum_field.total_xyz))) for result in results)
