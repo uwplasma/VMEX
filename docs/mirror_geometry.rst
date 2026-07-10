@@ -41,7 +41,7 @@ The formal full-physics test refines ``(ns,nxi)`` through ``(5,5)``, ``(7,7)``,
 and ``(9,9)`` at ``mpol=1`` and requires component-wise residuals below
 ``1e-12``. A 1,039-unknown ``15x15`` office-CPU run reaches ``7.67e-13`` in
 65.0 seconds without a dense fallback. The Krylov solve is still expensive;
-systems through 1,024 unknowns therefore have a bounded dense residual-Newton
+systems through 2,048 unknowns therefore have a bounded dense residual-Newton
 fallback, while larger systems report matrix-free convergence honestly.
 
 ``device=None`` uses the shared measured device policy. On the office host,

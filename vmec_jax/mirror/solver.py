@@ -686,9 +686,7 @@ def solve_fixed_boundary_cli(
 
     # Reserve iterations for Newton: L-BFGS can stall on relative energy while
     # physical forces are still large.
-    polish_cap = 100 if x0.size > 1024 else 50
-    if x0.size <= 512:
-        polish_cap = 200
+    polish_cap = 50 if x0.size > 512 else 200
     polish_reserve = min(polish_cap, max(1, int(config.max_iterations) // 4))
     available = int(config.max_iterations) - polish_reserve
     lbfgs_budget = max(10, available // 2) if x0.size > 512 else max(1, available)
@@ -757,8 +755,8 @@ def solve_fixed_boundary_cli(
         )
 
     # Moderate matrix-free cases may still stall before the physical contract.
-    # A bounded dense fallback is the robust reference lane up to 1024 dofs.
-    if float(candidate_variational.maximum) > config.ftol and final_x.size <= 1024:
+    # A bounded dense fallback is the robust reference lane up to 2048 dofs.
+    if float(candidate_variational.maximum) > config.ftol and final_x.size <= 2048:
         hessian_function = jax.jit(jax.jacfwd(jax.grad(objective)))
         remaining = max(
             1, int(config.max_iterations) - int(optimization.nit) - newton_steps
