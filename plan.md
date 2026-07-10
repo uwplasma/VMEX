@@ -346,6 +346,12 @@ patterns do. Ordered by value, each cross-referenced into the lane it strengthen
   near-axis) through the uwplasma packages (R19).**
 
 **R18. SOLVAX integration — slim vmec_jax, share solver infra with the uwplasma ecosystem.**
+*(STATUS 2026-07-10: R18a + R18b DONE.* SOLVAX PR #1 merged + released v0.2.0 to PyPI
+(backend-aware tridiagonal_solve + chunked-autodiff, example-per-capability + full docs).
+vmec_jax imports them (d6b4c938): preconditioner tridiagonal, adjoint GMRES, jac_chunk_size
+all via solvax; preconditioner + gradient tests bit-identical; CI green incl. 95% gate; core
+−56 net lines now. Remaining: the big reduction with the 2D preconditioner on
+solvax.block_thomas_truncated (R10.2).)*
 `uwplasma/SOLVAX` (local `/Users/rogerio/local/SOLVAX`, v0.1.0, "differentiable structured linear
 solvers, preconditioners and matrix-free methods in JAX", built on lineax) ALREADY ships: `banded`
 LU (+periodic), `krylov` (`gmres`, `gcrot`=recycled Krylov), `implicit` (`linear_solve`,
