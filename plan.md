@@ -338,7 +338,77 @@ patterns do. Ordered by value, each cross-referenced into the lane it strengthen
   Gate: items 1-2 (chunk+remat) land first (biggest measurable win, feed R16's ≥2× gate); each other
   adopted idea lands as a tested change in its cross-referenced lane. Note: our matrix-free O(1)-memory
   adjoint is already BETTER than DESC's for a single scalar gradient — keep it; borrow the chunking,
-  remat, warm-start, objectives, virtual-casing, and UX.
+  remat, warm-start, objectives, virtual-casing, and UX. **Route the solver-generic ones (chunk,
+  remat, block/recycled Krylov, warm-start) through SOLVAX (R18); the physics ones (virtual casing,
+  near-axis) through the uwplasma packages (R19).**
+
+**R18. SOLVAX integration — slim vmec_jax, share solver infra with the uwplasma ecosystem.**
+`uwplasma/SOLVAX` (local `/Users/rogerio/local/SOLVAX`, v0.1.0, "differentiable structured linear
+solvers, preconditioners and matrix-free methods in JAX", built on lineax) ALREADY ships: `banded`
+LU (+periodic), `krylov` (`gmres`, `gcrot`=recycled Krylov), `implicit` (`linear_solve`,
+`root_solve` = implicit-function-theorem custom_vjp), `direct` (`block_thomas`,
+`block_thomas_truncated` = block-tridiagonal Schur elimination), `precond` (jacobi/block_jacobi/
+coarse_operator/line_smoother/p_multigrid/mixed_precision/kronecker), `refine` (iterative refinement),
+`operators` (MatrixFree/Sum/Kronecker). This overlaps heavily with vmec_jax's solver needs, so the
+work is **bidirectional** and the net effect is a SLIMMER, better-integrated vmec_jax.
+
+  *18a. Assess + migrate FROM vmec_jax TO SOLVAX (make the SOLVAX PR).* Read SOLVAX `src/solvax/*`
+  and vmec_jax `core/preconditioner.py` + `core/implicit.py`; migrate ONLY genuinely-generic pieces
+  SOLVAX lacks, as a PR to `uwplasma/SOLVAX` (branch, as rogeriojorge):
+    - **Backend-aware batched tridiagonal solve**: our `tridiagonal_solve` (CPU vectorized Thomas +
+      GPU `jax.lax.linalg.tridiagonal_solve`/cuSPARSE, `platform_dependent` selection, batched over
+      RHS/columns). SOLVAX `banded` is general banded LU; add this specialized fast tridiagonal path
+      if absent. (Not the VMEC-specific precondn/lamcal/scalfor — those stay in vmec_jax.)
+    - **`jac_chunk_size` chunked-Jacobian utility** (R17.1): a generic `jax.lax.map`-based column-
+      chunked forward/reverse Jacobian builder with `"auto"` sizing — a solver/AD utility that belongs
+      in SOLVAX, reused by vmec_jax and sfincs_jax.
+    - **Perturbation/Newton-predictor warm-start** (R17.5) if it generalizes cleanly on top of
+      SOLVAX's recycled-Krylov continuation.
+    - The PR MUST also add (user requirement): **one example per SOLVAX capability** (including the
+      new ones and the pre-existing banded/krylov/gcrot/root_solve/block_thomas/precond/refine), and
+      **comprehensive up-to-date docs** explaining every method, its equations, the source, the
+      architecture, inputs/outputs, and use cases (mirror the vmec_jax docs bar). Gate: SOLVAX CI
+      green, coverage kept, PR opened with examples + docs.
+  *18b. Import FROM SOLVAX INTO vmec_jax (slim the core).* After (or alongside) 18a, refactor:
+    - `core/implicit.py` adjoint → use SOLVAX `root_solve`/`linear_solve` + `krylov.gmres`/`gcrot`
+      (gcrot gives the recycled/block Krylov of R17.4 for free) instead of the hand-rolled custom_vjp
+      + `jax.scipy.sparse.linalg`. Keep our preconditioner as the Krylov `M`.
+    - The 1D radial preconditioner tridiagonal solve in `core/preconditioner.py` → SOLVAX's
+      tridiagonal/banded solve (the migrated one), deleting the duplicated Thomas kernel.
+    - The **2D block preconditioner** (R10.2) → build on SOLVAX `direct.block_thomas_truncated`
+      (truncated block-tridiagonal storage — exactly VMEC's BCYCLIC analogue) + `krylov` + `precond`,
+      NOT from scratch.
+    - Add `solvax` to vmec_jax runtime deps (unpinned). Gate: parity + gradient tests unchanged;
+      vmec_jax core LOC drops (target −1 to −2k lines); one place to maintain the solver math.
+  Net: vmec_jax gets slimmer and faster, SOLVAX gets battle-tested methods + examples + docs, and the
+  uwplasma ecosystem (sfincs_jax, vmec_jax) shares one solver layer.
+
+**R19. Physics-package reuse (uwplasma) — don't re-implement.**
+  - **Virtual casing (R17.8 differentiable free boundary)**: reuse `uwplasma/virtual_casing_jax`
+    (local; JAX virtual-casing with examples incl. `simsopt_stage_two_optimization_finite_beta.py`,
+    `w7x_gradB.py`, `vmec_extender_python_api.py`) instead of re-implementing the virtual-casing
+    `B·n` differentiable free-boundary formulation. Wire it as the differentiable free-boundary path
+    (keep NESTOR for the VMEC2000-parity forward solve).
+  - **Near-axis seeding (R17.9)**: use `uwplasma/pyQSC_JAX` (QA/QH near-axis) and
+    `github.com/rogeriojorge/pyQIC` (local `pyQIC`, import `qic`, for QI) to build physically-good
+    `VmecInput` boundary seeds via `from_near_axis`, replacing the circular-torus seed for deeper
+    QA/QH/QI optimization. Both differentiable/JAX where possible so seeds flow into single-stage.
+  Gate: free-boundary gradients via virtual_casing_jax FD-validated; near-axis-seeded QA/QH/QI reach
+  deeper precision than the circular seed (feeds R1); examples added (R13).
+
+**R20. Showcase everything new (README + docs + examples) — the differentiators.**
+  - **2D preconditioner advantages** (once R10.2/R18b land): README + docs figure — iteration-count
+    and wall-time reduction vs the 1D preconditioner on a stiff case; explain the method (docs R14).
+  - **DESC comparison where vmec_jax WINS** (README table + notes), beyond the O(1)-memory adjoint:
+    exact VMEC2000 iteration-for-iteration parity + standard `wout` (DESC is a different equilibrium,
+    not VMEC-parity); direct INDATA/JSON drop-in; free boundary with NESTOR *and* virtual casing;
+    lasym; VMEC2000-format prints; and any measured speed/memory wins from R16. Be honest where DESC
+    wins (Zernike accuracy at low resolution, mature objective library — which R17.7 narrows).
+  - **Mention every new capability** (DESC-derived AND our own beyond-VMEC2000: implicit diff, direct
+    coils, 2D preconditioner, chunked/remat memory, virtual-casing free-bdy, near-axis seeding, the
+    SOLVAX-shared solvers) in BOTH README and docs, and for each user-facing one ship an example
+    (R13) + a tutorial page (R14). Gate: README/docs enumerate the differentiators with evidence;
+    each important new capability has an example.
 
 ---
 
