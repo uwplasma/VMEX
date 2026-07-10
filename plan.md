@@ -196,7 +196,10 @@ Steps:
   3. **Code-size comparison.** Add a README table: source files + lines of code for vmec_jax vs
      VMEC2000 vs VMEC++ (count with `cloc`/`tokei` over `/Users/rogerio/local/STELLOPT/VMEC2000/Sources`
      and `/Users/rogerio/local/vmecpp/src`; state what's counted). Message: comparable/greater
-     capability in a fraction of the code.
+     capability in a fraction of the code. **Measured 2026-07-10 (solver source only; tests/
+     bindings/third-party excluded): vmec_jax 34 files / 19,237 Python lines; VMEC2000 115
+     files / 36,693 Fortran lines; VMEC++ 117 files / ~39,677 (34,255 C++ + 5,422 Python) —
+     vmec_jax is ~half the code of both, with a superset of capabilities.**
   4. **Showcase figure.** `readme_equilibrium_showcase.png`: show the **3D geometry with |B| color on
      the surface**; and change the current flat |B| plot to **|B| in Boozer coordinates with the `jet`
      colormap** (the STELLOPT/Boozer convention). Update `core.plotting`/`core.boozer` plot helpers as
