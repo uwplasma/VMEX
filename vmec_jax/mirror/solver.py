@@ -743,7 +743,7 @@ def solve_fixed_boundary_cli(
             grid,
             vectorizer,
             ftol=config.ftol,
-            max_steps=min(30, remaining),
+            max_steps=min(polish_reserve, remaining),
             record_step=record_newton,
             lower_bounds=lower_bounds,
             upper_bounds=upper_bounds,
