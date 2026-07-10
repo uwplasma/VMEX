@@ -9,7 +9,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from .forces import MU0, mass_profile_from_pressure, mirror_energy
-from .model import MirrorBoundary, MirrorConfig, MirrorState, project_fixed_boundary_state
+from .model import MirrorBoundary, MirrorConfig, MirrorState, PressureClosure, project_fixed_boundary_state
 from .restart import FreeBoundaryRestart
 from .free_boundary import FreeBoundaryMirrorResult, solve_axisymmetric_free_boundary_cli
 from .vacuum import VacuumGrid
@@ -68,6 +68,7 @@ def solve_axisymmetric_beta_scan_cli(
     gamma: float = 5.0 / 3.0,
     beta_rtol: float = 1.0e-8,
     initial_restart: FreeBoundaryRestart | None = None,
+    pressure_closure: PressureClosure | None = None,
 ) -> tuple[FreeBoundaryMirrorResult, ...]:
     """Solve a fully hot-started axisymmetric free-boundary beta scan.
 
@@ -97,14 +98,25 @@ def solve_axisymmetric_beta_scan_cli(
     state = None if initial_restart is None else initial_restart.plasma_state
     potential = None if initial_restart is None else initial_restart.vacuum_potential
     mass_scale = 1.0 if initial_restart is None else initial_restart.mass_scale
+    using_closure = initial_restart is not None and pressure_closure is not None
     results = []
     for beta in beta_values:
         central_pressure = float(beta) * float(reference_field) ** 2 / (2.0 * MU0)
-        mass = mass_profile_from_pressure(
-            central_pressure * pressure_shape,
-            reference_energy.volume_derivative,
-            gamma=gamma,
+        active_closure = pressure_closure if beta > 0.0 else None
+        mass = (
+            mass_profile_from_pressure(
+                central_pressure * pressure_shape,
+                reference_energy.volume_derivative,
+                gamma=gamma,
+            )
+            if active_closure is None
+            else 0.0
         )
+        if active_closure is not None and not using_closure:
+            base_pressure = float(active_closure.moments(0.0, float(reference_field)).perpendicular)
+            if base_pressure <= 0.0:
+                raise ValueError("pressure_closure must have positive central p_perp")
+            mass_scale = central_pressure / base_pressure
         result = solve_axisymmetric_free_boundary_cli(
             boundary,
             plasma_grid,
@@ -118,11 +130,13 @@ def solve_axisymmetric_beta_scan_cli(
             initial_state=state,
             initial_potential=potential,
             initial_mass_scale=mass_scale,
+            pressure_closure=active_closure,
             target_central_pressure=None if beta == 0.0 else central_pressure,
             require_convergence=True,
         )
         if beta > 0.0:
-            achieved_beta = 2.0 * MU0 * float(result.plasma_energy.pressure[0]) / float(reference_field) ** 2
+            center = int(np.argmin(np.abs(plasma_grid.z)))
+            achieved_beta = 2.0 * MU0 * float(result.perpendicular_pressure[0, 0, center]) / float(reference_field) ** 2
             if abs(achieved_beta - float(beta)) / float(beta) > beta_rtol:
                 raise RuntimeError(f"central beta did not reach rtol={beta_rtol:.3e}")
         results.append(result)
@@ -130,6 +144,7 @@ def solve_axisymmetric_beta_scan_cli(
         state = result.plasma_state
         potential = result.vacuum_potential
         mass_scale = float(result.mass_scale)
+        using_closure = active_closure is not None
     return tuple(results)
 
 
