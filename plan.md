@@ -863,10 +863,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       (`1.111046094678217e6`) and `max|lambda|=1.0365e-2`, maximum pitch `0.18108` agree within
       `1e-8` relative. The shared device policy now defaults this launch-bound mirror size to CPU
       while honoring explicit JAX/device pins.
-      This case still needs 15,000 capped Krylov iterations (`1.37e-2` final linear residual) and a
-      bounded dense residual-Newton fallback, so the mode-aware block is useful but not yet the
-      scalable production preconditioner. M4 remains open for independent `ns`/`nxi` convergence,
-      reduced Krylov work, and a no-dense-fallback case above 1024 unknowns.
+      The `15x15` case has 1,039 unknowns and closes without dense fallback at `7.67e-13` in 65.0 s
+      and 1.10 GB peak RSS. Its 13,000 Krylov iterations and `3.02e-1` final linear residual remain
+      too costly for the production preconditioner claim. Independent refinement isolates the
+      remaining error: at `ns=15`, `nxi=13 -> 15` changes maximum lambda/pitch by about `0.03%`,
+      while at `nxi=15`, `ns=13 -> 15` changes them by about `7.5%`. M4 therefore remains open for
+      radial observable convergence and substantially reduced Krylov work; the no-dense-fallback
+      gate and independent-direction diagnosis are complete.
    6. **M5 — open-vacuum solver.** Implement the annular scalar-potential solve and couple direct
       coils/mgrid fields. Validate Laplace MMS, reciprocity, gauge removal, coil-only fields,
       side-interface `B.n`, end flux, outer-boundary convergence, and axisymmetric comparisons

@@ -1,0 +1,23 @@
+{
+  "schema": "vmec_jax.benchmark.mirror_fixed_boundary_3d/1",
+  "case": {
+    "mpol": 1,
+    "ntheta": 3,
+    "ftol": 1e-12,
+    "max_iterations": 1000,
+    "axial_flux_derivative": 0.1,
+    "current_derivative": "1e-3 * s",
+    "boundary": "0.3 * (1 + 0.02*cos(theta)*(1-xi^2))"
+  },
+  "runs": [
+    {"ns": 5, "nxi": 5, "device": "local_cpu", "wall_s": 28.9986, "residual": 4.09014e-16, "energy": 1111047.829311409, "lambda_max": 0.00600533013, "pitch_max": 0.0888733526},
+    {"ns": 7, "nxi": 7, "device": "local_cpu", "wall_s": 55.3831, "residual": 7.93963e-16, "energy": 1111046.9841947851, "lambda_max": 0.00730712258, "pitch_max": 0.124441519},
+    {"ns": 9, "nxi": 9, "device": "local_cpu", "wall_s": 58.7261, "residual": 1.09575e-15, "energy": 1111046.553202034, "lambda_max": 0.00845682320, "pitch_max": 0.146968797},
+    {"ns": 11, "nxi": 11, "device": "local_cpu", "wall_s": 56.8914, "residual": 1.63925e-15, "energy": 1111046.2804841388, "lambda_max": 0.00944762657, "pitch_max": 0.165016340},
+    {"ns": 13, "nxi": 13, "device": "office_cpu", "wall_s": 41.3717, "residual": 1.33280e-13, "energy": 1111046.094678217, "lambda_max": 0.01036508583, "pitch_max": 0.181080264},
+    {"ns": 13, "nxi": 13, "device": "office_gpu", "wall_s": 99.9186, "residual": 9.72537e-16, "energy": 1111046.094678217, "lambda_max": 0.01036508591, "pitch_max": 0.181080266},
+    {"ns": 15, "nxi": 13, "device": "office_cpu", "wall_s": 80.2599, "residual": 1.61369e-15, "energy": 1111045.9601562591, "lambda_max": 0.01120920845, "pitch_max": 0.195972929},
+    {"ns": 13, "nxi": 15, "device": "office_cpu", "wall_s": 55.6423, "residual": 6.28542e-13, "energy": 1111046.0947706695, "lambda_max": 0.01036236616, "pitch_max": 0.181025555},
+    {"ns": 15, "nxi": 15, "device": "office_cpu", "wall_s": 65.0499, "peak_rss_mib": 1076.3, "residual": 7.67198e-13, "energy": 1111045.9602485392, "lambda_max": 0.01120628693, "pitch_max": 0.195903646}
+  ]
+}

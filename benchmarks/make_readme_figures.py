@@ -15,10 +15,12 @@ Produces (into ``docs/_static/figures/``):
   ``benchmarks/convergence_nfp4_ns51.json``; delete it to re-run the codes.
 - ``readme_equilibrium_showcase.png`` — flux surfaces + boundary ``|B|`` of
   the bundled quick-start case (solves it in-process).
+- ``mirror_fixed_boundary_3d.png`` — 3D mirror refinement, force closure,
+  and measured CPU/GPU placement from ``mirror_fixed_boundary_3d.json``.
 
 Usage:
     python benchmarks/make_readme_figures.py
-        [--only runtime,parity,convergence,showcase]
+        [--only runtime,parity,convergence,showcase,mirror]
         [--outdir docs/_static/figures]
 
 Figures are written uncompressed; compress before committing:
@@ -409,7 +411,71 @@ def make_convergence_figure(out: Path) -> None:
 
 
 # --------------------------------------------------------------------------
-# 4. Equilibrium showcase (solves the bundled quick-start case)
+# 4. Fixed-boundary 3D mirror convergence
+# --------------------------------------------------------------------------
+
+def make_mirror_figure(out: Path) -> None:
+    data = json.loads((REPO / "benchmarks" / "mirror_fixed_boundary_3d.json").read_text())
+    runs = data["runs"]
+    cpu = [r for r in runs if r["device"].endswith("cpu")]
+    diagonal = sorted((r for r in cpu if r["ns"] == r["nxi"]), key=lambda r: r["ns"])
+    reference = diagonal[-1]
+
+    fig, axes = plt.subplots(2, 2, figsize=(8.6, 6.3), dpi=160)
+    ax = axes[0, 0]
+    n = np.array([r["ns"] for r in diagonal[:-1]])
+    for key, label, color in (
+        ("energy", "energy", INK2),
+        ("lambda_max", "max |lambda|", BLUE),
+        ("pitch_max", "max pitch", YELLOW),
+    ):
+        error = [abs(r[key] - reference[key]) / abs(reference[key]) for r in diagonal[:-1]]
+        ax.semilogy(n, error, "o-", color=color, lw=1.8, ms=5, label=label)
+    ax.set(xlabel="diagonal resolution  ns = nxi", ylabel="relative change from 15 x 15")
+    ax.set_title("Observable refinement", loc="left", fontsize=11)
+    ax.grid(True); ax.legend(fontsize=8)
+
+    ax = axes[0, 1]
+    separated = {(r["ns"], r["nxi"]): r for r in cpu if r["ns"] in (13, 15) and r["nxi"] in (13, 15)}
+    labels = ["13 x 13", "15 x 13", "13 x 15", "15 x 15"]
+    keys = [(13, 13), (15, 13), (13, 15), (15, 15)]
+    x = np.arange(4)
+    for key, label, color in (("lambda_max", "max |lambda|", BLUE), ("pitch_max", "max pitch", YELLOW)):
+        values = [separated[k][key] / reference[key] for k in keys]
+        ax.plot(x, values, "o-", color=color, lw=1.8, ms=5, label=label)
+    ax.axhline(1.0, color=BASELINE, lw=1.0)
+    ax.set_xticks(x, labels, rotation=18)
+    ax.set_ylabel("fraction of 15 x 15 value")
+    ax.set_title("Radial error dominates", loc="left", fontsize=11)
+    ax.grid(axis="y"); ax.legend(fontsize=8)
+
+    ax = axes[1, 0]
+    ax.semilogy([r["ns"] for r in diagonal], [r["residual"] for r in diagonal], "o-", color=RED, lw=1.8)
+    ax.axhline(1.0e-12, color=INK2, ls="--", lw=1.1, label="ftol = 1e-12")
+    ax.set(xlabel="diagonal resolution  ns = nxi", ylabel="component-wise force residual")
+    ax.set_title("Every equilibrium closes", loc="left", fontsize=11)
+    ax.grid(True); ax.legend(fontsize=8)
+
+    ax = axes[1, 1]
+    device = {r["device"]: r for r in runs if r["ns"] == r["nxi"] == 13}
+    bars = ax.bar(["office CPU", "RTX A4000"], [device["office_cpu"]["wall_s"], device["office_gpu"]["wall_s"]], color=[BLUE, VIOLET], width=0.58)
+    ax.bar_label(bars, fmt="%.1f s", padding=4, color=INK2, fontsize=9)
+    ax.set_ylabel("wall time (s)")
+    ax.set_title("Host solver prefers CPU", loc="left", fontsize=11)
+    ax.grid(axis="y"); ax.set_ylim(0, 115)
+
+    for ax in axes.ravel():
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+    fig.suptitle("Fixed-boundary helical mirror: convergence and placement", x=0.07, ha="left", fontsize=13)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    print("wrote", out)
+
+
+# --------------------------------------------------------------------------
+# 5. Equilibrium showcase (solves the bundled quick-start case)
 # --------------------------------------------------------------------------
 
 def make_showcase_figure(out: Path) -> None:
@@ -473,7 +539,7 @@ def make_showcase_figure(out: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--only", default="runtime,parity,convergence,showcase")
+    ap.add_argument("--only", default="runtime,parity,convergence,showcase,mirror")
     ap.add_argument("--outdir", default=str(REPO / "docs" / "_static" / "figures"))
     args = ap.parse_args()
     outdir = Path(args.outdir)
@@ -488,6 +554,8 @@ def main() -> None:
         make_convergence_figure(outdir / "readme_convergence.png")
     if "showcase" in which:
         make_showcase_figure(outdir / "readme_equilibrium_showcase.png")
+    if "mirror" in which:
+        make_mirror_figure(outdir / "mirror_fixed_boundary_3d.png")
 
 
 if __name__ == "__main__":

@@ -27,6 +27,33 @@ in ``plan.md`` remain. Nonaxisymmetric free-boundary mirrors and the toroidal
 stellarator-mirror hybrid are later milestones and must not be inferred from
 the axisymmetric result.
 
+Fixed-boundary 3D solver
+------------------------
+
+The fixed-boundary host solver jointly advances geometry and a gauge-free
+stream function for helical boundaries with finite axial current. Its Newton
+preconditioner combines radial, Fourier-poloidal, and CGL-axial model
+stiffness. The eliminated weighted-mean stream-function node is handled by a
+symmetric lift and projection, so the reduced preconditioner remains positive
+definite.
+
+The formal full-physics test refines ``(ns,nxi)`` through ``(5,5)``, ``(7,7)``,
+and ``(9,9)`` at ``mpol=1`` and requires component-wise residuals below
+``1e-12``. A 1,039-unknown ``15x15`` office-CPU run reaches ``7.67e-13`` in
+65.0 seconds without a dense fallback. The Krylov solve is still expensive;
+systems through 1,024 unknowns therefore have a bounded dense residual-Newton
+fallback, while larger systems report matrix-free convergence honestly.
+
+``device=None`` uses the shared measured device policy. On the office host,
+the 747-unknown ``13x13`` case took 41.4 seconds on CPU and 99.9 seconds on one
+RTX A4000. CPU and GPU energies agreed to displayed precision, and maximum
+stream function and pitch agreed within ``1e-8`` relative. Explicit
+``device=`` arguments and JAX platform environment pins are always honored.
+
+.. image:: _static/figures/mirror_fixed_boundary_3d.png
+   :alt: Fixed-boundary helical mirror refinement, force residuals, and CPU/GPU timing
+   :width: 100%
+
 Beta scan example
 -----------------
 
