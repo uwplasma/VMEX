@@ -304,6 +304,11 @@ mirror design doc.
    global fixture disables JIT, making implicit tests 105-160 s each — the main CI cost), cache
    goldens, and restore the **95% coverage gate** (currently 90%; weak: profiles 31%, step 72%,
    printing 77% — add targeted tests, don't pad).
+   *(2026-07-10 progress, 0f9aca65):* sharded into fast/parity/gradient/examples/coverage-gate/
+   cli-smoke/build; module-scoped JIT fixture landed (solver tests 5-40x faster); the parity long
+   pole was test_examples subprocess smokes (QA 145s/QH 101s/QP 81s/QI 67s) — isolated into their
+   own shard with QH/QP/QI gated to nightly RUN_FULL; device.py (was 71%, untested) + mgrid/
+   optimize error branches given targeted tests. CI timing + 95% gate being verified on GitHub.
 2. **Docs/README honesty**: distinguish validated fixed-boundary implicit differentiation from
    NOT-yet-supported free-boundary/coil derivatives and the optimizer wiring status; fix
    optimization.rst "no special handling" claim; README examples claim must become true when the
