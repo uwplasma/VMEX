@@ -72,9 +72,13 @@ jobs:
             --durations=25
 
   parity:
-    name: Parity suite (goldens, coverage)
+    name: Parity suite ${{ matrix.shard }} (goldens, coverage)
     runs-on: ubuntu-latest
     timeout-minutes: 9
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [a, b]
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -107,24 +111,40 @@ jobs:
           print("golden dir:", mod.resolve_golden_dir())
           EOF
 
-      - name: Run parity suite with coverage (gradient + examples shards run separately)
+      # Shard a runs the heavy solver-golden modules; shard b runs the rest
+      # (everything in tests/core_new except implicit, examples, and shard a).
+      # Together they cover the whole non-gradient, non-example suite once.
+      - name: Run parity shard ${{ matrix.shard }} with coverage
         env:
           JAX_ENABLE_X64: "1"
         run: |
-          pytest -q -n 4 tests/core_new \
-            --ignore=tests/core_new/test_implicit_grad.py \
-            --ignore=tests/core_new/test_examples.py \
-            --durations=15 \
-            --cov=vmec_jax --cov-report=term
+          A_FILES="tests/core_new/test_parity_breadth.py \
+                   tests/core_new/test_multigrid_ladder.py \
+                   tests/core_new/test_multigrid_interp.py \
+                   tests/core_new/test_optimize.py \
+                   tests/core_new/test_optimize_traceable_qs.py \
+                   tests/core_new/test_freeboundary.py \
+                   tests/core_new/test_cli_freeboundary.py \
+                   tests/core_new/test_solver_end_to_end.py"
+          if [ "${{ matrix.shard }}" = "a" ]; then
+            pytest -q -n 4 $A_FILES --durations=15 --cov=vmec_jax --cov-report=term
+          else
+            IGNORES=$(for f in $A_FILES; do echo "--ignore=$f"; done)
+            pytest -q -n 4 tests/core_new \
+              --ignore=tests/core_new/test_implicit_grad.py \
+              --ignore=tests/core_new/test_examples.py \
+              $IGNORES \
+              --durations=15 --cov=vmec_jax --cov-report=term
+          fi
 
       - name: Stash coverage data
-        run: mv .coverage coverage.parity
+        run: mv .coverage coverage.parity-${{ matrix.shard }}
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-parity
-          path: coverage.parity
+          name: coverage-parity-${{ matrix.shard }}
+          path: coverage.parity-${{ matrix.shard }}
           retention-days: 3
 
   gradient:
@@ -234,7 +254,7 @@ jobs:
 
       - name: Combine shards and enforce the gate
         run: |
-          coverage combine coverage.parity coverage.gradient coverage.examples
+          coverage combine coverage.parity-a coverage.parity-b coverage.gradient coverage.examples
           coverage report --fail-under=95
 
   cli-smoke:
