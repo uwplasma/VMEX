@@ -707,6 +707,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       coils/mgrid fields. Validate Laplace MMS, reciprocity, gauge removal, coil-only fields,
       side-interface `B.n`, end flux, outer-boundary convergence, and axisymmetric comparisons
       against direct circular-loop fields.
+      **STATUS (2026-07-09): variational annulus foundation landed.** A moving-side/fixed-outer
+      Fourier-CGL map now evaluates `B_external + grad(nu)` and solves the quadratic vacuum energy
+      with fixed outer/end potential data and natural plasma-side tangency. Exact annulus volume,
+      linear harmonic/Laplace MMS, uniform-field cancellation, and differentiable direct `CoilSet`
+      sampling are tested. Coil-driven tangency, reciprocity, outer-radius convergence, mgrid
+      parity, and plasma-interface coupling remain.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior
       state jointly, with beta continuation `0, 0.01, 0.03, 0.10` and hot restarts. Validate
       isotropic and anisotropic cases against an independently generated Pleiades/WHAM-style

@@ -60,6 +60,16 @@ from .solver import (
     solve_anisotropic_fixed_boundary_cli,
     solve_fixed_boundary_cli,
 )
+from .vacuum import (
+    VacuumField,
+    VacuumGeometry,
+    VacuumSolveResult,
+    evaluate_vacuum_field,
+    evaluate_vacuum_geometry,
+    external_field_from_coils,
+    solve_vacuum_potential,
+    vacuum_laplacian,
+)
 
 __all__ = [
     "MIRROR_INPUT_SCHEMA",
@@ -88,6 +98,9 @@ __all__ = [
     "ThetaBasis",
     "TabulatedPressureClosure",
     "VariationalResidual",
+    "VacuumField",
+    "VacuumGeometry",
+    "VacuumSolveResult",
     "SeparableMirrorPreconditioner",
     "build_mirror_grid",
     "anisotropy_indicators",
@@ -98,6 +111,9 @@ __all__ = [
     "contravariant_field",
     "divergence_b",
     "evaluate_geometry",
+    "evaluate_vacuum_field",
+    "evaluate_vacuum_geometry",
+    "external_field_from_coils",
     "fixed_boundary_energy_gradient",
     "fixed_boundary_variational_residual",
     "isotropic_force_residual",
@@ -108,4 +124,6 @@ __all__ = [
     "project_fixed_boundary_state",
     "solve_anisotropic_fixed_boundary_cli",
     "solve_fixed_boundary_cli",
+    "solve_vacuum_potential",
+    "vacuum_laplacian",
 ]
