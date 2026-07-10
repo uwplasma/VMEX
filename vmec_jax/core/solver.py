@@ -143,6 +143,7 @@ from .preconditioner import (
     RadialPreconditionerCoefficients, TridiagonalMatrices,
     angular_integration_weights, lamcal, precondn, scalfor_matrices,
 )
+from .preconditioner_2d import Prec2DConfig, newton_direction
 from .printing import FORCE_ITERATIONS_BANNER, screen_header, screen_line, stage_banner
 from .residuals import (
     ForceResiduals, PreconditionedResiduals, apply_lambda_preconditioner,
@@ -161,7 +162,7 @@ from .transforms import SpectralForce, physical_to_internal_scale
 
 __all__ = [
     "NS4", "SpectralState", "PreconditionerCache", "FunctDiagnostics",
-    "SolverRuntime", "SolveResult", "resolution_from_input",
+    "SolverRuntime", "SolveResult", "Prec2DConfig", "resolution_from_input",
     "prepare_runtime", "evaluate_forces", "solve",
     "hot_restart_state", "runtime_with_baselines",
 ]
@@ -367,6 +368,13 @@ class SolverRuntime:
     bsqvac_edge: Array | None = None
     presf_ns_scale: Array | None = None
 
+    # -- 2D block preconditioner seam (core/preconditioner_2d.py; precon2d.f) -
+    # None disables it (the default 1D-only path is then byte-identical); a
+    # Prec2DConfig switches on the matrix-free Newton step (finest grid, once
+    # fsqr+fsqz+fsql < threshold).  Static meta: the branch is only traced when
+    # present, so a NONE run never compiles the GMRES/HVP graph.
+    prec2d: Any = None
+
     # -- trace-time-static tables, derived from the meta resolution ---------
     @property
     def modes(self) -> ModeTable:
@@ -401,7 +409,7 @@ class SolverRuntime:
 
 _register(SolverRuntime, meta=(
     "resolution", "gamma", "tcon0", "ftol", "max_iterations", "time_step0",
-    "nstep", "jmax", "lfreeb",
+    "nstep", "jmax", "lfreeb", "prec2d",
 ))
 
 
@@ -518,6 +526,34 @@ def _geometry(state: SpectralState, rt: SolverRuntime):
     return (R_cos, R_sin, Z_cos, Z_sin), geometry
 
 
+def _resolve_prec2d(
+    source: VmecInput | RunSetup,
+    prec2d: Prec2DConfig | None,
+    precon_type: str | None,
+    prec2d_threshold: float | None,
+    *,
+    finest: bool = True,
+) -> Prec2DConfig | None:
+    """Resolve the 2D-preconditioner config (``precon2d.f`` / ``evolve.f``).
+
+    An explicit ``prec2d`` config wins (used verbatim); otherwise it is built
+    from ``precon_type``/``prec2d_threshold`` (input defaults, overridable) when
+    ``precon_type != "NONE"``.  Returns ``None`` (the default 1D-only path)
+    when the 2D preconditioner is off.
+    """
+    if prec2d is not None:
+        return prec2d
+    if isinstance(source, VmecInput):
+        pt = source.precon_type if precon_type is None else precon_type
+        thr = source.prec2d_threshold if prec2d_threshold is None else prec2d_threshold
+    else:
+        pt = "NONE" if precon_type is None else precon_type
+        thr = 1e-30 if prec2d_threshold is None else prec2d_threshold
+    if str(pt).strip().upper() == "NONE":
+        return None
+    return Prec2DConfig(threshold=float(thr), finest=bool(finest))
+
+
 def prepare_runtime(
     source: VmecInput | RunSetup,
     resolution: Resolution | None = None,
@@ -526,6 +562,8 @@ def prepare_runtime(
     time_step: float | None = None, tcon0: float | None = None,
     gamma: float | None = None, nstep: int | None = None,
     lconm1: bool = True, setup: RunSetup | None = None,
+    precon_type: str | None = None, prec2d_threshold: float | None = None,
+    prec2d: Prec2DConfig | None = None,
 ) -> SolverRuntime:
     """Build the static solver context from an input file or a RunSetup.
 
@@ -535,6 +573,11 @@ def prepare_runtime(
     (``funct3d.f``) are computed once here from the initial state — the edge
     spectral row never evolves in fixed-boundary mode, so they are constants
     of the run.
+
+    ``precon_type``/``prec2d_threshold`` (or an explicit ``prec2d``
+    :class:`~vmec_jax.core.preconditioner_2d.Prec2DConfig`) switch on the
+    optional 2D block preconditioner (``precon2d.f``); ``None``/``"NONE"``
+    (the default) leaves the 1D-only path byte-identical.
     """
     if isinstance(source, RunSetup):
         if resolution is None:
@@ -562,6 +605,7 @@ def prepare_runtime(
         nstep=int(defaults["nstep"] if nstep is None else nstep),
         jmax=int(resolution.ns) - 1,
         rcon0=jnp.zeros(()), zcon0=jnp.zeros(()),  # placeholder, replaced below
+        prec2d=_resolve_prec2d(source, prec2d, precon_type, prec2d_threshold),
     )
     rcon0, zcon0 = _constraint_baselines(_initial_state(setup), rt)
     return replace(rt, rcon0=rcon0, zcon0=zcon0)
@@ -656,6 +700,166 @@ def _zero_cache(rt: SolverRuntime) -> PreconditionerCache:
 # -- One funct3d pass ------------------------------------------------------------------------------------------------
 
 
+def _force_pipeline(
+    *,
+    geometry, jacobian, metrics, fields,
+    R_cos: Array, R_sin: Array, Z_cos: Array, Z_sin: Array,
+    cache: PreconditionerCache, rt: SolverRuntime,
+    iteration: Array, fsqz_previous: Array,
+) -> tuple[Any, Any]:
+    """MHD forces -> residue.f90 chain -> scalfor/faclam preconditioning.
+
+    The ``funct3d.f`` -> ``forces.f`` -> ``tomnsps`` -> ``residue.f90`` segment
+    that both :func:`_evaluate` (the iteration body) and
+    :func:`_preconditioned_force_signed` (the 2D-preconditioner force map)
+    consume, factored out so they cannot drift.  Returns ``(scaled,
+    preconditioned)``: the ``scalxc``-scaled force (input to the invariant
+    residuals ``getfsq``) and the 1D-preconditioned force (input to
+    ``fsqr1/fsqz1`` and the update direction ``gc``).  All preconditioner
+    matrices come from the frozen ``cache`` (``ns4`` cadence).
+    """
+    setup = rt.setup
+    res = rt.resolution
+    s = setup.s_full
+    hs = setup.hs
+
+    forces = mhd_forces(
+        geometry=geometry, jacobian=jacobian, metrics=metrics, fields=fields,
+        R_cos=R_cos, R_sin=R_sin, Z_cos=Z_cos, Z_sin=Z_sin,
+        modes=rt.modes, trig=rt.trig, s=s, phipf=setup.phipf,
+        tcon=cache.tcon, signgs=setup.signgs, rcon0=rt.rcon0, zcon0=rt.zcon0,
+    )
+    if rt.lfreeb:
+        # forces.f (ivac >= 1): vacuum-pressure edge force.  funct3d.f builds
+        # rbsq = (bsqvac + presf_ns) * (r1(ns,0) + r1(ns,1)) * ohs with
+        # presf_ns = [pmass(1)/pmass(hs*(ns-1.5))] * pres(ns), then forces.f
+        # adds zu0*rbsq to the even AND odd armn edge rows (and -ru0*rbsq to
+        # azmn).  sqrts(ns) = 1, so even+odd sums are the physical edge row.
+        presf_ns = jnp.asarray(rt.presf_ns_scale) * fields.pressure[-1]
+        gcon_edge = jnp.asarray(rt.bsqvac_edge) + presf_ns
+        r1_edge = geometry.R_even[-1] + geometry.R_odd[-1]
+        rbsq = gcon_edge * r1_edge / hs
+        ru0, zu0 = geometry.theta_derivatives_full(s)
+        forces = replace(
+            forces,
+            force_R_even=jnp.asarray(forces.force_R_even).at[-1].add(zu0[-1] * rbsq),
+            force_R_odd=jnp.asarray(forces.force_R_odd).at[-1].add(zu0[-1] * rbsq),
+            force_Z_even=jnp.asarray(forces.force_Z_even).at[-1].add(-ru0[-1] * rbsq),
+            force_Z_odd=jnp.asarray(forces.force_Z_odd).at[-1].add(-ru0[-1] * rbsq),
+        )
+    spectral = spectral_mhd_forces(
+        forces, mpol=res.mpol, ntor=res.ntor, trig=rt.trig, include_edge=bool(rt.lfreeb)
+    )
+
+    # -- residue.f90 chain ---------------------------------------------------
+    rotated = m1_residue_rotation(spectral, lconm1=setup.lconm1)
+    zero_gate = m1_zero_condition(fsqz_previous=fsqz_previous, iterations_since_restart=iteration)
+    released = zero_m1_z_force(rotated, zero_gate)
+    scaled = scalxc_scale_force(released, s=s)
+    if setup.lthreed or setup.lasym:
+        rhs = scale_m1_preconditioner_rhs(
+            scaled, coefficients_R=cache.coefficients_R,
+            coefficients_Z=cache.coefficients_Z, lconm1=setup.lconm1,
+        )
+    else:
+        rhs = scaled
+    solved = apply_radial_preconditioner(rhs, matrices_R=cache.matrices_R, matrices_Z=cache.matrices_Z, jmax=rt.jmax)
+    preconditioned = apply_lambda_preconditioner(solved, cache.faclam)
+    return scaled, preconditioned
+
+
+def _preconditioned_force_signed(
+    state: SpectralState, cache: PreconditionerCache, rt: SolverRuntime,
+    *, iteration: Array, fsqz_previous: Array,
+) -> SpectralState:
+    """1D-preconditioned force map ``state -> gc`` at a frozen ``cache``.
+
+    Reproduces the ``gc`` that :func:`_evaluate` returns (same
+    :func:`_force_pipeline`, same signed packing via :func:`_force_to_state`),
+    but as a standalone pure function of ``state`` with everything else frozen:
+    exactly the map whose Jacobian the 2D block preconditioner needs.
+    :func:`jax.jvp` of this function is the exact block-tridiagonal
+    Hessian-vector product (VMEC2000 ``precon2d.f`` ``compute_blocks``, without
+    the finite-difference jogs).  Fixed-boundary only (``lfreeb=False``); the
+    frozen ``iteration``/``fsqz_previous`` fix the ``residue.f90`` m=1 release
+    gate so the map matches the ``gc`` produced at the linearization point.
+    """
+    setup = rt.setup
+    s = setup.s_full
+    (R_cos, R_sin, Z_cos, Z_sin), geometry = _geometry(state, rt)
+    jacobian = half_mesh_jacobian(geometry, s=s)
+    metrics = metric_elements(geometry, s=s)
+    fields = magnetic_fields(
+        geometry=geometry, jacobian=jacobian, metrics=metrics, trig=rt.trig,
+        s=s, phips=setup.phips, phipf=setup.phipf, chips=setup.chips,
+        signgs=setup.signgs, gamma=rt.gamma, mass=setup.mass,
+        ncurr=setup.ncurr, enclosed_current=setup.icurv,
+    )
+    _, preconditioned = _force_pipeline(
+        geometry=geometry, jacobian=jacobian, metrics=metrics, fields=fields,
+        R_cos=R_cos, R_sin=R_sin, Z_cos=Z_cos, Z_sin=Z_sin,
+        cache=cache, rt=rt, iteration=iteration, fsqz_previous=fsqz_previous,
+    )
+    return _force_to_state(preconditioned, rt)
+
+
+_ALL_CHANNELS = ("R_cos", "R_sin", "Z_cos", "Z_sin", "L_cos", "L_sin")
+
+
+def _newton_step(
+    rt: SolverRuntime, state: SpectralState, gc_signed: SpectralState,
+    cache: PreconditionerCache, iteration: Array, fsqz_previous: Array,
+    fsq_raw: Array, gate: Array,
+) -> tuple[SpectralState, Array]:
+    """2D-preconditioner Newton direction, gated on the activation predicate.
+
+    Returns ``(direction, active)``.  When ``active`` (finest grid,
+    ``fsq_raw < threshold``, ``iteration >= start_iteration``, and the base
+    ``gate``), ``direction`` is the damped-Newton replacement for the 1D force
+    ``gc_signed``: it solves ``J delta = -gc_signed`` with matrix-free GMRES
+    (``J = d(preconditioned force)/d(state)`` at ``state``, exact HVP via
+    ``jax.jvp``), so ``state += cfg.step * delta`` is the block-preconditioned
+    update (``precon2d.f`` ``block_precond``: ``gc <- -H^{-1} gc``).  Otherwise
+    ``direction = gc_signed`` and ``active = False``.  The linear solve runs
+    only over the non-trivial spectral channels (symmetric: R_cos/Z_sin/L_sin).
+    Only reached when ``rt.prec2d is not None`` (the branch is otherwise never
+    traced, keeping the 1D-only path byte-identical).
+    """
+    cfg = rt.prec2d
+    if not cfg.finest:  # non-finest multigrid stage: never activate (static)
+        return gc_signed, jnp.zeros((), dtype=bool)
+
+    active = gate & (fsq_raw < cfg.threshold) & (iteration >= cfg.start_iteration)
+    channels = _ALL_CHANNELS if rt.setup.lasym else ("R_cos", "Z_sin", "L_sin")
+    inactive = tuple(c for c in _ALL_CHANNELS if c not in channels)
+
+    def to_full(reduced: dict) -> SpectralState:
+        # inactive (identically-zero) channels are frozen constants of the HVP
+        full = dict(reduced)
+        for c in inactive:
+            full[c] = getattr(state, c) * 0.0
+        return SpectralState(**{c: full[c] for c in _ALL_CHANNELS})
+
+    def g_reduced(reduced: dict) -> dict:
+        gc_full = _preconditioned_force_signed(
+            to_full(reduced), cache, rt, iteration=iteration, fsqz_previous=fsqz_previous,
+        )
+        return {c: getattr(gc_full, c) for c in channels}
+
+    x0 = {c: getattr(state, c) for c in channels}
+    rhs = {c: -getattr(gc_signed, c) for c in channels}  # solve J delta = -g
+
+    def do_newton(_):
+        delta, _sol = newton_direction(g_reduced, x0, rhs, cfg)
+        return SpectralState(**{
+            c: (delta[c] if c in channels else getattr(gc_signed, c))
+            for c in _ALL_CHANNELS
+        })
+
+    direction = lax.cond(active, do_newton, lambda _: gc_signed, operand=None)
+    return direction, active
+
+
 def _evaluate(
     state: SpectralState, cache: PreconditionerCache, iteration: Array,
     iter_last_reset: Array, fsqz_previous: Array, rt: SolverRuntime,
@@ -741,40 +945,16 @@ def _evaluate(
     refresh = (((iteration - iter_last_reset) % NS4) == 0) & (~jac_changed)
     cache = _select(refresh, fresh, cache)
 
-    # -- constraint + MHD forces (funct3d.f / forces.f / alias.f) -----------
-    forces = mhd_forces(
+    # -- constraint + MHD forces + residue.f90 preconditioning chain --------
+    # The mhd_forces -> tomnsps -> residue -> scalfor/faclam pipeline is shared
+    # verbatim with the 2D-preconditioner force map (:func:`_force_pipeline`)
+    # so the two can never drift; ``scaled`` feeds the invariant residuals,
+    # ``preconditioned`` the fsqr1/fsqz1 residuals and the update force ``gc``.
+    scaled, preconditioned = _force_pipeline(
         geometry=geometry, jacobian=jacobian, metrics=metrics, fields=fields,
         R_cos=R_cos, R_sin=R_sin, Z_cos=Z_cos, Z_sin=Z_sin,
-        modes=rt.modes, trig=rt.trig, s=s, phipf=setup.phipf,
-        tcon=cache.tcon, signgs=setup.signgs, rcon0=rt.rcon0, zcon0=rt.zcon0,
+        cache=cache, rt=rt, iteration=iteration, fsqz_previous=fsqz_previous,
     )
-    if rt.lfreeb:
-        # forces.f (ivac >= 1): vacuum-pressure edge force.  funct3d.f builds
-        # rbsq = (bsqvac + presf_ns) * (r1(ns,0) + r1(ns,1)) * ohs with
-        # presf_ns = [pmass(1)/pmass(hs*(ns-1.5))] * pres(ns), then forces.f
-        # adds zu0*rbsq to the even AND odd armn edge rows (and -ru0*rbsq to
-        # azmn).  sqrts(ns) = 1, so even+odd sums are the physical edge row.
-        presf_ns = jnp.asarray(rt.presf_ns_scale) * fields.pressure[-1]
-        gcon_edge = jnp.asarray(rt.bsqvac_edge) + presf_ns
-        r1_edge = geometry.R_even[-1] + geometry.R_odd[-1]
-        rbsq = gcon_edge * r1_edge / hs
-        ru0, zu0 = geometry.theta_derivatives_full(s)
-        forces = replace(
-            forces,
-            force_R_even=jnp.asarray(forces.force_R_even).at[-1].add(zu0[-1] * rbsq),
-            force_R_odd=jnp.asarray(forces.force_R_odd).at[-1].add(zu0[-1] * rbsq),
-            force_Z_even=jnp.asarray(forces.force_Z_even).at[-1].add(-ru0[-1] * rbsq),
-            force_Z_odd=jnp.asarray(forces.force_Z_odd).at[-1].add(-ru0[-1] * rbsq),
-        )
-    spectral = spectral_mhd_forces(
-        forces, mpol=res.mpol, ntor=res.ntor, trig=rt.trig, include_edge=bool(rt.lfreeb)
-    )
-
-    # -- residue.f90 chain ---------------------------------------------------
-    rotated = m1_residue_rotation(spectral, lconm1=setup.lconm1)
-    zero_gate = m1_zero_condition(fsqz_previous=fsqz_previous, iterations_since_restart=iteration)
-    released = zero_m1_z_force(rotated, zero_gate)
-    scaled = scalxc_scale_force(released, s=s)
     if rt.lfreeb:
         # residue.f90 medge rule: the edge rows join fsqr/fsqz only when
         # iter2 - iter1 < 50 and the previous fsqr+fsqz < 1e-6 (traced
@@ -793,15 +973,6 @@ def _evaluate(
         residuals = _select(medge, res_edge, res_int)
     else:
         residuals = force_residuals(scaled, fnorm=cache.fnorm, fnormL=cache.fnormL, r1=energies.r1, include_edge=False)
-    if setup.lthreed or setup.lasym:
-        rhs = scale_m1_preconditioner_rhs(
-            scaled, coefficients_R=cache.coefficients_R,
-            coefficients_Z=cache.coefficients_Z, lconm1=setup.lconm1,
-        )
-    else:
-        rhs = scaled
-    solved = apply_radial_preconditioner(rhs, matrices_R=cache.matrices_R, matrices_Z=cache.matrices_Z, jmax=rt.jmax)
-    preconditioned = apply_lambda_preconditioner(solved, cache.faclam)
     pre = preconditioned_residuals(preconditioned, fnorm1=cache.fnorm1, delta_s=hs)
 
     sqrt_s0 = jnp.sqrt(jnp.maximum(s[0], 0.0))
@@ -935,6 +1106,24 @@ def _make_body(rt: SolverRuntime) -> Callable[[_LoopCarry], _LoopCarry]:
         )
         b1, fac, control2 = damping_coefficients(control, it, fsq1)
         state_n, xcdot_n = momentum_update(state_r, xcdot_r, gc_f, b1, fac, delt_r)
+
+        # ---- 2D block preconditioner: matrix-free Newton step (precon2d.f) --
+        # Only traced when enabled; otherwise the momentum step above stands
+        # and the default 1D path is byte-identical.  When active, take a
+        # damped Newton step (state += cfg.step * (-J^{-1} gc)) with zeroed
+        # velocity, mirroring evolve.f's xcdot reset on prec2d activation.
+        if rt.prec2d is not None:
+            fsqz_prev_used = jnp.where(restart, fsqz_c, carry.fsqz)
+            newton_dir, prec2d_active = _newton_step(
+                rt, state_r, gc_f, cache_f, it, fsqz_prev_used,
+                fsqr_f + fsqz_f + fsql_f, stepping & (~reeval_bad),
+            )
+            state_newton = jax.tree.map(
+                lambda x, d: x + rt.prec2d.step * d, state_r, newton_dir
+            )
+            xcdot_newton = jax.tree.map(jnp.zeros_like, xcdot_r)
+            state_n = _select(prec2d_active, state_newton, state_n)
+            xcdot_n = _select(prec2d_active, xcdot_newton, xcdot_n)
 
         # ---- eqsolve.f escalation ------------------------------------------
         eq_reset = stepping & ((ijacob_r == 25) | (ijacob_r == 50))
@@ -1252,6 +1441,8 @@ def solve(
     lconm1: bool = True, verbose: bool = False, emit=print,
     initial_state: SpectralState | None = None,
     device: Any = None,
+    precon_type: str | None = None, prec2d_threshold: float | None = None,
+    prec2d: Prec2DConfig | None = None,
 ) -> SolveResult:
     """Single-grid fixed-boundary solve (VMEC2000 ``eqsolve.f``).
 
@@ -1287,11 +1478,22 @@ def solve(
     (default) to apply the measured small-work-to-CPU policy of
     :mod:`vmec_jax.core.device` — which never overrides a user-pinned
     ``JAX_PLATFORMS``/``JAX_PLATFORM_NAME``.
+
+    ``precon_type`` (``"NONE"`` default) with a finite ``prec2d_threshold`` —
+    or an explicit ``prec2d``
+    :class:`~vmec_jax.core.preconditioner_2d.Prec2DConfig` — switches on the
+    optional **2D block preconditioner** (VMEC2000 ``precon2d.f``): once
+    ``fsqr + fsqz + fsql < prec2d_threshold`` the iteration replaces the 1D
+    radial force direction by a matrix-free Newton step (exact Hessian-vector
+    products via ``jax.jvp``, solved with :func:`solvax.gmres`), converging
+    stiff cases (high beta/aspect/mode-number) in far fewer iterations.  The
+    default (``NONE``) path is byte-identical to the 1D-only solver.
     """
     rt = prepare_runtime(
         source, resolution, ftol=ftol, max_iterations=max_iterations,
         time_step=time_step, tcon0=tcon0, gamma=gamma, nstep=nstep,
-        lconm1=lconm1,
+        lconm1=lconm1, precon_type=precon_type,
+        prec2d_threshold=prec2d_threshold, prec2d=prec2d,
     )
     if initial_state is not None:
         ns, mnmax = rt.resolution.ns, rt.modes.mnmax
