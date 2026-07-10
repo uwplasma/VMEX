@@ -226,13 +226,10 @@ class _MirrorStateVectorizer:
 
 @dataclass(frozen=True)
 class SeparableMirrorPreconditioner:
-    """Tensor-product inverse for the free radial/axial geometry block.
+    """Tensor-product inverse for radial, poloidal, and axial stiffness.
 
-    The model operator is a shifted sum of a second-order radial Dirichlet
-    stiffness matrix and a CGL weak-form axial stiffness matrix.  Its inverse
-    is applied with two small symmetric eigendecompositions rather than a
-    dense factorization of the full ``(s, theta, xi)`` block.  Poloidal rows
-    are independent in M2; Fourier-mode coupling is added with M4.
+    The model is a shifted radial/Fourier/CGL stiffness sum. Its inverse uses
+    two small eigendecompositions and FFTs, not a dense 3D factorization.
     """
 
     radial_vectors: np.ndarray
@@ -245,15 +242,19 @@ class SeparableMirrorPreconditioner:
         cls,
         grid: "MirrorGrid",
         *,
+        radial_nodes: int | None = None,
         shift: float = 1.0e-3,
         radial_strength: float = 1.0,
+        poloidal_strength: float = 1.0,
         axial_strength: float = 1.0,
     ) -> "SeparableMirrorPreconditioner":
         """Build the normalized separable stiffness inverse for ``grid``."""
 
-        if shift <= 0.0 or radial_strength < 0.0 or axial_strength < 0.0:
+        strengths = (radial_strength, poloidal_strength, axial_strength)
+        if shift <= 0.0 or min(strengths) < 0.0:
             raise ValueError("shift must be positive and stiffness strengths nonnegative")
-        nr, nx = grid.ns - 2, grid.nxi - 2
+        nr = grid.ns - 2 if radial_nodes is None else int(radial_nodes)
+        nx = grid.nxi - 2
         if nr < 1 or nx < 1:
             raise ValueError("preconditioning requires interior radial and axial nodes")
 
@@ -272,10 +273,14 @@ class SeparableMirrorPreconditioner:
         axial_values, axial_vectors = eigh(axial, check_finite=True)
         radial_values /= max(float(radial_values[-1]), np.finfo(float).tiny)
         axial_values /= max(float(axial_values[-1]), np.finfo(float).tiny)
+        poloidal_values = np.fft.fftfreq(grid.ntheta, d=1.0 / grid.ntheta) ** 2
+        if np.max(poloidal_values) > 0.0:
+            poloidal_values /= np.max(poloidal_values)
         denominator = (
             float(shift)
-            + float(radial_strength) * radial_values[:, None]
-            + float(axial_strength) * axial_values[None, :]
+            + float(radial_strength) * radial_values[:, None, None]
+            + float(poloidal_strength) * poloidal_values[None, :, None]
+            + float(axial_strength) * axial_values[None, None, :]
         )
         return cls(
             radial_vectors=radial_vectors,
@@ -287,7 +292,6 @@ class SeparableMirrorPreconditioner:
     @property
     def size(self) -> int:
         """Number of active geometry unknowns."""
-
         return int(np.prod(self.active_shape))
 
     def _transform(self, vector: Array, *, inverse: bool) -> np.ndarray:
@@ -295,30 +299,48 @@ class SeparableMirrorPreconditioner:
         if values.size != self.size:
             raise ValueError(f"vector has {values.size} values; expected {self.size}")
         blocks = values.reshape(self.active_shape)
-        result = np.empty_like(blocks)
         multiplier = 1.0 / self.denominator if inverse else self.denominator
-        for poloidal_index in range(self.active_shape[1]):
-            coefficients = (
-                self.radial_vectors.T
-                @ blocks[:, poloidal_index, :]
-                @ self.axial_vectors
-            )
-            result[:, poloidal_index, :] = (
-                self.radial_vectors
-                @ (multiplier * coefficients)
-                @ self.axial_vectors.T
-            )
+        coefficients = np.einsum("ri,rtx,xj->itj", self.radial_vectors, blocks, self.axial_vectors)
+        coefficients = np.fft.fft(coefficients, axis=1, norm="ortho")
+        coefficients = np.fft.ifft(multiplier * coefficients, axis=1, norm="ortho").real
+        result = np.einsum("ri,itj,xj->rtx", self.radial_vectors, coefficients, self.axial_vectors)
         return result.reshape(values.shape)
 
     def apply(self, vector: Array) -> np.ndarray:
         """Apply the inverse model operator to a flattened residual."""
-
         return self._transform(vector, inverse=True)
 
     def operator(self, vector: Array) -> np.ndarray:
         """Apply the model operator, primarily for verification tests."""
-
         return self._transform(vector, inverse=False)
+
+    def apply_gauge_free(
+        self,
+        vector: Array,
+        *,
+        free_indices: np.ndarray,
+        pivot: int,
+        weights: np.ndarray,
+    ) -> np.ndarray:
+        """Apply the inverse after eliminating one weighted-mean gauge node.
+
+        The lift and orthogonal projection keep the reduced operator symmetric.
+        """
+
+        free_indices = np.asarray(free_indices, dtype=int)
+        weights = np.asarray(weights, dtype=float)
+        reduced = np.asarray(vector, dtype=float).reshape(self.active_shape[0], free_indices.size)
+        ratio = weights[free_indices] / weights[int(pivot)]
+        gram = 1.0 + ratio @ ratio
+        lifted_free = reduced - ((reduced @ ratio) / gram)[:, None] * ratio[None, :]
+        lifted = np.zeros((self.active_shape[0], weights.size))
+        lifted[:, free_indices] = lifted_free
+        lifted[:, int(pivot)] = -(lifted_free @ ratio)
+
+        solved = self.apply(lifted.reshape(-1)).reshape(lifted.shape)
+        projected = solved[:, free_indices] - solved[:, int(pivot), None] * ratio[None, :]
+        projected -= ((projected @ ratio) / gram)[:, None] * ratio[None, :]
+        return projected.reshape(np.asarray(vector).shape)
 
 
 def _matrix_free_newton_polish(
@@ -326,6 +348,7 @@ def _matrix_free_newton_polish(
     gradient_function: Any,
     objective_function: Any,
     grid: "MirrorGrid",
+    vectorizer: _MirrorStateVectorizer,
     *,
     ftol: float,
     max_steps: int,
@@ -336,14 +359,27 @@ def _matrix_free_newton_polish(
     """Damped Newton-GMRES polish using exact JAX Hessian products."""
 
     x = np.asarray(x0, dtype=float)
-    preconditioner = SeparableMirrorPreconditioner.build(grid)
+    geometry_preconditioner = SeparableMirrorPreconditioner.build(grid)
+    lambda_preconditioner = None
+    if vectorizer.lambda_size:
+        lambda_preconditioner = SeparableMirrorPreconditioner.build(
+            grid, radial_nodes=grid.ns - 1
+        )
+    block_scales = np.ones(2)
 
     def apply_preconditioner(vector: np.ndarray) -> np.ndarray:
         vector = np.asarray(vector, dtype=float)
         result = np.array(vector, copy=True)
-        result[: preconditioner.size] = preconditioner.apply(
-            vector[: preconditioner.size]
-        )
+        result[: geometry_preconditioner.size] = geometry_preconditioner.apply(
+            vector[: geometry_preconditioner.size]
+        ) * block_scales[0]
+        if lambda_preconditioner is not None:
+            result[vectorizer.radius_size :] = lambda_preconditioner.apply_gauge_free(
+                vector[vectorizer.radius_size :],
+                free_indices=vectorizer.lambda_free_indices,
+                pivot=vectorizer.lambda_pivot,
+                weights=vectorizer.lambda_interior_weights,
+            ) * block_scales[1]
         return result
 
     hessian_vector = jax.jit(
@@ -367,6 +403,19 @@ def _matrix_free_newton_polish(
             )
             return product + damping * np.asarray(direction)
 
+        # Match each model block to the exact local Hessian scale. This keeps
+        # geometry and lambda units from dominating one another in GMRES.
+        block_scales[:] = 1.0
+        probe = np.random.default_rng(0).choice((-1.0, 1.0), size=x.size)
+        split = (slice(0, vectorizer.radius_size), slice(vectorizer.radius_size, None))
+        for block, active in enumerate(split[: 2 if vectorizer.lambda_size else 1]):
+            direction = np.zeros_like(probe)
+            direction[active] = probe[active]
+            response = apply_preconditioner(matrix_vector(direction))
+            denominator = abs(float(np.dot(direction, response)))
+            if denominator > np.finfo(float).tiny:
+                block_scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
+
         operator = LinearOperator((x.size, x.size), matvec=matrix_vector, dtype=float)
         inverse = LinearOperator(
             (x.size, x.size), matvec=apply_preconditioner, dtype=float
@@ -382,7 +431,7 @@ def _matrix_free_newton_polish(
             -gradient,
             M=inverse,
             restart=min(50, x.size),
-            maxiter=max(20, min(200, x.size)),
+            maxiter=10,
             rtol=min(1.0e-3, max(1.0e-10, 0.1 * gradient_max)),
             atol=0.0,
             callback=count_iteration,
@@ -602,15 +651,20 @@ def solve_fixed_boundary_cli(
         return result
 
     callback_iterations = 0
+    history_stride = 10 if x0.size > 512 else 1
 
     def callback(x: np.ndarray) -> None:
         nonlocal callback_iterations
         callback_iterations += 1
-        record(callback_iterations, x)
+        if callback_iterations == 1 or callback_iterations % history_stride == 0:
+            record(callback_iterations, x)
 
-    lbfgs_budget = int(config.max_iterations)
-    if x0.size > 512:
-        lbfgs_budget = max(10, lbfgs_budget // 2)
+    # Reserve iterations for Newton: L-BFGS can stall on relative energy while
+    # physical forces are still large.
+    polish_cap = 50 if x0.size > 512 else 200
+    polish_reserve = min(polish_cap, max(1, int(config.max_iterations) // 4))
+    available = int(config.max_iterations) - polish_reserve
+    lbfgs_budget = max(10, available // 2) if x0.size > 512 else max(1, available)
     optimization = minimize(
         fun=lambda x: evaluate(x)[0],
         x0=x0,
@@ -662,6 +716,7 @@ def solve_fixed_boundary_cli(
             gradient_function,
             objective,
             grid,
+            vectorizer,
             ftol=config.ftol,
             max_steps=min(30, remaining),
             record_step=record_newton,

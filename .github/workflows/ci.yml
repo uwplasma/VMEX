@@ -20,7 +20,7 @@ env:
 permissions:
   contents: read
 
-# Sharded CI (plan.md Phase-2 review item 1): five parallel jobs, each well
+# Sharded CI (plan.md Phase-2 review item 1): parallel jobs, each well
 # under the 10-minute wall-time budget, plus a coverage gate that combines
 # the parity + gradient shards and enforces >= 95% on vmec_jax.
 jobs:
@@ -70,6 +70,26 @@ jobs:
             tests/core_new/test_mgrid.py \
             tests/core_new/test_coils.py \
             --durations=25
+
+  mirror:
+    name: Mirror unit and equilibrium tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m pip install .
+          python -m pip install pytest pytest-xdist
+      - name: Run mirror tests
+        env:
+          JAX_ENABLE_X64: "1"
+        run: pytest -q -n 2 -m "not full" tests/mirror --durations=20
 
   parity:
     name: Parity suite ${{ matrix.shard }} (goldens, coverage)
