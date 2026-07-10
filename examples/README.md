@@ -18,4 +18,5 @@ unless they are compact reviewed documentation artifacts.
 `mirror_free_boundary_beta_scan.py` solves a two-coil straight-axis mirror at
 central beta from 0 to 50%. It writes solved LCFS, field, paraxial comparison,
 residual-history, coil, 3D surface, and cap-to-cap field-line plots under
-`results/mirror_free_boundary_beta_scan/`.
+`results/mirror_free_boundary_beta_scan/`, including comparison to the
+resolution-qualified Pleiades reference in `examples/data/`.

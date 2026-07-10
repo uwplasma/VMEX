@@ -26,13 +26,14 @@ def solve_axisymmetric_beta_scan_cli(
     axial_flux_derivative: Array,
     reference_field: float,
     gamma: float = 5.0 / 3.0,
+    beta_rtol: float = 1.0e-8,
 ) -> tuple[FreeBoundaryMirrorResult, ...]:
     """Solve a fully hot-started axisymmetric free-boundary beta scan.
 
     Each accepted point supplies the boundary, plasma interior, and vacuum
-    potential for the next pressure value. The conserved mass profile is
-    always defined from the original reference state, so continuation does
-    not change the physical pressure input.
+    potential for the next pressure value. The coupled nonlinear system adds
+    one mass-amplitude unknown and one central-pressure equation so requested
+    beta is achieved without an outer sequence of full equilibrium solves.
     """
 
     beta_values = np.asarray(beta_values, dtype=float)
@@ -40,6 +41,8 @@ def solve_axisymmetric_beta_scan_cli(
         raise ValueError("beta_values must be a nonempty one-dimensional array")
     if np.any(beta_values < 0.0) or np.any(np.diff(beta_values) < 0.0):
         raise ValueError("beta_values must be nonnegative and increasing")
+    if beta_rtol <= 0.0:
+        raise ValueError("beta_rtol must be positive")
     reference_state = MirrorState.from_boundary(initial_boundary, plasma_grid)
     reference_energy = mirror_energy(
         reference_state,
@@ -70,8 +73,13 @@ def solve_axisymmetric_beta_scan_cli(
             gamma=gamma,
             initial_state=state,
             initial_potential=potential,
+            target_central_pressure=None if beta == 0.0 else central_pressure,
             require_convergence=True,
         )
+        if beta > 0.0:
+            achieved_beta = 2.0 * MU0 * float(result.plasma_energy.pressure[0]) / float(reference_field) ** 2
+            if abs(achieved_beta - float(beta)) / float(beta) > beta_rtol:
+                raise RuntimeError(f"central beta did not reach rtol={beta_rtol:.3e}")
         results.append(result)
         boundary = result.boundary
         state = result.plasma_state

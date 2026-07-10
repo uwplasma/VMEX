@@ -46,14 +46,17 @@ Generated results are ignored by git.
 Interpreting beta
 -----------------
 
-The scan input multiplies a VMEC-style conserved mass profile. Because the
-geometry changes, requested and achieved beta are not exactly equal. For the
-default profile ``p(s) = p0 (1-s)``, pressure also vanishes at the LCFS, so a
-10% central beta does not imply a 10% edge-pressure jump or volume beta.
+The equilibrium uses a VMEC-style conserved mass profile. Because geometry
+changes pressure at fixed mass, the beta-scan driver adds one mass-amplitude
+unknown and one central-pressure equation to the coupled nonlinear system.
+Requested and achieved central beta therefore agree to the solve tolerance
+without an outer sequence of complete solves. For the default profile
+``p(s) = p0 (1-s)``, pressure vanishes at the LCFS, so a 10% central beta does
+not imply a 10% edge-pressure jump or volume beta.
 
 ``summarize_axisymmetric_beta_scan`` reports:
 
-* requested profile-amplitude beta,
+* requested central beta,
 * achieved central beta normalized by the reference vacuum field,
 * volume-averaged beta,
 * local central beta normalized by the solved plasma field,
@@ -61,14 +64,16 @@ default profile ``p(s) = p0 (1-s)``, pressure also vanishes at the LCFS, so a
 * diamagnetic field ratio, and
 * error against the paraxial estimate ``B/B_vac = sqrt(1-beta)``.
 
-At ``(ns,nxi,nrho)=(7,13,7)``, the default 10% request reaches 9.47% central
-beta and 3.18% volume beta. The center radius expands by 1.02%, while the
-central field falls by 4.31%; the field ratio is within 0.57% relative of the
+At ``(ns,nxi,nrho)=(7,13,7)``, the default 10% request reaches 10% central
+beta and 3.37% volume beta. The center radius expands by 1.08%, while the
+central field falls by 4.55%; the field ratio is within 0.61% relative of the
 paraxial estimate. Thus field depression is the more sensitive validation
 observable for this zero-edge-pressure profile.
 
 The finite-beta mirror trend follows the WHAM/Pleiades discussion in Frank et
 al., `Confinement performance predictions for a high field axisymmetric tandem
-mirror <https://doi.org/10.1017/S002237782510055X>`_. Independent reference
-curves remain an explicit promotion gate rather than being replaced by the
-paraxial approximation.
+mirror <https://doi.org/10.1017/S002237782510055X>`_. A checked Pleiades
+Green-function reference at upstream commit ``0161abb3`` gives a 10% field
+ratio of 0.952754 on a 51 by 101 grid; ``vmec_jax`` gives 0.954464, a 0.18%
+relative difference. Boundary and anisotropic independent-reference curves
+remain promotion gates rather than being replaced by this scalar comparison.

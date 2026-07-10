@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -265,10 +267,28 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
     assert all(float(result.interface.normal_stress_rms) < 1.0e-12 for result in results)
     assert np.all(np.diff(center_radii) > 0.0)
     assert center_radii[-1] > 1.005 * center_radii[0]
-    assert float(diagnostics[-1].achieved_reference_beta) > 0.09
+    np.testing.assert_allclose(
+        [item.achieved_reference_beta for item in diagnostics],
+        [0.0, 0.01, 0.03, 0.10],
+        rtol=2.0e-8,
+        atol=1.0e-12,
+    )
     assert 0.03 < float(diagnostics[-1].volume_averaged_beta) < 0.04
     assert float(diagnostics[-1].diamagnetic_field_ratio) < 0.97
     assert abs(float(diagnostics[-1].paraxial_relative_error)) < 0.01
+    reference = np.genfromtxt(
+        Path(__file__).parents[2] / "examples" / "data" / "pleiades_two_coil_beta_reference.csv",
+        delimiter=",",
+        names=True,
+        comments="#",
+        skip_header=4,
+    )
+    reference = reference[reference["nr"] == np.max(reference["nr"])]
+    np.testing.assert_allclose(
+        [item.diamagnetic_field_ratio for item in diagnostics[1:]],
+        reference["field_ratio"],
+        rtol=3.0e-3,
+    )
     assert all(result.vacuum_potential.shape == vacuum_grid.shape for result in results)
     assert all(float(result.vacuum_potential[-1, 0, 0]) == 0.0 for result in results)
     assert all(np.all(np.isfinite(np.asarray(result.vacuum_field.total_xyz))) for result in results)

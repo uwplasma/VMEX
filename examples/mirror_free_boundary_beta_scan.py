@@ -50,6 +50,7 @@ COIL_CURRENT = 2.0e5
 CENTER_RADIUS = 0.25
 OUTER_RADIUS = 0.65
 OUTPUT_DIR = Path("results/mirror_free_boundary_beta_scan")
+PLEIADES_REFERENCE = Path(__file__).resolve().parent / "data" / "pleiades_two_coil_beta_reference.csv"
 
 jax.config.update("jax_enable_x64", True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -120,6 +121,7 @@ summary = np.asarray(
             float(result.variational_max),
             float(result.interface.normal_stress_rms),
             float(result.interface.vacuum_b_normal_rms),
+            float(result.mass_scale),
             float(result.iterations),
         ]
         for item, result in zip(diagnostics, results, strict=True)
@@ -128,7 +130,7 @@ summary = np.asarray(
 header = (
     "requested_beta,achieved_reference_beta,volume_averaged_beta,center_radius_m,"
     "center_axis_field_T,diamagnetic_field_ratio,paraxial_field_ratio,"
-    "paraxial_relative_error,variational_max,normal_stress_rms,bnormal_rms_normalized,iterations"
+    "paraxial_relative_error,variational_max,normal_stress_rms,bnormal_rms_normalized,mass_scale,iterations"
 )
 np.savetxt(OUTPUT_DIR / "beta_scan.csv", summary, delimiter=",", header=header, comments="")
 
@@ -157,6 +159,16 @@ axes[1, 0].set(title="LCFS |B|", xlabel="Axial position z [m]", ylabel="Magnetic
 achieved = summary[:, 1]
 axes[1, 1].plot(100 * achieved, summary[:, 5], "o-", color="#0072B2", lw=2, label="coupled solve")
 axes[1, 1].plot(100 * achieved, summary[:, 6], "--", color="#D55E00", lw=2, label=r"$\sqrt{1-\beta}$")
+pleiades = np.genfromtxt(PLEIADES_REFERENCE, delimiter=",", names=True, comments="#", skip_header=4)
+pleiades = pleiades[pleiades["nr"] == np.max(pleiades["nr"])]
+axes[1, 1].plot(
+    100 * np.concatenate([[0.0], pleiades["beta"]]),
+    np.concatenate([[1.0], pleiades["field_ratio"]]),
+    "s:",
+    color="#009E73",
+    lw=1.8,
+    label="Pleiades 51x101",
+)
 axes[1, 1].set(title="Central diamagnetic response", xlabel="Achieved central beta [%]", ylabel=r"$B(\beta)/B(0)$")
 axes[1, 1].legend(fontsize=8)
 

@@ -726,14 +726,16 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       central diamagnetic trend `B0/Bvac approximately sqrt(1-beta)` in its validity regime.
       **STATUS (2026-07-10): coupled isotropic scan and beta diagnostics landed.** The production residual
       solves plasma interior force, vacuum-potential stationarity, and free-side normal stress as a
-      square system; it does not vary the Neumann vacuum functional as a shape energy. Direct
-      two-coil solves at beta `0,1%,3%,10%` all reach `<3.6e-15` residual and `<1.7e-15` active
+      square system; it does not vary the Neumann vacuum functional as a shape energy. A coupled
+      mass-amplitude unknown and central-pressure equation make scan beta an achieved quantity,
+      rather than the pressure from an uncorrected reference mass. Direct two-coil solves at beta
+      `0,1%,3%,10%` all reach `<5.9e-15` residual and `<2.7e-15` active
       stress error. At `(ns,nxi,nrho)=(7,13,7)`, solved center radii increase monotonically
-      `0.253231,0.253490,0.254007,0.255811` through requested beta 10%. The corresponding achieved
-      central beta is 9.47%, volume-averaged beta is 3.18%, and `B_axis(beta)/B_axis(0)=0.9569`,
-      within 0.57% relative of the paraxial `sqrt(1-beta)` prediction. Extending the diagnostic scan
-      to requested beta 25% and 50% gives 2.54% and 5.03% center-radius expansion and monotonic
-      diamagnetic field depression while retaining `<5.8e-15` nonlinear residual. Increasing the
+      `0.253231,0.253492,0.254022,0.255964` through requested beta 10%. The corresponding achieved
+      central beta is 10%, volume-averaged beta is 3.37%, and `B_axis(beta)/B_axis(0)=0.95446`,
+      within 0.61% relative of the paraxial `sqrt(1-beta)` prediction. Extending the diagnostic scan
+      to requested beta 25% and 50% gives 2.93% and 6.88% center-radius expansion and monotonic
+      diamagnetic field depression while retaining `<5.9e-15` nonlinear residual. Increasing the
       seed radius from 0.25 m to 0.50 m reduces, rather than amplifies, relative LCFS motion at fixed
       beta, so small visual displacement is not evidence of uncoupled pressure. The root example
       now separates nominal, achieved-central, and volume beta and renders geometry displacement,
@@ -743,8 +745,10 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       and achieved-beta triples to agree within `1e-4` relative; normalized vacuum `B.n` decreases
       `1.60e-2,4.25e-3,1.85e-3`. Separate fixed-mass solves from +/-10% free-side radius
       perturbations agree to `2e-12` absolute in boundary and `2e-11` relative in `B^2`.
-      Higher-resolution vacuum tangency/outer-domain convergence, an independent Pleiades/WHAM
-      curve, anisotropy, and restart-file serialization remain.
+      An independent Pleiades Green-function study at upstream commit `0161abb3` converges its
+      1%,3%,10% field ratios to `0.995370,0.986049,0.952754` on a 51x101 grid; the 10% `vmec_jax`
+      ratio differs by 0.18% relative. Higher-resolution vacuum tangency/outer-domain convergence,
+      independent boundary curves, anisotropy, and restart-file serialization remain.
    8. **M7 — nonaxisymmetric finite-beta free boundary.** Add helical coils/boundaries, then require
       3D force, interface, field-line, and resolution gates. This lane is supported only after M6;
       no axisymmetric boundary replicated in theta counts as a 3D validation.
