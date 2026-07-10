@@ -569,8 +569,16 @@ def flux_profiles(
     if spres_ped < 1.0:
         p_ped_pa = pmass_pa_at(jnp.asarray(spres_ped, dtype=dtype))
         p_half_pa = jnp.where(grids.s_half > spres_ped, p_ped_pa, p_half_pa)
+    # NaN-safe under reverse-mode AD (core.implicit traces this function in
+    # phiedge/r00): vpnorm = 0 at the axis slot would make d(vpnorm**gamma)
+    # produce 0 * inf = nan inside the discarded jnp.where branch.
     vpnorm = jnp.abs(phips) * jnp.asarray(r00, dtype=dtype)
-    mass = jnp.where(not_axis, prof.MU0 * p_half_pa * vpnorm ** inp.gamma, 0.0)
+    if float(inp.gamma) == 0.0:
+        gamma_factor = jnp.ones_like(vpnorm)
+    else:
+        safe_vpnorm = jnp.where(not_axis, vpnorm, 1.0)
+        gamma_factor = jnp.where(not_axis, safe_vpnorm ** inp.gamma, 0.0)
+    mass = jnp.where(not_axis, prof.MU0 * p_half_pa * gamma_factor, 0.0)
 
     return dict(phips=phips, chips=chips, iotas=iotas, icurv=icurv, mass=mass,
                 phipf=phipf, chipf=chipf, iotaf=iotaf, lamscale=lamscale)
