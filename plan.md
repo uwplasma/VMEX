@@ -86,6 +86,36 @@ add a `full`-marked convergence test per class asserting the achieved bound. Run
 `ssh office` GPU; compare CPU vs GPU wall + autodiff-vs-FD accuracy. Verify the commented DMerc/
 LgradB/magnetic-well terms work uncommented (already CI-tested) and read well pedagogically.
 
+_R1 status (2026-07-10, office 2x A4000 / 36-core CPU, on f45a6491):_
+- **QA (nfp2) — PRECISE, validated.** `jac="implicit"` + ESS from the kicked circular seed:
+  QS total 2.043e-01 → 9.82e-03 (max_mode=1) → **1.701e-04 (max_mode=2)**, aspect 6.000 &
+  mean iota 0.420 on target. >3 orders, ≤1e-3-of-seed gate met. Docstring updated.
+- **QH (nfp4) — descends via implicit; precise not re-validated this session.** QS 6.908e-01 →
+  1.401e-01 (max_mode=1, iota −0.917). Key finding: the exact-axisymmetric seed is a *saddle*
+  (QS residual even in the symmetry-breaking harmonic) — finite differences STALL (njev=1, QS
+  unchanged); implicit escapes it, so the example is correct to use implicit (no kick). Higher
+  max_mode continuation is compile/eval-bound (see below); stage 2 did not finish in budget.
+- **QP (nfp2) — basin-limited, not precise (as documented).** Implicit reaches QS 4.458e-01 →
+  9.42e-02 (max_mode=1, ~the docstring's 7e-2 basin); FD stalls much worse at 2.32e-01. Confirms
+  the QP bad-basin caveat AND that the gradient method selects the basin (implicit ≫ FD here).
+  Schedule capped at 3.
+- **QI (nfp1) — partial (hardest).** QP-basin (FD) 2.43 → ~1.15 (QI total), QP 6.7e-2 → 3.85e-2;
+  the Boozer QI-stage refinement barely moves from a crude circular nfp1 seed — precise QI needs
+  more than the current 4-term FD path (documented, not overclaimed).
+- **Autodiff accuracy:** implicit gradients drive the same descent as FD (QA reaches precise;
+  `tests/core_new/test_implicit_grad.py` already validates implicit vs central FD, rtol ≤1e-6
+  solovev / ~1e-5 li383-3D). Implicit is *essential* for the helical/basin cases (FD stalls/worse
+  basin), not just faster.
+- **CPU vs GPU / per-step:** warm forward solve ~0.9 s; the implicit forward solve is a host (CPU)
+  callback so the GPU only accelerates the adjoint GMRES — and does NOT help this small problem
+  (cold solve CPU 13 s vs GPU 27 s; GPU per-stage dominated by a one-time XLA compile that grows
+  with dof count: QA stage1 761 s / stage2 1261 s, amortized 20–37 s/step; a 24-dof QH GPU stage
+  hung >37 min in a single kernel-launch-bound GMRES eval). **Actionable for R3/R6:** the
+  per-dof-vmap implicit Jacobian compile/eval is the scaling bottleneck for max_mode ≥ 2.
+- Added `tests/core_new/test_optimization_convergence.py` (`full`-marked, per class).
+- REMAINING: get QH to precise (run implicit continuation on CPU where GMRES eval is fast, or
+  reduce the adjoint/vmap cost); improve QP basin & QI omnigenity residual.
+
 **R2. Free boundary to production.** Current: CTH free-bdy stops at NITER (fsq~9e-2), not converged;
 warm 14.4 s ≫ Fortran 1.95 s; coil derivatives unsupported by the implicit residual. Gate: a
 *converged* free-boundary golden fixture (raise NITER; validate wout vs VMEC2000), NESTOR/vacuum

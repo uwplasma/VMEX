@@ -320,7 +320,10 @@ jobs:
     name: Full-physics suite (nightly / manual only)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Includes the compile-heavy optimization-convergence tests (QA precise,
+    # QH/QP descent) and the free-boundary end-to-end; nightly wall time is
+    # not the <=10-min PR budget, so allow generous headroom.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v6.0.2
 

@@ -14,13 +14,17 @@ The seed (``input.minimal_seed_nfp2``) is a circular torus, R0 = 1 m,
 a = 0.2 m — exactly axisymmetric, so the QS term starts at ~0 and the iota
 target pulls the boundary into three dimensions.
 
-Expected runtime: hours on a laptop CPU at the default budget
-(MAX_NFEV=2000/stage, ftol=1e-6; each stage compiles once, then trials
-take tens of seconds and stop early at ftol).  Achieved 2026-07-10 with a
-50-trial/stage, ftol=1e-4 pilot of this script (stages stopped on the
-trial cap, i.e. not fully converged — the default budget can only do
-better): QS total 2.04e-01 -> 4.86e-06 (>4 orders of magnitude) with
-aspect 6.000 and mean iota 0.420.
+Runtime is dominated by the one-time implicit-Jacobian XLA compile per
+continuation stage (the warm forward solve itself is ~0.9 s); each stage
+then stops early at ftol.  Achieved 2026-07-10 on an office RTX A4000 GPU
+at this script's default staged budget with JAC="implicit" + ESS: the QS
+ratio residual total falls 2.043e-01 (circular seed) -> 9.82e-03
+(max_mode=1) -> 1.70e-04 (max_mode=2) -- >3 orders of magnitude, i.e.
+*precise* QA -- with aspect 6.000 and mean iota 0.420 both on target
+(max_mode 3-5 polish further).  Per-stage wall was ~13 min (max_mode=1,
+compile-bound) and ~21 min (max_mode=2).  A CPU run reaches the same
+optimum: the cold forward solve is ~2x faster than the GPU (13 vs 27 s)
+because this small solve is a host callback that the GPU does not help.
 """
 
 import dataclasses

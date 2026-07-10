@@ -20,13 +20,16 @@ adds compile time.  QP from a crude circular seed is basin-sensitive:
 most of the reduction comes from stages 1-2, and CPU/GPU rounding alone
 can land in mirror-image basins (iota of either sign).
 
-Expected runtime: ~1 h on a laptop CPU at the default budget
-(MAX_NFEV=2000/stage, ftol=1e-6; QP stages stop early at ftol).
-Achieved 2026-07-10 with a 50-trial/stage, ftol=1e-4 pilot of this
-script (stages 1-2 hit the trial cap, stage 3 stopped at ftol):
-QS(0,1) total 4.46e-01 -> 7.12e-02 with aspect 6.02, |mean iota| 0.15,
-mirror ratio 0.20; the extended ``(1,...,5)`` pilot on an RTX A4000
-stalled at 9.41e-02.
+The gradient method selects the basin: with JAC="implicit" (below) this
+reaches QS(0,1) total 4.46e-01 -> 9.4e-02 already at max_mode=1 (aspect
+6.02, |mean iota| 0.15, mirror 0.20), matching the legacy pilot's
+~7e-2; the same objective with finite differences stalls far worse at
+2.3e-01.  QP from a crude circular seed is basin-limited: this is *not*
+precise QS, and the docstring above reflects the documented ceiling.
+
+Expected runtime is dominated by the one-time implicit-Jacobian XLA
+compile per stage (measured max_mode=1 wall ~18 min on an RTX A4000;
+the warm forward solve is ~0.9 s).
 """
 
 import os

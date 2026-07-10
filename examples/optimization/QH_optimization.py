@@ -4,19 +4,27 @@
 Same recipe as ``QA_optimization.py`` with helicity (m, n) = (1, -1): the
 quasisymmetry ratio residual now demands ``|B| = |B|(s, theta + nfp*phi)``,
 which an axisymmetric torus cannot satisfy — so unlike the QA case no seed
-kick is needed, the QS term itself pulls the boundary into a helically
-symmetric shape (compare simsopt's ``QH_fixed_resolution.py``).
+kick is needed (compare simsopt's ``QH_fixed_resolution.py``).  Note this
+relies on JAC="implicit": the QS residual is *even* in the symmetry-breaking
+harmonics, so its gradient vanishes at the exact-axisymmetric seed — a
+saddle where finite differences stall (measured: QS unchanged, one Jacobian
+evaluation), but the exact implicit gradient (internal-grid, plus the tiny
+asymmetry of the host solve) escapes it and the QS term pulls the boundary
+into a helically symmetric shape.
 
 This script also demonstrates building a :class:`vmec_jax.VmecInput` from
 scratch instead of reading a file: the circular-torus seed (R0 = 1 m,
 a = 1/8 m, ~1 T) is assembled directly from its Fourier coefficients.
 
-Expected runtime: hours (laptop CPU or a single GPU) at the default
-budget (MAX_NFEV=2000/stage, ftol=1e-6; stages stop early at ftol).
-Achieved 2026-07-10 with a 50-trial/stage, ftol=1e-4 pilot of this script
-on an RTX A4000 (stages 2-5 stopped on the trial cap, not full
-convergence): QS total 6.91e-01 -> 5.83e-05 (4 orders of magnitude) with
-aspect 8.000 and mean iota -1.218.
+Runtime per continuation stage is dominated by the one-time implicit-
+Jacobian XLA compile (the warm forward solve is ~0.9 s).  Achieved
+2026-07-10 with JAC="implicit" + ESS: QS total 6.91e-01 -> 1.40e-01 at
+max_mode=1 (iota -0.917), on the same continuation machinery that takes QA
+to precise (1.7e-4 by max_mode=2, see ``QA_optimization.py``).  The deeper
+max_mode>=2 QH continuation is compile/eval-bound on GPU here (the iota~-0.9
+config's adjoint GMRES is slow to evaluate); a prior pilot reached
+~6e-5 (aspect 8.0).  Run the heavy stages on CPU, where the GMRES
+evaluation is faster (plan.md R1).
 """
 
 import os

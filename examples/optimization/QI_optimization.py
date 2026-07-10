@@ -28,6 +28,16 @@ Expected runtime: ~25 min on a laptop CPU at the default budget (stage 2
 finite differences dominate).  Achieved (default budget, 2026-07, this
 script as-is): QI total 1.5e-02 -> 1.9e-03 after stage 2, with aspect 6.0
 and |mean iota| >= 0.15.  Requires ``pip install booz_xform_jax``.
+
+Honest re-validation caveat (2026-07-10): reaching a *good* QP basin is
+the prerequisite, and it is basin-sensitive — stage 1 must use the
+implicit path (finite differences land in a much worse basin; cf.
+``QP_optimization.py``).  A fast FD-only re-run (implicit stage 1 replaced
+by finite differences for speed) only reached QI total ~1.1 and the
+Boozer refinement then stalled, i.e. QI is the class most dependent on the
+quality of the QP basin and on the omnigenity residual; do not expect
+precise QI without the implicit QP stage above (and possibly a richer
+residual than the current 4-term one).
 """
 
 import os
