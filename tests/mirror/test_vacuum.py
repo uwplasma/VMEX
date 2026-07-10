@@ -391,3 +391,47 @@ def test_free_boundary_solution_is_independent_of_free_side_initial_radius() -> 
     np.testing.assert_allclose(results[0].boundary.radius_scale, results[1].boundary.radius_scale, atol=2.0e-12)
     np.testing.assert_allclose(results[0].plasma_energy.b_squared, results[1].plasma_energy.b_squared, rtol=2.0e-11)
     assert all(float(result.variational_max) <= config.ftol for result in results)
+
+
+@pytest.mark.py311_slow_coverage
+def test_outer_vacuum_dirichlet_neumann_gap_narrows_with_domain() -> None:
+    neumann_center_field = []
+    dirichlet_center_field = []
+    for outer_radius, nrho in ((0.50, 7), (0.65, 11), (0.75, 13), (0.82, 15)):
+        config = MirrorConfig(
+            resolution=MirrorResolution(ns=7, mpol=0, ntheta=1, nxi=17),
+            z_min=-0.8,
+            z_max=0.8,
+            ftol=1.0e-12,
+            max_iterations=1000,
+        )
+        plasma_grid = config.build_grid()
+        vacuum_grid = build_vacuum_grid(plasma_grid, nrho=nrho)
+        boundary = MirrorBoundary.from_radius(0.25, plasma_grid)
+        geometry = evaluate_vacuum_geometry(boundary, vacuum_grid, outer_radius=outer_radius)
+        external = external_field_from_coils(_two_end_coils(), geometry)
+        center = plasma_grid.nxi // 2
+        for condition, values in (
+            ("fixed_external_flux", neumann_center_field),
+            ("decaying_outer", dirichlet_center_field),
+        ):
+            result = solve_vacuum_potential(
+                boundary,
+                vacuum_grid,
+                config,
+                external,
+                jnp.zeros(vacuum_grid.shape),
+                outer_radius=outer_radius,
+                boundary_condition=condition,
+            )
+            assert result.converged
+            values.append(float(jnp.linalg.norm(result.field.total_xyz[0, 0, center])))
+            if condition == "decaying_outer":
+                np.testing.assert_allclose(result.potential[-1], 0.0, atol=0.0)
+
+    gap = np.asarray(dirichlet_center_field) - np.asarray(neumann_center_field)
+    assert np.all(np.diff(neumann_center_field) > 0.0)
+    assert np.all(np.diff(dirichlet_center_field) < 0.0)
+    assert np.all(gap > 0.0)
+    assert np.all(np.diff(gap) < 0.0)
+    assert gap[-1] < 0.2 * gap[0]

@@ -715,10 +715,14 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       and differentiable direct `CoilSet` sampling are tested. For two circular end coils, normalized
       plasma `B.n` decreases `1.79e-2, 4.71e-3, 2.10e-3, 8.31e-4` over
       `(nrho,nxi)=(5,9),(7,13),(9,17),(13,25)`, and Hessian bilinear forms satisfy reciprocity at
-      `2e-12`. Outer-radius convergence, mgrid parity, nonaxisymmetric coils, and plasma-interface
-      coupling remain. The annulus must stay inside the coil current region; preliminary
-      `.65 -> .8` outer-radius changes are not yet small enough for an outer-boundary-independent
-      claim.
+      `2e-12`. The coupled free-boundary path now uses a mixed exterior truncation: zero correction
+      potential on the outer cylinder, zero correction flux on axial cuts, and natural total-field
+      tangency on the plasma side. At scaled radial resolution, its center field approaches the
+      exterior limit from above while the finite-wall Neumann variant approaches from below; their
+      gap decreases `0.01836,0.00794,0.00490,0.00356 T` as outer radius moves
+      `0.50,0.65,0.75,0.82 m`. This is quantified truncation uncertainty, not yet an
+      outer-boundary-independent claim. A Dirichlet-to-Neumann/boundary-integral exterior operator,
+      mgrid parity, and nonaxisymmetric coils remain.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior
       state jointly, with beta continuation `0, 0.01, 0.03, 0.10` and hot restarts. Validate
       isotropic and anisotropic cases against an independently generated Pleiades/WHAM-style
@@ -731,11 +735,11 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       rather than the pressure from an uncorrected reference mass. Direct two-coil solves at beta
       `0,1%,3%,10%` all reach `<5.9e-15` residual and `<2.7e-15` active
       stress error. At `(ns,nxi,nrho)=(7,13,7)`, solved center radii increase monotonically
-      `0.253231,0.253492,0.254022,0.255964` through requested beta 10%. The corresponding achieved
-      central beta is 10%, volume-averaged beta is 3.37%, and `B_axis(beta)/B_axis(0)=0.95446`,
-      within 0.61% relative of the paraxial `sqrt(1-beta)` prediction. Extending the diagnostic scan
-      to requested beta 25% and 50% gives 2.93% and 6.88% center-radius expansion and monotonic
-      diamagnetic field depression while retaining `<5.9e-15` nonlinear residual. Increasing the
+      `0.253077,0.253367,0.253957,0.256132` through requested beta 10%. The corresponding achieved
+      central beta is 10%, volume-averaged beta is 3.37%, and `B_axis(beta)/B_axis(0)=0.95218`,
+      within 0.37% relative of the paraxial `sqrt(1-beta)` prediction. Extending the diagnostic scan
+      to requested beta 25% and 50% gives 3.32% and 8.03% center-radius expansion and monotonic
+      diamagnetic field depression while retaining `<4.9e-15` nonlinear residual. Increasing the
       seed radius from 0.25 m to 0.50 m reduces, rather than amplifies, relative LCFS motion at fixed
       beta, so small visual displacement is not evidence of uncoupled pressure. The root example
       now separates nominal, achieved-central, and volume beta and renders geometry displacement,
@@ -747,7 +751,7 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       perturbations agree to `2e-12` absolute in boundary and `2e-11` relative in `B^2`.
       An independent Pleiades Green-function study at upstream commit `0161abb3` converges its
       1%,3%,10% field ratios to `0.995370,0.986049,0.952754` on a 51x101 grid; the 10% `vmec_jax`
-      ratio differs by 0.18% relative. Higher-resolution vacuum tangency/outer-domain convergence,
+      ratio differs by 0.061% relative. Higher-resolution vacuum tangency/exterior closure,
       independent boundary curves, anisotropy, and restart-file serialization remain.
    8. **M7 — nonaxisymmetric finite-beta free boundary.** Add helical coils/boundaries, then require
       3D force, interface, field-line, and resolution gates. This lane is supported only after M6;

@@ -65,8 +65,8 @@ not imply a 10% edge-pressure jump or volume beta.
 * error against the paraxial estimate ``B/B_vac = sqrt(1-beta)``.
 
 At ``(ns,nxi,nrho)=(7,13,7)``, the default 10% request reaches 10% central
-beta and 3.37% volume beta. The center radius expands by 1.08%, while the
-central field falls by 4.55%; the field ratio is within 0.61% relative of the
+beta and 3.37% volume beta. The center radius expands by 1.21%, while the
+central field falls by 4.78%; the field ratio is within 0.37% relative of the
 paraxial estimate. Thus field depression is the more sensitive validation
 observable for this zero-edge-pressure profile.
 
@@ -74,6 +74,15 @@ The finite-beta mirror trend follows the WHAM/Pleiades discussion in Frank et
 al., `Confinement performance predictions for a high field axisymmetric tandem
 mirror <https://doi.org/10.1017/S002237782510055X>`_. A checked Pleiades
 Green-function reference at upstream commit ``0161abb3`` gives a 10% field
-ratio of 0.952754 on a 51 by 101 grid; ``vmec_jax`` gives 0.954464, a 0.18%
-relative difference. Boundary and anisotropic independent-reference curves
+ratio of 0.952754 on a 51 by 101 grid. The production mixed-truncation
+``vmec_jax`` solve gives 0.952176, a 0.061% relative difference. Boundary and
+anisotropic independent-reference curves
 remain promotion gates rather than being replaced by this scalar comparison.
+
+The mixed vacuum truncation fixes the correction potential on the outer
+cylinder, preserves zero correction flux through the axial cuts, and obtains
+total-field tangency naturally on the plasma side. Finite-wall Neumann and
+mixed-Dirichlet center fields approach one another as the outer cylinder is
+expanded, but their remaining gap is reported as truncation uncertainty. A
+true exterior Dirichlet-to-Neumann or boundary-integral operator remains an M5
+promotion gate.

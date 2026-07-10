@@ -330,6 +330,7 @@ def _external_flux_boundary_functional(
     grid: VacuumGrid,
     external_field_xyz: Array,
     *,
+    include_outer: bool = True,
     mu0: float = MU0,
 ) -> Array:
     """Boundary source that leaves external flux unchanged at outer/end cuts."""
@@ -355,7 +356,7 @@ def _external_flux_boundary_functional(
         jnp.asarray(grid.theta_basis.weights),
         potential[:, :, 0] * lower_flux + potential[:, :, -1] * upper_flux,
     )
-    return (outer + ends) / float(mu0)
+    return ((outer if include_outer else 0.0) + ends) / float(mu0)
 
 
 def vacuum_energy_functional(
@@ -375,10 +376,18 @@ def vacuum_energy_functional(
         return energy - _external_flux_boundary_functional(
             potential, geometry, grid, external_field_xyz
         )
+    if boundary_condition == "decaying_outer":
+        return energy - _external_flux_boundary_functional(
+            potential,
+            geometry,
+            grid,
+            external_field_xyz,
+            include_outer=False,
+        )
     if boundary_condition == "fixed_potential":
         return energy
     raise ValueError(
-        "boundary_condition must be 'fixed_external_flux' or 'fixed_potential'"
+        "boundary_condition must be 'fixed_external_flux', 'decaying_outer', or 'fixed_potential'"
     )
 
 
@@ -395,10 +404,10 @@ def solve_vacuum_potential(
 ) -> VacuumSolveResult:
     """Solve the quadratic open-annulus scalar-potential problem.
 
-    ``fixed_external_flux`` is the production fixed-flux-cut policy: the
-    correction has zero normal flux on the outer boundary and end cuts, and a
-    single nodal value removes the constant gauge. ``fixed_potential`` keeps
-    prescribed outer/end values and is useful for Dirichlet MMS cases.
+    ``decaying_outer`` fixes the correction potential on the outer cylinder,
+    preserves zero correction flux on the axial cuts, and leaves the plasma
+    side natural. ``fixed_external_flux`` is the finite-wall Neumann variant.
+    ``fixed_potential`` keeps prescribed outer/end values for Dirichlet MMS.
     """
 
     geometry = evaluate_vacuum_geometry(boundary, grid, outer_radius=outer_radius)
@@ -410,9 +419,12 @@ def solve_vacuum_potential(
     elif boundary_condition == "fixed_external_flux":
         free_mask[-1, 0, 0] = False
         fixed = fixed.at[-1, 0, 0].set(0.0)
+    elif boundary_condition == "decaying_outer":
+        free_mask[-1] = False
+        fixed = fixed.at[-1].set(0.0)
     else:
         raise ValueError(
-            "boundary_condition must be 'fixed_external_flux' or 'fixed_potential'"
+            "boundary_condition must be 'fixed_external_flux', 'decaying_outer', or 'fixed_potential'"
         )
     indices = tuple(np.asarray(index) for index in np.nonzero(free_mask))
     initial = np.broadcast_to(np.asarray(initial_potential, dtype=float), grid.shape)
@@ -550,7 +562,7 @@ def solve_axisymmetric_free_boundary_cli(
     plasma_mask[1:-1, 0, 1:-1] = True
     plasma_indices = tuple(np.asarray(index) for index in np.nonzero(plasma_mask))
     vacuum_mask = np.ones(vacuum_grid.shape, dtype=bool)
-    vacuum_mask[-1, 0, 0] = False
+    vacuum_mask[-1] = False
     vacuum_indices = tuple(np.asarray(index) for index in np.nonzero(vacuum_mask))
     nb = boundary_indices.size
     np_state = plasma_indices[0].size
@@ -621,7 +633,11 @@ def solve_axisymmetric_free_boundary_cli(
         )
         external = external_field_from_coils(coilset, vacuum_geometry)
         vacuum_functional = vacuum_energy_functional(
-            potential, vacuum_geometry, vacuum_grid, external
+            potential,
+            vacuum_geometry,
+            vacuum_grid,
+            external,
+            boundary_condition="decaying_outer",
         )
         vacuum_field = evaluate_vacuum_field(
             potential, vacuum_geometry, vacuum_grid, external
