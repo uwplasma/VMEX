@@ -14,3 +14,8 @@ All runnable examples live under this single `examples/` tree.
 Generated outputs should go to ignored `results/`, `outputs/`, or a user-chosen
 directory.  Do not commit generated WOUT, mgrid, Boozer, PDF, or plot files
 unless they are compact reviewed documentation artifacts.
+
+`mirror_free_boundary_beta_scan.py` solves a two-coil straight-axis mirror at
+central beta from 0 to 50%. It writes solved LCFS, field, paraxial comparison,
+residual-history, coil, 3D surface, and cap-to-cap field-line plots under
+`results/mirror_free_boundary_beta_scan/`.

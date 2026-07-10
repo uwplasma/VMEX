@@ -724,13 +724,22 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       isotropic and anisotropic cases against an independently generated Pleiades/WHAM-style
       reference, paraxial pressure balance, outward flux-surface expansion, and the expected
       central diamagnetic trend `B0/Bvac approximately sqrt(1-beta)` in its validity regime.
-      **STATUS (2026-07-09): first coupled isotropic beta scan landed.** The production residual
+      **STATUS (2026-07-10): coupled isotropic scan and beta diagnostics landed.** The production residual
       solves plasma interior force, vacuum-potential stationarity, and free-side normal stress as a
       square system; it does not vary the Neumann vacuum functional as a shape energy. Direct
       two-coil solves at beta `0,1%,3%,10%` all reach `<3.6e-15` residual and `<1.7e-15` active
-      stress error. Solved center radii increase monotonically
-      `0.253176,0.253437,0.253958,0.255779`. Resolution/initial-boundary independence,
-      diamagnetic-field/reference parity, anisotropy, and hot state/potential restarts remain.
+      stress error. At `(ns,nxi,nrho)=(7,13,7)`, solved center radii increase monotonically
+      `0.253231,0.253490,0.254007,0.255811` through requested beta 10%. The corresponding achieved
+      central beta is 9.47%, volume-averaged beta is 3.18%, and `B_axis(beta)/B_axis(0)=0.9569`,
+      within 0.57% relative of the paraxial `sqrt(1-beta)` prediction. Extending the diagnostic scan
+      to requested beta 25% and 50% gives 2.54% and 5.03% center-radius expansion and monotonic
+      diamagnetic field depression while retaining `<5.8e-15` nonlinear residual. Increasing the
+      seed radius from 0.25 m to 0.50 m reduces, rather than amplifies, relative LCFS motion at fixed
+      beta, so small visual displacement is not evidence of uncoupled pressure. The root example
+      now separates nominal, achieved-central, and volume beta and renders geometry displacement,
+      pressure, fields, coils, cap-to-cap lines, and convergence. Resolution/initial-boundary
+      independence, an independent Pleiades/WHAM curve, anisotropy, and full state/potential hot
+      restarts remain.
    8. **M7 — nonaxisymmetric finite-beta free boundary.** Add helical coils/boundaries, then require
       3D force, interface, field-line, and resolution gates. This lane is supported only after M6;
       no axisymmetric boundary replicated in theta counts as a 3D validation.

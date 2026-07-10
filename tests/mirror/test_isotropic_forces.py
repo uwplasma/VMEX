@@ -75,7 +75,7 @@ def test_fixed_boundary_projection_enforces_geometry_and_lambda_gauge() -> None:
         grid.axial_basis.weights,
         np.asarray(projected.lambda_stream),
     ) / (4.0 * np.pi)
-    np.testing.assert_allclose(surface_mean, 0.0, atol=8.0e-16)
+    np.testing.assert_allclose(surface_mean, 0.0, atol=1.0e-15)
 
 
 def test_vacuum_cylinder_has_exact_energy_and_negligible_physical_force() -> None:

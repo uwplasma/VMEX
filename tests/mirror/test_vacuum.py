@@ -19,6 +19,7 @@ from vmec_jax.mirror import (  # noqa: E402
     external_field_from_coils,
     solve_vacuum_potential,
     solve_axisymmetric_beta_scan_cli,
+    summarize_axisymmetric_beta_scan,
     vacuum_energy_functional,
     vacuum_laplacian,
 )
@@ -247,6 +248,12 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
     center_radii = np.asarray(
         [result.boundary.radius_scale[0, center] for result in results]
     )
+    diagnostics = summarize_axisymmetric_beta_scan(
+        results,
+        jnp.asarray([0.0, 0.01, 0.03, 0.10]),
+        plasma_grid,
+        reference_field=float(on_axis_field[center]),
+    )
 
     assert len(results) == 4
     assert all(result.converged for result in results)
@@ -254,4 +261,8 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
     assert all(float(result.interface.normal_stress_rms) < 1.0e-12 for result in results)
     assert np.all(np.diff(center_radii) > 0.0)
     assert center_radii[-1] > 1.005 * center_radii[0]
+    assert float(diagnostics[-1].achieved_reference_beta) > 0.09
+    assert 0.03 < float(diagnostics[-1].volume_averaged_beta) < 0.04
+    assert float(diagnostics[-1].diamagnetic_field_ratio) < 0.97
+    assert abs(float(diagnostics[-1].paraxial_relative_error)) < 0.01
     assert all(np.all(np.isfinite(np.asarray(result.vacuum_field.total_xyz))) for result in results)

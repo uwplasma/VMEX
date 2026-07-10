@@ -1,0 +1,264 @@
+"""Solved two-coil free-boundary mirror beta scan and physics plots.
+
+Run from the repository root with::
+
+    python examples/mirror_free_boundary_beta_scan.py
+
+The first four points are the 0--10% validation scan.  The last two expose
+the higher-beta diamagnetic trend.  Every curve and surface comes from a
+coupled plasma-boundary-vacuum equilibrium solve with residual tolerance
+``FTOL``; no prescribed finite-beta boundary is plotted.
+"""
+
+from pathlib import Path
+import sys
+
+import jax
+import jax.numpy as jnp
+import matplotlib
+import numpy as np
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib import colors  # noqa: E402
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from vmec_jax.core.coils import CoilSet, coil_geometry, two_coil_on_axis_bz  # noqa: E402
+from vmec_jax.mirror import (  # noqa: E402
+    MirrorBoundary,
+    MirrorConfig,
+    MirrorResolution,
+    build_vacuum_grid,
+    solve_axisymmetric_beta_scan_cli,
+    summarize_axisymmetric_beta_scan,
+)
+
+# Inputs: edit these values, then run the file directly.
+BETAS = np.asarray([0.0, 0.01, 0.03, 0.10, 0.25, 0.50])
+NS = 7
+NXI = 13
+NRHO = 7
+FTOL = 1.0e-12
+MAX_ITERATIONS = 2000
+Z_MIN, Z_MAX = -0.8, 0.8
+COIL_RADIUS = 0.9
+COIL_SEPARATION = 2.0
+COIL_CURRENT = 2.0e5
+CENTER_RADIUS = 0.25
+OUTER_RADIUS = 0.65
+OUTPUT_DIR = Path("results/mirror_free_boundary_beta_scan")
+
+jax.config.update("jax_enable_x64", True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+coil_dofs = np.zeros((2, 3, 3))
+coil_dofs[:, 0, 2] = COIL_RADIUS
+coil_dofs[:, 1, 1] = COIL_RADIUS
+coil_dofs[:, 2, 0] = np.asarray([-0.5, 0.5]) * COIL_SEPARATION
+coils = CoilSet(
+    base_curve_dofs=jnp.asarray(coil_dofs),
+    base_currents=jnp.full(2, COIL_CURRENT),
+    n_segments=128,
+)
+
+config = MirrorConfig(
+    resolution=MirrorResolution(ns=NS, mpol=0, ntheta=1, nxi=NXI),
+    z_min=Z_MIN,
+    z_max=Z_MAX,
+    ftol=FTOL,
+    max_iterations=MAX_ITERATIONS,
+)
+grid = config.build_grid()
+vacuum_grid = build_vacuum_grid(grid, nrho=NRHO)
+vacuum_axis_field = two_coil_on_axis_bz(
+    jnp.asarray(grid.z),
+    coil_radius=COIL_RADIUS,
+    separation=COIL_SEPARATION,
+    current=COIL_CURRENT,
+)
+center = int(np.argmin(np.abs(grid.z)))
+axial_flux_derivative = 0.5 * vacuum_axis_field[center] * CENTER_RADIUS**2
+initial_boundary = MirrorBoundary.from_axis_field(
+    axial_flux_derivative,
+    vacuum_axis_field,
+    grid,
+)
+
+print(f"Solving {BETAS.size} beta points at ns={NS}, nxi={NXI}, nrho={NRHO}, ftol={FTOL:.0e}")
+results = solve_axisymmetric_beta_scan_cli(
+    initial_boundary,
+    grid,
+    vacuum_grid,
+    config,
+    coils,
+    jnp.asarray(BETAS),
+    outer_radius=OUTER_RADIUS,
+    axial_flux_derivative=axial_flux_derivative,
+    reference_field=float(vacuum_axis_field[center]),
+)
+diagnostics = summarize_axisymmetric_beta_scan(
+    results,
+    jnp.asarray(BETAS),
+    grid,
+    reference_field=float(vacuum_axis_field[center]),
+)
+
+summary = np.asarray(
+    [
+        [
+            float(item.requested_beta),
+            float(item.achieved_reference_beta),
+            float(item.volume_averaged_beta),
+            float(item.center_radius),
+            float(item.center_axis_field),
+            float(item.diamagnetic_field_ratio),
+            float(item.paraxial_field_ratio),
+            float(item.paraxial_relative_error),
+            float(result.variational_max),
+            float(result.interface.normal_stress_rms),
+            float(result.interface.vacuum_b_normal_rms),
+            float(result.iterations),
+        ]
+        for item, result in zip(diagnostics, results, strict=True)
+    ]
+)
+header = (
+    "requested_beta,achieved_reference_beta,volume_averaged_beta,center_radius_m,"
+    "center_axis_field_T,diamagnetic_field_ratio,paraxial_field_ratio,"
+    "paraxial_relative_error,variational_max,normal_stress_rms,bnormal_rms_normalized,iterations"
+)
+np.savetxt(OUTPUT_DIR / "beta_scan.csv", summary, delimiter=",", header=header, comments="")
+
+colors_beta = plt.cm.viridis(np.linspace(0.08, 0.92, BETAS.size))
+display_xi = np.linspace(-1.0, 1.0, 121)
+display_matrix = np.asarray(grid.axial_basis.interpolation_matrix(display_xi))
+z = 0.5 * (Z_MIN + Z_MAX) + 0.5 * (Z_MAX - Z_MIN) * display_xi
+fig, axes = plt.subplots(2, 3, figsize=(14.4, 8.4), constrained_layout=True)
+for beta, result, color in zip(BETAS, results, colors_beta, strict=True):
+    radius = display_matrix @ np.asarray(result.boundary.radius_scale[0])
+    b_axis = display_matrix @ np.sqrt(np.asarray(result.plasma_energy.b_squared[0, 0]))
+    b_lcfs = display_matrix @ np.sqrt(np.asarray(result.plasma_energy.b_squared[-1, 0]))
+    axes[0, 0].plot(z, radius, color=color, lw=2, label=f"{100 * beta:g}%")
+    baseline_radius = display_matrix @ np.asarray(results[0].boundary.radius_scale[0])
+    axes[0, 1].plot(z, 1e3 * (radius - baseline_radius), color=color, lw=2)
+    axes[0, 2].plot(z, b_axis, color=color, lw=2)
+    axes[1, 0].plot(z, b_lcfs, color=color, lw=2)
+axes[0, 2].plot(z, display_matrix @ np.asarray(vacuum_axis_field), "k--", lw=1.6, label="analytic coil vacuum")
+axes[0, 0].set(title="Solved LCFS", xlabel="Axial position z [m]", ylabel="Radius [m]")
+axes[0, 0].legend(title="Requested beta", ncol=2, fontsize=8)
+axes[0, 1].set(title="LCFS displacement from beta=0", xlabel="Axial position z [m]", ylabel="Delta radius [mm]")
+axes[0, 2].set(title="On-axis |B|", xlabel="Axial position z [m]", ylabel="Magnetic field [T]")
+axes[0, 2].legend(fontsize=8)
+axes[1, 0].set(title="LCFS |B|", xlabel="Axial position z [m]", ylabel="Magnetic field [T]")
+
+achieved = summary[:, 1]
+axes[1, 1].plot(100 * achieved, summary[:, 5], "o-", color="#0072B2", lw=2, label="coupled solve")
+axes[1, 1].plot(100 * achieved, summary[:, 6], "--", color="#D55E00", lw=2, label=r"$\sqrt{1-\beta}$")
+axes[1, 1].set(title="Central diamagnetic response", xlabel="Achieved central beta [%]", ylabel=r"$B(\beta)/B(0)$")
+axes[1, 1].legend(fontsize=8)
+
+for beta, result, color in zip(BETAS, results, colors_beta, strict=True):
+    history = np.asarray(result.history)
+    axes[1, 2].semilogy(history[:, 0], np.maximum(history[:, -1], 1e-18), color=color, lw=1.5, label=f"{100 * beta:g}%")
+axes[1, 2].axhline(FTOL, color="0.25", ls="--", lw=1, label="ftol")
+axes[1, 2].set(title="Coupled residual history", xlabel="Residual evaluation", ylabel="Maximum normalized residual")
+axes[1, 2].legend(ncol=2, fontsize=8)
+for ax in axes.flat:
+    ax.grid(alpha=0.22)
+fig.savefig(OUTPUT_DIR / "beta_scan_diagnostics.png", dpi=180)
+plt.close(fig)
+
+display_indices = [0, 3, len(BETAS) - 1]
+fig, axes = plt.subplots(1, 3, figsize=(14.2, 4.2), constrained_layout=True)
+radial_coordinate = np.sqrt(np.asarray(grid.s))
+for index in display_indices:
+    result = results[index]
+    pressure = np.asarray(result.plasma_energy.pressure)
+    magnetic_pressure = np.asarray(result.plasma_energy.b_squared[:, 0, center]) / (2.0 * 4.0e-7 * np.pi)
+    color = colors_beta[index]
+    label = f"{100 * BETAS[index]:g}%"
+    axes[0].plot(radial_coordinate, pressure / 1e3, "o-", color=color, lw=2, label=label)
+    axes[1].plot(radial_coordinate, magnetic_pressure / 1e3, "o-", color=color, lw=2, label=label)
+    axes[1].plot(radial_coordinate, (pressure + magnetic_pressure) / 1e3, "--", color=color, lw=1.5)
+axes[0].set(title="Midplane pressure", xlabel=r"Normalized radius $\sqrt{s}$", ylabel="Pressure [kPa]")
+axes[1].set(title="Midplane pressure balance", xlabel=r"Normalized radius $\sqrt{s}$", ylabel="Pressure [kPa]")
+axes[0].legend(title="Requested beta", fontsize=8)
+axes[1].legend(["magnetic", "total"], fontsize=8)
+axes[2].plot(100 * BETAS, 100 * summary[:, 1], "o-", color="#0072B2", lw=2, label="achieved central")
+axes[2].plot(100 * BETAS, 100 * summary[:, 2], "s-", color="#D55E00", lw=2, label="volume averaged")
+axes[2].plot(100 * BETAS, 100 * BETAS, "k--", lw=1.2, label="requested")
+axes[2].set(title="Beta definitions", xlabel="Requested beta [%]", ylabel="Solved beta [%]")
+axes[2].legend(fontsize=8)
+for ax in axes:
+    ax.grid(alpha=0.22)
+fig.savefig(OUTPUT_DIR / "beta_scan_pressure.png", dpi=180)
+plt.close(fig)
+
+theta = np.linspace(0.0, 2.0 * np.pi, 73)
+gamma = np.asarray(coil_geometry(coils)[0])
+surface_fields = [
+    display_matrix @ np.sqrt(np.asarray(results[index].plasma_energy.b_squared[-1, 0]))
+    for index in display_indices
+]
+field_norm = colors.Normalize(min(np.min(value) for value in surface_fields), max(np.max(value) for value in surface_fields))
+fig = plt.figure(figsize=(15, 4.8), constrained_layout=True)
+for panel, index in enumerate(display_indices, start=1):
+    result = results[index]
+    radius = display_matrix @ np.asarray(result.boundary.radius_scale[0])
+    zz, tt = np.meshgrid(z, theta)
+    rr = np.broadcast_to(radius, zz.shape)
+    ax = fig.add_subplot(1, 3, panel, projection="3d")
+    ax.plot_surface(
+        zz,
+        rr * np.cos(tt),
+        rr * np.sin(tt),
+        facecolors=plt.cm.viridis(field_norm(np.broadcast_to(surface_fields[panel - 1], zz.shape))),
+        rstride=2,
+        cstride=1,
+        linewidth=0,
+        antialiased=True,
+        alpha=0.78,
+    )
+    for curve in gamma:
+        closed = np.vstack([curve, curve[0]])
+        ax.plot(closed[:, 2], closed[:, 0], closed[:, 1], color="#C44E52", lw=2.0)
+    for angle in np.linspace(0.0, 2.0 * np.pi, 10, endpoint=False):
+        line_x = 1.006 * radius * np.cos(angle)
+        line_y = 1.006 * radius * np.sin(angle)
+        ax.plot(z, line_x, line_y, color="black", lw=2.0, alpha=0.75)
+        ax.plot(z, line_x, line_y, color="white", lw=0.9, alpha=0.98)
+    arrow_indices = np.arange(12, z.size - 12, 24)
+    radial_slope = np.gradient(radius, z)
+    arrow_norm = np.sqrt(1.0 + radial_slope[arrow_indices] ** 2)
+    for angle in (0.0, np.pi):
+        ax.quiver(
+            z[arrow_indices],
+            radius[arrow_indices] * np.cos(angle),
+            radius[arrow_indices] * np.sin(angle),
+            0.12 / arrow_norm,
+            0.12 * radial_slope[arrow_indices] * np.cos(angle) / arrow_norm,
+            0.12 * radial_slope[arrow_indices] * np.sin(angle) / arrow_norm,
+            color="#111111",
+            linewidth=1.0,
+            arrow_length_ratio=0.32,
+        )
+    ax.set(title=f"beta={100 * BETAS[index]:g}%", xlabel="z [m]", ylabel="x [m]", zlabel="y [m]")
+    ax.set_xlim(-1.15, 1.15)
+    ax.set_ylim(-1.0, 1.0)
+    ax.set_zlim(-1.0, 1.0)
+    ax.set_box_aspect((2.3, 2.0, 2.0))
+    ax.view_init(elev=23, azim=-56)
+colorbar = fig.colorbar(plt.cm.ScalarMappable(norm=field_norm, cmap="viridis"), ax=fig.axes, shrink=0.72, pad=0.03)
+colorbar.set_label("LCFS |B| [T]")
+fig.savefig(OUTPUT_DIR / "beta_scan_3d.png", dpi=180)
+plt.close(fig)
+
+np.set_printoptions(precision=6, suppress=False)
+print(header)
+print(summary)
+print(f"Wrote {OUTPUT_DIR / 'beta_scan_diagnostics.png'}")
+print(f"Wrote {OUTPUT_DIR / 'beta_scan_pressure.png'}")
+print(f"Wrote {OUTPUT_DIR / 'beta_scan_3d.png'}")

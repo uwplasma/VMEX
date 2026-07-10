@@ -38,6 +38,7 @@ vmec-jax documentation
       simsopt_comparison
       jxbforce_mercier
       bootstrap_current_fixed_point
+      mirror_geometry
 
    .. toctree::
       :maxdepth: 2
