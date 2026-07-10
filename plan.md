@@ -302,8 +302,34 @@ tree (tests may be temporarily reduced — full restructure lands in Phase 9).
 
 ## 5. Phase 2 — Core library refactor (architecture, naming, fixed-boundary parity)
 
-**STATUS (2026-07-09): core landed, integration/perf hardening next.** `vmec_jax/core/` has 22
-modules (~11.6k lines), each A/B-proven vs the legacy kernels (420+ tests) — including the solve
+**STATUS (2026-07-10): PHASE COMPLETE — legacy deleted (3ce3402c).** vmec_jax/ = 33 files /
+19k lines all-core; tests/ = 24 files / 5k lines; 323 tests vs golden; ruff clean; docs -W green.
+Remaining project work tracked in §10 (examples), §12 (tutorials), §13 (release), plus follow-ups:
+free-boundary vacuum tuning + potvac export + freeb ladder, full radial padding, coverage gate,
+mirror design doc.
+
+**Independent review (2026-07-10, ~65% overall) — binding follow-ups:**
+1. **CI must run in <=10 minutes** (currently ~22-26) at equal-or-better coverage: shard
+   (fast / parity / gradient / optional full-physics), re-enable JIT inside gradient tests (a
+   global fixture disables JIT, making implicit tests 105-160 s each — the main CI cost), cache
+   goldens, and restore the **95% coverage gate** (currently 90%; weak: profiles 31%, step 72%,
+   printing 77% — add targeted tests, don't pad).
+2. **Docs/README honesty**: distinguish validated fixed-boundary implicit differentiation from
+   NOT-yet-supported free-boundary/coil derivatives and the optimizer wiring status; fix
+   optimization.rst "no special handling" claim; README examples claim must become true when the
+   examples land.
+3. **Free boundary to production**: a CONVERGED free-boundary fixture (raise NITER; the CTH deck
+   stops at 1000 with fsq~9e-2), vacuum-solve performance tuning (warm 14.4 s vs Fortran 1.95 s),
+   then freeb implicit derivatives — do not promote coil-derivative claims before this.
+4. **Memory workstream**: solves use 0.7-1.5 GB vs VMEC2000's 27-43 MB; implicit gradient 3.4 GB.
+   Profile buffers, donate in the CLI lane, audit temporaries; targets in §7.7.
+5. **Optimization convergence budgets**: examples run as many iterations as needed (thousands)
+   for genuine convergence; CI smoke uses reduced budgets via VMEC_JAX_EXAMPLES_CI.
+6. Line/docstring hygiene: 4 files >1000 lines to split when touched; ~142 functions lack
+   docstrings — close during Phase-9 doc pass.
+
+*(superseded status of 2026-07-09:)* core landed, integration/perf hardening next. `vmec_jax/core/` has 20
+modules (~10k lines), each A/B-proven vs the legacy kernels (420+ tests) — including the solve
 loop (solovev 215/215 iterations vs VMEC2000, cth 434, machine-precision wout parity), the
 complete wout writer (all 39 missing variables; found legacy lasym output bugs: buco/jcur*/ctor
 x1/2, jdotb x1/16, fast-bcovar bsubsmns corruption), mgrid IO/field (ESSOS PR#33 cross-verified),
@@ -845,6 +871,20 @@ examples/
   single_stage_fixed_boundary.py # advanced, ESSOS
   single_stage_free_boundary.py  # advanced, ESSOS
 ```
+
+**Example style requirements (user directive 2026-07-09; binding):** pedagogic and user-friendly —
+no `main()` functions; input parameters at the top; the user writes their own objective function
+in the script (importing gradient-ready building blocks from `vmec_jax.core.optimize`); scripts
+teach: reading input files AND creating a `VmecInput` from scratch, writing outputs (wout),
+plotting, and printing initial conditions, per-iteration progress, and final results. Not so
+minimal that users cannot generalize; no auxiliary-function mazes (anything reusable moves into
+the source). Optimization examples target **precise QA/QH/QP/QI at several nfp, max_mode=5, with
+ESS, from a circular torus**; for QI, try **QP-first-then-QI** as the simple route before any
+seed/preconditioner machinery (compare against the legacy seed approach and report). Runs must be
+fast on CPU and GPU: reuse the warm solver (structural executable cache), use implicit autodiff
+with measured accuracy (test gradient accuracy in CI), and include **commented-out but fully
+tested** extra objective terms (DMerc, LgradB, magnetic well, ...) that work when uncommented
+(tests exercise them uncommented).
 
 **Optimization examples** mirror simsopt's `QH_fixed_resolution.py` (66 lines: build equilibrium →
 `QuasisymmetryRatioResidual(surfaces, helicity_m, helicity_n)` + aspect target → one least-squares

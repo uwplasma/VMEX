@@ -294,7 +294,7 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
     assert all(np.all(np.isfinite(np.asarray(result.vacuum_field.total_xyz))) for result in results)
 
 
-@pytest.mark.py311_slow_coverage
+@pytest.mark.full
 def test_free_boundary_beta_observables_converge_with_resolution() -> None:
     summaries = []
     tangency = []
@@ -342,7 +342,7 @@ def test_free_boundary_beta_observables_converge_with_resolution() -> None:
     assert tangency[-1] < 0.002
 
 
-@pytest.mark.py311_slow_coverage
+@pytest.mark.full
 def test_free_boundary_solution_is_independent_of_free_side_initial_radius() -> None:
     config = MirrorConfig(
         resolution=MirrorResolution(ns=7, mpol=0, ntheta=1, nxi=13),
@@ -393,7 +393,7 @@ def test_free_boundary_solution_is_independent_of_free_side_initial_radius() -> 
     assert all(float(result.variational_max) <= config.ftol for result in results)
 
 
-@pytest.mark.py311_slow_coverage
+@pytest.mark.full
 def test_outer_vacuum_dirichlet_neumann_gap_narrows_with_domain() -> None:
     neumann_center_field = []
     dirichlet_center_field = []

@@ -444,7 +444,10 @@ def solve_vacuum_potential(
         )
 
     initial_energy = max(abs(float(objective(jnp.asarray(x0)))), 1.0)
-    normalized = lambda vector: objective(vector) / initial_energy
+
+    def normalized(vector: Array) -> Array:
+        return objective(vector) / initial_energy
+
     gradient = jax.jit(jax.grad(normalized))
     hessian_vector = jax.jit(
         lambda point, direction: jax.jvp(gradient, (point,), (direction,))[1]

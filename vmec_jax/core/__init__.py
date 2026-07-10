@@ -16,6 +16,7 @@ Module map (each header docstring names its VMEC2000 counterpart):
 - ``step``            Richardson stepping + restart control (evolve.f, restart.f)
 - ``setup``           radial profiles + initial guess (profil1d/3d.f, readin.f)
 - ``solver``          single-grid fixed-boundary solve loop (funct3d.f, eqsolve.f)
+- ``implicit``        implicit differentiation of the equilibrium (custom VJP + adjoint GMRES)
 - ``device``          CPU/GPU placement policy (measured: benchmarks/gpu_baseline.json)
 
 Every module is validated by A/B equivalence tests against the legacy
