@@ -11,7 +11,8 @@ import numpy as np
 from .forces import MU0, mass_profile_from_pressure, mirror_energy
 from .model import MirrorBoundary, MirrorConfig, MirrorState, project_fixed_boundary_state
 from .restart import FreeBoundaryRestart
-from .vacuum import FreeBoundaryMirrorResult, VacuumGrid, solve_axisymmetric_free_boundary_cli
+from .free_boundary import FreeBoundaryMirrorResult, solve_axisymmetric_free_boundary_cli
+from .vacuum import VacuumGrid
 
 Array = Any
 
@@ -34,23 +35,16 @@ def interpolate_fixed_boundary_state(
     state.validate_shape(source_grid)
     expected_boundary_shape = (target_grid.ntheta, target_grid.nxi)
     if tuple(jnp.shape(boundary.radius_scale)) != expected_boundary_shape:
-        raise ValueError(
-            f"boundary shape {jnp.shape(boundary.radius_scale)} must be "
-            f"{expected_boundary_shape}"
-        )
+        raise ValueError(f"boundary shape {jnp.shape(boundary.radius_scale)} must be {expected_boundary_shape}")
     if source_grid.ntheta != target_grid.ntheta or not np.allclose(
         source_grid.theta, target_grid.theta, rtol=0.0, atol=2.0e-14
     ):
         raise ValueError("state interpolation requires identical theta grids")
 
     def interpolate(values: Array) -> Array:
-        axial = source_grid.axial_basis.interpolate(
-            values, target_grid.xi, axis=2
-        )
+        axial = source_grid.axial_basis.interpolate(values, target_grid.xi, axis=2)
         columns = axial.reshape(source_grid.ns, -1).T
-        radial = jax.vmap(
-            lambda column: jnp.interp(target_grid.s, source_grid.s, column)
-        )(columns)
+        radial = jax.vmap(lambda column: jnp.interp(target_grid.s, source_grid.s, column))(columns)
         return radial.T.reshape(target_grid.shape)
 
     candidate = MirrorState(

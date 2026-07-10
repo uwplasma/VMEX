@@ -102,4 +102,4 @@ def summarize_axisymmetric_beta_scan(
 
 if TYPE_CHECKING:
     from .basis import MirrorGrid
-    from .vacuum import FreeBoundaryMirrorResult
+    from .free_boundary import FreeBoundaryMirrorResult

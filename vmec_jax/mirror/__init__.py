@@ -66,9 +66,9 @@ from .restart import (
     load_free_boundary_restart,
     save_free_boundary_restart,
 )
+from .free_boundary import FreeBoundaryMirrorResult, solve_axisymmetric_free_boundary_cli
 from .vacuum import (
     VacuumField,
-    FreeBoundaryMirrorResult,
     VacuumGeometry,
     VacuumGrid,
     VacuumSolveResult,
@@ -78,7 +78,6 @@ from .vacuum import (
     external_field_from_coils,
     external_field_from_source,
     solve_vacuum_potential,
-    solve_axisymmetric_free_boundary_cli,
     vacuum_energy_functional,
     vacuum_laplacian,
 )
