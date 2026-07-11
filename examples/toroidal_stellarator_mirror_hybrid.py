@@ -93,7 +93,8 @@ for shaping in SHAPING_STAGES[1:]:
 
 final_input = input_for(1.0, multigrid=False)
 final = results[-1]
-indata_path = final_input.to_indata(OUTPUT_DIR / "input.stellarator_mirror_hybrid")
+parity_input = input_for(1.0, multigrid=True)
+indata_path = parity_input.to_indata(OUTPUT_DIR / "input.stellarator_mirror_hybrid")
 wout = wout_from_state(
     inp=final_input,
     state=final.state,
