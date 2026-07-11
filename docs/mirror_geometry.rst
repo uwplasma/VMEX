@@ -186,6 +186,11 @@ ratio of 0.952754 on a 51 by 101 grid. The production mixed-truncation
 ``vmec_jax`` solve gives 0.952176, a 0.061% relative difference. Boundary and
 anisotropic independent-reference curves
 remain promotion gates rather than being replaced by this scalar comparison.
+That study reports robust Pleiades equilibria for ``beta < 1`` and the expected
+outward flux-surface expansion and diamagnetic field depression. Extending the
+numerical gate to 50% therefore probes a scientifically relevant nonlinear
+regime, but it is an equilibrium benchmark only: it does not establish flute,
+firehose, mirror-mode, or kinetic stability.
 
 The direct-coil and mgrid routes share one external-field adapter. A formal
 full-physics test samples the two end coils onto a 49 by 97 mgrid and solves

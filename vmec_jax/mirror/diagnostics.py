@@ -67,25 +67,23 @@ class NonaxisymmetricBetaDiagnostics:
     plasma_energy: Array
 
 
-def _volume_average(values: Array, result: "FreeBoundaryMirrorResult", grid: "MirrorGrid") -> Array:
+def _integration_measure(result: "FreeBoundaryMirrorResult", grid: "MirrorGrid") -> Array:
     geometry = result.plasma_energy.geometry
     weights = (
         jnp.asarray(grid.radial_weights)[:, None, None]
         * jnp.asarray(grid.theta_basis.weights)[None, :, None]
         * jnp.asarray(grid.axial_basis.weights)[None, None, :]
     )
-    measure = weights * geometry.sqrt_g
+    return weights * geometry.sqrt_g
+
+
+def _volume_average(values: Array, result: "FreeBoundaryMirrorResult", grid: "MirrorGrid") -> Array:
+    measure = _integration_measure(result, grid)
     return jnp.sum(jnp.asarray(values) * measure) / jnp.sum(measure)
 
 
 def _plasma_volume(result: "FreeBoundaryMirrorResult", grid: "MirrorGrid") -> Array:
-    geometry = result.plasma_energy.geometry
-    weights = (
-        jnp.asarray(grid.radial_weights)[:, None, None]
-        * jnp.asarray(grid.theta_basis.weights)[None, :, None]
-        * jnp.asarray(grid.axial_basis.weights)[None, None, :]
-    )
-    return jnp.sum(weights * geometry.sqrt_g)
+    return jnp.sum(_integration_measure(result, grid))
 
 
 def summarize_axisymmetric_beta_scan(

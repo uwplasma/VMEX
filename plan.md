@@ -1416,6 +1416,9 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       `boundary_fourier_amplitudes` now removes odd-grid peak-to-peak bias and recovers analytic
       `m=0,1,2` amplitudes to `5e-17`; future studies must gate this modal metric plus global
       volume/energy/theta-averaged fields rather than raw theta-node extrema.
+      `summarize_nonaxisymmetric_beta_scan` now makes those gates reusable: achieved and volume
+      beta, theta-mean midplane radius/field, Fourier amplitudes, plasma volume, and total energy
+      are computed from the solved state with the same quadrature used by the equilibrium.
       The coarse genuine-3D continuation now also reaches beta `25%` and `50%` without stalling:
       residual stays below `3.7e-15`, normal stress below `2.1e-15`, and vacuum tangency below
       `4.4e-17`. From beta zero to 50%, mean midplane radius grows `0.201794 -> 0.217968 m`, mean
