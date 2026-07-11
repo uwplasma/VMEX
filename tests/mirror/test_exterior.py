@@ -18,6 +18,7 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorResolution,
     MirrorState,
     axisymmetric_plasma_coil_neumann,
+    axisymmetric_exterior_lateral_field,
     build_closed_mirror_surface,
     contravariant_field,
     evaluate_geometry,
@@ -207,6 +208,7 @@ def test_reduced_neumann_solve_is_forward_differentiable() -> None:
 def test_reduced_exterior_neumann_solve_recovers_decaying_dipole() -> None:
     boundary_errors = []
     field_errors = []
+    lateral_errors = []
     for ns, nxi, ntheta in ((9, 13, 16), (13, 21, 24)):
         grid = _grid(ns=ns, nxi=nxi)
         surface = build_closed_mirror_surface(
@@ -245,6 +247,31 @@ def test_reduced_exterior_neumann_solve_recovers_decaying_dipole() -> None:
             jnp.asarray([[0.0, 0.0, 2.0]]),
         )
         field_errors.append(float(jnp.abs(gradient[0, 2] + 0.25) / 0.25))
+        lateral = axisymmetric_exterior_lateral_field(
+            surface,
+            result.boundary_potential,
+            neumann,
+            grid,
+            jnp.zeros((grid.nxi, 3)),
+        )
+        lateral_xyz = surface.lateral_xyz[0]
+        lateral_radius_squared = jnp.sum(lateral_xyz**2, axis=1)
+        exact_lateral = jnp.stack(
+            [
+                -3.0
+                * lateral_xyz[:, 2]
+                * lateral_xyz[:, 0]
+                / lateral_radius_squared**2.5,
+                jnp.zeros(grid.nxi),
+                1.0 / lateral_radius_squared**1.5
+                - 3.0 * lateral_xyz[:, 2] ** 2 / lateral_radius_squared**2.5,
+            ],
+            axis=1,
+        )
+        lateral_error = jnp.linalg.norm(lateral - exact_lateral) / jnp.linalg.norm(
+            exact_lateral
+        )
+        lateral_errors.append(float(lateral_error))
         np.testing.assert_allclose(gradient[:, :2], 0.0, atol=2.0e-14)
         assert float(result.compatibility_error) < 2.0e-14
         assert float(result.condition_number) < 5.0
@@ -254,6 +281,8 @@ def test_reduced_exterior_neumann_solve_recovers_decaying_dipole() -> None:
     assert boundary_errors[1] < 6.0e-2
     assert field_errors[1] < field_errors[0]
     assert field_errors[1] < 1.2e-2
+    assert lateral_errors[1] < lateral_errors[0]
+    assert lateral_errors[1] < 1.5e-1
 
 
 def test_panel_mesh_is_watertight_oriented_and_convergent() -> None:

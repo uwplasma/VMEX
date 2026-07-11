@@ -26,6 +26,7 @@ from .exterior import (
 from .exterior_bie import (
     LaplaceNeumannResult,
     axisymmetric_plasma_coil_neumann,
+    axisymmetric_exterior_lateral_field,
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
     laplace_green_gradient_off_surface,
@@ -110,6 +111,7 @@ __all__ = [
     "ClosedMirrorSurface",
     "LaplaceNeumannResult",
     "axisymmetric_plasma_coil_neumann",
+    "axisymmetric_exterior_lateral_field",
     "ContravariantField",
     "EndCondition",
     "AnisotropyIndicators",

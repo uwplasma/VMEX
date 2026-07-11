@@ -82,6 +82,55 @@ def axisymmetric_plasma_coil_neumann(
     return neumann.at[upper].add(upper_bz)
 
 
+def axisymmetric_exterior_lateral_field(
+    surface: ClosedMirrorSurface,
+    boundary_potential: Array,
+    neumann: Array,
+    plasma_grid: "MirrorGrid",
+    external_xyz: Array,
+) -> Array:
+    """Reconstruct total Cartesian field on the axisymmetric lateral boundary.
+
+    The solved Neumann data supplies the correction normal component and the
+    CGL derivative of boundary potential supplies its tangential component.
+    Coordinates are returned at theta zero, one value per axial node.
+    """
+
+    boundary_potential = jnp.asarray(boundary_potential)
+    neumann = jnp.asarray(neumann)
+    external_xyz = jnp.asarray(external_xyz)
+    expected = (surface.reduced_size,)
+    if boundary_potential.shape != expected or neumann.shape != expected:
+        raise ValueError(f"potential and neumann must have shape {expected}")
+    if external_xyz.shape != (plasma_grid.nxi, 3):
+        raise ValueError(f"external_xyz must have shape ({plasma_grid.nxi}, 3)")
+
+    radius = jnp.linalg.norm(surface.lateral_xyz[0, :, :2], axis=1)
+    radius_xi = plasma_grid.axial_basis.differentiate(radius)
+    tangent = jnp.stack(
+        [radius_xi, jnp.zeros_like(radius_xi), jnp.full_like(radius_xi, plasma_grid.dz_dxi)],
+        axis=1,
+    )
+    arc_xi = jnp.linalg.norm(tangent, axis=1)
+    tangent_hat = tangent / arc_xi[:, None]
+    normal_hat = jnp.stack(
+        [
+            jnp.full_like(radius_xi, plasma_grid.dz_dxi),
+            jnp.zeros_like(radius_xi),
+            -radius_xi,
+        ],
+        axis=1,
+    ) / arc_xi[:, None]
+    potential_xi = plasma_grid.axial_basis.differentiate(
+        boundary_potential[: plasma_grid.nxi]
+    )
+    correction = (
+        neumann[: plasma_grid.nxi, None] * normal_hat
+        + (potential_xi / arc_xi)[:, None] * tangent_hat
+    )
+    return external_xyz + correction
+
+
 def laplace_double_layer_off_surface(
     surface: ClosedMirrorSurface,
     density: Array,

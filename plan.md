@@ -1271,8 +1271,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       the identity, `S(q)+K(u-u_target)+u=0`, has no constant gauge, and reverses the representation
       sign. A zero-flux dipole MMS closes its algebraic residual below `3e-14` with condition below
       5; boundary error decreases `14.9% -> 5.44%`, and exterior gradient error reaches 1.12%.
+      Side-boundary field reconstruction from Neumann data plus the CGL potential derivative
+      converges `48.4% -> 14.5% -> 8.16%`; endpoint exclusion does not improve it. Linear
+      side-panel density interpolation is therefore the measured coupling blocker, and the BIE
+      field is not yet used in M6 stress.
       The implementation is split by ownership into 355-line geometry/maps, 299-line panel/Duffy,
-      and 385-line BIE/solve modules; the public `vmec_jax.mirror` API is unchanged.
+      and 434-line BIE/solve modules; the public `vmec_jax.mirror` API is unchanged.
       Analytic Green gradients remove axis `NaN` from differentiating safe-distance branches.
       Duffy panel field evaluation reduces the two-coil near-cap uniform-field reconstruction error
       `0.998% -> 0.573% -> 0.369%` over three meshes (the global polar rule gave
@@ -1280,7 +1284,8 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       Shaped/finite-beta data and actual replacement of the annular truncation remain promotion
       gates; this manufactured coil cancellation is not yet free-boundary coupling.
       A tested adapter now converts an axisymmetric plasma end field plus direct coils into complete
-      wall/cap Neumann data. Shaped/finite-beta exterior MMS, tighter trace/near-field convergence,
+      wall/cap Neumann data and matches a uniform-cylinder construction to roundoff.
+      Shaped/finite-beta exterior MMS, higher-order side density, tighter trace/near-field convergence,
       and coupling that deletes the finite outer cylinder remain the next M5 gates.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior
       state jointly, with beta continuation `0, 0.01, 0.03, 0.10` and hot restarts. Validate
