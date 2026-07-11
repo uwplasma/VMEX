@@ -1392,6 +1392,14 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       The shared `solve_beta_scan_cli` now carries finite current through the reference and every
       hot-started beta point; the old axisymmetric name is an alias. Next: nonaxisymmetric resolution
       convergence and independent coil/field references.
+      **Resolution blocker measured:** `(ns,ntheta,nxi)=(5,5,5),(7,5,7),(9,7,9)` all converge at
+      beta 0/10% below `1.2e-14`, with compatibility improving `~1.6e-5 -> ~1.2e-5 -> ~8e-8` and
+      condition below 3.65. However, beta-zero theta-zero center field is
+      `0.083300,0.084187,0.083302` T and theta radius spread is `0.638,0.362,0.582` mm; beta-10
+      values are similarly nonmonotonic. The last two point fields differ by about 1%. Two-point
+      wall/RSS measurements are 25.6 s local, 287.7 s/2.74 GB A4000, and 896.1 s/3.65 GB A4000.
+      Do not schedule a still larger brute-force grid. Next: define Fourier-mode/global observable
+      convergence, improve the exterior trace order, and reduce host Jacobian cost before rerunning.
    9. **M8 — toroidal stellarator–mirror hybrid.** Model the closed square/rounded-square torus with
       straight mirror sides and stellarator corners using ordinary VMEC Fourier equilibrium.
       Piecewise splines are low-dimensional axis/boundary design controls projected to Fourier.

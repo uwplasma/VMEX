@@ -354,6 +354,23 @@ references remain promotion gates.
 propagates the finite-current profile through its reference and finite-beta
 solves; ``solve_axisymmetric_beta_scan_cli`` remains a compatibility alias.
 
+The first M7 resolution audit is deliberately not promoted. For
+``(ns,ntheta,nxi)=(5,5,5),(7,5,7),(9,7,9)``, the beta-zero theta-zero center
+radius is ``0.201934, 0.201504, 0.202207`` m, axis field is
+``0.083300, 0.084187, 0.083302`` T, and sampled theta radius spread is
+``0.638, 0.362, 0.582`` mm. At 10%, the corresponding values are
+``0.204334, 0.204008, 0.204625`` m, ``0.079472, 0.080224, 0.079416`` T, and
+``0.685, 0.391, 0.618`` mm. Every nonlinear residual is below ``1.2e-14`` and
+compatibility improves from about ``1.6e-5`` to ``8e-8``, but the observables
+are nonmonotonic and the last two axis fields differ by about 1%.
+
+Measured two-point runtimes are 25.6 seconds locally, then 287.7 and 896.1
+seconds on one A4000; the GPU grids use 2.74 and 3.65 GB host RSS. The finest
+run is therefore evidence of both nonlinear robustness and unresolved spatial
+convergence, not a validation result. M7 needs a better refinement coordinate,
+higher-order exterior trace, and lower-memory Jacobian before another larger
+grid is worthwhile.
+
 Two cheaper boundary-limit approximations were tested and rejected. Inward or
 outward offset collocation produced density-system condition numbers from
 ``1e6`` to ``1e19`` and did not converge reliably. Replacing each singular
