@@ -102,7 +102,13 @@ def boundary_from_coefficients(
     xm = np.asarray(modes.m, dtype=float)
     xn = np.asarray(modes.n, dtype=float) * float(basis.nfp)
     th = np.asarray(basis.theta, dtype=float)[:, None]
-    ze = np.asarray(basis.zeta, dtype=float)[:, None]
+    # ``basis.zeta`` spans [0, 2*pi) per field period; the geometric toroidal
+    # angle is ``phi = zeta * onp`` (onp = 1/nfp).  The wout-convention phase
+    # is ``m*theta - xn*phi`` with ``xn = n*nfp`` (so all v-derivatives below
+    # are geometric-phi derivatives, matching surface.f and the ``onp`` folding
+    # in ``vacuum.py``/``external_field_channels``).  Using ``zeta`` directly
+    # here double-counts nfp and mis-places every n != 0 harmonic toroidally.
+    ze = np.asarray(basis.zeta, dtype=float)[:, None] * float(basis.onp)
     arg = th * xm[None, :] - ze * xn[None, :]
     cosmn = np.cos(arg)
     sinmn = np.sin(arg)

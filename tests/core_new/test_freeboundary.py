@@ -216,6 +216,86 @@ def test_free_boundary_end_to_end_golden(golden_dir):
 
 
 # ---------------------------------------------------------------------------
+# Converged free-boundary golden (real mgrid, VMEC2000 terminates normally)
+# ---------------------------------------------------------------------------
+
+#: Deck + real MAKEGRID mgrid that VMEC2000 converges CLEANLY (476 iterations,
+#: fsq < 1e-10, TERMINATED NORMALLY); the ``cth_like_free_bdy_lasym_small``
+#: fixture above is a bounded LASYM smoke that neither code converges.
+CONV_DECK = REPO / "examples" / "data" / "input.cth_like_free_bdy"
+CONV_MGRID = REPO / "examples" / "data" / "mgrid_cth_like.nc"
+CONV_CASE = "cth_like_free_bdy"
+
+
+@pytest.mark.full
+def test_free_boundary_converged_golden(golden_dir):
+    """Free boundary converges to VMEC2000's fsq level with wout parity.
+
+    Regression guard for the NESTOR toroidal-phase fix (``xn*phi_geom`` in
+    ``boundary_from_coefficients``): before the fix the vacuum ``bsqvac``
+    carried a spurious per-``nfp`` mis-placed peak that blew up the edge force
+    at turn-on and stalled the solve at NITER (fsqr ~ 9e-2).  After the fix the
+    solve converges (fsqr < FTOL) and the converged wout matches the VMEC2000
+    golden per-variable.
+
+    Requires the real ``mgrid_cth_like.nc`` (release asset, ``tools/
+    fetch_assets.py``) and the ``cth_like_free_bdy`` golden bundle; skips when
+    either is unavailable.
+    """
+    netCDF4 = pytest.importorskip("netCDF4")
+    wout = golden_dir / CONV_CASE / f"wout_{CONV_CASE}.nc"
+    if not CONV_MGRID.exists():
+        pytest.skip("real mgrid_cth_like.nc unavailable (run tools/fetch_assets.py)")
+    if not wout.exists():
+        pytest.skip(f"converged golden bundle {CONV_CASE} unavailable")
+
+    inp = VmecInput.from_file(CONV_DECK)
+    lines: list[str] = []
+    result = FB.solve_free_boundary(
+        inp, mgrid_path=CONV_MGRID, verbose=True,
+        emit=lambda *a, **k: lines.append(a[0] if a else ""),
+        max_iterations=2500, error_on_no_convergence=False,
+    )
+    out = "".join(lines)
+
+    # 1. Convergence gate: reaches VMEC2000's residual level (deck FTOL 1e-10).
+    ftol = float(inp.ftol_array[-1])
+    assert result.converged, f"free boundary did not converge (fsqr={result.fsqr:.2e})"
+    assert result.fsqr <= ftol and result.fsqz <= ftol and result.fsql <= ftol
+
+    # 2. Vacuum turn-on matches the golden stdout (53) modulo float jitter.
+    m = re.search(r"VACUUM PRESSURE TURNED ON AT\s+(\d+)\s+ITERATIONS", out)
+    assert m, "vacuum never activated"
+    stdout_g = (golden_dir / CONV_CASE / "stdout.txt").read_text()
+    mg = re.search(r"VACUUM PRESSURE TURNED ON AT\s+(\d+)\s+ITERATIONS", stdout_g)
+    assert mg and abs(int(m.group(1)) - int(mg.group(1))) <= 3
+
+    # 3. Per-variable wout parity vs the VMEC2000 golden.  Free-boundary fixed
+    #    points differ by the turn-on soft-restart timing, so harmonics agree
+    #    at ~1e-4 scale-relative (measured rmnc 1.8e-5, zmns 1.2e-4), scalars
+    #    at ~1e-5 (measured wb 2e-7, ctor 1e-15) — far tighter than these gates
+    #    yet loose enough to absorb the ~20% iteration-count difference.
+    with netCDF4.Dataset(wout) as ds:
+        g_wb = float(ds.variables["wb"][:])
+        g_rmnc = np.asarray(ds.variables["rmnc"][:])
+        g_zmns = np.asarray(ds.variables["zmns"][:])
+        g_iotaf = np.asarray(ds.variables["iotaf"][:])
+        g_xm = np.asarray(ds.variables["xm"][:]).astype(int)
+        g_xn = np.asarray(ds.variables["xn"][:]).astype(int)
+
+    assert abs(result.wb - g_wb) <= 1e-5 * abs(g_wb) + 1e-12, "wb parity"
+
+    mine = {(int(a), int(b)): k for k, (a, b) in enumerate(zip(result.xm, result.xn))}
+    idx = np.asarray([mine[(a, b)] for a, b in zip(g_xm, g_xn)])
+    r_err = np.abs(result.rmnc[:, idx] - g_rmnc).max() / np.abs(g_rmnc).max()
+    z_err = np.abs(result.zmns[:, idx] - g_zmns).max() / np.abs(g_zmns).max()
+    iota_err = np.abs(result.iotaf - g_iotaf).max() / np.abs(g_iotaf).max()
+    assert r_err < 1e-3, f"rmnc scale-relative error {r_err}"
+    assert z_err < 1e-3, f"zmns scale-relative error {z_err}"
+    assert iota_err < 1e-3, f"iotaf scale-relative error {iota_err}"
+
+
+# ---------------------------------------------------------------------------
 # Missing-mgrid fallback policy
 # ---------------------------------------------------------------------------
 
