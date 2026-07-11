@@ -28,5 +28,17 @@
     {"target": 0.1, "derived_scale_range": [0.0013033180364045694, 0.0021721976999120904], "residuals_after_120": [1.0830278504526699e-8, 2.9170725337593238e-9, 1.0547928516887476e-8]},
     {"target": 0.2, "derived_scale_range": [0.002645214633980514, 0.004344395399824181], "residuals_after_120": [1.1381040886604774e-8, 4.153792772191797e-9, 1.118461244846658e-8]}
   ],
-  "assessment": "Equation balancing converts the isolated 0.35% result into a genuine adaptive free-boundary branch through achieved beta 0.696%. The limiting physical components shift between FSQR and FSQL, requiring static lambda scales 0.01, 0.005, then 0.004. A bounded norm-derived scale with target ratio 0.1 advances the endpoint once more, but both physical components remain tangent to the 1e-8 gate and the corrector takes 261 iterations. Continuation requires improved block structure or a physics/bifurcation assessment, not larger blind pressure jumps."
+  "endpoint_geometry_diagnostics": {
+    "jacobian_sign_changed": false,
+    "abs_sqrt_g_min": 0.005735525707477006,
+    "abs_sqrt_g_p01": 0.005869768989335015,
+    "abs_sqrt_g_median": 0.007765318336830031,
+    "jacobian_margin_min_over_median": 0.7386079306335779,
+    "spectral_tail_l2_fraction": 0.00010576408954883756,
+    "spectral_tail_max_fraction": 0.00008860939092960664,
+    "iota_range": [0.07191128261979862, 0.07241054245716257],
+    "lcfs_delta_from_target_beta_0p003_max_m": 7.819948555385524e-8,
+    "lcfs_delta_from_target_beta_0p003_rms_m": 2.1610656093927775e-8
+  },
+  "assessment": "Equation balancing converts the isolated 0.35% result into a genuine adaptive free-boundary branch through achieved beta 0.696%. The limiting physical components shift between FSQR and FSQL, requiring static lambda scales 0.01, 0.005, then 0.004. A bounded norm-derived scale with target ratio 0.1 advances the endpoint once more, but both physical components remain tangent to the 1e-8 gate and the corrector takes 261 iterations. The endpoint has a healthy Jacobian margin and small spectral tail, excluding loss of nested surfaces as the current blocker; improved variable/block conditioning is next."
 }

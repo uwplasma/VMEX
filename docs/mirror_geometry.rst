@@ -167,7 +167,10 @@ scale, frozen within each GMRES solve and recorded in ``newton_history``,
 advances the endpoint once more but leaves ``FSQR`` and ``FSQL`` tangent to the
 gate. The next assessment is Jacobian conditioning, nested-surface quality,
 and a possible equilibrium/bifurcation limit; the branch is not extrapolated
-to 50%.
+to 50%. That endpoint has no Jacobian sign change, minimum active-half-mesh
+``|sqrt(g)|`` is 74% of its median, spectral-tail L2 content is ``1.06e-4``,
+and iota is smooth over 0.07191--0.07241. The present limit is therefore
+solver conditioning rather than loss of nested surfaces.
 
 Fixed-boundary 3D solver
 ------------------------

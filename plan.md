@@ -1685,7 +1685,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       point in 261 corrector + 3 NESTOR iterations at
       `(9.996e-9,1.42e-9,9.976e-9)`. Since dynamic scaling does not remove the tangent gate, next
       diagnose Jacobian conditioning, nested-surface quality, and a possible equilibrium/bifurcation
-      limit before spending more continuation steps.
+      limit before spending more continuation steps. The endpoint audit excludes geometric failure:
+      minimum active-half-mesh `|sqrt(g)|` is 74% of its median, no sign change occurs, spectral-tail
+      L2 content is `1.06e-4`, and iota is smooth over `0.07191--0.07241`. The LCFS displacement
+      from target beta 0.30% is only 78 nm. The blocker is numerical conditioning, not lost nested
+      surfaces. Next: add opt-in right scaling of R/Z/lambda unknowns, screen it matrix-free at the
+      endpoint, and retain only a scaling that reduces both physical components and GMRES residual.
       The plotted root example
       now writes WOUT, 3D coils/LCFS/pitched field lines, `|B|`, cross-sections, profiles, and force
       histories; only afterward should the 16-coil free-boundary beta scan be attempted.
