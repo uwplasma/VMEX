@@ -1159,7 +1159,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       annulus. A scheduled full test now solves the same beta-zero free-boundary equilibrium from
       direct coils and a 49-by-97 mgrid: both reach component-wise `1e-12`, with the LCFS agreeing
       within `5e-3` relative and the annulus field within `8e-3`. A Dirichlet-to-Neumann/boundary-
-      integral exterior operator and nonaxisymmetric coils remain.
+      integral exterior operator and nonaxisymmetric coils remain. A radial-only cylindrical
+      cosine/Bessel DtN prototype was rejected despite exact modal tests: with open axial ends and
+      coils in the exterior, its center field still shifted `0.09090,0.09718,0.10189 T` as the
+      outer radius moved `0.50,0.65,0.82 m`, while plasma-side `B.n` worsened. M5 therefore requires
+      a full closed-surface boundary integral (lateral surface plus axial apertures), not another
+      local or radial-only outer condition.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior
       state jointly, with beta continuation `0, 0.01, 0.03, 0.10` and hot restarts. Validate
       isotropic and anisotropic cases against an independently generated Pleiades/WHAM-style
