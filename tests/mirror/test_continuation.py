@@ -99,7 +99,14 @@ def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
     received = []
 
     def fake_solve(boundary, *_args, **kwargs):
-        received.append((boundary, kwargs["initial_state"], kwargs["initial_mass_scale"]))
+        received.append(
+            (
+                boundary,
+                kwargs["initial_state"],
+                kwargs["initial_mass_scale"],
+                kwargs["exterior_spectral_side_density"],
+            )
+        )
         return SimpleNamespace(
             boundary=boundary,
             plasma_state=kwargs["initial_state"],
@@ -119,9 +126,11 @@ def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
         axial_flux_derivative=0.1,
         reference_field=1.0,
         initial_restart=restart,
+        exterior_spectral_side_density=True,
     )
 
     assert received[0][0] is restart_boundary
     assert received[0][1] is restart_state
     assert received[0][2] == 2.5
     assert received[1][2] == 3.0
+    assert all(item[3] is True for item in received)
