@@ -19,6 +19,7 @@ from .forces import (
     mirror_energy,
 )
 from .geometry import magnetic_field_squared
+from .exterior_bie import AxisymmetricExteriorVacuum, solve_axisymmetric_exterior_vacuum
 from .model import MirrorBoundary, MirrorConfig, MirrorState, PressureClosure, PressureMoments
 from .vacuum import (
     MU0,
@@ -62,8 +63,8 @@ class FreeBoundaryMirrorResult:
     plasma_energy: MirrorEnergy | AnisotropicMirrorEnergy
     plasma_b_squared: Array
     perpendicular_pressure: Array
-    vacuum_geometry: VacuumGeometry
-    vacuum_field: VacuumField
+    vacuum_geometry: VacuumGeometry | "ClosedMirrorSurface"
+    vacuum_field: VacuumField | AxisymmetricExteriorVacuum
     vacuum_potential: Array
     mass_scale: Array
     interface: InterfaceResidual
@@ -105,17 +106,24 @@ def solve_axisymmetric_free_boundary_cli(
     target_central_pressure: float | None = None,
     initial_mass_scale: float = 1.0,
     pressure_closure: PressureClosure | None = None,
+    vacuum_backend: str = "annulus",
+    exterior_ntheta: int = 40,
+    exterior_order: int = 8,
     require_convergence: bool = False,
 ) -> FreeBoundaryMirrorResult:
     """Jointly solve an isotropic axisymmetric plasma and open vacuum.
 
-    The active vector contains the lateral boundary away from the fixed cuts,
-    the plasma interior map, and every vacuum-potential node except one gauge
-    value. The direct coil field is reevaluated on each moving annulus.
+    The default ``vacuum_backend="annulus"`` retains the finite outer-cylinder
+    potential discretization. ``vacuum_backend="exterior"`` instead solves the
+    closed-surface free-space Neumann problem at every nonlinear evaluation;
+    its active vector contains no vacuum degrees of freedom.
     """
 
     if plasma_grid.ntheta != 1 or vacuum_grid.ntheta != 1:
         raise ValueError("axisymmetric free-boundary solve requires ntheta=1")
+    if vacuum_backend not in {"annulus", "exterior"}:
+        raise ValueError("vacuum_backend must be 'annulus' or 'exterior'")
+    use_exterior = vacuum_backend == "exterior"
     if plasma_grid.nxi != vacuum_grid.nxi:
         raise ValueError("plasma and vacuum grids must share axial nodes")
     if target_central_pressure is not None and target_central_pressure <= 0.0:
@@ -139,8 +147,13 @@ def solve_axisymmetric_free_boundary_cli(
     plasma_mask = np.zeros(plasma_grid.shape, dtype=bool)
     plasma_mask[1:-1, 0, 1:-1] = True
     plasma_indices = tuple(np.asarray(index) for index in np.nonzero(plasma_mask))
-    vacuum_mask = np.ones(vacuum_grid.shape, dtype=bool)
-    vacuum_mask[-1] = False
+    vacuum_mask = (
+        np.zeros(vacuum_grid.shape, dtype=bool)
+        if use_exterior
+        else np.ones(vacuum_grid.shape, dtype=bool)
+    )
+    if not use_exterior:
+        vacuum_mask[-1] = False
     vacuum_indices = tuple(np.asarray(index) for index in np.nonzero(vacuum_mask))
     nb = boundary_indices.size
     np_state = plasma_indices[0].size
@@ -150,7 +163,11 @@ def solve_axisymmetric_free_boundary_cli(
     base_state.validate_shape(plasma_grid)
     if not np.allclose(np.asarray(base_state.radius_scale[-1]), initial_boundary_radius):
         raise ValueError("initial_state boundary must match initial_boundary")
-    potential_seed = np.zeros(vacuum_grid.shape) if initial_potential is None else np.asarray(initial_potential)
+    potential_seed = (
+        np.zeros(vacuum_grid.shape)
+        if initial_potential is None or use_exterior
+        else np.asarray(initial_potential)
+    )
     if potential_seed.shape != vacuum_grid.shape:
         raise ValueError(f"initial_potential shape {potential_seed.shape} must be {vacuum_grid.shape}")
     calibrate_pressure = target_central_pressure is not None
@@ -163,8 +180,10 @@ def solve_axisymmetric_free_boundary_cli(
     if calibrate_pressure:
         x0_parts.append(np.asarray([initial_mass_scale]))
     x0 = np.concatenate(x0_parts)
-    geometric_upper = 0.98 * float(outer_radius) / boundary_scale
-    if np.max(x0[:nb]) >= geometric_upper:
+    geometric_upper = (
+        np.inf if use_exterior else 0.98 * float(outer_radius) / boundary_scale
+    )
+    if np.isfinite(geometric_upper) and np.max(x0[:nb]) >= geometric_upper:
         raise ValueError("initial plasma boundary must lie inside the outer vacuum cylinder")
     lower_parts = [np.full(nb + np_state, 0.2), np.full(nv, -np.inf)]
     upper_parts = [np.full(nb + np_state, geometric_upper), np.full(nv, np.inf)]
@@ -230,16 +249,28 @@ def solve_axisymmetric_free_boundary_cli(
             perpendicular_pressure = full_moments.perpendicular
             central_pressure = perpendicular_pressure[0, 0, center]
             anisotropy_valid = jnp.all(plasma.indicators_half.valid)
-        vacuum_geometry = evaluate_vacuum_geometry(boundary, vacuum_grid, outer_radius=outer_radius)
-        external = external_field_from_source(coilset, vacuum_geometry)
-        vacuum_functional = vacuum_energy_functional(
-            potential,
-            vacuum_geometry,
-            vacuum_grid,
-            external,
-            boundary_condition="decaying_outer",
-        )
-        vacuum_field = evaluate_vacuum_field(potential, vacuum_geometry, vacuum_grid, external)
+        if use_exterior:
+            vacuum_field = solve_axisymmetric_exterior_vacuum(
+                boundary,
+                plasma.field,
+                plasma_grid,
+                coilset,
+                axisymmetric_ntheta=exterior_ntheta,
+                order=exterior_order,
+            )
+            vacuum_geometry = vacuum_field.surface
+            vacuum_functional = jnp.asarray(0.0, dtype=state.radius_scale.dtype)
+        else:
+            vacuum_geometry = evaluate_vacuum_geometry(boundary, vacuum_grid, outer_radius=outer_radius)
+            external = external_field_from_source(coilset, vacuum_geometry)
+            vacuum_functional = vacuum_energy_functional(
+                potential,
+                vacuum_geometry,
+                vacuum_grid,
+                external,
+                boundary_condition="decaying_outer",
+            )
+            vacuum_field = evaluate_vacuum_field(potential, vacuum_geometry, vacuum_grid, external)
         return (
             plasma,
             plasma_b_squared,
@@ -273,9 +304,20 @@ def solve_axisymmetric_free_boundary_cli(
             _,
         ) = components(vector)
         plasma_gradient = jax.grad(plasma_objective)(vector)[nb : nb + np_state]
-        vacuum_gradient = jax.grad(vacuum_objective)(vector)[nb + np_state : nb + np_state + nv]
+        vacuum_gradient = (
+            jnp.empty((0,), dtype=vector.dtype)
+            if use_exterior
+            else jax.grad(vacuum_objective)(vector)[
+                nb + np_state : nb + np_state + nv
+            ]
+        )
         plasma_b_squared = plasma_b_squared[-1, 0, 1:-1]
-        vacuum_b_squared = jnp.sum(vacuum_field.total_xyz[0, 0, 1:-1] ** 2, axis=-1)
+        vacuum_xyz = (
+            vacuum_field.lateral_field_xyz[1:-1]
+            if use_exterior
+            else vacuum_field.total_xyz[0, 0, 1:-1]
+        )
+        vacuum_b_squared = jnp.sum(vacuum_xyz**2, axis=-1)
         pressure = perpendicular_pressure[-1, 0, 1:-1]
         jump = pressure + plasma_b_squared / (2.0 * MU0) - vacuum_b_squared / (2.0 * MU0)
         stress_scale = jnp.abs(pressure) + plasma_b_squared / (2.0 * MU0) + vacuum_b_squared / (2.0 * MU0)
@@ -301,7 +343,7 @@ def solve_axisymmetric_free_boundary_cli(
                     float(len(history)),
                     float(np.sqrt(np.mean(residual[:nb] ** 2))),
                     float(np.sqrt(np.mean(residual[nb : nb + np_state] ** 2))),
-                    float(np.sqrt(np.mean(residual[nb + np_state : nb + np_state + nv] ** 2))),
+                    float(np.sqrt(np.mean(residual[nb + np_state : nb + np_state + nv] ** 2))) if nv else 0.0,
                     float(np.max(np.abs(residual))),
                 )
             )
@@ -334,7 +376,16 @@ def solve_axisymmetric_free_boundary_cli(
         _,
     ) = components(jnp.asarray(solution))
     plasma_b_squared = plasma_b_squared_full[-1]
-    vacuum_b_squared = jnp.sum(vacuum_field.total_xyz[0] ** 2, axis=-1)
+    if use_exterior:
+        vacuum_b_squared = jnp.sum(vacuum_field.lateral_field_xyz**2, axis=-1)[None, :]
+        vacuum_b_normal = vacuum_field.lateral_b_normal[None, :]
+        vacuum_valid = (
+            vacuum_field.neumann_result.compatibility_error <= 1.0e-8
+        ) & (vacuum_field.neumann_result.condition_number <= 1.0e8)
+    else:
+        vacuum_b_squared = jnp.sum(vacuum_field.total_xyz[0] ** 2, axis=-1)
+        vacuum_b_normal = vacuum_field.b_normal_inner
+        vacuum_valid = vacuum_geometry.valid
     active_axial_weights = (
         jnp.asarray(plasma_grid.axial_basis.weights).at[jnp.asarray([0, plasma_grid.nxi - 1])].set(0.0)
     )
@@ -343,7 +394,7 @@ def solve_axisymmetric_free_boundary_cli(
         plasma_b_squared=plasma_b_squared,
         vacuum_b_squared=vacuum_b_squared,
         plasma_b_normal=jnp.zeros_like(plasma_b_squared),
-        vacuum_b_normal=vacuum_field.b_normal_inner,
+        vacuum_b_normal=vacuum_b_normal,
         theta_weights=jnp.asarray(plasma_grid.theta_basis.weights),
         axial_weights=active_axial_weights,
     )
@@ -352,7 +403,7 @@ def solve_axisymmetric_free_boundary_cli(
     converged = bool(
         variational_max <= config.ftol
         and not bool(plasma.geometry.jacobian_sign_changed)
-        and bool(vacuum_geometry.valid)
+        and bool(vacuum_valid)
         and bool(anisotropy_valid)
     )
     message = str(solve.message)
@@ -385,3 +436,4 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .basis import MirrorGrid
+    from .exterior import ClosedMirrorSurface

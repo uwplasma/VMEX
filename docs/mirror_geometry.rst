@@ -255,6 +255,17 @@ cuts, cancels direct-coil normal field on the side, solves the exterior
 Neumann problem, and returns the lateral total-field trace. Tangency and a
 full shape JVP pass on the coupled adapter, so the remaining gate is nonlinear
 equilibrium behavior rather than a missing differentiation path.
+The adapter is also available as ``vacuum_backend="exterior"`` in the coupled
+axisymmetric free-boundary and beta-continuation drivers. On the bounded
+``(ns,nxi,ntheta_panel)=(5,7,8)`` two-coil gate, beta 0 and 10% both converge
+in seven nonlinear evaluations. Maximum residuals are ``7.93e-16`` and
+``2.95e-15``; vacuum tangency is below ``6.3e-17`` and normalized stress below
+``1.3e-15``. The center radius increases from 0.252576 m to 0.255603 m. This
+proves the unbounded model is an actual finite-beta equilibrium path, while
+the four-grid dipole study above still limits its quantitative promotion.
+The legacy ``outer_radius`` argument is ignored by this backend, and restart
+files retain a zero placeholder potential because the BIE potential is solved
+and stored in ``result.vacuum_field.neumann_result`` rather than hot-started.
 An analytic Green-gradient evaluator avoids differentiating safe-distance
 branches on the symmetry axis. Duffy panel evaluation also controls near-cap
 targets in the interior validation: for two circular coils outside a

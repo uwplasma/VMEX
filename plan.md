@@ -1283,7 +1283,7 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       number 4.02. Endpoint exclusion does not improve the rate, while spectral filtering,
       off-surface extrapolation, and Richardson correction make it worse. Linear side-panel density
       interpolation remains the accuracy limiter. The finest grid is now accepted for a guarded
-      first M6 coupling study, but the BIE field is not yet the default stress backend.
+      M6 coupling study, but the BIE field is not yet the default stress backend.
       The implementation is split by ownership into 355-line geometry/maps, 299-line panel/Duffy,
       and 434-line BIE/solve modules; the public `vmec_jax.mirror` API is unchanged.
       Analytic Green gradients remove axis `NaN` from differentiating safe-distance branches.
@@ -1298,6 +1298,11 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       solve, and lateral total-field reconstruction. Its direct-coil tangency is below `2e-12`,
       compatibility is below `2e-12`, conditioning is below 10, and a complete boundary-shape JVP
       is finite and nonzero. The M5-to-M6 differentiation seam is therefore implemented.
+      The seam is now an opt-in `vacuum_backend="exterior"` in the actual coupled solve and beta
+      continuation. A two-coil `(ns,nxi,ntheta_panel)=(5,7,8)` scan at beta 0 and 10% converges in
+      seven evaluations per point with maximum residuals `7.93e-16/2.95e-15`, tangency below
+      `6.3e-17`, stress below `1.3e-15`, and center expansion `0.252576 -> 0.255603` m. This closes
+      the first nonlinear unbounded-equilibrium gate; resolution parity remains open.
       Shaped/finite-beta exterior MMS, higher-order side density, tighter trace/near-field convergence,
       and coupling that deletes the finite outer cylinder remain the next M5 gates.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior

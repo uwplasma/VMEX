@@ -69,6 +69,9 @@ def solve_axisymmetric_beta_scan_cli(
     beta_rtol: float = 1.0e-8,
     initial_restart: FreeBoundaryRestart | None = None,
     pressure_closure: PressureClosure | None = None,
+    vacuum_backend: str = "annulus",
+    exterior_ntheta: int = 40,
+    exterior_order: int = 8,
 ) -> tuple[FreeBoundaryMirrorResult, ...]:
     """Solve a fully hot-started axisymmetric free-boundary beta scan.
 
@@ -78,6 +81,9 @@ def solve_axisymmetric_beta_scan_cli(
     beta is achieved without an outer sequence of full equilibrium solves.
     ``initial_restart`` resumes a suffix of the scan while ``initial_boundary``
     remains the beta-zero reference used to construct the pressure profile.
+    The opt-in ``vacuum_backend="exterior"`` hot-starts only plasma and
+    boundary variables because its boundary-integral potential is eliminated
+    exactly at every nonlinear evaluation.
     """
 
     beta_values = np.asarray(beta_values, dtype=float)
@@ -131,6 +137,9 @@ def solve_axisymmetric_beta_scan_cli(
             initial_potential=potential,
             initial_mass_scale=mass_scale,
             pressure_closure=active_closure,
+            vacuum_backend=vacuum_backend,
+            exterior_ntheta=exterior_ntheta,
+            exterior_order=exterior_order,
             target_central_pressure=None if beta == 0.0 else central_pressure,
             require_convergence=True,
         )

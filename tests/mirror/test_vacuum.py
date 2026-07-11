@@ -354,6 +354,57 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
     assert all(np.all(np.isfinite(np.asarray(result.vacuum_field.total_xyz))) for result in results)
 
 
+@pytest.mark.full
+def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=7),
+        z_min=-0.8,
+        z_max=0.8,
+        ftol=1.0e-10,
+        max_iterations=200,
+    )
+    plasma_grid = config.build_grid()
+    vacuum_grid = build_vacuum_grid(plasma_grid, nrho=5)
+    on_axis = two_coil_on_axis_bz(
+        jnp.asarray(plasma_grid.z),
+        coil_radius=0.9,
+        separation=2.0,
+        current=2.0e5,
+    )
+    center = plasma_grid.nxi // 2
+    flux = 0.5 * on_axis[center] * 0.25**2
+    results = solve_axisymmetric_beta_scan_cli(
+        MirrorBoundary.from_axis_field(flux, on_axis, plasma_grid),
+        plasma_grid,
+        vacuum_grid,
+        config,
+        _two_end_coils(),
+        jnp.asarray([0.0, 0.10]),
+        outer_radius=0.1,
+        axial_flux_derivative=flux,
+        reference_field=float(on_axis[center]),
+        vacuum_backend="exterior",
+        exterior_ntheta=8,
+        exterior_order=6,
+    )
+
+    assert all(result.converged for result in results)
+    assert all(float(result.variational_max) <= config.ftol for result in results)
+    assert all(
+        float(result.interface.vacuum_b_normal_rms) < 1.0e-12
+        for result in results
+    )
+    assert all(
+        float(result.interface.normal_stress_rms) < 1.0e-12
+        for result in results
+    )
+    assert all(result.vacuum_potential.shape == vacuum_grid.shape for result in results)
+    assert all(np.all(np.asarray(result.vacuum_potential) == 0.0) for result in results)
+    assert float(results[1].boundary.radius_scale[0, center]) > 1.01 * float(
+        results[0].boundary.radius_scale[0, center]
+    )
+
+
 def test_two_coil_anisotropic_free_boundary_calibrates_perpendicular_beta() -> None:
     config = MirrorConfig(
         resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=7),

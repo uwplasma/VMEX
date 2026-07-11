@@ -40,6 +40,9 @@ class ClosedMirrorSurface:
     quadrature_to_collocation: Array
     collocation_to_reduced: Array
     triangles: Array
+    n_reduced: int
+    reduced_representatives: tuple[int, ...]
+    triangle_connectivity: tuple[tuple[int, int, int], ...]
 
     @property
     def xyz(self) -> Array:
@@ -105,7 +108,7 @@ class ClosedMirrorSurface:
     def reduced_size(self) -> int:
         """Number of independent density values after symmetry reduction."""
 
-        return int(np.max(np.asarray(self.collocation_to_reduced))) + 1
+        return self.n_reduced
 
     def expand_reduced_values(self, values: Array) -> Array:
         """Expand reduced density values onto unique collocation nodes."""
@@ -154,8 +157,13 @@ class ClosedMirrorSurface:
 
 jax.tree_util.register_dataclass(
     ClosedMirrorSurface,
-    data_fields=[field.name for field in fields(ClosedMirrorSurface)],
-    meta_fields=[],
+    data_fields=[
+        field.name
+        for field in fields(ClosedMirrorSurface)
+        if field.name
+        not in {"n_reduced", "reduced_representatives", "triangle_connectivity"}
+    ],
+    meta_fields=["n_reduced", "reduced_representatives", "triangle_connectivity"],
 )
 
 
@@ -330,9 +338,8 @@ def build_closed_mirror_surface(
         )
     else:
         collocation_to_reduced = np.arange(collocation_xyz.shape[0])
-    triangles = jnp.asarray(
-        closed_surface_triangles(lateral_map, lower_map, upper_map)
-    )
+    triangle_array = closed_surface_triangles(lateral_map, lower_map, upper_map)
+    triangles = jnp.asarray(triangle_array)
     return ClosedMirrorSurface(
         lateral_xyz=lateral_xyz,
         lateral_weighted_normals=lateral_weighted_normals,
@@ -345,6 +352,14 @@ def build_closed_mirror_surface(
         quadrature_to_collocation=quadrature_to_collocation,
         collocation_to_reduced=jnp.asarray(collocation_to_reduced),
         triangles=triangles,
+        n_reduced=int(np.max(collocation_to_reduced)) + 1,
+        reduced_representatives=tuple(
+            int(index)
+            for index in np.unique(collocation_to_reduced, return_index=True)[1]
+        ),
+        triangle_connectivity=tuple(
+            tuple(int(index) for index in triangle) for triangle in triangle_array
+        ),
     )
 
 

@@ -70,11 +70,14 @@ def axisymmetric_plasma_coil_neumann(
         raise ValueError(
             f"surface reduced size {surface.reduced_size} must be {expected_size}"
         )
-    mapping = np.asarray(surface.collocation_to_reduced)
-    _, representatives = np.unique(mapping, return_index=True)
-    points = surface.collocation_xyz[jnp.asarray(representatives)]
-    normals = surface.collocation_normals[jnp.asarray(representatives)]
-    neumann = -jnp.sum(biot_savart(coilset, points) * normals, axis=1)
+    coil_normal = jnp.sum(
+        biot_savart(coilset, surface.collocation_xyz)
+        * surface.collocation_normals,
+        axis=1,
+    )
+    neumann = -surface.reduce_collocation_values(coil_normal)
+    representatives = jnp.asarray(surface.reduced_representatives)
+    points = surface.collocation_xyz[representatives]
 
     nxi = plasma_grid.nxi
     cap_size = plasma_grid.ns - 1
@@ -315,7 +318,7 @@ def laplace_reduced_green_gradient_off_surface(
 
     return panel_green_gradient_off_surface(
         surface.collocation_xyz,
-        surface.triangles,
+        np.asarray(surface.triangle_connectivity),
         surface.expand_reduced_values(dirichlet),
         surface.expand_reduced_values(neumann),
         targets,
@@ -350,15 +353,13 @@ def laplace_reduced_green_boundary_residual(
 ) -> Array:
     """Evaluate the boundary identity in the surface's symmetry basis."""
 
-    mapping = np.asarray(surface.collocation_to_reduced)
-    _, representatives = np.unique(mapping, return_index=True)
     return panel_green_boundary_residual(
         surface.collocation_xyz,
-        surface.triangles,
+        np.asarray(surface.triangle_connectivity),
         surface.expand_reduced_values(dirichlet),
         surface.expand_reduced_values(neumann),
         order=order,
-        target_indices=representatives,
+        target_indices=np.asarray(surface.reduced_representatives),
     )
 
 
@@ -447,11 +448,11 @@ def _solve_reduced_laplace_neumann(
         else laplace_reduced_green_boundary_residual
     )
     right_hand_side = -residual_function(surface, zero, neumann, order=order)
-    quadrature_to_reduced = np.asarray(surface.collocation_to_reduced)[
-        np.asarray(surface.quadrature_to_collocation)
+    quadrature_to_reduced = surface.collocation_to_reduced[
+        surface.quadrature_to_collocation
     ]
     reduced_weights = jnp.zeros(surface.reduced_size).at[
-        jnp.asarray(quadrature_to_reduced)
+        quadrature_to_reduced
     ].add(surface.quadrature_weights)
     reduced_weights /= jnp.sum(reduced_weights)
     if exterior:
