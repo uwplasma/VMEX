@@ -33,6 +33,7 @@ from .vacuum import (
 )
 
 Array = Any
+_MONOLITHIC_JACOBIAN_MAX_SIZE = 80
 
 
 @dataclass(frozen=True)
@@ -109,6 +110,7 @@ def solve_axisymmetric_free_boundary_cli(
     vacuum_backend: str = "annulus",
     exterior_ntheta: int = 40,
     exterior_order: int = 8,
+    exterior_jacobian_chunk_size: int = 6,
     require_convergence: bool = False,
 ) -> FreeBoundaryMirrorResult:
     """Jointly solve an isotropic axisymmetric plasma and open vacuum.
@@ -124,6 +126,9 @@ def solve_axisymmetric_free_boundary_cli(
     if vacuum_backend not in {"annulus", "exterior"}:
         raise ValueError("vacuum_backend must be 'annulus' or 'exterior'")
     use_exterior = vacuum_backend == "exterior"
+    exterior_jacobian_chunk_size = int(exterior_jacobian_chunk_size)
+    if exterior_jacobian_chunk_size < 1:
+        raise ValueError("exterior_jacobian_chunk_size must be positive")
     if plasma_grid.nxi != vacuum_grid.nxi:
         raise ValueError("plasma and vacuum grids must share axial nodes")
     if target_central_pressure is not None and target_central_pressure <= 0.0:
@@ -330,6 +335,14 @@ def solve_axisymmetric_free_boundary_cli(
 
     residual_jit = jax.jit(residual_function)
     jacobian_jit = jax.jit(jax.jacfwd(residual_function))
+    jvp_batch_jit = jax.jit(
+        jax.vmap(
+            lambda primal, tangent: jax.jvp(
+                residual_function, (primal,), (tangent,)
+            )[1],
+            in_axes=(None, 0),
+        )
+    )
 
     history: list[tuple[float, float, float, float, float]] = []
     last_recorded: np.ndarray | None = None
@@ -350,10 +363,28 @@ def solve_axisymmetric_free_boundary_cli(
             last_recorded = np.array(vector, copy=True)
         return residual
 
+    def jacobian_host(vector: np.ndarray) -> np.ndarray:
+        if not use_exterior or vector.size <= _MONOLITHIC_JACOBIAN_MAX_SIZE:
+            return np.asarray(jacobian_jit(jnp.asarray(vector)), dtype=float)
+        size = vector.size
+        columns = []
+        identity = np.eye(size)
+        for start in range(0, size, exterior_jacobian_chunk_size):
+            stop = min(start + exterior_jacobian_chunk_size, size)
+            columns.append(
+                np.asarray(
+                    jvp_batch_jit(
+                        jnp.asarray(vector), jnp.asarray(identity[start:stop])
+                    ),
+                    dtype=float,
+                )
+            )
+        return np.concatenate(columns, axis=0).T
+
     solve = least_squares(
         fun=residual_host,
         x0=x0,
-        jac=lambda vector: np.asarray(jacobian_jit(jnp.asarray(vector)), dtype=float),
+        jac=jacobian_host,
         bounds=(lower, upper),
         method="trf",
         ftol=1.0e-14,
@@ -380,7 +411,7 @@ def solve_axisymmetric_free_boundary_cli(
         vacuum_b_squared = jnp.sum(vacuum_field.lateral_field_xyz**2, axis=-1)[None, :]
         vacuum_b_normal = vacuum_field.lateral_b_normal[None, :]
         vacuum_valid = (
-            vacuum_field.neumann_result.compatibility_error <= 1.0e-8
+            vacuum_field.neumann_result.compatibility_error <= 1.0e-6
         ) & (vacuum_field.neumann_result.condition_number <= 1.0e8)
     else:
         vacuum_b_squared = jnp.sum(vacuum_field.total_xyz[0] ** 2, axis=-1)

@@ -266,6 +266,26 @@ the four-grid dipole study above still limits its quantitative promotion.
 The legacy ``outer_radius`` argument is ignored by this backend, and restart
 files retain a zero placeholder potential because the BIE potential is solved
 and stored in ``result.vacuum_field.neumann_result`` rather than hot-started.
+The nonlinear validity gate requires relative closed-surface flux compatibility
+below ``1e-6`` and condition number below ``1e8``. Compatibility is reported
+separately and must decrease under refinement; it is not conflated with the
+``1e-12`` force and interface-stress convergence contract.
+
+The beta-zero exterior resolution study at ``(ns,nxi,ntheta_panel)`` equal to
+``(5,7,8)``, ``(7,13,12)``, and ``(9,17,16)`` gives center radii
+``0.2525753, 0.2531506, 0.2531155`` m and axis fields
+``0.0840027, 0.0835434, 0.0835623`` T. The last two grids agree within
+``1.39e-4`` and ``2.26e-4`` relative. Flux compatibility improves
+``1.60e-8 -> 1.02e-9 -> 5.92e-10`` while every force solve remains below
+``5.8e-15``.
+
+The 120-variable third grid exposed a CLI memory problem in monolithic forward
+AD: it was terminated at 9.67 GB RSS before producing an iteration. The solver
+now keeps the fast monolithic Jacobian through 80 variables and evaluates exact
+forward-mode JVP columns in chunks of six above that point. The same third grid
+then converges in 118.8 seconds at 5.48 GB peak RSS. This closes the first
+three-grid physics gate, but memory and beta-10 third-grid convergence remain
+promotion blockers.
 An analytic Green-gradient evaluator avoids differentiating safe-distance
 branches on the symmetry axis. Duffy panel evaluation also controls near-cap
 targets in the interior validation: for two circular coils outside a

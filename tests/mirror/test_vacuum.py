@@ -360,7 +360,7 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
         resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=7),
         z_min=-0.8,
         z_max=0.8,
-        ftol=1.0e-10,
+        ftol=1.0e-12,
         max_iterations=200,
     )
     plasma_grid = config.build_grid()

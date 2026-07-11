@@ -1303,6 +1303,14 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       seven evaluations per point with maximum residuals `7.93e-16/2.95e-15`, tangency below
       `6.3e-17`, stress below `1.3e-15`, and center expansion `0.252576 -> 0.255603` m. This closes
       the first nonlinear unbounded-equilibrium gate; resolution parity remains open.
+      A beta-zero `(5,7,8),(7,13,12),(9,17,16)` resolution study gives center radii
+      `0.2525753,0.2531506,0.2531155` m and axis fields `0.0840027,0.0835434,0.0835623` T; the last
+      two agree within `1.39e-4/2.26e-4` relative. Compatibility improves
+      `1.60e-8 -> 1.02e-9 -> 5.92e-10`, condition stays below 3.31, and force stays below `5.8e-15`.
+      Monolithic forward AD at the 120-variable third grid was terminated at 9.67 GB RSS. An
+      adaptive exact-JVP Jacobian now keeps monolithic AD through 80 variables and chunks six
+      columns above it; the third grid then converges in 118.8 s at 5.48 GB RSS. Physics convergence
+      is established at beta zero, while memory and the beta-10 third grid remain promotion gates.
       Shaped/finite-beta exterior MMS, higher-order side density, tighter trace/near-field convergence,
       and coupling that deletes the finite outer cylinder remain the next M5 gates.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior
