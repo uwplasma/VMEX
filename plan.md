@@ -1695,9 +1695,8 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       from target beta 0.30% is only 78 nm. The blocker is numerical conditioning, not lost nested
       surfaces. Right scaling and GCROT were screened and rejected: right scales are numerically
       indistinguishable, while GCROT misses the gate and costs 40% more. The matrix-free corrector
-      is therefore **deferred for 1--50% continuation**. A future tranche must implement the true
-      coupled radial/Fourier block structure (or an equivalent Schur preconditioner) and beat this
-      endpoint in wall time and component residual before the high-beta scan resumes.
+      was provisionally deferred for 1--50% continuation pending a true coupled radial/Fourier
+      block structure or equivalent Schur preconditioner.
       A permanent root example now reconstructs the coils and mgrid, performs the genuine
       fixed-predictor/fixed-corrector/NESTOR sequence, and requests the complete ladder through
       1%, 3%, 10%, 25%, and 50%. It writes WOUT and summary data only for accepted equilibria,
@@ -1705,9 +1704,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       predictor/corrector/free-release force histories. It stops with the typed sub-1% barrier;
       it never substitutes prescribed or interpolated high-beta boundaries. A reduced scheduled
       test runs a real beta-zero square-coil NESTOR solve and asserts the complete figure set.
-      Next: implement a coupled radial/Fourier block or Schur preconditioner and accept it only if
-      it crosses target beta 0.7040625% faster than the present 1,000-iteration failure while all
-      three physical residuals remain below `1e-8`; then resume the exact ladder to 50%.
+      **Krylov-width result:** a controlled screen shows that more restart cycles at Arnoldi width
+      80 do not cross target beta 0.7040625% after 400 iterations (`1.016e-8/2.41e-10/1.012e-8`,
+      314.8 s). Width 120 with only three restart cycles converges in 121 corrector iterations
+      (`9.94e-9/6.77e-10/9.98e-9`, 115.3 s), and NESTOR releases it in 3 iterations at achieved
+      beta 0.7190%. The previous block-preconditioner requirement was premature: retain width 120
+      above this point and continue through a refined ladder to 1%. Implement a larger block/Schur
+      method only if this simpler setting reaches another measured conditioning barrier.
    10. **M9 — implicit differentiation and optimization.** Wrap the converged mirror residual in a
        `custom_vjp`; solve JVP/VJP systems matrix-free with the primal preconditioner. Validate
        boundary, pressure, current, and coil derivatives against central differences. Do not

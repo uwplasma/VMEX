@@ -31,7 +31,7 @@ remain promotion gates. The nonaxisymmetric path also converges through 50%,
 but its point observables are not yet monotone under spatial refinement, so it
 remains a development capability. The toroidal stellarator-mirror hybrid now
 has a converged coil-informed fixed-boundary path, independent VMEC2000 restart
-parity, and a genuine NESTOR branch through achieved beta 0.7128% at
+parity, and a genuine NESTOR branch through achieved beta 0.7190% at
 ``ftol=1e-8``. Stricter preconditioning and the 1--50% toroidal free-boundary
 gate remain open.
 
@@ -171,8 +171,14 @@ tangent to the gate. That endpoint has no Jacobian sign change, minimum active-h
 and iota is smooth over 0.07191--0.07241. The present limit is therefore
 solver conditioning rather than loss of nested surfaces. Right scaling is
 numerically ineffective and GCROT costs about 40% more without crossing the
-gate. The present matrix-free corrector is therefore deferred for the 1--50%
-scan pending a true coupled block or Schur preconditioner.
+gate. A follow-up Krylov screen resolves the next step without adding a new
+preconditioner. Arnoldi width 80 with five restart cycles remains above the
+gate after 400 iterations and 314.8 seconds, while width 120 with three cycles
+converges target beta 0.7040625% in 121 iterations and 115.3 seconds. NESTOR
+releases that state in three iterations at achieved beta 0.7190%. The refined
+continuation therefore uses width 120 above this point; a coupled block or
+Schur preconditioner is deferred until the wider basis encounters a new
+measured barrier.
 
 ``examples/toroidal_stellarator_mirror_hybrid_free_boundary.py`` is the
 reproducible front end for this lane. Its editable target schedule includes

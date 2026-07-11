@@ -12,6 +12,7 @@ from vmec_jax.core.hybrid import (
     trace_square_coil_vacuum_axis,
 )
 from vmec_jax.core.coils import square_mirror_coils
+from vmec_jax.core.hybrid_free_boundary import _corrector_config
 
 
 def test_square_axis_has_straight_sides_and_four_localized_corners() -> None:
@@ -109,3 +110,8 @@ def test_square_coil_vacuum_axis_is_closed_planar_and_fourier_resolved() -> None
         minor_radius_samples=axis.flux_tube_scale,
     )
     np.testing.assert_allclose(samples.axis_radius, axis.radius)
+
+
+def test_hybrid_corrector_expands_krylov_space_only_above_validated_endpoint() -> None:
+    assert _corrector_config(0.006978125).gmres_restart == 80
+    assert _corrector_config(0.007040625).gmres_restart == 120
