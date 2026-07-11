@@ -255,7 +255,8 @@ VMEC++ example layouts).**
   `hot_restart_scan.py` (seed each scan point from the previous state → warm converges in ~1 iter vs
   ~309 cold, no recompile). Light ones run in the PR examples shard; take_gradients is nightly (`full`).
   `finite_beta_scan.py` (pressure ramp → beta, Shafranov axis shift, Mercier DMerc; hot-restarted).
-  STILL TODO: free_boundary_mgrid, free_boundary_essos_coils (ESSOS), free_boundary_beta_scan,
+  `free_boundary_mgrid.py` (NESTOR free boundary from coil EXTCUR + mgrid; LCFS solved for, nightly).
+  STILL TODO: free_boundary_essos_coils (ESSOS), free_boundary_beta_scan,
   single_stage_free_boundary_opt (gated on R15 free-bdy diff). Each is one simsopt-style file (params at top, no `main()`, prints
 initial→progress→final, teaches one feature) and is CI-smoke-tested (reduced budget) + doubles as the
 docs tutorial (R14.3). Target set:

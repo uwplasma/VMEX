@@ -110,6 +110,13 @@ def test_hot_restart_scan(tmp_path):
     assert len(warm) == 5 and max(warm) <= 5, f"warm restarts should be cheap: {warm}"
 
 
+@pytest.mark.full  # nightly: free-bdy NESTOR solve ~10s; parity already covered in shard-a
+def test_free_boundary_mgrid(tmp_path):
+    out = _run_example(EXAMPLES / "free_boundary_mgrid.py", tmp_path, timeout=900)
+    assert "converged = True" in out
+    assert (tmp_path / "output_free_boundary_mgrid" / "wout_cth_like_free_bdy.nc").exists()
+
+
 def test_finite_beta_scan(tmp_path):
     out = _run_example(EXAMPLES / "finite_beta_scan.py", tmp_path, timeout=900)
     # rows: pres_scale  beta_tot  R_axis  Shafranov  minDMerc
