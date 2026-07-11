@@ -2,7 +2,7 @@
 
 The production schedule requests beta through 50%, but plots and files are
 written only for genuinely converged coupled equilibria.  The present Fourier
-corrector is validated through target beta 0.8% at ``ftol=1e-8`` and is
+corrector is validated through target beta 0.8125% at ``ftol=1e-8`` and is
 expected to report its conditioning barrier before 1%; see ``plan.md`` M8.
 """
 
@@ -51,13 +51,21 @@ BETA_TARGETS = (
     0.0076,
     0.00775,
     0.008,
+    0.008125,
     0.00825,
+    0.008375,
     0.0085,
+    0.008625,
     0.00875,
+    0.008875,
     0.009,
+    0.009125,
     0.00925,
+    0.009375,
     0.0095,
+    0.009625,
     0.00975,
+    0.009875,
     0.01,
     0.03,
     0.10,

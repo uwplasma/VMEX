@@ -182,7 +182,10 @@ converges in 171 corrector iterations and releases in three at achieved beta
 corrector iterations, reaching achieved beta 0.7643%. Target 0.775% then
 converges in 431 corrector iterations and releases at achieved beta 0.7896%.
 Target 0.8% converges in 565 corrector iterations and releases at achieved
-beta 0.8147%.
+beta 0.8147%. A direct target-beta step to 0.825% exhausts 1,000 iterations
+above the component gate. Its 0.8125% midpoint converges in 554 iterations and
+releases at achieved beta 0.8272%, selecting target-beta increments of
+``1.25e-4`` for the next continuation segment.
 The refined continuation therefore stages widths 80, 120, and 160; a coupled
 block or Schur preconditioner is deferred until these simpler bases encounter
 a new measured barrier.
