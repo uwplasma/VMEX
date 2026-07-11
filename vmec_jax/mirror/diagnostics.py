@@ -18,6 +18,25 @@ MU0 = 4.0e-7 * np.pi
 Array = Any
 
 
+def boundary_fourier_amplitudes(boundary: "MirrorBoundary") -> Array:
+    """Return real-signal theta-mode amplitudes along the mirror boundary.
+
+    The result has shape ``(ntheta // 2 + 1, nxi)``. Mode zero is the theta
+    mean; positive modes use peak-amplitude normalization. The Nyquist mode on
+    an even grid is not doubled.
+    """
+
+    radius = jnp.asarray(boundary.radius_scale)
+    if radius.ndim != 2:
+        raise ValueError("boundary radius must have shape (ntheta, nxi)")
+    ntheta = radius.shape[0]
+    coefficients = jnp.fft.rfft(radius, axis=0) / float(ntheta)
+    scale = jnp.full(coefficients.shape[0], 2.0, dtype=radius.dtype).at[0].set(1.0)
+    if ntheta % 2 == 0 and ntheta > 1:
+        scale = scale.at[-1].set(1.0)
+    return jnp.abs(coefficients) * scale[:, None]
+
+
 @dataclass(frozen=True)
 class AxisymmetricBetaDiagnostics:
     """Scalar checks for one axisymmetric free-boundary beta point."""
@@ -107,3 +126,4 @@ def summarize_axisymmetric_beta_scan(
 if TYPE_CHECKING:
     from .basis import MirrorGrid
     from .free_boundary import FreeBoundaryMirrorResult
+    from .model import MirrorBoundary

@@ -20,6 +20,7 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorState,
     TabulatedPressureClosure,
     build_vacuum_grid,
+    boundary_fourier_amplitudes,
     evaluate_vacuum_field,
     evaluate_vacuum_geometry,
     external_field_from_coils,
@@ -88,6 +89,22 @@ def test_free_boundary_restart_roundtrip_is_compact_and_grid_checked(tmp_path) -
     mismatched = MirrorConfig(resolution=MirrorResolution(ns=9, mpol=0, ntheta=1, nxi=9)).build_grid()
     with pytest.raises(ValueError, match="plasma state"):
         load_free_boundary_restart(path, mismatched, build_vacuum_grid(mismatched, nrho=5))
+
+
+def test_boundary_fourier_amplitudes_are_grid_independent() -> None:
+    theta = jnp.linspace(0.0, 2.0 * jnp.pi, 7, endpoint=False)
+    axial = jnp.linspace(-1.0, 1.0, 5)
+    radius = (
+        0.2
+        + 0.01 * jnp.cos(theta)[:, None] * (1.0 - axial**2)[None, :]
+        + 0.004 * jnp.sin(2.0 * theta)[:, None]
+    )
+    amplitudes = boundary_fourier_amplitudes(MirrorBoundary(radius))
+
+    np.testing.assert_allclose(amplitudes[0], 0.2, atol=3.0e-17)
+    np.testing.assert_allclose(amplitudes[1], 0.01 * (1.0 - axial**2), atol=5.0e-17)
+    np.testing.assert_allclose(amplitudes[2], 0.004, atol=5.0e-17)
+    np.testing.assert_allclose(amplitudes[3], 0.0, atol=5.0e-17)
 
 
 def _two_end_coils() -> CoilSet:

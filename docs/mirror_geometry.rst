@@ -370,6 +370,10 @@ run is therefore evidence of both nonlinear robustness and unresolved spatial
 convergence, not a validation result. M7 needs a better refinement coordinate,
 higher-order exterior trace, and lower-memory Jacobian before another larger
 grid is worthwhile.
+``boundary_fourier_amplitudes`` now reports theta mean and peak-normalized
+positive Fourier modes without the odd-grid bias of sampled peak-to-peak
+values. Its analytic ``m=0,1,2`` test closes to ``5e-17``. The next audit will
+use this modal diagnostic plus volume, energy, and theta-averaged fields.
 
 Two cheaper boundary-limit approximations were tested and rejected. Inward or
 outward offset collocation produced density-system condition numbers from

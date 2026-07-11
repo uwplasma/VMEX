@@ -10,7 +10,11 @@ output APIs will be added as their corresponding M2-M6 plan gates land.
 """
 
 from .basis import ChebyshevBasis, MirrorGrid, ThetaBasis, build_mirror_grid
-from .diagnostics import AxisymmetricBetaDiagnostics, summarize_axisymmetric_beta_scan
+from .diagnostics import (
+    AxisymmetricBetaDiagnostics,
+    boundary_fourier_amplitudes,
+    summarize_axisymmetric_beta_scan,
+)
 from .geometry import (
     ContravariantField,
     MirrorGeometry,
@@ -164,6 +168,7 @@ __all__ = [
     "build_mirror_grid",
     "build_closed_mirror_surface",
     "build_vacuum_grid",
+    "boundary_fourier_amplitudes",
     "anisotropy_indicators",
     "anisotropic_fixed_boundary_energy_gradient",
     "anisotropic_fixed_boundary_variational_residual",

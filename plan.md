@@ -1400,6 +1400,9 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       wall/RSS measurements are 25.6 s local, 287.7 s/2.74 GB A4000, and 896.1 s/3.65 GB A4000.
       Do not schedule a still larger brute-force grid. Next: define Fourier-mode/global observable
       convergence, improve the exterior trace order, and reduce host Jacobian cost before rerunning.
+      `boundary_fourier_amplitudes` now removes odd-grid peak-to-peak bias and recovers analytic
+      `m=0,1,2` amplitudes to `5e-17`; future studies must gate this modal metric plus global
+      volume/energy/theta-averaged fields rather than raw theta-node extrema.
    9. **M8 — toroidal stellarator–mirror hybrid.** Model the closed square/rounded-square torus with
       straight mirror sides and stellarator corners using ordinary VMEC Fourier equilibrium.
       Piecewise splines are low-dimensional axis/boundary design controls projected to Fourier.
