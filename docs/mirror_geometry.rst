@@ -178,9 +178,11 @@ converges target beta 0.7040625% in 121 iterations and 115.3 seconds. NESTOR
 releases that state in three iterations at achieved beta 0.7190%. At target
 beta 0.72%, width 120 is still GPU-bound after 578 seconds, whereas width 160
 converges in 171 corrector iterations and releases in three at achieved beta
-0.7343%. The refined continuation therefore stages widths 80, 120, and 160;
-a coupled block or Schur preconditioner is deferred until these simpler bases
-encounter a new measured barrier.
+0.7343%. Width 160 then accepts targets 0.735% and 0.75% in 291 and 411
+corrector iterations, reaching achieved beta 0.7643%. The refined continuation
+therefore stages widths 80, 120, and 160; a coupled block or Schur
+preconditioner is deferred until these simpler bases encounter a new measured
+barrier.
 
 ``examples/toroidal_stellarator_mirror_hybrid_free_boundary.py`` is the
 reproducible front end for this lane. Its editable target schedule includes
