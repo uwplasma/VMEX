@@ -1545,13 +1545,15 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       boundary seed scales its cross-section as `a proportional to |B_axis|^-1/2`. This thin-tube
       seed changes the `ns=5, ftol=1e-8` solve from a 1,171-iteration near-stall to convergence in
       62 iterations. Continuing side elongation, corner ellipticity, and corner rotation in 10%
-      increments reaches the full requested stellarator shaping; every stage converges and the last
-      takes 493 iterations with components `(9.98e-9,4.16e-9,5.77e-9)`. The Fourier fixed-boundary
+      increments reaches the full requested stellarator shaping; every stage converges. With a
+      flat 3 kA toroidal-current profile, the last stage takes 509 iterations with components
+      `(1.00e-8,3.39e-9,6.59e-9)` and produces `iota=-0.805...-0.807`. The Fourier fixed-boundary
       geometry blocker is closed at `1e-8`. Tightening remains open: the unshaped base reaches
       `1e-9` in 212 iterations, but `DELT=0.02,0.05,0.1,0.2` does not reach `1e-10`, and the shaped
       state destabilizes when polished to `1e-9`. Next: apply the production 2D/block
-      preconditioner to this now-valid basin, establish VMEC2000 parity, then add the plotted root
-      example and only afterward attempt the 16-coil free-boundary beta scan.
+      preconditioner to this now-valid basin and establish VMEC2000 parity. The plotted root example
+      now writes WOUT, 3D coils/LCFS/pitched field lines, `|B|`, cross-sections, profiles, and force
+      histories; only afterward should the 16-coil free-boundary beta scan be attempted.
    10. **M9 — implicit differentiation and optimization.** Wrap the converged mirror residual in a
        `custom_vjp`; solve JVP/VJP systems matrix-free with the primal preconditioner. Validate
        boundary, pressure, current, and coil derivatives against central differences. Do not

@@ -228,6 +228,7 @@ def stellarator_mirror_hybrid_input(
     ftol_array: tuple[float, ...] = (1.0e-8, 1.0e-11),
     niter_array: tuple[int, ...] = (1000, 2000),
     phiedge: float = 0.04,
+    curtor: float = 0.0,
     **sample_kwargs,
 ) -> VmecInput:
     """Project the hybrid target into an ordinary fixed-boundary VMEC input."""
@@ -248,7 +249,8 @@ def stellarator_mirror_hybrid_input(
         niter_array=niter_array,
         phiedge=phiedge,
         ncurr=1,
-        curtor=0.0,
+        curtor=float(curtor),
+        ac=np.asarray([1.0]) if curtor != 0.0 else None,
         lfreeb=False,
         rbc=rbc,
         zbs=zbs,

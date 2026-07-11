@@ -58,9 +58,11 @@ def test_fourier_projection_converges_and_builds_standard_vmec_input() -> None:
     assert high["maximum"] < 0.35 * low["maximum"]
     assert high["maximum"] < 2.0e-3
 
-    inp = stellarator_mirror_hybrid_input(mpol=6, ntor=20, ntheta=48, nzeta=256)
+    inp = stellarator_mirror_hybrid_input(mpol=6, ntor=20, ntheta=48, nzeta=256, curtor=3.0e3)
     assert inp.nfp == 1 and not inp.lfreeb and not inp.lasym
-    assert inp.ncurr == 1 and inp.curtor == 0.0
+    assert inp.ncurr == 1 and inp.curtor == 3.0e3
+    np.testing.assert_allclose(inp.ac[0], 1.0)
+    np.testing.assert_allclose(inp.ac[1:], 0.0)
     assert inp.rbc.shape == (41, 6)
     assert inp.zbs.shape == inp.rbc.shape
     assert np.count_nonzero(inp.rbc) > 10

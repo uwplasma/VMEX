@@ -24,6 +24,11 @@ All runnable examples live under this single `examples/` tree.
     (coil currents fixed); the LCFS is re-solved by NESTOR at each beta.
   - `take_free_boundary_gradients.py` — differentiate a free-boundary field
     diagnostic through the virtual-casing vacuum field.
+  - `toroidal_stellarator_mirror_hybrid.py` — trace the 16-coil vacuum axis,
+    build a flux-conserving square-torus seed, continue rotating corner
+    ellipses, solve the finite-current equilibrium, and write WOUT plus 3D
+    coils/LCFS/pitched-field-line, `|B|`, cross-section, profile, and residual
+    plots.
 - `optimization/`: precise QA/QH/QP/QI from a circular torus — one file each,
   simsopt-style (`(function, target, weight)` terms + one least-squares call
   per `max_mode` continuation stage, implicit adjoint gradients).  All read

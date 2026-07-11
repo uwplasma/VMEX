@@ -86,8 +86,11 @@ strength, and the thin-flux-tube scale ``sqrt(B_ref/B_axis)``. For the default
 Using that axis and flux-conserving cross-section, the ``ns=5`` unshaped
 fixed-boundary solve converges at ``1e-8`` in 62 iterations. Ten-percent
 continuation steps then reach the complete rotating-corner ellipse target;
-the final stage converges in 493 iterations. This closes the former 44%
-Fourier-geometry blocker. Tolerance promotion remains open: the unshaped state
+with a flat 3 kA toroidal-current profile, the final stage converges in 509
+iterations and gives ``iota=-0.805...-0.807``. This closes the former 44%
+Fourier-geometry blocker. The root example writes WOUT plus 3D coils, LCFS,
+pitched field lines, ``|B|``, cross-sections, profiles, and force histories.
+Tolerance promotion remains open: the unshaped state
 reaches ``1e-9``, but neither it nor the fully shaped state reaches ``1e-10``
 under the tested ``DELT`` values. VMEC2000 parity and block preconditioning are
 required before the free-boundary 16-coil beta scan is promoted.
