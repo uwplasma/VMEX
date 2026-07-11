@@ -94,6 +94,18 @@ add a `full`-marked convergence test per class asserting the achieved bound. Run
 `ssh office` GPU; compare CPU vs GPU wall + autodiff-vs-FD accuracy. Verify the commented DMerc/
 LgradB/magnetic-well terms work uncommented (already CI-tested) and read well pedagogically.
 
+**Seed policy (user 2026-07-10; ties to the R1 saddle finding).** The seed does NOT have to be an
+exact circular torus — an exact-axisymmetric/circular boundary is a *saddle* of the QS residual (the
+symmetry-breaking harmonics are even → gradient vanishes there), which is exactly why FD stalls and
+implicit gradients are needed. So seed from a **near-circular torus with the would-be-zero boundary
+harmonics initialized to ~1e-4** (a small symmetry-/shape-breaking "kick"), with one shaping mode
+seeded a bit larger to give the optimizer a defined descent direction, instead of exact zeros. This
+makes even the first step well-posed, is physically honest, and matches how the QA precise result was
+obtained ("kicked circular seed"). Make the kick amplitude an example parameter-at-top (default
+~1e-4) and document it. The alternative, richer seed is the **near-axis (pyQSC_JAX/pyQIC) seed of
+R19** — offer both: the tiny-kick circular seed (simplest, in-repo) and the near-axis seed (best
+starting point) so users learn both routes.
+
 _R1 status (2026-07-10, office 2x A4000 / 36-core CPU, on f45a6491):_
 - **QA (nfp2) — PRECISE, validated.** `jac="implicit"` + ESS from the kicked circular seed:
   QS total 2.043e-01 → 9.82e-03 (max_mode=1) → **1.701e-04 (max_mode=2)**, aspect 6.000 &
@@ -173,6 +185,10 @@ tag, publish PyPI + conda-forge, verify `pip install vmec-jax && vmec --test` on
 ### R10-R16 — detailed resumable tasks (added 2026-07-10 from user review; specific steps)
 
 **R10. Prove functionality completeness vs VMEC2000 + VMEC++ (the "is it all there?" question).**
+*(R10.2 DONE 2026-07-10, 2980d812: 2D block preconditioner — matrix-free Newton via
+jax.jvp HVP on solvax.gmres; 2.5-11x iteration reduction on stiff cases (aspect-100 97->18,
+163->15; nfp4_QH finite-beta 1885->204); default 1D path byte-identical; CI green incl. 95%
+gate. Wall neutral on CPU cold — GPU/warm-cache/gcrot-recycling win pending. Showcase = R20.)*
 The core is small (34 files / 19.2k lines) because JAX/Python is far denser than Fortran/C++ and we
 dropped VMEC2000's MPI, v3fit reconstruction, and ANIMEC boilerplate — NOT because physics is missing.
 Verified present: fixed + free boundary (NESTOR), lasym, ntor=0 free-bdy, multigrid + hot restart,
@@ -207,7 +223,14 @@ Steps:
      capability in a fraction of the code. **Measured 2026-07-10 (solver source only; tests/
      bindings/third-party excluded): vmec_jax 34 files / 19,237 Python lines; VMEC2000 115
      files / 36,693 Fortran lines; VMEC++ 117 files / ~39,677 (34,255 C++ + 5,422 Python) —
-     vmec_jax is ~half the code of both, with a superset of capabilities.**
+     vmec_jax is ~half the code of both, with a superset of capabilities.** ALSO report the
+     **comment/docstring vs actual-code split** (user 2026-07-10) to show vmec_jax is better
+     documented and more user-friendly. Measured (tokenize for Python; comment-line count for
+     Fortran/C++): vmec_jax **11,274 actual code (SLOC)** + 5,112 comments/docstrings (27% of
+     total) → **doc-to-code ratio 0.45**; VMEC2000 24,164 code + 8,451 comment → 0.35; VMEC++
+     ~23,149 code + ~5,841 comment → ~0.25. Headline: **vmec_jax has <half the actual code AND
+     the highest documentation density of the three.** Use `pygount`/`cloc` for the README
+     table (install if needed) so the comment/code split is reproducible.
   4. **Showcase figure.** `readme_equilibrium_showcase.png`: show the **3D geometry with |B| color on
      the surface**; and change the current flat |B| plot to **|B| in Boozer coordinates with the `jet`
      colormap** (the STELLOPT/Boozer convention). Update `core.plotting`/`core.boozer` plot helpers as
@@ -271,7 +294,16 @@ coil derivatives unsupported. Steps:
      agreement. Gate: converged free-bdy wout parity vs VMEC2000; free-bdy warm within ~3× Fortran;
      free-bdy gradients FD-validated; examples + README updated.
 
-**R16. Memory reduction (reason + act; the biggest quantitative gap).** Measured: solves use
+**R16. Memory reduction (reason + act; the biggest quantitative gap).**
+*(R16 FINDING 2026-07-10: the DFT-transform-tensor premise is REFUTED by profiling — those
+are 0.017-2.1 MB, negligible. The peak (0.6 GB floor; 3.8 GB implicit gradient) is XLA COMPILE
+working set, not data. remat/jax.checkpoint tested + REJECTED (3885 vs 3809 MB — nothing to
+save). What worked: jit-factoring the implicit residual F + _field_chain → implicit gradient
+3809→3045 MB (−20%) AND 40→31.6 s (−21%), bit-identical; jac_chunk_size='auto' default
+(bounds GPU/large-dof runtime memory); donate CLI carry (neutral CPU). The ≥2× CPU gate is NOT
+met because the bottleneck is the compiler; <1.5 GB needs a custom_vjp split of the monolithic
+jacrev program (correctness risk) or a smaller XLA footprint. REFRAME R16: 'reduce the XLA
+compile working set' — the real levers are jit-factoring + GPU chunking + persistent cache.)* Measured: solves use
 0.6-1.5 GB (NuhrenbergZille 3.3 GB, free-bdy 2.6 GB) vs VMEC2000's 28-102 MB — **20-30×**; implicit
 gradient 3.4 GB. This IS improvable — the causes are architectural, not fundamental:
   1. **Profile** peak device/host buffers with `jax.profiler.device_memory_profile()` +
@@ -426,6 +458,36 @@ work is **bidirectional** and the net effect is a SLIMMER, better-integrated vme
     SOLVAX-shared solvers) in BOTH README and docs, and for each user-facing one ship an example
     (R13) + a tutorial page (R14). Gate: README/docs enumerate the differentiators with evidence;
     each important new capability has an example.
+
+**R21. Rename everything `vmec_jax` → VMEX (user 2026-07-10; DO AFTER the current feature lanes, as
+the clean atomic cutover right before the v0.1.0 release R9).** Names: GitHub repo
+`uwplasma/vmec_jax` → `uwplasma/VMEX`; Python import package `vmec_jax` → **`vmex`** (lowercase,
+PEP 8; `import vmex`); PyPI distribution `vmec-jax` → **`vmex`** (verified AVAILABLE on PyPI
+2026-07-10, HTTP 404); CLI command → **`vmex`** (keep `vmec` as an alias — do NOT rename the output
+`wout_*.nc`/`boozmn_*.nc` files, those are the VMEC community conventions, not our package name).
+Scope measured: 96 files / 444 Python occurrences. Do it as ONE ATOMIC sweep (a partial rename breaks
+everything), paired with R12 (`tests/core_new/` → `tests/`):
+  1. `git mv vmec_jax vmex`; global identifier replace `vmec_jax` → `vmex` across .py/.rst/.md/.toml/
+     .yml (mind word boundaries: `vmec_jax` the package vs `vmec2000`/`vmec_input`/wout var names that
+     must NOT change; and the display string "vmec-jax"/"vmec_jax" in prose → "VMEX"). Update
+     `pyproject.toml` name=`vmex`, `[project.scripts] vmex = "vmex.core.cli:main"` (+ `vmec` alias),
+     all `[project.urls]` to the VMEX repo, package-data paths. Update `.github/workflows/*.yml`
+     (test paths, the golden fetch, size check), `docs/conf.py` + readthedocs slug, README badges
+     (PyPI/docs/CI URLs → vmex / VMEX), `CITATION.cff`, `.readthedocs.yaml`.
+  2. Ship a thin **`vmec_jax` compatibility shim** for one release: a stub package that
+     `from vmex import *` and emits a `DeprecationWarning` (pre-1.0 courtesy so existing imports don't
+     hard-break); document the deprecation. (Optional — a clean break is acceptable at v0.0.x, but the
+     shim is user-friendly.)
+  3. GitHub repo rename (auto-creates redirects); update the local `git remote`; re-point the
+     readthedocs project and the conda-forge feedstock (if it exists) to `vmex`; keep the old
+     `vmec-jax` PyPI project with a final `0.0.x` release whose long-description points to `vmex`.
+  4. NO-BUGS GATE (the user's explicit requirement): after the sweep — `pip install -e .` resolves;
+     `python -c "import vmex; print(vmex.__version__)"`; `vmex --test` + `vmex input.solovev` +
+     `--plot` + `--booz` all work; FULL test suite green (rename any `tests/` import of the package);
+     docs `-W` green; CI green incl. the 95% coverage gate; ruff clean; and a grep confirms **zero
+     stray `vmec_jax` identifiers** remain except the intentional compat shim. Verify on a fresh clone.
+  Gate: fresh clone installs as `vmex`, CLI/docs/CI all green, no stray identifiers, PyPI `vmex`
+  published; then proceed to R9 release under the VMEX name.
 
 ---
 
