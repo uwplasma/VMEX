@@ -8,7 +8,9 @@ from vmec_jax.core.hybrid import (
     hybrid_projection_error,
     sample_stellarator_mirror_hybrid,
     stellarator_mirror_hybrid_input,
+    trace_square_coil_vacuum_axis,
 )
+from vmec_jax.core.coils import square_mirror_coils
 
 
 def test_square_axis_has_straight_sides_and_four_localized_corners() -> None:
@@ -24,23 +26,18 @@ def test_square_axis_has_straight_sides_and_four_localized_corners() -> None:
     assert np.ptp(samples.axis_radius[corner]) < 1.0e-2
     assert np.mean(samples.axis_radius[corner]) > np.mean(samples.axis_radius[side])
 
-    circular = sample_stellarator_mirror_hybrid(
-        ntheta=16, nzeta=64, axis_square_fraction=0.0
-    )
+    circular = sample_stellarator_mirror_hybrid(ntheta=16, nzeta=64, axis_square_fraction=0.0)
     np.testing.assert_allclose(circular.axis_radius, 1.5, atol=2.0e-15)
-    circular_power = sample_stellarator_mirror_hybrid(
-        ntheta=16, nzeta=64, axis_square_power=2.0
-    )
+    circular_power = sample_stellarator_mirror_hybrid(ntheta=16, nzeta=64, axis_square_power=2.0)
     np.testing.assert_allclose(circular_power.axis_radius, 1.5, atol=2.0e-15)
-    intermediate = sample_stellarator_mirror_hybrid(
-        ntheta=16, nzeta=64, axis_square_power=2.5
-    )
+    intermediate = sample_stellarator_mirror_hybrid(ntheta=16, nzeta=64, axis_square_power=2.5)
     assert np.ptp(intermediate.axis_radius) > 0.0
     assert np.ptp(intermediate.axis_radius) < np.ptp(samples.axis_radius)
 
 
 def test_corner_ellipse_rotates_while_side_sections_remain_aligned() -> None:
     samples = sample_stellarator_mirror_hybrid(ntheta=128, nzeta=256)
+
     def orientation(index: int) -> float:
         radial = samples.radius[:, index] - samples.axis_radius[index]
         height = samples.height[:, index]
@@ -61,12 +58,38 @@ def test_fourier_projection_converges_and_builds_standard_vmec_input() -> None:
     assert high["maximum"] < 0.35 * low["maximum"]
     assert high["maximum"] < 2.0e-3
 
-    inp = stellarator_mirror_hybrid_input(
-        mpol=6, ntor=20, ntheta=48, nzeta=256
-    )
+    inp = stellarator_mirror_hybrid_input(mpol=6, ntor=20, ntheta=48, nzeta=256)
     assert inp.nfp == 1 and not inp.lfreeb and not inp.lasym
     assert inp.ncurr == 1 and inp.curtor == 0.0
     assert inp.rbc.shape == (41, 6)
     assert inp.zbs.shape == inp.rbc.shape
     assert np.count_nonzero(inp.rbc) > 10
     assert np.count_nonzero(inp.zbs) > 10
+
+
+def test_square_coil_vacuum_axis_is_closed_planar_and_fourier_resolved() -> None:
+    coils = square_mirror_coils(n_segments=24, regularization_epsilon=5.0e-7)
+    axis = trace_square_coil_vacuum_axis(coils, n_steps=512, nzeta=128)
+    assert axis.closure_error < 2.0e-5
+    assert axis.planarity_error < 1.0e-12
+    assert 1.49 < np.min(axis.radius) < 1.51
+    assert 1.85 < np.max(axis.radius) < 1.87
+    assert np.max(axis.field_strength) > 1.5 * np.min(axis.field_strength)
+    np.testing.assert_allclose(
+        axis.field_strength * axis.flux_tube_scale**2,
+        np.exp(np.mean(np.log(axis.field_strength))),
+        rtol=2.0e-14,
+    )
+    coefficients = np.fft.rfft(axis.radius)
+    truncated = np.zeros_like(coefficients)
+    truncated[:17] = coefficients[:17]
+    reconstructed = np.fft.irfft(truncated, n=axis.radius.size)
+    assert np.max(np.abs(reconstructed - axis.radius)) < 5.0e-4
+
+    samples = sample_stellarator_mirror_hybrid(
+        ntheta=16,
+        nzeta=axis.zeta.size,
+        axis_radius_samples=axis.radius,
+        minor_radius_samples=axis.flux_tube_scale,
+    )
+    np.testing.assert_allclose(samples.axis_radius, axis.radius)

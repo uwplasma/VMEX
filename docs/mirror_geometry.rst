@@ -29,9 +29,9 @@ annulus and unbounded-exterior resolution studies through 50% requested beta.
 Higher-order exterior traces and additional independent boundary references
 remain promotion gates. The nonaxisymmetric path also converges through 50%,
 but its point observables are not yet monotone under spatial refinement, so it
-remains a development capability. The toroidal stellarator-mirror hybrid has
-not passed its equilibrium gate and must not be inferred from these straight-
-axis results.
+remains a development capability. The toroidal stellarator-mirror hybrid now
+has a converged coil-informed fixed-boundary path at ``1e-8``; stricter
+preconditioning, parity, and free-boundary gates remain open.
 
 Toroidal hybrid foundation
 --------------------------
@@ -74,6 +74,23 @@ minor radius. The exact square target does approach zero curvature on its
 sides, but the solver basin is lost well before that limit. Another imposed
 superellipse continuation is therefore not the next experiment; the target
 must be extracted from the 16-coil vacuum flux geometry.
+
+That coil-informed path is now available. ``planar_ellipse_coils`` constructs
+arbitrary oriented elliptical coils, while ``square_mirror_coils`` builds four
+ordered groups of N mirror coils. ``trace_square_coil_vacuum_axis`` follows
+one closed Biot-Savart field-line turn and reports closure, planarity, field
+strength, and the thin-flux-tube scale ``sqrt(B_ref/B_axis)``. For the default
+16 coils, the traced axis is planar to roundoff, has straight-side error below
+1.7 mm, and is represented to 0.057 mm by ``ntor=20``.
+
+Using that axis and flux-conserving cross-section, the ``ns=5`` unshaped
+fixed-boundary solve converges at ``1e-8`` in 62 iterations. Ten-percent
+continuation steps then reach the complete rotating-corner ellipse target;
+the final stage converges in 493 iterations. This closes the former 44%
+Fourier-geometry blocker. Tolerance promotion remains open: the unshaped state
+reaches ``1e-9``, but neither it nor the fully shaped state reaches ``1e-10``
+under the tested ``DELT`` values. VMEC2000 parity and block preconditioning are
+required before the free-boundary 16-coil beta scan is promoted.
 
 Fixed-boundary 3D solver
 ------------------------

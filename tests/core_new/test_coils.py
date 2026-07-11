@@ -24,6 +24,8 @@ from vmec_jax.core.coils import (  # noqa: E402
     biot_savart,
     circular_loop_on_axis_bz,
     field_on_cylindrical_grid,
+    planar_ellipse_coils,
+    square_mirror_coils,
     two_coil_on_axis_bz,
     to_mgrid_data,
 )
@@ -142,7 +144,39 @@ def test_two_coil_on_axis_formula_matches_discretized_biot_savart() -> None:
         4.0e-7 * np.pi * current / (2.0 * radius),
         rtol=2.0e-14,
     )
-    assert np.isfinite(float(jax.grad(lambda a: two_coil_on_axis_bz(0.0, coil_radius=a, separation=separation, current=current))(radius)))
+    assert np.isfinite(
+        float(
+            jax.grad(lambda a: two_coil_on_axis_bz(0.0, coil_radius=a, separation=separation, current=current))(radius)
+        )
+    )
+
+
+def test_planar_ellipse_constructor_preserves_geometry_and_orientation() -> None:
+    coils = planar_ellipse_coils(
+        [[1.0, 2.0, 3.0]],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        semi_major=0.6,
+        semi_minor=0.3,
+        currents=2.0e5,
+        n_segments=64,
+    )
+    dofs = np.asarray(coils.base_curve_dofs[0])
+    np.testing.assert_allclose(dofs[:, 0], [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(np.linalg.norm(dofs[:, 2]), 0.6)
+    np.testing.assert_allclose(np.linalg.norm(dofs[:, 1]), 0.3)
+    normal = np.cross(dofs[:, 2], dofs[:, 1])
+    np.testing.assert_allclose(normal / np.linalg.norm(normal), [0.0, 1.0, 0.0])
+
+
+def test_square_mirror_coils_builds_four_ordered_sides() -> None:
+    coils = square_mirror_coils(n_per_side=4, side_length=3.0, n_segments=32)
+    centers = np.asarray(coils.base_curve_dofs[:, :, 0])
+    assert coils.n_base_coils == 16
+    np.testing.assert_allclose(centers[:, 2], 0.0)
+    assert np.all(np.sum(np.isclose(np.abs(centers[:, :2]), 1.5), axis=1) == 1)
+    field = biot_savart(coils, jnp.asarray([[0.0, 0.0, 0.0], [0.2, 0.1, 0.3]]))
+    assert np.all(np.isfinite(np.asarray(field)))
 
 
 # ---------------------------------------------------------------------------
@@ -192,9 +226,7 @@ def test_to_mgrid_matches_essos_coils_to_mgrid(tmp_path) -> None:
     ir, jz, kp = 8, 6, 4
 
     essos_file = tmp_path / "mgrid_essos.nc"
-    essos_grid = essos_mgrid_mod.coils_to_mgrid(
-        coils, essos_file, nr=ir, nz=jz, nphi=kp, **grid
-    )
+    essos_grid = essos_mgrid_mod.coils_to_mgrid(coils, essos_file, nr=ir, nz=jz, nphi=kp, **grid)
 
     # ESSOS lumps all coils into one raw group (mode "N", raw_coil_cur = 1).
     data = to_mgrid_data(cs, ir=ir, jz=jz, kp=kp, mgrid_mode="N", single_group=True, **grid)
@@ -223,9 +255,7 @@ def test_to_mgrid_matches_essos_coils_to_mgrid(tmp_path) -> None:
     for name in ("rmin", "rmax", "zmin", "zmax"):
         assert getattr(back_ours, name) == getattr(back_essos, name)
     for name in ("br", "bp", "bz"):
-        np.testing.assert_allclose(
-            getattr(back_ours, name), getattr(back_essos, name), rtol=1e-8, atol=1e-10 * scale
-        )
+        np.testing.assert_allclose(getattr(back_ours, name), getattr(back_essos, name), rtol=1e-8, atol=1e-10 * scale)
 
     # ESSOS' own reader accepts our file.
     theirs_read = essos_mgrid_mod.MGrid.from_file(ours_file)
@@ -253,9 +283,7 @@ def test_per_group_mgrid_modes_consistent() -> None:
     # Raw per-group field must equal the total field of the full coil set.
     br1, bp1, bz1 = field_on_cylindrical_grid(cs, ir=ir, jz=jz, kp=kp, single_group=True, **grid)
     total_br = np.sum(np.asarray(br_raw), axis=0)
-    np.testing.assert_allclose(
-        total_br, np.asarray(br1[0]), rtol=1e-12, atol=1e-15 * np.max(np.abs(total_br))
-    )
+    np.testing.assert_allclose(total_br, np.asarray(br1[0]), rtol=1e-12, atol=1e-15 * np.max(np.abs(total_br)))
 
 
 # ---------------------------------------------------------------------------

@@ -11,8 +11,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 
+from .coils import CoilSet, biot_savart, square_mirror_coils
 from .fourier import mode_table
 from .input import VmecInput
 
@@ -30,6 +33,87 @@ class HybridBoundarySamples:
     corner_weight: np.ndarray
 
 
+@dataclass(frozen=True)
+class CoilInformedAxis:
+    """One closed vacuum field line resampled by toroidal polar angle."""
+
+    zeta: np.ndarray
+    xyz: np.ndarray
+    radius: np.ndarray
+    field_strength: np.ndarray
+    flux_tube_scale: np.ndarray
+    closure_error: float
+    planarity_error: float
+
+
+def trace_square_coil_vacuum_axis(
+    coilset: CoilSet | None = None,
+    *,
+    side_length: float = 3.0,
+    n_steps: int = 8192,
+    nzeta: int = 1024,
+) -> CoilInformedAxis:
+    """Trace and resample the magnetic axis of the 4-by-N square coil set.
+
+    This is an initialization tool: it follows the direct Biot-Savart field
+    for slightly more than one turn with fixed-step RK4, then resamples the
+    first complete clockwise turn onto a uniform VMEC toroidal-angle grid.
+    """
+
+    n_steps, nzeta = int(n_steps), int(nzeta)
+    if n_steps < 256 or nzeta < 32 or side_length <= 0.0:
+        raise ValueError("n_steps >= 256, nzeta >= 32, and side_length > 0 are required")
+    if coilset is None:
+        coilset = square_mirror_coils(
+            side_length=side_length,
+            regularization_epsilon=5.0e-7,
+        )
+    start = jnp.asarray([0.0, 0.5 * side_length, 0.0])
+    step_size = 4.0 * float(side_length) / n_steps
+
+    def unit_field(point: jax.Array) -> jax.Array:
+        field = biot_savart(coilset, point[None])[0]
+        return field / jnp.linalg.norm(field)
+
+    def step(point: jax.Array) -> jax.Array:
+        k1 = unit_field(point)
+        k2 = unit_field(point + 0.5 * step_size * k1)
+        k3 = unit_field(point + 0.5 * step_size * k2)
+        k4 = unit_field(point + step_size * k3)
+        return point + step_size * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0
+
+    def scan(point: jax.Array, _: None) -> tuple[jax.Array, jax.Array]:
+        next_point = step(point)
+        return next_point, next_point
+
+    _, traced = jax.jit(lambda: jax.lax.scan(scan, start, None, length=n_steps))()
+    points = np.concatenate([np.asarray(start)[None], np.asarray(traced)], axis=0)
+    angle = np.unwrap(np.arctan2(points[:, 1], points[:, 0]))
+    if not np.all(np.diff(angle) < 0.0) or angle[-1] > angle[0] - 2.0 * np.pi:
+        raise RuntimeError("square-coil axis trace did not complete one monotone turn")
+    zeta = np.linspace(0.0, 2.0 * np.pi, nzeta, endpoint=False)
+    target_angle = angle[0] - zeta
+    xyz = np.stack(
+        [np.interp(-target_angle, -angle, points[:, component]) for component in range(3)],
+        axis=1,
+    )
+    endpoint = np.asarray(
+        [np.interp(-(angle[0] - 2.0 * np.pi), -angle, points[:, component]) for component in range(3)]
+    )
+    radius = np.linalg.norm(xyz[:, :2], axis=1)
+    field_strength = np.linalg.norm(np.asarray(biot_savart(coilset, jnp.asarray(xyz))), axis=1)
+    reference_field = np.exp(np.mean(np.log(field_strength)))
+    return CoilInformedAxis(
+        zeta=zeta,
+        xyz=xyz,
+        radius=radius,
+        field_strength=field_strength,
+        flux_tube_scale=np.sqrt(reference_field / field_strength),
+        closure_error=float(np.linalg.norm(endpoint - xyz[0])),
+        planarity_error=float(np.max(np.abs(xyz[:, 2]))),
+    )
+
+
 def sample_stellarator_mirror_hybrid(
     *,
     ntheta: int = 64,
@@ -43,6 +127,8 @@ def sample_stellarator_mirror_hybrid(
     corner_rotation: float = 0.35,
     corner_helicity: int = 1,
     corner_localization: float = 2.0,
+    axis_radius_samples: np.ndarray | None = None,
+    minor_radius_samples: np.ndarray | None = None,
 ) -> HybridBoundarySamples:
     """Sample one closed square-torus LCFS with stellarator-shaped corners."""
 
@@ -67,32 +153,34 @@ def sample_stellarator_mirror_hybrid(
     zeta = np.linspace(0.0, 2.0 * np.pi, nzeta, endpoint=False)
     theta2, zeta2 = np.meshgrid(theta, zeta, indexing="ij")
     cosine, sine = np.cos(zeta), np.sin(zeta)
-    square_radius = float(axis_half_width) / (
-        np.abs(cosine) ** power + np.abs(sine) ** power
-    ) ** (1.0 / power)
-    axis_radius = float(axis_half_width) + float(axis_square_fraction) * (
-        square_radius - float(axis_half_width)
-    )
+    if axis_radius_samples is None:
+        square_radius = float(axis_half_width) / (np.abs(cosine) ** power + np.abs(sine) ** power) ** (1.0 / power)
+        axis_radius = float(axis_half_width) + float(axis_square_fraction) * (square_radius - float(axis_half_width))
+    else:
+        axis_radius = np.asarray(axis_radius_samples, dtype=float)
+        if axis_radius.shape != (nzeta,) or np.any(axis_radius <= minor_radius):
+            raise ValueError("axis_radius_samples must be positive with shape (nzeta,)")
+
+    if minor_radius_samples is None:
+        minor_scale = np.ones(nzeta)
+    else:
+        minor_scale = np.asarray(minor_radius_samples, dtype=float)
+        if minor_scale.shape != (nzeta,) or np.any(minor_scale <= 0.0):
+            raise ValueError("minor_radius_samples must be positive with shape (nzeta,)")
 
     side_seed = np.clip(0.5 * (1.0 + np.cos(4.0 * zeta)), 0.0, 1.0)
-    side = side_seed**float(corner_localization)
+    side = side_seed ** float(corner_localization)
     corner = (1.0 - side_seed) ** float(corner_localization)
-    radial_semiaxis = float(minor_radius) * (1.0 + float(corner_ellipticity) * corner)
-    vertical_semiaxis = float(minor_radius) * (
-        1.0 + float(side_elongation) * side - 0.5 * float(corner_ellipticity) * corner
+    radial_semiaxis = float(minor_radius) * minor_scale * (1.0 + float(corner_ellipticity) * corner)
+    vertical_semiaxis = (
+        float(minor_radius)
+        * (1.0 + float(side_elongation) * side - 0.5 * float(corner_ellipticity) * corner)
+        * minor_scale
     )
-    tilt = (
-        float(corner_rotation)
-        * corner
-        * np.sin(float(int(corner_helicity)) * zeta)
-    )
+    tilt = float(corner_rotation) * corner * np.sin(float(int(corner_helicity)) * zeta)
     local_r = radial_semiaxis[None, :] * np.cos(theta2)
     local_z = vertical_semiaxis[None, :] * np.sin(theta2)
-    radius = (
-        axis_radius[None, :]
-        + local_r * np.cos(tilt)[None, :]
-        - local_z * np.sin(tilt)[None, :]
-    )
+    radius = axis_radius[None, :] + local_r * np.cos(tilt)[None, :] - local_z * np.sin(tilt)[None, :]
     height = local_r * np.sin(tilt)[None, :] + local_z * np.cos(tilt)[None, :]
     if np.min(radius) <= 0.0:
         raise ValueError("hybrid boundary reaches nonpositive cylindrical radius")
@@ -113,17 +201,14 @@ def _project_samples(
     modes = mode_table(mpol, ntor)
     theta2, zeta2 = np.meshgrid(samples.theta, samples.zeta, indexing="ij")
     phase = (
-        np.asarray(modes.m)[:, None, None] * theta2[None]
-        - np.asarray(modes.n)[:, None, None] * int(nfp) * zeta2[None]
+        np.asarray(modes.m)[:, None, None] * theta2[None] - np.asarray(modes.n)[:, None, None] * int(nfp) * zeta2[None]
     )
     cosine = np.cos(phase).reshape(len(modes.m), -1).T
     sine = np.sin(phase).reshape(len(modes.m), -1).T
     r_coeff = np.linalg.lstsq(cosine, samples.radius.reshape(-1), rcond=None)[0]
     active_sine = np.any(np.abs(sine) > 32.0 * np.finfo(float).eps, axis=0)
     z_coeff = np.zeros(len(modes.m))
-    z_coeff[active_sine] = np.linalg.lstsq(
-        sine[:, active_sine], samples.height.reshape(-1), rcond=None
-    )[0]
+    z_coeff[active_sine] = np.linalg.lstsq(sine[:, active_sine], samples.height.reshape(-1), rcond=None)[0]
     rbc = np.zeros((2 * ntor + 1, mpol))
     zbs = np.zeros_like(rbc)
     for m, n, rc, zs in zip(modes.m, modes.n, r_coeff, z_coeff, strict=True):
@@ -152,9 +237,7 @@ def stellarator_mirror_hybrid_input(
         raise ValueError("hybrid projection currently requires mpol>=3, ntor>=4, nfp=1")
     samples = sample_stellarator_mirror_hybrid(**sample_kwargs)
     rbc, zbs, _, _ = _project_samples(samples, mpol=mpol, ntor=ntor, nfp=nfp)
-    axis_modes = np.column_stack(
-        [np.cos(n * samples.zeta) for n in range(ntor + 1)]
-    )
+    axis_modes = np.column_stack([np.cos(n * samples.zeta) for n in range(ntor + 1)])
     raxis_c = np.linalg.lstsq(axis_modes, samples.axis_radius, rcond=None)[0]
     return VmecInput(
         nfp=nfp,
@@ -173,15 +256,11 @@ def stellarator_mirror_hybrid_input(
     )
 
 
-def hybrid_projection_error(
-    *, mpol: int, ntor: int, nfp: int = 1, **sample_kwargs
-) -> dict[str, float]:
+def hybrid_projection_error(*, mpol: int, ntor: int, nfp: int = 1, **sample_kwargs) -> dict[str, float]:
     """Return maximum and RMS component errors of the VMEC projection."""
 
     samples = sample_stellarator_mirror_hybrid(**sample_kwargs)
-    _, _, radius, height = _project_samples(
-        samples, mpol=int(mpol), ntor=int(ntor), nfp=int(nfp)
-    )
+    _, _, radius, height = _project_samples(samples, mpol=int(mpol), ntor=int(ntor), nfp=int(nfp))
     error_r = radius - samples.radius
     error_z = height - samples.height
     return {

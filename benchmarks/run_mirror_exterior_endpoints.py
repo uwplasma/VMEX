@@ -25,7 +25,14 @@ from vmec_jax.mirror import (
 jax.config.update("jax_enable_x64", True)
 
 
-def run(ns: int, ntheta: int, nxi: int, *, high_order: bool) -> dict:
+def run(
+    ns: int,
+    ntheta: int,
+    nxi: int,
+    *,
+    high_order: bool,
+    jacobian_chunk_size: int,
+) -> dict:
     """Run one endpoint pair and return machine-readable diagnostics."""
 
     config = MirrorConfig(
@@ -72,6 +79,7 @@ def run(ns: int, ntheta: int, nxi: int, *, high_order: bool) -> dict:
         exterior_spectral_side_density=True,
         exterior_high_order_cap_panels=high_order,
         exterior_curved_side_geometry=True,
+        exterior_jacobian_chunk_size=jacobian_chunk_size,
     )
     wall = time.perf_counter() - start
     diagnostics = summarize_nonaxisymmetric_beta_scan(results, betas, grid, reference_field=float(on_axis[center]))
@@ -99,6 +107,7 @@ def run(ns: int, ntheta: int, nxi: int, *, high_order: bool) -> dict:
     return {
         "grid": {"ns": ns, "ntheta": ntheta, "nxi": nxi},
         "high_order_cap_panels": high_order,
+        "jacobian_chunk_size": jacobian_chunk_size,
         "device": str(jax.devices()[0]),
         "wall_s_pair": wall,
         "peak_rss_mib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0,
@@ -112,9 +121,16 @@ def main() -> None:
     parser.add_argument("--ntheta", type=int, required=True)
     parser.add_argument("--nxi", type=int, required=True)
     parser.add_argument("--linear-cap", action="store_true")
+    parser.add_argument("--jacobian-chunk-size", type=int, default=1)
     parser.add_argument("--output")
     args = parser.parse_args()
-    result = run(args.ns, args.ntheta, args.nxi, high_order=not args.linear_cap)
+    result = run(
+        args.ns,
+        args.ntheta,
+        args.nxi,
+        high_order=not args.linear_cap,
+        jacobian_chunk_size=args.jacobian_chunk_size,
+    )
     text = json.dumps(result, indent=2)
     if args.output:
         with open(args.output, "w", encoding="utf-8") as stream:

@@ -93,15 +93,19 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     "run_booz_xform": (".core.boozer", "run_booz_xform"),
     # external fields
     "CoilSet": (".core.coils", "CoilSet"),
+    "planar_ellipse_coils": (".core.coils", "planar_ellipse_coils"),
+    "square_mirror_coils": (".core.coils", "square_mirror_coils"),
     "MgridData": (".core.mgrid", "MgridData"),
     "MgridField": (".core.mgrid", "MgridField"),
     "read_mgrid": (".core.mgrid", "read_mgrid"),
     "write_mgrid": (".core.mgrid", "write_mgrid"),
     # toroidal stellarator-mirror hybrid geometry
+    "CoilInformedAxis": (".core.hybrid", "CoilInformedAxis"),
     "HybridBoundarySamples": (".core.hybrid", "HybridBoundarySamples"),
     "sample_stellarator_mirror_hybrid": (".core.hybrid", "sample_stellarator_mirror_hybrid"),
     "stellarator_mirror_hybrid_input": (".core.hybrid", "stellarator_mirror_hybrid_input"),
     "hybrid_projection_error": (".core.hybrid", "hybrid_projection_error"),
+    "trace_square_coil_vacuum_axis": (".core.hybrid", "trace_square_coil_vacuum_axis"),
     # errors
     "VmecError": (".core.errors", "VmecError"),
     "VmecInputError": (".core.errors", "VmecInputError"),

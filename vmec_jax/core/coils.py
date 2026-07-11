@@ -267,6 +267,122 @@ class CoilSet:
         return b_cyl(self, r, phi, z)
 
 
+def planar_ellipse_coils(
+    centers: Any,
+    normals: Any,
+    major_axes: Any,
+    *,
+    semi_major: Any,
+    semi_minor: Any,
+    currents: Any,
+    n_segments: int = 96,
+    regularization_epsilon: float = 0.0,
+    chunk_size: int | None = None,
+) -> CoilSet:
+    """Build planar elliptical coils from geometric center/axis data.
+
+    ``major_axes`` are projected into each coil plane. Positive current uses
+    the right-hand rule about ``normals``. The returned order-one Fourier
+    coefficients follow the same convention as ESSOS and remain JAX leaves.
+    """
+
+    centers = np.asarray(centers, dtype=float)
+    if centers.ndim != 2 or centers.shape[1] != 3:
+        raise ValueError("centers must have shape (n_coils, 3)")
+    ncoils = centers.shape[0]
+
+    def vectors(values: Any, name: str) -> np.ndarray:
+        array = np.asarray(values, dtype=float)
+        if array.shape == (3,):
+            array = np.broadcast_to(array, (ncoils, 3)).copy()
+        if array.shape != (ncoils, 3):
+            raise ValueError(f"{name} must have shape (3,) or ({ncoils}, 3)")
+        return array
+
+    normals = vectors(normals, "normals")
+    major_axes = vectors(major_axes, "major_axes")
+    normal_norm = np.linalg.norm(normals, axis=1)
+    if np.any(normal_norm <= 0.0):
+        raise ValueError("coil normals must be nonzero")
+    normals = normals / normal_norm[:, None]
+    major_axes = major_axes - np.sum(major_axes * normals, axis=1)[:, None] * normals
+    major_norm = np.linalg.norm(major_axes, axis=1)
+    if np.any(major_norm <= 32.0 * np.finfo(float).eps):
+        raise ValueError("major_axes must not be parallel to normals")
+    major_axes = major_axes / major_norm[:, None]
+    minor_axes = np.cross(normals, major_axes)
+
+    def scalars(values: Any, name: str) -> np.ndarray:
+        array = np.broadcast_to(np.asarray(values, dtype=float), (ncoils,)).copy()
+        if np.any(~np.isfinite(array)):
+            raise ValueError(f"{name} must be finite")
+        return array
+
+    semi_major = scalars(semi_major, "semi_major")
+    semi_minor = scalars(semi_minor, "semi_minor")
+    currents = scalars(currents, "currents")
+    if np.any(semi_minor <= 0.0) or np.any(semi_major < semi_minor):
+        raise ValueError("semi_major must be >= semi_minor > 0")
+    if int(n_segments) < 8:
+        raise ValueError("n_segments must be at least 8")
+
+    dofs = np.zeros((ncoils, 3, 3))
+    dofs[:, :, 0] = centers
+    dofs[:, :, 1] = semi_minor[:, None] * minor_axes
+    dofs[:, :, 2] = semi_major[:, None] * major_axes
+    return CoilSet(
+        base_curve_dofs=jnp.asarray(dofs),
+        base_currents=jnp.asarray(currents),
+        n_segments=int(n_segments),
+        regularization_epsilon=float(regularization_epsilon),
+        chunk_size=chunk_size,
+    )
+
+
+def square_mirror_coils(
+    *,
+    n_per_side: int = 4,
+    side_length: float = 3.0,
+    semi_major: float = 0.5,
+    semi_minor: float = 0.5,
+    current: float = 8.0e5,
+    n_segments: int = 96,
+    regularization_epsilon: float = 0.0,
+    chunk_size: int | None = None,
+) -> CoilSet:
+    """Build ``4*n_per_side`` mirror coils along a square toroidal axis."""
+
+    n_per_side = int(n_per_side)
+    if n_per_side < 1 or side_length <= 0.0:
+        raise ValueError("n_per_side and side_length must be positive")
+    half = 0.5 * float(side_length)
+    positions = np.linspace(-half, half, n_per_side + 2)[1:-1]
+    centers = np.concatenate(
+        [
+            np.stack([positions, np.full(n_per_side, half), np.zeros(n_per_side)], axis=1),
+            np.stack([np.full(n_per_side, half), -positions, np.zeros(n_per_side)], axis=1),
+            np.stack([-positions, np.full(n_per_side, -half), np.zeros(n_per_side)], axis=1),
+            np.stack([np.full(n_per_side, -half), positions, np.zeros(n_per_side)], axis=1),
+        ]
+    )
+    normals = np.repeat(
+        np.asarray([[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]),
+        n_per_side,
+        axis=0,
+    )
+    return planar_ellipse_coils(
+        centers,
+        normals,
+        np.asarray([0.0, 0.0, 1.0]),
+        semi_major=semi_major,
+        semi_minor=semi_minor,
+        currents=current,
+        n_segments=n_segments,
+        regularization_epsilon=regularization_epsilon,
+        chunk_size=chunk_size,
+    )
+
+
 # Pytree registration: dofs/currents are leaves, everything else is static.
 jax.tree_util.register_dataclass(
     CoilSet,
@@ -676,5 +792,7 @@ __all__ = [
     "curves_gamma",
     "curves_gamma_dash",
     "field_on_cylindrical_grid",
+    "planar_ellipse_coils",
+    "square_mirror_coils",
     "to_mgrid_data",
 ]

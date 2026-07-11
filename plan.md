@@ -1536,6 +1536,22 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       before the exact-square zero-curvature limit, so a simple curvature-floor constraint does not
       explain or fix the stall. Do not spend another run on imposed superellipse continuation;
       extract the next boundary/axis target from the 16-coil vacuum flux geometry.
+      **Coil-informed target (2026-07-11):** clean-core simsopt-style
+      `planar_ellipse_coils` and `square_mirror_coils` constructors now replace the deleted legacy
+      example's local builders. A differentiable RK4 Biot-Savart trace extracts one closed magnetic
+      axis turn from the actual 16 coils. It is planar to `2.4e-17 m`, closes within integration
+      error, keeps side straightness below 1.7 mm, and spans radius `1.500--1.861 m`; `ntor=16/20`
+      reconstruct it within 0.226/0.057 mm. The axis field varies by a factor 1.70, so the accepted
+      boundary seed scales its cross-section as `a proportional to |B_axis|^-1/2`. This thin-tube
+      seed changes the `ns=5, ftol=1e-8` solve from a 1,171-iteration near-stall to convergence in
+      62 iterations. Continuing side elongation, corner ellipticity, and corner rotation in 10%
+      increments reaches the full requested stellarator shaping; every stage converges and the last
+      takes 493 iterations with components `(9.98e-9,4.16e-9,5.77e-9)`. The Fourier fixed-boundary
+      geometry blocker is closed at `1e-8`. Tightening remains open: the unshaped base reaches
+      `1e-9` in 212 iterations, but `DELT=0.02,0.05,0.1,0.2` does not reach `1e-10`, and the shaped
+      state destabilizes when polished to `1e-9`. Next: apply the production 2D/block
+      preconditioner to this now-valid basin, establish VMEC2000 parity, then add the plotted root
+      example and only afterward attempt the 16-coil free-boundary beta scan.
    10. **M9 — implicit differentiation and optimization.** Wrap the converged mirror residual in a
        `custom_vjp`; solve JVP/VJP systems matrix-free with the primal preconditioner. Validate
        boundary, pressure, current, and coil derivatives against central differences. Do not
