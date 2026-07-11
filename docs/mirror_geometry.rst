@@ -30,8 +30,9 @@ Higher-order exterior traces and additional independent boundary references
 remain promotion gates. The nonaxisymmetric path also converges through 50%,
 but its point observables are not yet monotone under spatial refinement, so it
 remains a development capability. The toroidal stellarator-mirror hybrid now
-has a converged coil-informed fixed-boundary path at ``1e-8``; stricter
-preconditioning, parity, and free-boundary gates remain open.
+has a converged coil-informed fixed-boundary path and independent VMEC2000
+restart parity at ``1e-8``; stricter preconditioning and free-boundary gates
+remain open.
 
 Toroidal hybrid foundation
 --------------------------
@@ -50,8 +51,9 @@ and corner orientation spans more than 0.2 radians. Fourier maximum component
 error decreases from 13.0 mm at ``(mpol,ntor)=(4,8)`` to 0.912 mm at ``(6,16)``,
 0.262 mm at ``(6,20)``, and 0.077 mm at ``(8,24)``.
 
-This is not yet a converged M8 square-axis equilibrium. The circular-axis
-member of the same shaped family converges component-wise to ``1e-12`` in
+The original imposed-superellipse target did not produce a converged M8
+square-axis equilibrium. The circular-axis member of that shaped family
+converges component-wise to ``1e-12`` in
 1,870 iterations. Continuous superellipse-exponent continuation reaches
 ``p=4.20`` on ``ns=3`` at ``1e-8``, but the state stalls near ``1.14e-6``
 when lifted to ``ns=5``; direct ``ns=5`` continuation stops near ``p=3.05``.
@@ -64,9 +66,8 @@ A 10,000-iteration VMEC2000 time-step scan finds ``DELT=0.1`` best, at
 bandwidth does not move the continuation limit. Direct activation of the
 current 2D preconditioner exceeded two minutes versus 8.2 seconds for the 1D
 run and was rejected. These parity checks identify a target/basin limitation,
-not a vmec_jax implementation discrepancy. The next M8 gate is therefore a
-coil-informed, curvature-bounded target family followed by the same VMEC2000
-parity test; no root example will label this geometry solved before then.
+not a vmec_jax implementation discrepancy. This result motivated the
+coil-informed, curvature-bounded target family described below.
 An additional 4,096-point spectral curvature audit rules out a simple tube
 curvature violation at the 44% continuation limit: minimum curvature is
 ``0.332 m^-1`` and the tightest curvature radius is 0.559 m, versus 0.1 m
@@ -90,10 +91,18 @@ with a flat 3 kA toroidal-current profile, the final stage converges in 509
 iterations and gives ``iota=-0.805...-0.807``. This closes the former 44%
 Fourier-geometry blocker. The root example writes WOUT plus 3D coils, LCFS,
 pitched field lines, ``|B|``, cross-sections, profiles, and force histories.
-Tolerance promotion remains open: the unshaped state
+An independent VMEC2000 restart from the vmec_jax WOUT converges in 1,071
+iterations with no Jacobian resets. The fixed LCFS agrees to roundoff,
+magnetic energy to ``3.73e-7`` relative, LCFS ``|B|`` to ``2.52e-4`` relative
+L2, and iota to ``1.09e-3`` relative L2. This accepts fixed-boundary basin and
+solver parity at the current force floor; it is not machine-precision parity.
+The example also writes the exact ``input.stellarator_mirror_hybrid`` deck
+used for the independent run, and the compact results are recorded in
+``benchmarks/mirror_hybrid_fixed_boundary.json``. Tolerance promotion remains
+open: the unshaped state
 reaches ``1e-9``, but neither it nor the fully shaped state reaches ``1e-10``
-under the tested ``DELT`` values. VMEC2000 parity and block preconditioning are
-required before the free-boundary 16-coil beta scan is promoted. The current
+under the tested ``DELT`` values. A suitable block preconditioner is required
+before the free-boundary 16-coil beta scan is promoted. The current
 generic 2D block preconditioner was tested at step factors 0.25, 0.5, and 1.0
 on the 3 kA base and increased, rather than reduced, the residual; a
 hybrid-scaled block is needed rather than further tuning of that path.

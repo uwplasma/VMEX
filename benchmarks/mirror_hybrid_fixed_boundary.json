@@ -1,0 +1,44 @@
+{
+  "schema": "vmec_jax.benchmark.mirror_hybrid_fixed_boundary/1",
+  "case": {
+    "geometry": "16-coil-informed square torus with rotating corner ellipses",
+    "mpol": 6,
+    "ntor": 20,
+    "ns": 5,
+    "toroidal_current_A": 3000.0,
+    "ftol": 1e-8,
+    "vmec_jax_example": "examples/toroidal_stellarator_mirror_hybrid.py",
+    "vmec2000_executable": "STELLOPT/VMEC2000/Release/xvmec2000",
+    "vmec2000_initial_state": "vmec_jax wout_stellarator_mirror_hybrid.nc"
+  },
+  "convergence": {
+    "vmec_jax": {
+      "iterations_final_shaping_stage": 509,
+      "fsqr": 9.99724887017419e-9,
+      "fsqz": 3.3923587832193506e-9,
+      "fsql": 6.591803183076777e-9
+    },
+    "vmec2000_restart": {
+      "iterations": 1071,
+      "fsqr": 9.980097068495114e-9,
+      "fsqz": 3.6921001648528147e-9,
+      "fsql": 5.556903847497009e-9,
+      "jacobian_resets": 0
+    }
+  },
+  "comparison": {
+    "lcfs_max_position_m": 2.2247786310271853e-16,
+    "lcfs_rms_position_m": 1.7889108378552834e-17,
+    "lcfs_modB_relative_l2": 2.5169329514787683e-4,
+    "lcfs_modB_max_abs_T": 1.5934812891343908e-4,
+    "iotaf_relative_l2": 1.0900726169163068e-3,
+    "iotaf_max_abs": 1.5785671459092043e-3,
+    "magnetic_energy_relative": 3.729904800328896e-7,
+    "rbtor0_relative": 1.5622330162981884e-6,
+    "aspect_relative": 7.715408916313288e-15
+  },
+  "assessment": {
+    "status": "accepted fixed-boundary basin and solver parity at the validated 1e-8 force floor",
+    "limitation": "interior coordinates and iota retain order-1e-3 relative differences because both solvers stop at 1e-8; this is not machine-precision parity or a 1e-12 promotion result"
+  }
+}

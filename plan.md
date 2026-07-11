@@ -1512,7 +1512,8 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       Piecewise splines are low-dimensional axis/boundary design controls projected to Fourier.
       Validate mode convergence and `wout` parity with VMEC2000 before considering a native spline
       equilibrium state. Then run the 16-coil free-boundary beta scan using solved boundaries.
-      **STATUS (2026-07-10): clean geometry/projection foundation, equilibrium open.** A compact
+      **STATUS (2026-07-11): coil-informed fixed-boundary Fourier equilibrium accepted at
+      `ftol=1e-8`; strict tolerance and free boundary remain open.** A compact
       clean-core module samples a superellipse square axis with four straight mirror
       regions and localized rotating corner ellipses, then least-squares projects the single
       real-space target into ordinary `RBC/ZBS` and axis coefficients. Geometry tests prove four
@@ -1553,8 +1554,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       state destabilizes when polished to `1e-9`. With 3 kA current, the unshaped `1e-8` base takes
       1,518 iterations and does not reach `1e-9`. The production 2D preconditioner at steps
       `0.25,0.5,1.0` worsens the 300-iteration residual to `2.9e-8,2.8e-8,5.4e-8`; it is rejected
-      for this lane. Next: establish VMEC2000 parity and design a hybrid-specific scaled block
-      preconditioner instead of retuning the current generic block. The plotted root example
+      for this lane. An independent VMEC2000 restart from the vmec_jax WOUT converges in 1,071
+      iterations without Jacobian resets, with identical fixed LCFS to roundoff, magnetic energy
+      within `3.73e-7`, LCFS `|B|` within `2.52e-4` relative L2, and iota within `1.09e-3`
+      relative L2. This accepts basin/solver parity at the validated `1e-8` floor, not
+      machine-precision parity. The reproducible deck is emitted by the example and compact data
+      live in `benchmarks/mirror_hybrid_fixed_boundary.json`. Next: design a hybrid-specific scaled
+      block preconditioner instead of retuning the current generic block. The plotted root example
       now writes WOUT, 3D coils/LCFS/pitched field lines, `|B|`, cross-sections, profiles, and force
       histories; only afterward should the 16-coil free-boundary beta scan be attempted.
    10. **M9 — implicit differentiation and optimization.** Wrap the converged mirror residual in a

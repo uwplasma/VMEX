@@ -93,6 +93,7 @@ for shaping in SHAPING_STAGES[1:]:
 
 final_input = input_for(1.0, multigrid=False)
 final = results[-1]
+indata_path = final_input.to_indata(OUTPUT_DIR / "input.stellarator_mirror_hybrid")
 wout = wout_from_state(
     inp=final_input,
     state=final.state,
@@ -142,4 +143,4 @@ ax.view_init(elev=28, azim=-48)
 fig.savefig(OUTPUT_DIR / "hybrid_coils_fieldlines.png", dpi=140)
 plt.close(fig)
 
-print(f"Wrote {wout_path} and plots under {OUTPUT_DIR}")
+print(f"Wrote {indata_path}, {wout_path}, and plots under {OUTPUT_DIR}")
