@@ -32,9 +32,7 @@ def _triangle_source_points(vertices: Array, *, order: int) -> Array:
     v = jnp.asarray(nodes, dtype=vertices.dtype)[None, None, :]
     edge1 = vertices[:, 1] - vertices[:, 0]
     edge2 = vertices[:, 2] - vertices[:, 0]
-    ray = (1.0 - v)[..., None] * edge1[:, None, None] + (
-        v[..., None] * edge2[:, None, None]
-    )
+    ray = (1.0 - v)[..., None] * edge1[:, None, None] + (v[..., None] * edge2[:, None, None])
     return vertices[:, 0, None, None] + u[..., None] * ray
 
 
@@ -57,20 +55,12 @@ def spectral_cap_samples(
     ns = int(lower_cap_xyz.shape[0])
     cap_count = (vertices.shape[0] - side_count) // 2
     values = jnp.stack([dirichlet, neumann])
-    lower_values = cap_nodal_values(
-        values, ntheta=ntheta, nxi=nxi, ns=ns, upper=False
-    )
-    upper_values = cap_nodal_values(
-        values, ntheta=ntheta, nxi=nxi, ns=ns, upper=True
-    )
+    lower_values = cap_nodal_values(values, ntheta=ntheta, nxi=nxi, ns=ns, upper=False)
+    upper_values = cap_nodal_values(values, ntheta=ntheta, nxi=nxi, ns=ns, upper=True)
     if lower_source is None:
-        lower_source = _triangle_source_points(
-            vertices[side_count : side_count + cap_count], order=order
-        )
+        lower_source = _triangle_source_points(vertices[side_count : side_count + cap_count], order=order)
     if upper_source is None:
-        upper_source = _triangle_source_points(
-            vertices[side_count + cap_count :], order=order
-        )
+        upper_source = _triangle_source_points(vertices[side_count + cap_count :], order=order)
     lower = spectral_cap_density_samples(lower_source, lower_values, lower_cap_xyz)
     upper = spectral_cap_density_samples(upper_source, upper_values, upper_cap_xyz)
     return jnp.concatenate([lower, upper], axis=1)
@@ -100,15 +90,11 @@ def _duffy_coordinates(
     radial_nodes = cap_xyz[:, 0, 0] / cap_xyz[-1, 0, 0]
     rho_lookup = jnp.zeros(total_size, dtype=cap_xyz.dtype)
     rho_lookup = rho_lookup.at[rim_indices].set(1.0)
-    rho_lookup = rho_lookup.at[interior_indices].set(
-        jnp.repeat(radial_nodes[1:-1], ntheta)
-    )
+    rho_lookup = rho_lookup.at[interior_indices].set(jnp.repeat(radial_nodes[1:-1], ntheta))
     angle_nodes = 2.0 * jnp.pi * jnp.arange(ntheta, dtype=cap_xyz.dtype) / ntheta
     theta_lookup = jnp.zeros(total_size, dtype=cap_xyz.dtype)
     theta_lookup = theta_lookup.at[rim_indices].set(angle_nodes)
-    theta_lookup = theta_lookup.at[interior_indices].set(
-        jnp.tile(angle_nodes, ns - 2)
-    )
+    theta_lookup = theta_lookup.at[interior_indices].set(jnp.tile(angle_nodes, ns - 2))
 
     nodes, _ = _unit_rule(order)
     u = jnp.asarray(nodes, dtype=cap_xyz.dtype)[None, :, None]
@@ -152,28 +138,20 @@ def _duffy_coordinates(
     affine_theta = jnp.sum(barycentric * angles[:, None, None, :], axis=-1)
     affine_theta_u = jnp.sum(derivative_u * angles[:, None, None, :], axis=-1)
     affine_theta_v = jnp.sum(derivative_v * angles[:, None, None, :], axis=-1)
-    center_weight = jnp.sum(
-        barycentric * center_mask[:, None, None, :], axis=-1
-    )
-    center_weight_u = jnp.sum(
-        derivative_u * center_mask[:, None, None, :], axis=-1
-    )
-    center_weight_v = jnp.sum(
-        derivative_v * center_mask[:, None, None, :], axis=-1
-    )
+    center_weight = jnp.sum(barycentric * center_mask[:, None, None, :], axis=-1)
+    center_weight_u = jnp.sum(derivative_u * center_mask[:, None, None, :], axis=-1)
+    center_weight_v = jnp.sum(derivative_v * center_mask[:, None, None, :], axis=-1)
     denominator = 1.0 - center_weight
     has_center = jnp.any(center_mask, axis=1)[:, None, None]
     theta = jnp.where(has_center, affine_theta / denominator, affine_theta)
     theta_u = jnp.where(
         has_center,
-        (affine_theta_u * denominator + affine_theta * center_weight_u)
-        / denominator**2,
+        (affine_theta_u * denominator + affine_theta * center_weight_u) / denominator**2,
         affine_theta_u,
     )
     theta_v = jnp.where(
         has_center,
-        (affine_theta_v * denominator + affine_theta * center_weight_v)
-        / denominator**2,
+        (affine_theta_v * denominator + affine_theta * center_weight_v) / denominator**2,
         affine_theta_v,
     )
     return rho, theta, rho_u, rho_v, theta_u, theta_v
@@ -209,9 +187,7 @@ def curved_cap_geometry(
         ],
         axis=-1,
     )
-    tangent_rho = jnp.stack(
-        [radius * cosine, radius * sine, jnp.zeros_like(radius)], axis=-1
-    )
+    tangent_rho = jnp.stack([radius * cosine, radius * sine, jnp.zeros_like(radius)], axis=-1)
     tangent_theta = jnp.stack(
         [
             rho * (radius_theta * cosine - radius * sine),
@@ -239,19 +215,16 @@ def curved_cap_layer_sum(
 ) -> Array:
     """Sum Green layers over one exact polar cap."""
 
-    source, area_vectors = curved_cap_geometry(
-        triangle_indices, cap_xyz, nxi=nxi, upper=upper, order=order
-    )
+    source, area_vectors = curved_cap_geometry(triangle_indices, cap_xyz, nxi=nxi, upper=upper, order=order)
     displacement = target[None, None, None] - source
     inverse_radius = jax.lax.rsqrt(jnp.sum(displacement**2, axis=-1))
     area_scale = jnp.linalg.norm(area_vectors, axis=-1)
     normal_displacement_area = jnp.sum(area_vectors * displacement, axis=-1)
     _, weights = _unit_rule(order)
     weights_2d = jnp.asarray(weights)[None, :, None] * jnp.asarray(weights)[None, None, :]
-    integrand = (
-        neumann * area_scale * inverse_radius
-        - dirichlet * normal_displacement_area * inverse_radius**3
-    ) / (4.0 * jnp.pi)
+    integrand = (neumann * area_scale * inverse_radius - dirichlet * normal_displacement_area * inverse_radius**3) / (
+        4.0 * jnp.pi
+    )
     return jnp.sum(weights_2d * integrand)
 
 
@@ -269,9 +242,7 @@ def curved_cap_gradient_sum(
 ) -> Array:
     """Evaluate the Green-layer gradient over one exact polar cap."""
 
-    source, area_vectors = curved_cap_geometry(
-        triangle_indices, cap_xyz, nxi=nxi, upper=upper, order=order
-    )
+    source, area_vectors = curved_cap_geometry(triangle_indices, cap_xyz, nxi=nxi, upper=upper, order=order)
     displacement = target[None, None, None] - source
     radius_squared = jnp.sum(displacement**2, axis=-1)
     inverse_radius3 = jax.lax.rsqrt(radius_squared) ** 3
@@ -280,14 +251,8 @@ def curved_cap_gradient_sum(
     single = -neumann[..., None] * area_scale[..., None] * displacement * inverse_radius3[..., None]
     double = dirichlet[..., None] * (
         -area_vectors * inverse_radius3[..., None]
-        + 3.0
-        * normal_displacement_area[..., None]
-        * displacement
-        * (inverse_radius3 / radius_squared)[..., None]
+        + 3.0 * normal_displacement_area[..., None] * displacement * (inverse_radius3 / radius_squared)[..., None]
     )
     _, weights = _unit_rule(order)
-    weights_2d = (
-        jnp.asarray(weights)[None, :, None, None]
-        * jnp.asarray(weights)[None, None, :, None]
-    )
+    weights_2d = jnp.asarray(weights)[None, :, None, None] * jnp.asarray(weights)[None, None, :, None]
     return jnp.sum(weights_2d * (single + double), axis=(0, 1, 2)) / (4.0 * jnp.pi)

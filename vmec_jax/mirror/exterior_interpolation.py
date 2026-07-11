@@ -51,19 +51,13 @@ def local_interpolation_weights(nodes: Array, targets: Array, *, width: int = 4)
     differences = differences + jnp.eye(width, dtype=nodes.dtype)
     denominators = jnp.prod(differences, axis=-1)
     numerator_factors = targets[..., None, None] - local_nodes[..., None, :]
-    numerator_factors = jnp.where(
-        jnp.eye(width, dtype=bool), 1.0, numerator_factors
-    )
+    numerator_factors = jnp.where(jnp.eye(width, dtype=bool), 1.0, numerator_factors)
     numerators = jnp.prod(numerator_factors, axis=-1)
     local_weights = numerators / denominators
-    return jnp.sum(
-        jax.nn.one_hot(indices, nodes.size) * local_weights[..., None], axis=-2
-    )
+    return jnp.sum(jax.nn.one_hot(indices, nodes.size) * local_weights[..., None], axis=-2)
 
 
-def _normalized_barycentric_weights(
-    nodes: Array, barycentric: Array, targets: Array
-) -> Array:
+def _normalized_barycentric_weights(nodes: Array, barycentric: Array, targets: Array) -> Array:
     """Normalize barycentric weights and handle targets at source nodes."""
 
     targets = jnp.asarray(targets)
@@ -97,12 +91,8 @@ def spectral_cap_density_samples(
     reference_radius = jnp.maximum(cap_xyz[-1, 0, 0], jnp.finfo(source.dtype).tiny)
     radial_nodes = cap_xyz[:, 0, 0] / reference_radius
     width = 2 if ns < 7 else 3 if ns < 11 else 4
-    radial_weights = local_interpolation_weights(
-        radial_nodes, normalized_radius, width=width
-    )
-    samples = jnp.einsum(
-        "...j,arj,...r->a...", angular_weights, cap_values, radial_weights
-    )
+    radial_weights = local_interpolation_weights(radial_nodes, normalized_radius, width=width)
+    samples = jnp.einsum("...j,arj,...r->a...", angular_weights, cap_values, radial_weights)
     return samples[0] if scalar_input else samples
 
 
@@ -123,12 +113,8 @@ def cap_nodal_values(
     cap_interior_size = 1 + (ns - 2) * ntheta
     start = lateral_size + (cap_interior_size if upper else 0)
     center = jnp.broadcast_to(values[:, start, None, None], (values.shape[0], 1, ntheta))
-    interior = values[:, start + 1 : start + cap_interior_size].reshape(
-        values.shape[0], ns - 2, ntheta
-    )
+    interior = values[:, start + 1 : start + cap_interior_size].reshape(values.shape[0], ns - 2, ntheta)
     endpoint = -1 if upper else 0
-    rim = values[:, :lateral_size].reshape(values.shape[0], ntheta, nxi)[
-        :, :, endpoint
-    ][:, None, :]
+    rim = values[:, :lateral_size].reshape(values.shape[0], ntheta, nxi)[:, :, endpoint][:, None, :]
     result = jnp.concatenate([center, interior, rim], axis=1)
     return result[0] if scalar_input else result

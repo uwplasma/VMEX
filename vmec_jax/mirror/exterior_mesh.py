@@ -24,9 +24,7 @@ from .exterior_interpolation import (
 Array = Any
 
 
-def closed_surface_triangles(
-    lateral: np.ndarray, lower_cap: np.ndarray, upper_cap: np.ndarray
-) -> np.ndarray:
+def closed_surface_triangles(lateral: np.ndarray, lower_cap: np.ndarray, upper_cap: np.ndarray) -> np.ndarray:
     """Triangulate periodic side quads and polar caps with outward orientation."""
 
     lateral = np.asarray(lateral, dtype=int)
@@ -69,9 +67,7 @@ def _unit_gauss_legendre(order: int) -> tuple[np.ndarray, np.ndarray]:
     return 0.5 * (nodes + 1.0), 0.5 * weights
 
 
-def duffy_triangle_single_layer(
-    vertices: Array, vertex_density: Array, *, order: int = 8
-) -> Array:
+def duffy_triangle_single_layer(vertices: Array, vertex_density: Array, *, order: int = 8) -> Array:
     """Integrate ``density/(4*pi*r)`` with the target at vertex zero.
 
     The Duffy map ``y = v0 + u[(1-v)(v1-v0) + v(v2-v0)]`` contributes a
@@ -89,8 +85,7 @@ def duffy_triangle_single_layer(
     u = jnp.asarray(nodes, dtype=vertices.dtype)[:, None]
     v = jnp.asarray(nodes, dtype=vertices.dtype)[None, :]
     quadrature_weights = (
-        jnp.asarray(weights, dtype=vertices.dtype)[:, None]
-        * jnp.asarray(weights, dtype=vertices.dtype)[None, :]
+        jnp.asarray(weights, dtype=vertices.dtype)[:, None] * jnp.asarray(weights, dtype=vertices.dtype)[None, :]
     )
 
     edge1 = vertices[1] - vertices[0]
@@ -98,12 +93,8 @@ def duffy_triangle_single_layer(
     ray = (1.0 - v)[..., None] * edge1 + v[..., None] * edge2
     radius_per_u = jnp.linalg.norm(ray, axis=-1)
     area_scale = jnp.linalg.norm(jnp.cross(edge1, edge2))
-    interpolated_density = (1.0 - u) * density[0] + u * (
-        (1.0 - v) * density[1] + v * density[2]
-    )
-    regular_integrand = (
-        area_scale * interpolated_density / (4.0 * jnp.pi * radius_per_u)
-    )
+    interpolated_density = (1.0 - u) * density[0] + u * ((1.0 - v) * density[1] + v * density[2])
+    regular_integrand = area_scale * interpolated_density / (4.0 * jnp.pi * radius_per_u)
     return jnp.sum(quadrature_weights * regular_integrand)
 
 
@@ -114,8 +105,7 @@ def _linear_density_samples(values: Array, *, order: int) -> Array:
     u = jnp.asarray(nodes, dtype=values.dtype)[None, :, None]
     v = jnp.asarray(nodes, dtype=values.dtype)[None, None, :]
     return (1.0 - u) * values[:, 0, None, None] + u * (
-        (1.0 - v) * values[:, 1, None, None]
-        + v * values[:, 2, None, None]
+        (1.0 - v) * values[:, 1, None, None] + v * values[:, 2, None, None]
     )
 
 
@@ -199,9 +189,7 @@ def _spectral_side_density_samples(
         return samples[0] if scalar_input else samples
 
     angular_weights = _periodic_interpolation_weights(theta, ntheta)
-    samples = jnp.einsum(
-        "tqrj,ajk,tqrk->atqr", angular_weights, values, axial_weights
-    )
+    samples = jnp.einsum("tqrj,ajk,tqrk->atqr", angular_weights, values, axial_weights)
     return samples[0] if scalar_input else samples
 
 
@@ -225,9 +213,7 @@ def _curved_side_geometry(
     )
     radius = jnp.linalg.norm(lateral_xyz[..., :2], axis=-1)
     modes = jnp.fft.fftfreq(ntheta, d=1.0 / ntheta)
-    radius_theta = jnp.fft.ifft(
-        1j * modes[:, None] * jnp.fft.fft(radius, axis=0), axis=0
-    ).real
+    radius_theta = jnp.fft.ifft(1j * modes[:, None] * jnp.fft.fft(radius, axis=0), axis=0).real
     derivative = jnp.asarray(_cgl_derivative_matrix(nxi), dtype=radius.dtype)
     radius_axial = jnp.einsum("kl,jl->jk", derivative, radius)
     radius_samples = _spectral_side_density_samples(
@@ -278,9 +264,7 @@ def _curved_side_layer_sum(
     """Sum Green layers on the curved lateral surface."""
 
     nodes, weights = _unit_gauss_legendre(order)
-    source, area_vectors = _curved_side_geometry(
-        triangle_indices, lateral_xyz, order=order, axisymmetric=axisymmetric
-    )
+    source, area_vectors = _curved_side_geometry(triangle_indices, lateral_xyz, order=order, axisymmetric=axisymmetric)
     displacement = target[None, None, None, :] - source
     inverse_radius = jax.lax.rsqrt(jnp.sum(displacement**2, axis=-1))
     area_scale = jnp.linalg.norm(area_vectors, axis=-1)
@@ -289,10 +273,9 @@ def _curved_side_layer_sum(
         jnp.asarray(weights, dtype=source.dtype)[None, :, None]
         * jnp.asarray(weights, dtype=source.dtype)[None, None, :]
     )
-    integrand = (
-        neumann * area_scale * inverse_radius
-        - dirichlet * normal_displacement_area * inverse_radius**3
-    ) / (4.0 * jnp.pi)
+    integrand = (neumann * area_scale * inverse_radius - dirichlet * normal_displacement_area * inverse_radius**3) / (
+        4.0 * jnp.pi
+    )
     return jnp.sum(weights_2d * integrand)
 
 
@@ -310,9 +293,7 @@ def _curved_side_gradient_sum(
     """Evaluate the Green-layer gradient on the curved lateral surface."""
 
     _, weights = _unit_gauss_legendre(order)
-    source, area_vectors = _curved_side_geometry(
-        triangle_indices, lateral_xyz, order=order, axisymmetric=axisymmetric
-    )
+    source, area_vectors = _curved_side_geometry(triangle_indices, lateral_xyz, order=order, axisymmetric=axisymmetric)
     displacement = target[None, None, None, :] - source
     radius_squared = jnp.sum(displacement**2, axis=-1)
     inverse_radius3 = jax.lax.rsqrt(radius_squared) ** 3
@@ -321,10 +302,7 @@ def _curved_side_gradient_sum(
     single = -neumann[..., None] * area_scale[..., None] * displacement * inverse_radius3[..., None]
     double = dirichlet[..., None] * (
         -area_vectors * inverse_radius3[..., None]
-        + 3.0
-        * normal_displacement_area[..., None]
-        * displacement
-        * (inverse_radius3 / radius_squared)[..., None]
+        + 3.0 * normal_displacement_area[..., None] * displacement * (inverse_radius3 / radius_squared)[..., None]
     )
     weights_2d = (
         jnp.asarray(weights, dtype=source.dtype)[None, :, None, None]
@@ -348,15 +326,10 @@ def _triangle_layer_sum(
     dtype = vertices.dtype
     u = jnp.asarray(nodes, dtype=dtype)[None, :, None]
     v = jnp.asarray(nodes, dtype=dtype)[None, None, :]
-    weights_2d = (
-        jnp.asarray(weights, dtype=dtype)[None, :, None]
-        * jnp.asarray(weights, dtype=dtype)[None, None, :]
-    )
+    weights_2d = jnp.asarray(weights, dtype=dtype)[None, :, None] * jnp.asarray(weights, dtype=dtype)[None, None, :]
     edge1 = vertices[:, 1] - vertices[:, 0]
     edge2 = vertices[:, 2] - vertices[:, 0]
-    ray = (1.0 - v)[..., None] * edge1[:, None, None, :] + (
-        v[..., None] * edge2[:, None, None, :]
-    )
+    ray = (1.0 - v)[..., None] * edge1[:, None, None, :] + (v[..., None] * edge2[:, None, None, :])
     source = vertices[:, 0, :][:, None, None, :] + u[..., None] * ray
     displacement = target[None, None, None, :] - source
     radius_squared = jnp.sum(displacement**2, axis=-1)
@@ -370,21 +343,12 @@ def _triangle_layer_sum(
         if values.ndim == 3:
             return values
         return (1.0 - u) * values[:, 0, None, None] + u * (
-            (1.0 - v) * values[:, 1, None, None]
-            + v * values[:, 2, None, None]
+            (1.0 - v) * values[:, 1, None, None] + v * values[:, 2, None, None]
         )
 
     single = interpolate(neumann) * jacobian * inverse_radius / (4.0 * jnp.pi)
-    normal_displacement = jnp.einsum(
-        "ti,tqri->tqr", normals, displacement
-    )
-    double = (
-        -interpolate(dirichlet)
-        * jacobian
-        * normal_displacement
-        * inverse_radius**3
-        / (4.0 * jnp.pi)
-    )
+    normal_displacement = jnp.einsum("ti,tqri->tqr", normals, displacement)
+    double = -interpolate(dirichlet) * jacobian * normal_displacement * inverse_radius**3 / (4.0 * jnp.pi)
     return jnp.sum(weights_2d * (single + double))
 
 
@@ -403,15 +367,10 @@ def _triangle_gradient_sum(
     dtype = vertices.dtype
     u = jnp.asarray(nodes, dtype=dtype)[None, :, None]
     v = jnp.asarray(nodes, dtype=dtype)[None, None, :]
-    weights_2d = (
-        jnp.asarray(weights, dtype=dtype)[None, :, None]
-        * jnp.asarray(weights, dtype=dtype)[None, None, :]
-    )
+    weights_2d = jnp.asarray(weights, dtype=dtype)[None, :, None] * jnp.asarray(weights, dtype=dtype)[None, None, :]
     edge1 = vertices[:, 1] - vertices[:, 0]
     edge2 = vertices[:, 2] - vertices[:, 0]
-    ray = (1.0 - v)[..., None] * edge1[:, None, None, :] + (
-        v[..., None] * edge2[:, None, None, :]
-    )
+    ray = (1.0 - v)[..., None] * edge1[:, None, None, :] + (v[..., None] * edge2[:, None, None, :])
     source = vertices[:, 0, :][:, None, None, :] + u[..., None] * ray
     displacement = target[None, None, None, :] - source
     radius_squared = jnp.sum(displacement**2, axis=-1)
@@ -426,29 +385,20 @@ def _triangle_gradient_sum(
         if values.ndim == 3:
             return values
         return (1.0 - u) * values[:, 0, None, None] + u * (
-            (1.0 - v) * values[:, 1, None, None]
-            + v * values[:, 2, None, None]
+            (1.0 - v) * values[:, 1, None, None] + v * values[:, 2, None, None]
         )
 
-    normal_displacement = jnp.einsum(
-        "ti,tqri->tqr", normals, displacement
-    )
-    single = (
-        -interpolate(neumann)[..., None]
+    normal_displacement = jnp.einsum("ti,tqri->tqr", normals, displacement)
+    single = -interpolate(neumann)[..., None] * jacobian[..., None] * displacement * inverse_radius3[..., None]
+    double = (
+        interpolate(dirichlet)[..., None]
         * jacobian[..., None]
-        * displacement
-        * inverse_radius3[..., None]
+        * (
+            -normals[:, None, None, :] * inverse_radius3[..., None]
+            + 3.0 * normal_displacement[..., None] * displacement * (inverse_radius3 / radius_squared)[..., None]
+        )
     )
-    double = interpolate(dirichlet)[..., None] * jacobian[..., None] * (
-        -normals[:, None, None, :] * inverse_radius3[..., None]
-        + 3.0
-        * normal_displacement[..., None]
-        * displacement
-        * (inverse_radius3 / radius_squared)[..., None]
-    )
-    return jnp.sum(
-        weights_2d[..., None] * (single + double), axis=(0, 1, 2)
-    ) / (4.0 * jnp.pi)
+    return jnp.sum(weights_2d[..., None] * (single + double), axis=(0, 1, 2)) / (4.0 * jnp.pi)
 
 
 def panel_green_gradient_off_surface(
@@ -494,12 +444,10 @@ def panel_green_gradient_off_surface(
             order=order,
             axisymmetric=axisymmetric_side,
         )
-        triangle_dirichlet = _linear_density_samples(
-            triangle_dirichlet, order=order
-        ).at[:side_count].set(side_samples[0])
-        triangle_neumann = _linear_density_samples(
-            triangle_neumann, order=order
-        ).at[:side_count].set(side_samples[1])
+        triangle_dirichlet = (
+            _linear_density_samples(triangle_dirichlet, order=order).at[:side_count].set(side_samples[0])
+        )
+        triangle_neumann = _linear_density_samples(triangle_neumann, order=order).at[:side_count].set(side_samples[1])
     elif curved_side_geometry:
         raise ValueError("curved side geometry requires spectral side density")
     if spectral_cap_density:
@@ -510,16 +458,10 @@ def panel_green_gradient_off_surface(
         cap_count = (triangles.shape[0] - side_count) // 2
         lower_triangles = triangles[side_count : side_count + cap_count]
         upper_triangles = triangles[side_count + cap_count :]
-        lower_source, _ = _curved_cap_geometry(
-            lower_triangles, lower_cap_xyz, nxi=nxi, upper=False, order=order
-        )
-        upper_source, _ = _curved_cap_geometry(
-            upper_triangles, upper_cap_xyz, nxi=nxi, upper=True, order=order
-        )
+        lower_source, _ = _curved_cap_geometry(lower_triangles, lower_cap_xyz, nxi=nxi, upper=False, order=order)
+        upper_source, _ = _curved_cap_geometry(upper_triangles, upper_cap_xyz, nxi=nxi, upper=True, order=order)
         if triangle_dirichlet.ndim == 2:
-            triangle_dirichlet = _linear_density_samples(
-                triangle_dirichlet, order=order
-            )
+            triangle_dirichlet = _linear_density_samples(triangle_dirichlet, order=order)
             triangle_neumann = _linear_density_samples(triangle_neumann, order=order)
         cap_samples = _spectral_cap_samples(
             vertices,
@@ -652,9 +594,7 @@ def panel_green_boundary_residual(
         target_indices = np.arange(nvertices)
     else:
         target_indices = np.asarray(target_indices, dtype=int)
-        if target_indices.ndim != 1 or np.any(
-            (target_indices < 0) | (target_indices >= nvertices)
-        ):
+        if target_indices.ndim != 1 or np.any((target_indices < 0) | (target_indices >= nvertices)):
             raise ValueError("target_indices must select valid vertices")
 
     residual = []
@@ -681,14 +621,14 @@ def panel_green_boundary_residual(
                 order=order,
                 axisymmetric=axisymmetric_side,
             )
-            triangle_dirichlet = _linear_density_samples(
-                triangle_dirichlet, order=order
-            ).at[:side_count].set(
-                side_samples[0] - dirichlet[target_index]
+            triangle_dirichlet = (
+                _linear_density_samples(triangle_dirichlet, order=order)
+                .at[:side_count]
+                .set(side_samples[0] - dirichlet[target_index])
             )
-            triangle_neumann = _linear_density_samples(
-                triangle_neumann, order=order
-            ).at[:side_count].set(side_samples[1])
+            triangle_neumann = (
+                _linear_density_samples(triangle_neumann, order=order).at[:side_count].set(side_samples[1])
+            )
         elif curved_side_geometry:
             raise ValueError("curved side geometry requires spectral side density")
         if spectral_cap_density:
@@ -714,12 +654,8 @@ def panel_green_boundary_residual(
                 order=order,
             )
             if triangle_dirichlet.ndim == 2:
-                triangle_dirichlet = _linear_density_samples(
-                    triangle_dirichlet, order=order
-                )
-                triangle_neumann = _linear_density_samples(
-                    triangle_neumann, order=order
-                )
+                triangle_dirichlet = _linear_density_samples(triangle_dirichlet, order=order)
+                triangle_neumann = _linear_density_samples(triangle_neumann, order=order)
             cap_samples = _spectral_cap_samples(
                 xyz[triangle_indices],
                 dirichlet,
@@ -733,9 +669,7 @@ def panel_green_boundary_residual(
                 lower_source=lower_source,
                 upper_source=upper_source,
             )
-            triangle_dirichlet = triangle_dirichlet.at[side_count:].set(
-                cap_samples[0] - dirichlet[target_index]
-            )
+            triangle_dirichlet = triangle_dirichlet.at[side_count:].set(cap_samples[0] - dirichlet[target_index])
             triangle_neumann = triangle_neumann.at[side_count:].set(cap_samples[1])
         if curved_side_geometry or spectral_cap_density:
             if lateral_xyz is None:

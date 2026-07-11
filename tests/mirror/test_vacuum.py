@@ -95,11 +95,7 @@ def test_free_boundary_restart_roundtrip_is_compact_and_grid_checked(tmp_path) -
 def test_boundary_fourier_amplitudes_are_grid_independent() -> None:
     theta = jnp.linspace(0.0, 2.0 * jnp.pi, 7, endpoint=False)
     axial = jnp.linspace(-1.0, 1.0, 5)
-    radius = (
-        0.2
-        + 0.01 * jnp.cos(theta)[:, None] * (1.0 - axial**2)[None, :]
-        + 0.004 * jnp.sin(2.0 * theta)[:, None]
-    )
+    radius = 0.2 + 0.01 * jnp.cos(theta)[:, None] * (1.0 - axial**2)[None, :] + 0.004 * jnp.sin(2.0 * theta)[:, None]
     amplitudes = boundary_fourier_amplitudes(MirrorBoundary(radius))
 
     np.testing.assert_allclose(amplitudes[0], 0.2, atol=3.0e-17)
@@ -413,14 +409,8 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
 
     assert all(result.converged for result in results)
     assert all(float(result.variational_max) <= config.ftol for result in results)
-    assert all(
-        float(result.interface.vacuum_b_normal_rms) < 1.0e-12
-        for result in results
-    )
-    assert all(
-        float(result.interface.normal_stress_rms) < 1.0e-12
-        for result in results
-    )
+    assert all(float(result.interface.vacuum_b_normal_rms) < 1.0e-12 for result in results)
+    assert all(float(result.interface.normal_stress_rms) < 1.0e-12 for result in results)
     assert all(result.vacuum_potential.shape == vacuum_grid.shape for result in results)
     assert all(np.all(np.asarray(result.vacuum_potential) == 0.0) for result in results)
     diagnostics = summarize_axisymmetric_beta_scan(
@@ -441,9 +431,7 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
     assert np.all(np.diff(field_ratios) < 0.0)
     assert center_radii[-1] > 1.07 * center_radii[0]
     assert field_ratios[-1] < 0.77
-    assert all(
-        np.isfinite(float(item.center_vacuum_side_field)) for item in diagnostics
-    )
+    assert all(np.isfinite(float(item.center_vacuum_side_field)) for item in diagnostics)
 
 
 @pytest.mark.full
@@ -477,10 +465,7 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
     flux = 0.5 * on_axis[center] * 0.2**2
     base = MirrorBoundary.from_axis_field(flux, on_axis, grid)
     boundary = MirrorBoundary(
-        base.radius_scale
-        + 0.03
-        * jnp.asarray(grid.xi)[None, :]
-        * jnp.cos(jnp.asarray(grid.theta)[:, None])
+        base.radius_scale + 0.03 * jnp.asarray(grid.xi)[None, :] * jnp.cos(jnp.asarray(grid.theta)[:, None])
     )
     betas = jnp.asarray([0.0, 0.10, 0.25, 0.50])
     results = solve_beta_scan_cli(
@@ -505,14 +490,8 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
     assert all(float(result.variational_max) <= config.ftol for result in results)
     assert all(float(result.interface.vacuum_b_normal_rms) < 1.0e-12 for result in results)
     assert all(float(result.interface.normal_stress_rms) < 1.0e-12 for result in results)
-    assert all(
-        float(result.vacuum_field.neumann_result.compatibility_error) < 2.0e-3
-        for result in results
-    )
-    assert all(
-        float(result.vacuum_field.neumann_result.condition_number) < 5.0
-        for result in results
-    )
+    assert all(float(result.vacuum_field.neumann_result.compatibility_error) < 2.0e-3 for result in results)
+    assert all(float(result.vacuum_field.neumann_result.condition_number) < 5.0 for result in results)
 
     diagnostics = summarize_nonaxisymmetric_beta_scan(
         results,
@@ -584,12 +563,7 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution() -> None:
             )
         )
         compatibility.append(
-            np.asarray(
-                [
-                    float(result.vacuum_field.neumann_result.compatibility_error)
-                    for result in results
-                ]
-            )
+            np.asarray([float(result.vacuum_field.neumann_result.compatibility_error) for result in results])
         )
 
     relative_change = np.abs((observables[-1] - observables[-2]) / observables[-1])

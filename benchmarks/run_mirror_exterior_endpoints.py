@@ -47,17 +47,12 @@ def run(ns: int, ntheta: int, nxi: int, *, high_order: bool) -> dict:
         base_currents=jnp.asarray([2.0e5, 2.0e5]),
         n_segments=128,
     )
-    on_axis = two_coil_on_axis_bz(
-        jnp.asarray(grid.z), coil_radius=0.9, separation=2.0, current=2.0e5
-    )
+    on_axis = two_coil_on_axis_bz(jnp.asarray(grid.z), coil_radius=0.9, separation=2.0, current=2.0e5)
     center = grid.nxi // 2
     flux = 0.5 * on_axis[center] * 0.2**2
     base = MirrorBoundary.from_axis_field(flux, on_axis, grid)
     boundary = MirrorBoundary(
-        base.radius_scale
-        + 0.03
-        * jnp.asarray(grid.xi)[None, :]
-        * jnp.cos(jnp.asarray(grid.theta)[:, None])
+        base.radius_scale + 0.03 * jnp.asarray(grid.xi)[None, :] * jnp.cos(jnp.asarray(grid.theta)[:, None])
     )
     betas = jnp.asarray([0.0, 0.50])
     start = time.perf_counter()
@@ -79,9 +74,7 @@ def run(ns: int, ntheta: int, nxi: int, *, high_order: bool) -> dict:
         exterior_curved_side_geometry=True,
     )
     wall = time.perf_counter() - start
-    diagnostics = summarize_nonaxisymmetric_beta_scan(
-        results, betas, grid, reference_field=float(on_axis[center])
-    )
+    diagnostics = summarize_nonaxisymmetric_beta_scan(results, betas, grid, reference_field=float(on_axis[center]))
     rows = []
     for beta, result, diagnostic in zip(betas, results, diagnostics, strict=True):
         rows.append(
@@ -92,12 +85,8 @@ def run(ns: int, ntheta: int, nxi: int, *, high_order: bool) -> dict:
                 "residual": float(result.variational_max),
                 "normal_stress_rms": float(result.interface.normal_stress_rms),
                 "vacuum_b_normal_rms": float(result.interface.vacuum_b_normal_rms),
-                "compatibility": float(
-                    result.vacuum_field.neumann_result.compatibility_error
-                ),
-                "condition_number": float(
-                    result.vacuum_field.neumann_result.condition_number
-                ),
+                "compatibility": float(result.vacuum_field.neumann_result.compatibility_error),
+                "condition_number": float(result.vacuum_field.neumann_result.condition_number),
                 "achieved_beta": float(diagnostic.achieved_reference_beta),
                 "volume_beta": float(diagnostic.volume_averaged_beta),
                 "mean_center_radius_m": float(diagnostic.center_mean_radius),

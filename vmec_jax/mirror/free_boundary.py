@@ -162,17 +162,11 @@ def solve_free_boundary_cli(
 
     boundary_mask = np.zeros(initial_boundary_radius.shape, dtype=bool)
     boundary_mask[:, 1:-1] = True
-    boundary_indices = tuple(
-        np.asarray(index) for index in np.nonzero(boundary_mask)
-    )
+    boundary_indices = tuple(np.asarray(index) for index in np.nonzero(boundary_mask))
     plasma_mask = np.zeros(plasma_grid.shape, dtype=bool)
     plasma_mask[1:-1, :, 1:-1] = True
     plasma_indices = tuple(np.asarray(index) for index in np.nonzero(plasma_mask))
-    vacuum_mask = (
-        np.zeros(vacuum_grid.shape, dtype=bool)
-        if use_exterior
-        else np.ones(vacuum_grid.shape, dtype=bool)
-    )
+    vacuum_mask = np.zeros(vacuum_grid.shape, dtype=bool) if use_exterior else np.ones(vacuum_grid.shape, dtype=bool)
     if not use_exterior:
         vacuum_mask[-1] = False
     vacuum_indices = tuple(np.asarray(index) for index in np.nonzero(vacuum_mask))
@@ -185,9 +179,7 @@ def solve_free_boundary_cli(
     if not np.allclose(np.asarray(base_state.radius_scale[-1]), initial_boundary_radius):
         raise ValueError("initial_state boundary must match initial_boundary")
     potential_seed = (
-        np.zeros(vacuum_grid.shape)
-        if initial_potential is None or use_exterior
-        else np.asarray(initial_potential)
+        np.zeros(vacuum_grid.shape) if initial_potential is None or use_exterior else np.asarray(initial_potential)
     )
     if potential_seed.shape != vacuum_grid.shape:
         raise ValueError(f"initial_potential shape {potential_seed.shape} must be {vacuum_grid.shape}")
@@ -201,9 +193,7 @@ def solve_free_boundary_cli(
     if calibrate_pressure:
         x0_parts.append(np.asarray([initial_mass_scale]))
     x0 = np.concatenate(x0_parts)
-    geometric_upper = (
-        np.inf if use_exterior else 0.98 * float(outer_radius) / boundary_scale
-    )
+    geometric_upper = np.inf if use_exterior else 0.98 * float(outer_radius) / boundary_scale
     if np.isfinite(geometric_upper) and np.max(x0[:nb]) >= geometric_upper:
         raise ValueError("initial plasma boundary must lie inside the outer vacuum cylinder")
     lower_parts = [np.full(nb + np_state, 0.2), np.full(nv, -np.inf)]
@@ -215,9 +205,11 @@ def solve_free_boundary_cli(
 
     def unpack(vector: Array) -> tuple[MirrorBoundary, MirrorState, Array, Array]:
         vector = jnp.asarray(vector)
-        boundary_radius = jnp.asarray(initial_boundary_radius).at[
-            tuple(jnp.asarray(index) for index in boundary_indices)
-        ].set(vector[:nb] * boundary_scale)
+        boundary_radius = (
+            jnp.asarray(initial_boundary_radius)
+            .at[tuple(jnp.asarray(index) for index in boundary_indices)]
+            .set(vector[:nb] * boundary_scale)
+        )
         boundary = MirrorBoundary(boundary_radius)
         radius = base_state.radius_scale.at[plasma_indices].set(vector[nb : nb + np_state] * boundary_scale)
         radius = radius.at[-1].set(boundary_radius)
@@ -344,9 +336,7 @@ def solve_free_boundary_cli(
         vacuum_gradient = (
             jnp.empty((0,), dtype=vector.dtype)
             if use_exterior
-            else jax.grad(vacuum_objective)(vector)[
-                nb + np_state : nb + np_state + nv
-            ]
+            else jax.grad(vacuum_objective)(vector)[nb + np_state : nb + np_state + nv]
         )
         plasma_b_squared = plasma_b_squared[-1, :, 1:-1].reshape(-1)
         if use_exterior:
@@ -371,9 +361,7 @@ def solve_free_boundary_cli(
     jacobian_jit = jax.jit(jax.jacfwd(residual_function))
     jvp_batch_jit = jax.jit(
         jax.vmap(
-            lambda primal, tangent: jax.jvp(
-                residual_function, (primal,), (tangent,)
-            )[1],
+            lambda primal, tangent: jax.jvp(residual_function, (primal,), (tangent,))[1],
             in_axes=(None, 0),
         )
     )
@@ -407,9 +395,7 @@ def solve_free_boundary_cli(
             stop = min(start + exterior_jacobian_chunk_size, size)
             columns.append(
                 np.asarray(
-                    jvp_batch_jit(
-                        jnp.asarray(vector), jnp.asarray(identity[start:stop])
-                    ),
+                    jvp_batch_jit(jnp.asarray(vector), jnp.asarray(identity[start:stop])),
                     dtype=float,
                 )
             )
@@ -449,9 +435,9 @@ def solve_free_boundary_cli(
             vacuum_b_squared = jnp.sum(vacuum_field.lateral_field_xyz**2, axis=-1)
             vacuum_b_normal = vacuum_field.lateral_b_normal
         compatibility_limit = 1.0e-6 if plasma_grid.ntheta == 1 else 2.0e-3
-        vacuum_valid = (
-            vacuum_field.neumann_result.compatibility_error <= compatibility_limit
-        ) & (vacuum_field.neumann_result.condition_number <= 1.0e8)
+        vacuum_valid = (vacuum_field.neumann_result.compatibility_error <= compatibility_limit) & (
+            vacuum_field.neumann_result.condition_number <= 1.0e8
+        )
     else:
         vacuum_b_squared = jnp.sum(vacuum_field.total_xyz[0] ** 2, axis=-1)
         vacuum_b_normal = vacuum_field.b_normal_inner

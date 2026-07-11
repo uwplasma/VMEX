@@ -26,9 +26,7 @@ import vmec_jax.mirror.continuation as continuation  # noqa: E402
 
 
 def _grid(ns: int, nxi: int):
-    return MirrorConfig(
-        resolution=MirrorResolution(ns=ns, mpol=1, ntheta=3, nxi=nxi)
-    ).build_grid()
+    return MirrorConfig(resolution=MirrorResolution(ns=ns, mpol=1, ntheta=3, nxi=nxi)).build_grid()
 
 
 def test_fixed_boundary_state_interpolation_roundtrips_and_preserves_constraints() -> None:
@@ -46,21 +44,13 @@ def test_fixed_boundary_state_interpolation_roundtrips_and_preserves_constraints
 
     coarse_boundary, coarse_state = fields(coarse)
     fine_boundary, _ = fields(fine)
-    interpolated = interpolate_fixed_boundary_state(
-        coarse_state, coarse, fine_boundary, fine
-    )
-    roundtrip = interpolate_fixed_boundary_state(
-        interpolated, fine, coarse_boundary, coarse
-    )
+    interpolated = interpolate_fixed_boundary_state(coarse_state, coarse, fine_boundary, fine)
+    roundtrip = interpolate_fixed_boundary_state(interpolated, fine, coarse_boundary, coarse)
 
     # Axis closure deliberately flattens the first radial interval, so only
     # surfaces outside that interval are an exact coarse-fine round trip.
-    np.testing.assert_allclose(
-        roundtrip.radius_scale[2:], coarse_state.radius_scale[2:], atol=3.0e-14
-    )
-    np.testing.assert_allclose(
-        roundtrip.lambda_stream[2:], coarse_state.lambda_stream[2:], atol=3.0e-14
-    )
+    np.testing.assert_allclose(roundtrip.radius_scale[2:], coarse_state.radius_scale[2:], atol=3.0e-14)
+    np.testing.assert_allclose(roundtrip.lambda_stream[2:], coarse_state.lambda_stream[2:], atol=3.0e-14)
     np.testing.assert_allclose(interpolated.radius_scale[-1], fine_boundary.radius_scale)
     np.testing.assert_allclose(interpolated.radius_scale[0], interpolated.radius_scale[1])
     np.testing.assert_allclose(interpolated.lambda_stream[0], interpolated.lambda_stream[1])
@@ -85,17 +75,13 @@ def test_fixed_boundary_state_interpolation_is_differentiable() -> None:
 
 
 def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
-    config = MirrorConfig(
-        resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=5)
-    )
+    config = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=5))
     grid = config.build_grid()
     vacuum_grid = build_vacuum_grid(grid, nrho=3)
     reference = MirrorBoundary.from_radius(0.3, grid)
     restart_boundary = MirrorBoundary.from_radius(0.31, grid)
     restart_state = MirrorState.from_boundary(restart_boundary, grid)
-    restart = FreeBoundaryRestart(
-        restart_boundary, restart_state, jnp.zeros(vacuum_grid.shape), 2.5
-    )
+    restart = FreeBoundaryRestart(restart_boundary, restart_state, jnp.zeros(vacuum_grid.shape), 2.5)
     received = []
 
     def fake_solve(boundary, *_args, **kwargs):

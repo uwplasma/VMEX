@@ -54,7 +54,7 @@ VACUUM_BACKEND = "exterior"  # "annulus" retains a finite outer cylinder
 EXTERIOR_NTHETA = 12
 EXTERIOR_ORDER = 8
 EXTERIOR_SPECTRAL_SIDE_DENSITY = False  # accurate dipole BIE; costlier and not 3D-promoted
-EXTERIOR_HIGH_ORDER_CAP_PANELS = False
+EXTERIOR_HIGH_ORDER_CAP_PANELS = False  # exact polar caps; validated but costlier
 EXTERIOR_CURVED_SIDE_GEOMETRY = False  # requires spectral side density
 EXTERIOR_JACOBIAN_CHUNK_SIZE = 6
 FTOL = 1.0e-12
@@ -129,10 +129,7 @@ if PRESSURE_MODEL in {"bi_maxwellian", "tabulated"}:
 elif PRESSURE_MODEL != "isotropic":
     raise ValueError("PRESSURE_MODEL must be 'isotropic', 'bi_maxwellian', or 'tabulated'")
 
-print(
-    f"Solving {BETAS.size} beta points at ns={NS}, nxi={NXI}, "
-    f"vacuum={VACUUM_BACKEND}, ftol={FTOL:.0e}"
-)
+print(f"Solving {BETAS.size} beta points at ns={NS}, nxi={NXI}, vacuum={VACUUM_BACKEND}, ftol={FTOL:.0e}")
 results = solve_axisymmetric_beta_scan_cli(
     initial_boundary,
     grid,
@@ -180,12 +177,8 @@ summary = np.asarray(
             float(result.interface.vacuum_b_normal_rms),
             float(result.mass_scale),
             float(result.iterations),
-            float(result.vacuum_field.neumann_result.compatibility_error)
-            if VACUUM_BACKEND == "exterior"
-            else np.nan,
-            float(result.vacuum_field.neumann_result.condition_number)
-            if VACUUM_BACKEND == "exterior"
-            else np.nan,
+            float(result.vacuum_field.neumann_result.compatibility_error) if VACUUM_BACKEND == "exterior" else np.nan,
+            float(result.vacuum_field.neumann_result.condition_number) if VACUUM_BACKEND == "exterior" else np.nan,
         ]
         for item, result in zip(diagnostics, results, strict=True)
     ]
