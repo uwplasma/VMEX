@@ -78,6 +78,33 @@ def test_caps_share_the_lateral_end_rings() -> None:
     np.testing.assert_allclose(surface.upper_cap_xyz[-1], surface.lateral_xyz[:, -1])
 
 
+def test_collocation_map_identifies_cap_centers_and_rims() -> None:
+    grid = _grid(ns=13, mpol=2, ntheta=7, nxi=17)
+    theta = jnp.asarray(grid.theta)[:, None]
+    xi = jnp.asarray(grid.xi)[None, :]
+    surface = build_closed_mirror_surface(
+        MirrorBoundary.from_radius(
+            0.3 * (1.0 + 0.04 * jnp.cos(2.0 * theta) * (1.0 - xi**2)), grid
+        ),
+        grid,
+    )
+    nquadrature = surface.xyz.shape[0]
+    ncollocation = surface.collocation_xyz.shape[0]
+    expected = grid.ntheta * grid.nxi + 2 * (1 + (grid.ns - 2) * grid.ntheta)
+    assert ncollocation == expected
+    assert ncollocation < nquadrature
+    assert np.unique(np.asarray(surface.collocation_xyz), axis=0).shape[0] == ncollocation
+
+    values = (
+        surface.collocation_xyz[:, 0]
+        + 2.0 * surface.collocation_xyz[:, 1]
+        - 0.5 * surface.collocation_xyz[:, 2]
+    )
+    expanded = surface.expand_collocation_values(values)
+    expected_values = surface.xyz[:, 0] + 2.0 * surface.xyz[:, 1] - 0.5 * surface.xyz[:, 2]
+    np.testing.assert_allclose(expanded, expected_values, atol=2.0e-15)
+
+
 def test_closed_surface_volume_is_differentiable() -> None:
     grid = _grid(ns=15, nxi=21)
 

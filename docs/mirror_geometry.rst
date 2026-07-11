@@ -158,6 +158,11 @@ unit-normal division enters geometric identities. For axisymmetric equilibrium
 grids, which intentionally store one theta node, the adapter supplies an
 independent Cartesian angular quadrature. ``axisymmetric_ntheta`` controls its
 resolution without adding redundant theta unknowns to the equilibrium solve.
+Polar quadrature repeats each cap center and the cap rims coincide with lateral
+end rings. ``ClosedMirrorSurface`` therefore also provides a unique
+collocation grid and an explicit map that expands continuous collocation values
+back to all quadrature nodes; repeated geometry never becomes duplicate BIE
+unknowns.
 
 Tests require exact cylinder area and volume, zero integrated normal, the full
 tensor divergence theorem on a theta-shaped flared tube, cap/side ring

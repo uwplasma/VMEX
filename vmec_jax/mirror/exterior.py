@@ -35,6 +35,9 @@ class ClosedMirrorSurface:
     lower_cap_weighted_normals: Array
     upper_cap_xyz: Array
     upper_cap_weighted_normals: Array
+    collocation_xyz: Array
+    collocation_normals: Array
+    quadrature_to_collocation: Array
 
     @property
     def xyz(self) -> Array:
@@ -86,6 +89,15 @@ class ClosedMirrorSurface:
         """Enclosed volume from ``integral(x dot n) / 3``."""
 
         return jnp.sum(self.xyz * self.weighted_normals) / 3.0
+
+    def expand_collocation_values(self, values: Array) -> Array:
+        """Copy unique boundary values onto all quadrature nodes."""
+
+        values = jnp.asarray(values)
+        expected = (self.collocation_xyz.shape[0],)
+        if values.shape != expected:
+            raise ValueError(f"collocation values shape {values.shape} must be {expected}")
+        return values[self.quadrature_to_collocation]
 
 
 jax.tree_util.register_dataclass(
@@ -187,6 +199,51 @@ def build_closed_mirror_surface(
 
     lower_xyz, lower_normals = cap(0, -1.0)
     upper_xyz, upper_normals = cap(-1, 1.0)
+
+    ntheta, nxi = radius.shape
+    lateral_map = np.arange(ntheta * nxi).reshape(ntheta, nxi)
+    next_index = lateral_map.size
+
+    def cap_map(endpoint: int) -> tuple[np.ndarray, int]:
+        nonlocal next_index
+        mapping = np.empty((grid.ns, ntheta), dtype=int)
+        mapping[0] = next_index
+        next_index += 1
+        interior_size = max(0, grid.ns - 2) * ntheta
+        mapping[1:-1] = np.arange(next_index, next_index + interior_size).reshape(
+            grid.ns - 2, ntheta
+        )
+        next_index += interior_size
+        mapping[-1] = lateral_map[:, endpoint]
+        return mapping, next_index
+
+    lower_map, _ = cap_map(0)
+    upper_map, _ = cap_map(-1)
+    quadrature_to_collocation = jnp.asarray(
+        np.concatenate([lateral_map.reshape(-1), lower_map.reshape(-1), upper_map.reshape(-1)])
+    )
+
+    lateral_normals = lateral_area_vectors / jnp.linalg.norm(
+        lateral_area_vectors, axis=-1, keepdims=True
+    )
+    lower_collocation_xyz = jnp.concatenate(
+        [lower_xyz[0, :1], lower_xyz[1:-1].reshape(-1, 3)], axis=0
+    )
+    upper_collocation_xyz = jnp.concatenate(
+        [upper_xyz[0, :1], upper_xyz[1:-1].reshape(-1, 3)], axis=0
+    )
+    lower_collocation_normals = jnp.zeros_like(lower_collocation_xyz).at[:, 2].set(-1.0)
+    upper_collocation_normals = jnp.zeros_like(upper_collocation_xyz).at[:, 2].set(1.0)
+    collocation_xyz = jnp.concatenate(
+        [lateral_xyz.reshape(-1, 3), lower_collocation_xyz, upper_collocation_xyz]
+    )
+    collocation_normals = jnp.concatenate(
+        [
+            lateral_normals.reshape(-1, 3),
+            lower_collocation_normals,
+            upper_collocation_normals,
+        ]
+    )
     return ClosedMirrorSurface(
         lateral_xyz=lateral_xyz,
         lateral_weighted_normals=lateral_weighted_normals,
@@ -194,6 +251,9 @@ def build_closed_mirror_surface(
         lower_cap_weighted_normals=lower_normals,
         upper_cap_xyz=upper_xyz,
         upper_cap_weighted_normals=upper_normals,
+        collocation_xyz=collocation_xyz,
+        collocation_normals=collocation_normals,
+        quadrature_to_collocation=quadrature_to_collocation,
     )
 
 

@@ -1242,7 +1242,10 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       limit. Axisymmetric kernel quadrature has an angular resolution independent of the one-node
       equilibrium representation. Green's third identity converges for constant, linear, and
       quadratic harmonic polynomials under joint disk-radial, axial, and angular refinement and
-      vanishes at exterior targets. This does not yet solve the exterior problem: cap-aware singular/near-singular
+      vanishes at exterior targets. Repeated polar cap centers now map to one density unknown, and
+      cap rims reuse the lateral end-ring unknowns; a continuity test proves exact expansion from
+      this unique collocation grid back to quadrature nodes. This removes the known duplicate-node
+      rank defect before system assembly. This does not yet solve the exterior problem: cap-aware singular/near-singular
       quadrature, the second-kind boundary equation and nullspace, harmonic MMS, and coupling that
       deletes the finite outer cylinder remain the next M5 gates.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior
