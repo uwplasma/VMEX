@@ -16,15 +16,21 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
+    MirrorState,
+    axisymmetric_plasma_coil_neumann,
     build_closed_mirror_surface,
+    contravariant_field,
+    evaluate_geometry,
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
     laplace_green_gradient_off_surface,
     laplace_green_representation_off_surface,
     laplace_reduced_green_boundary_residual,
+    laplace_reduced_exterior_gradient_off_surface,
     laplace_reduced_green_gradient_off_surface,
     laplace_single_layer_gradient_off_surface,
-    solve_reduced_laplace_neumann,
+    solve_reduced_exterior_laplace_neumann,
+    solve_reduced_interior_laplace_neumann,
 )
 
 
@@ -165,7 +171,7 @@ def test_reduced_neumann_solve_recovers_linear_harmonic() -> None:
     )
     exact = surface.reduce_collocation_values(surface.collocation_xyz[:, 2])
     neumann = surface.reduce_collocation_values(surface.collocation_normals[:, 2])
-    result = solve_reduced_laplace_neumann(surface, neumann)
+    result = solve_reduced_interior_laplace_neumann(surface, neumann)
     exact -= jnp.mean(exact)
     recovered = result.boundary_potential - jnp.mean(result.boundary_potential)
     relative_error = jnp.linalg.norm(recovered - exact) / jnp.linalg.norm(exact)
@@ -188,7 +194,7 @@ def test_reduced_neumann_solve_is_forward_differentiable() -> None:
     neumann = surface.reduce_collocation_values(surface.collocation_normals[:, 2])
     direction = jnp.sin(jnp.arange(surface.reduced_size, dtype=neumann.dtype))
     _, tangent = jax.jvp(
-        lambda data: solve_reduced_laplace_neumann(
+        lambda data: solve_reduced_interior_laplace_neumann(
             surface, data, order=6
         ).boundary_potential,
         (neumann,),
@@ -196,6 +202,58 @@ def test_reduced_neumann_solve_is_forward_differentiable() -> None:
     )
     assert np.all(np.isfinite(np.asarray(tangent)))
     assert float(jnp.linalg.norm(tangent)) > 0.0
+
+
+def test_reduced_exterior_neumann_solve_recovers_decaying_dipole() -> None:
+    boundary_errors = []
+    field_errors = []
+    for ns, nxi, ntheta in ((9, 13, 16), (13, 21, 24)):
+        grid = _grid(ns=ns, nxi=nxi)
+        surface = build_closed_mirror_surface(
+            MirrorBoundary.from_radius(0.37, grid),
+            grid,
+            axisymmetric_ntheta=ntheta,
+            cap_rim_grade=3.5,
+        )
+        xyz = surface.collocation_xyz
+        radius_squared = jnp.sum(xyz**2, axis=1)
+        exact_full = xyz[:, 2] / radius_squared**1.5
+        gradient_full = jnp.stack(
+            [
+                -3.0 * xyz[:, 2] * xyz[:, 0] / radius_squared**2.5,
+                -3.0 * xyz[:, 2] * xyz[:, 1] / radius_squared**2.5,
+                1.0 / radius_squared**1.5
+                - 3.0 * xyz[:, 2] ** 2 / radius_squared**2.5,
+            ],
+            axis=1,
+        )
+        exact = surface.reduce_collocation_values(exact_full)
+        neumann = surface.reduce_collocation_values(
+            jnp.sum(gradient_full * surface.collocation_normals, axis=1)
+        )
+        result = solve_reduced_exterior_laplace_neumann(surface, neumann)
+        boundary_errors.append(
+            float(
+                jnp.linalg.norm(result.boundary_potential - exact)
+                / jnp.linalg.norm(exact)
+            )
+        )
+        gradient = laplace_reduced_exterior_gradient_off_surface(
+            surface,
+            result.boundary_potential,
+            neumann,
+            jnp.asarray([[0.0, 0.0, 2.0]]),
+        )
+        field_errors.append(float(jnp.abs(gradient[0, 2] + 0.25) / 0.25))
+        np.testing.assert_allclose(gradient[:, :2], 0.0, atol=2.0e-14)
+        assert float(result.compatibility_error) < 2.0e-14
+        assert float(result.condition_number) < 5.0
+        assert float(jnp.linalg.norm(result.residual)) < 3.0e-14
+
+    assert boundary_errors[1] < 0.4 * boundary_errors[0]
+    assert boundary_errors[1] < 6.0e-2
+    assert field_errors[1] < field_errors[0]
+    assert field_errors[1] < 1.2e-2
 
 
 def test_panel_mesh_is_watertight_oriented_and_convergent() -> None:
@@ -408,7 +466,7 @@ def test_two_coil_neumann_reconstruction_converges_near_caps() -> None:
         neumann = surface.reduce_collocation_values(
             jnp.sum((target_field - coil_field) * surface.collocation_normals, axis=1)
         )
-        result = solve_reduced_laplace_neumann(surface, neumann)
+        result = solve_reduced_interior_laplace_neumann(surface, neumann)
         total_field = biot_savart(coils, targets) + (
             laplace_reduced_green_gradient_off_surface(
                 surface, result.boundary_potential, neumann, targets
@@ -423,6 +481,51 @@ def test_two_coil_neumann_reconstruction_converges_near_caps() -> None:
 
     assert errors[1] < 0.7 * errors[0]
     assert errors[1] < 6.0e-3
+
+
+def test_plasma_coil_neumann_adapter_matches_uniform_field_data() -> None:
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=13, mpol=0, ntheta=1, nxi=21),
+        z_min=-0.6,
+        z_max=0.6,
+    ).build_grid()
+    radius = 0.3
+    boundary = MirrorBoundary.from_radius(radius, grid)
+    state = MirrorState.from_boundary(boundary, grid)
+    geometry = evaluate_geometry(state, grid)
+    target_bz = 0.08
+    plasma_field = contravariant_field(
+        state,
+        geometry,
+        grid,
+        axial_flux_derivative=0.5 * target_bz * radius**2,
+    )
+    dofs = np.zeros((2, 3, 3))
+    dofs[:, 0, 2] = 0.9
+    dofs[:, 1, 1] = 0.9
+    dofs[:, 2, 0] = [-1.0, 1.0]
+    coils = CoilSet(
+        base_curve_dofs=jnp.asarray(dofs),
+        base_currents=jnp.asarray([2.0e5, 2.0e5]),
+        n_segments=128,
+    )
+    surface = build_closed_mirror_surface(
+        boundary, grid, axisymmetric_ntheta=24, cap_rim_grade=3.5
+    )
+    adapted = axisymmetric_plasma_coil_neumann(
+        surface, plasma_field, grid, coils
+    )
+    mapping = np.asarray(surface.collocation_to_reduced)
+    _, representatives = np.unique(mapping, return_index=True)
+    points = surface.collocation_xyz[jnp.asarray(representatives)]
+    normals = surface.collocation_normals[jnp.asarray(representatives)]
+    expected = jnp.sum(
+        (jnp.asarray([0.0, 0.0, target_bz]) - biot_savart(coils, points))
+        * normals,
+        axis=1,
+    )
+
+    np.testing.assert_allclose(adapted, expected, rtol=3.0e-13, atol=3.0e-14)
 
 
 def test_green_representation_converges_for_harmonic_polynomials() -> None:

@@ -1255,7 +1255,7 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       The first JAX Duffy primitive now regularizes a vertex-singular linear triangle. Orders
       `2,4,8,16` converge monotonically to the analytic right-triangle single-layer integral, with
       order 16 at `1.4e-14`; linear density and geometry/density gradient identities pass. The
-      assembled boundary identity uses `S(q)+K(u-u_target)=0`, preserving the constant nullspace
+      assembled interior identity uses `S(q)+K(u-u_target)=0`, preserving the constant nullspace
       and avoiding an invalid smooth-surface jump coefficient at the rim. For harmonic `u=x,z`,
       its worst normalized residual falls `3.47e-3 -> 1.78e-3` from 154 to 862 nodes. Duffy orders
       8 and 10 agree, so panel/rim refinement, not quadrature order, is now the measured limiter.
@@ -1267,18 +1267,21 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       2, 2.5, 3, and 3.5 without degrading conditioning (`cond=17.0`). A differentiable weighted
       saddle solve now removes the constant gauge and reports compatibility, condition, gauge, and
       equation residual; its forward JVP is finite. The graded MMS has roundoff flux/gauge closure
-      and `8.9e-9` panel-discrete equation residual, so it is not yet a `1e-12` exterior claim.
+      and `8.9e-9` panel-discrete equation residual. The decaying exterior equation correctly adds
+      the identity, `S(q)+K(u-u_target)+u=0`, has no constant gauge, and reverses the representation
+      sign. A zero-flux dipole MMS closes its algebraic residual below `3e-14` with condition below
+      5; boundary error decreases `14.9% -> 5.44%`, and exterior gradient error reaches 1.12%.
       The implementation is split by ownership into 355-line geometry/maps, 299-line panel/Duffy,
-      and 262-line BIE/solve modules; the public `vmec_jax.mirror` API is unchanged.
+      and 385-line BIE/solve modules; the public `vmec_jax.mirror` API is unchanged.
       Analytic Green gradients remove axis `NaN` from differentiating safe-distance branches.
       Duffy panel field evaluation reduces the two-coil near-cap uniform-field reconstruction error
       `0.998% -> 0.573% -> 0.369%` over three meshes (the global polar rule gave
       `10.1% -> 6.84% -> 4.94%`), with roundoff compatibility and condition number below 10.
       Shaped/finite-beta data and actual replacement of the annular truncation remain promotion
       gates; this manufactured coil cancellation is not yet free-boundary coupling.
-      This does not yet solve the exterior problem: cap-aware singular/near-singular
-      quadrature, the second-kind boundary equation and nullspace, harmonic MMS, and coupling that
-      deletes the finite outer cylinder remain the next M5 gates.
+      A tested adapter now converts an axisymmetric plasma end field plus direct coils into complete
+      wall/cap Neumann data. Shaped/finite-beta exterior MMS, tighter trace/near-field convergence,
+      and coupling that deletes the finite outer cylinder remain the next M5 gates.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior
       state jointly, with beta continuation `0, 0.01, 0.03, 0.10` and hot restarts. Validate
       isotropic and anisotropic cases against an independently generated Pleiades/WHAM-style

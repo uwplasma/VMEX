@@ -173,7 +173,7 @@ square, interpolates density linearly, and is differentiable in panel geometry
 and density. On a right triangle, orders ``2,4,8,16`` converge monotonically;
 order 16 matches the analytic constant-density single-layer integral within
 ``1.4e-14`` and the linear ``x+y`` density gives exactly half that value.
-The assembled boundary-limit identity uses
+The interior Calderon identity uses
 ``S(q) + K(u-u_target) = 0``. Target subtraction preserves the constant
 nullspace and absorbs the local solid-angle coefficient, including at cap
 rims. For the independent harmonic fields ``u=x`` and ``u=z``, the worst
@@ -193,15 +193,22 @@ grade 3.5 gives 0.0216% with condition number 17.0. The differentiable
 area-weighted saddle solve reports net-flux compatibility, gauge error,
 condition number, and its full equation residual. In this case compatibility
 and gauge close near roundoff, while the panel-discrete equation residual is
-``8.9e-9``; it is not described as a ``1e-12`` exterior discretization.
+``8.9e-9``; it is not an exterior discretization claim.
+The decaying exterior equation is distinct:
+``S(q) + K(u-u_target) + u = 0``. It has no constant gauge freedom, and its
+off-surface representation has the opposite sign. A zero-flux dipole MMS
+closes this equation to ``3e-14`` with condition number below 5. Boundary
+trace error decreases ``14.9% -> 5.44%`` over the regular two-grid test, while
+the exterior field-gradient error at ``z=2`` decreases to 1.12%.
 Source ownership is kept narrow: ``exterior.py`` builds geometry and reduction
 maps, ``exterior_mesh.py`` owns panel topology and Duffy quadrature, and
 ``exterior_bie.py`` owns layer evaluation and Neumann solves. Public functions
 remain exported from ``vmec_jax.mirror``.
 An analytic Green-gradient evaluator avoids differentiating safe-distance
 branches on the symmetry axis. Duffy panel evaluation also controls near-cap
-targets: for two circular coils outside a radius-0.3 m, length-1.2 m cylinder,
-the reconstructed uniform on-axis field error at ``z=-0.4,0,0.4`` decreases
+targets in the interior validation: for two circular coils outside a
+radius-0.3 m, length-1.2 m cylinder, the reconstructed uniform on-axis field
+error at ``z=-0.4,0,0.4`` decreases
 ``0.998% -> 0.573% -> 0.369%`` across the measured meshes. The first two grids
 are a regular regression and require roundoff flux compatibility, condition
 number below 10, zero transverse axis field, and decreasing error.
@@ -217,7 +224,8 @@ harmonic manufactured fields ``1``, ``x``, ``z``, and ``x^2-y^2`` while
 returning zero at exterior targets.
 
 The off-surface functions reject malformed source and target arrays. M5 now has
-a tested on-surface reduced Neumann solve, but still needs shaped-boundary and
+separately tested interior and decaying-exterior reduced Neumann solves. It
+still needs shaped-boundary and
 finite-beta coil-data studies, broader near-singular targets, resolution/error
 targets tight enough for interface coupling, and replacement of the finite
 outer cylinder in the coupled free-boundary solve.
