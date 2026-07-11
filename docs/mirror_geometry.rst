@@ -198,6 +198,13 @@ Source ownership is kept narrow: ``exterior.py`` builds geometry and reduction
 maps, ``exterior_mesh.py`` owns panel topology and Duffy quadrature, and
 ``exterior_bie.py`` owns layer evaluation and Neumann solves. Public functions
 remain exported from ``vmec_jax.mirror``.
+An analytic Green-gradient evaluator avoids differentiating safe-distance
+branches on the symmetry axis. Duffy panel evaluation also controls near-cap
+targets: for two circular coils outside a radius-0.3 m, length-1.2 m cylinder,
+the reconstructed uniform on-axis field error at ``z=-0.4,0,0.4`` decreases
+``0.998% -> 0.573% -> 0.369%`` across the measured meshes. The first two grids
+are a regular regression and require roundoff flux compatibility, condition
+number below 10, zero transverse axis field, and decreasing error.
 
 Tests require exact cylinder area and volume, zero integrated normal, the full
 tensor divergence theorem on a theta-shaped flared tube, cap/side ring
@@ -211,9 +218,9 @@ returning zero at exterior targets.
 
 The off-surface functions reject malformed source and target arrays. M5 now has
 a tested on-surface reduced Neumann solve, but still needs shaped-boundary and
-coil-data studies, near-singular field evaluation, resolution/error targets
-tight enough for interface coupling, and replacement of the finite outer
-cylinder in the coupled free-boundary solve.
+finite-beta coil-data studies, broader near-singular targets, resolution/error
+targets tight enough for interface coupling, and replacement of the finite
+outer cylinder in the coupled free-boundary solve.
 
 Two cheaper boundary-limit approximations were tested and rejected. Inward or
 outward offset collocation produced density-system condition numbers from

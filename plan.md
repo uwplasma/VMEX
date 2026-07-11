@@ -1268,8 +1268,14 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       saddle solve now removes the constant gauge and reports compatibility, condition, gauge, and
       equation residual; its forward JVP is finite. The graded MMS has roundoff flux/gauge closure
       and `8.9e-9` panel-discrete equation residual, so it is not yet a `1e-12` exterior claim.
-      The implementation is split by ownership into 355-line geometry/maps, 205-line panel/Duffy,
-      and 209-line BIE/solve modules; the public `vmec_jax.mirror` API is unchanged.
+      The implementation is split by ownership into 355-line geometry/maps, 299-line panel/Duffy,
+      and 262-line BIE/solve modules; the public `vmec_jax.mirror` API is unchanged.
+      Analytic Green gradients remove axis `NaN` from differentiating safe-distance branches.
+      Duffy panel field evaluation reduces the two-coil near-cap uniform-field reconstruction error
+      `0.998% -> 0.573% -> 0.369%` over three meshes (the global polar rule gave
+      `10.1% -> 6.84% -> 4.94%`), with roundoff compatibility and condition number below 10.
+      Shaped/finite-beta data and actual replacement of the annular truncation remain promotion
+      gates; this manufactured coil cancellation is not yet free-boundary coupling.
       This does not yet solve the exterior problem: cap-aware singular/near-singular
       quadrature, the second-kind boundary equation and nullspace, harmonic MMS, and coupling that
       deletes the finite outer cylinder remain the next M5 gates.

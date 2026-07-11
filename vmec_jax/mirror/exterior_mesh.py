@@ -149,6 +149,100 @@ def _triangle_layer_sum(
     return jnp.sum(weights_2d * (single + double))
 
 
+@partial(jax.jit, static_argnames=("order",))
+def _triangle_gradient_sum(
+    target: Array,
+    vertices: Array,
+    dirichlet: Array,
+    neumann: Array,
+    *,
+    order: int,
+) -> Array:
+    """Gradient of panel Green layers at one off-surface target."""
+
+    nodes, weights = _unit_gauss_legendre(order)
+    dtype = vertices.dtype
+    u = jnp.asarray(nodes, dtype=dtype)[None, :, None]
+    v = jnp.asarray(nodes, dtype=dtype)[None, None, :]
+    weights_2d = (
+        jnp.asarray(weights, dtype=dtype)[None, :, None]
+        * jnp.asarray(weights, dtype=dtype)[None, None, :]
+    )
+    edge1 = vertices[:, 1] - vertices[:, 0]
+    edge2 = vertices[:, 2] - vertices[:, 0]
+    ray = (1.0 - v)[..., None] * edge1[:, None, None, :] + (
+        v[..., None] * edge2[:, None, None, :]
+    )
+    source = vertices[:, 0, :][:, None, None, :] + u[..., None] * ray
+    displacement = target[None, None, None, :] - source
+    radius_squared = jnp.sum(displacement**2, axis=-1)
+    inverse_radius = jax.lax.rsqrt(radius_squared)
+    inverse_radius3 = inverse_radius**3
+    area_vectors = jnp.cross(edge1, edge2)
+    area_scale = jnp.linalg.norm(area_vectors, axis=-1)
+    normals = area_vectors / area_scale[:, None]
+    jacobian = area_scale[:, None, None] * u
+
+    def interpolate(values: Array) -> Array:
+        return (1.0 - u) * values[:, 0, None, None] + u * (
+            (1.0 - v) * values[:, 1, None, None]
+            + v * values[:, 2, None, None]
+        )
+
+    normal_displacement = jnp.einsum(
+        "ti,tqri->tqr", normals, displacement
+    )
+    single = (
+        -interpolate(neumann)[..., None]
+        * jacobian[..., None]
+        * displacement
+        * inverse_radius3[..., None]
+    )
+    double = interpolate(dirichlet)[..., None] * jacobian[..., None] * (
+        -normals[:, None, None, :] * inverse_radius3[..., None]
+        + 3.0
+        * normal_displacement[..., None]
+        * displacement
+        * (inverse_radius3 / radius_squared)[..., None]
+    )
+    return jnp.sum(
+        weights_2d[..., None] * (single + double), axis=(0, 1, 2)
+    ) / (4.0 * jnp.pi)
+
+
+def panel_green_gradient_off_surface(
+    xyz: Array,
+    triangles: Array,
+    dirichlet: Array,
+    neumann: Array,
+    targets: Array,
+    *,
+    order: int = 8,
+) -> Array:
+    """Evaluate Green-layer gradients using linear triangular panels."""
+
+    xyz = jnp.asarray(xyz)
+    triangles = jnp.asarray(triangles)
+    dirichlet = jnp.asarray(dirichlet)
+    neumann = jnp.asarray(neumann)
+    targets = jnp.asarray(targets)
+    if targets.ndim != 2 or targets.shape[1] != 3:
+        raise ValueError("targets must have shape (n, 3)")
+    vertices = xyz[triangles]
+    return jnp.stack(
+        [
+            _triangle_gradient_sum(
+                target,
+                vertices,
+                dirichlet[triangles],
+                neumann[triangles],
+                order=order,
+            )
+            for target in targets
+        ]
+    )
+
+
 def panel_green_boundary_residual(
     xyz: Array,
     triangles: Array,

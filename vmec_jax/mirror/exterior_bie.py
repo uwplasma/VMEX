@@ -11,7 +11,7 @@ import numpy as np
 from virtual_casing_jax import laplace_dx_u_eval, laplace_fx_u, laplace_fxd_u_eval
 
 from .exterior import ClosedMirrorSurface
-from .exterior_mesh import panel_green_boundary_residual
+from .exterior_mesh import panel_green_boundary_residual, panel_green_gradient_off_surface
 
 Array = Any
 
@@ -96,6 +96,59 @@ def laplace_green_representation_off_surface(
 
     return laplace_single_layer_off_surface(surface, neumann, targets) + (
         laplace_double_layer_off_surface(surface, dirichlet, targets)
+    )
+
+
+def laplace_green_gradient_off_surface(
+    surface: ClosedMirrorSurface,
+    dirichlet: Array,
+    neumann: Array,
+    targets: Array,
+) -> Array:
+    """Evaluate the analytic gradient of Green's representation."""
+
+    dirichlet, targets = _validate_off_surface_inputs(surface, dirichlet, targets)
+    neumann = jnp.asarray(neumann)
+    if neumann.shape != dirichlet.shape:
+        raise ValueError(f"neumann shape {neumann.shape} must be {dirichlet.shape}")
+    single_gradient = laplace_single_layer_gradient_off_surface(
+        surface, neumann, targets
+    )
+    displacement = targets[:, None, :] - surface.xyz[None, :, :]
+    radius_squared = jnp.sum(displacement**2, axis=-1)
+    inverse_radius = jax.lax.rsqrt(radius_squared)
+    inverse_radius3 = inverse_radius**3
+    normal_displacement = jnp.einsum(
+        "si,tsi->ts", surface.normals, displacement
+    )
+    weighted_dirichlet = dirichlet * surface.quadrature_weights
+    double_gradient = (
+        -surface.normals[None, :, :] * inverse_radius3[..., None]
+        + 3.0
+        * normal_displacement[..., None]
+        * displacement
+        * (inverse_radius3 / radius_squared)[..., None]
+    ) * weighted_dirichlet[None, :, None] / (4.0 * jnp.pi)
+    return single_gradient + jnp.sum(double_gradient, axis=1)
+
+
+def laplace_reduced_green_gradient_off_surface(
+    surface: ClosedMirrorSurface,
+    dirichlet: Array,
+    neumann: Array,
+    targets: Array,
+    *,
+    order: int = 8,
+) -> Array:
+    """Evaluate a reduced solution with Duffy panel quadrature."""
+
+    return panel_green_gradient_off_surface(
+        surface.collocation_xyz,
+        surface.triangles,
+        surface.expand_reduced_values(dirichlet),
+        surface.expand_reduced_values(neumann),
+        targets,
+        order=order,
     )
 
 

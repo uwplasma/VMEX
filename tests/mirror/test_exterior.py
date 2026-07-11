@@ -9,6 +9,7 @@ jax = pytest.importorskip("jax")
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
 
+from vmec_jax.core.coils import CoilSet, biot_savart, two_coil_on_axis_bz  # noqa: E402
 from vmec_jax.mirror.exterior_mesh import duffy_triangle_single_layer  # noqa: E402
 
 from vmec_jax.mirror import (  # noqa: E402
@@ -18,8 +19,10 @@ from vmec_jax.mirror import (  # noqa: E402
     build_closed_mirror_surface,
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
+    laplace_green_gradient_off_surface,
     laplace_green_representation_off_surface,
     laplace_reduced_green_boundary_residual,
+    laplace_reduced_green_gradient_off_surface,
     laplace_single_layer_gradient_off_surface,
     solve_reduced_laplace_neumann,
 )
@@ -324,6 +327,102 @@ def test_single_layer_gradient_has_far_field_monopole_limit() -> None:
 
     assert float(relative_error[1]) < 0.3 * float(relative_error[0])
     np.testing.assert_allclose(field[:, :2], 0.0, atol=2.0e-16)
+
+
+def test_green_gradient_matches_finite_difference_on_axis() -> None:
+    grid = _grid(ns=13, nxi=21)
+    surface = build_closed_mirror_surface(
+        MirrorBoundary.from_radius(0.31, grid), grid, cap_rim_grade=2.0
+    )
+    dirichlet = surface.xyz[:, 2]
+    neumann = surface.normals[:, 2]
+    targets = jnp.asarray([[0.0, 0.0, 0.0], [0.0, 0.0, 0.3]])
+    gradient = laplace_green_gradient_off_surface(
+        surface, dirichlet, neumann, targets
+    )
+    epsilon = 1.0e-5
+    offset = jnp.asarray([0.0, 0.0, epsilon])
+    finite_difference = (
+        laplace_green_representation_off_surface(
+            surface, dirichlet, neumann, targets + offset
+        )
+        - laplace_green_representation_off_surface(
+            surface, dirichlet, neumann, targets - offset
+        )
+    ) / (2.0 * epsilon)
+
+    assert np.all(np.isfinite(np.asarray(gradient)))
+    np.testing.assert_allclose(gradient[:, 2], finite_difference, rtol=2.0e-8)
+    np.testing.assert_allclose(gradient[:, :2], 0.0, atol=3.0e-15)
+
+
+def test_panel_green_gradient_recovers_linear_harmonic_near_cap() -> None:
+    grid = _grid(ns=13, nxi=21)
+    surface = build_closed_mirror_surface(
+        MirrorBoundary.from_radius(0.31, grid),
+        grid,
+        axisymmetric_ntheta=24,
+        cap_rim_grade=3.5,
+    )
+    dirichlet = surface.reduce_collocation_values(surface.collocation_xyz[:, 2])
+    neumann = surface.reduce_collocation_values(surface.collocation_normals[:, 2])
+    targets = jnp.asarray([[0.0, 0.0, 0.0], [0.0, 0.0, 1.2]])
+    gradient = laplace_reduced_green_gradient_off_surface(
+        surface, dirichlet, neumann, targets
+    )
+
+    np.testing.assert_allclose(
+        gradient, [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], rtol=2.0e-4, atol=2.0e-4
+    )
+
+
+def test_two_coil_neumann_reconstruction_converges_near_caps() -> None:
+    dofs = np.zeros((2, 3, 3))
+    dofs[:, 0, 2] = 0.9
+    dofs[:, 1, 1] = 0.9
+    dofs[:, 2, 0] = [-1.0, 1.0]
+    coils = CoilSet(
+        base_curve_dofs=jnp.asarray(dofs),
+        base_currents=jnp.asarray([2.0e5, 2.0e5]),
+        n_segments=128,
+    )
+    target_bz = two_coil_on_axis_bz(
+        jnp.asarray(0.0), coil_radius=0.9, separation=2.0, current=2.0e5
+    )
+    targets = jnp.asarray([[0.0, 0.0, -0.4], [0.0, 0.0, 0.0], [0.0, 0.0, 0.4]])
+    errors = []
+    for ns, nxi, ntheta in ((9, 13, 16), (13, 21, 24)):
+        grid = MirrorConfig(
+            resolution=MirrorResolution(ns=ns, mpol=0, ntheta=1, nxi=nxi),
+            z_min=-0.6,
+            z_max=0.6,
+        ).build_grid()
+        surface = build_closed_mirror_surface(
+            MirrorBoundary.from_radius(0.3, grid),
+            grid,
+            axisymmetric_ntheta=ntheta,
+            cap_rim_grade=3.5,
+        )
+        coil_field = biot_savart(coils, surface.collocation_xyz)
+        target_field = jnp.asarray([0.0, 0.0, target_bz])
+        neumann = surface.reduce_collocation_values(
+            jnp.sum((target_field - coil_field) * surface.collocation_normals, axis=1)
+        )
+        result = solve_reduced_laplace_neumann(surface, neumann)
+        total_field = biot_savart(coils, targets) + (
+            laplace_reduced_green_gradient_off_surface(
+                surface, result.boundary_potential, neumann, targets
+            )
+        )
+        errors.append(
+            float(jnp.max(jnp.abs(total_field[:, 2] - target_bz)) / target_bz)
+        )
+        np.testing.assert_allclose(total_field[:, :2], 0.0, atol=2.0e-14)
+        assert float(result.compatibility_error) < 2.0e-14
+        assert float(result.condition_number) < 10.0
+
+    assert errors[1] < 0.7 * errors[0]
+    assert errors[1] < 6.0e-3
 
 
 def test_green_representation_converges_for_harmonic_polynomials() -> None:
