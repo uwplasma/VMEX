@@ -117,6 +117,16 @@ def test_free_boundary_mgrid(tmp_path):
     assert (tmp_path / "output_free_boundary_mgrid" / "wout_cth_like_free_bdy.nc").exists()
 
 
+def test_take_free_boundary_gradients(tmp_path):
+    # skips where the optional virtual_casing_jax dep is absent (core CI);
+    # validates the FD-checked coil/extcur gradients where it is installed.
+    pytest.importorskip("virtual_casing_jax")
+    out = _run_example(EXAMPLES / "take_free_boundary_gradients.py", tmp_path, timeout=900)
+    # each gradient row ends with its AD-vs-FD relative error in scientific notation
+    rels = [float(m) for m in re.findall(r"\s([0-9.]+e[+-]\d+)\s*$", out, re.M)]
+    assert "FD-validate" in out and rels and max(rels) < 1e-3, f"gradient rel errors: {rels}"
+
+
 @pytest.mark.full  # nightly: one NESTOR solve per pressure point (~40s)
 def test_free_boundary_beta_scan(tmp_path):
     out = _run_example(EXAMPLES / "free_boundary_beta_scan.py", tmp_path, timeout=1200)
