@@ -511,8 +511,8 @@ def make_optimization_figure(out: Path) -> None:
             tb, pb, B = boozer_modB_on_surface(bx, s_index=-1, ntheta=90, nphi=160)
 
         axm = axes[1, col]
-        pc = axm.contourf(pb * nfp / (2 * np.pi), tb / (2 * np.pi), B,
-                          levels=22, cmap="jet")
+        pc = axm.contour(pb * nfp / (2 * np.pi), tb / (2 * np.pi), B,
+                         levels=22, cmap="jet", linewidths=0.8)
         axm.set_xlabel("$\\phi_B$ (field periods)", fontsize=8.5)
         if col == 0:
             axm.set_ylabel("$\\theta_B / 2\\pi$", fontsize=8.5)
@@ -678,10 +678,8 @@ def make_showcase_figure(out: Path) -> None:
         wp = vj.write_wout(Path(td) / "wout_showcase.nc", wout)
         bx = run_booz_xform(wp, mbooz=28, nbooz=28)
         tb, pb, Bb = boozer_modB_on_surface(bx, s_index=-1, ntheta=161, nphi=161)
-    pc = ax2.contourf(pb * nfp / (2 * np.pi), tb / (2 * np.pi), Bb,
-                      levels=24, cmap="jet")
-    ax2.contour(pb * nfp / (2 * np.pi), tb / (2 * np.pi), Bb, levels=10,
-                colors="k", linewidths=0.3, alpha=0.35)
+    pc = ax2.contour(pb * nfp / (2 * np.pi), tb / (2 * np.pi), Bb,
+                     levels=24, cmap="jet", linewidths=0.9)
     cb = fig.colorbar(pc, ax=ax2, pad=0.02)
     cb.set_label("|B| (T)", color=INK2, fontsize=9)
     cb.ax.tick_params(labelsize=8, colors=MUTED)
