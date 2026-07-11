@@ -100,6 +100,11 @@ class Prec2DConfig:
         Whether this runtime is the finest multigrid stage (VMEC2000
         ``ns == ns_maxval``).  Single-grid solves are always finest; only the
         last multigrid stage sets this ``True``.
+    backtracking:
+        If true, try a short geometric sequence below ``step`` and retain the
+        update with the smallest preconditioned force norm, rejecting
+        sign-changing Jacobians. Disabled by default to preserve the measured
+        VMEC-style fixed-step path.
     """
 
     threshold: float
@@ -110,6 +115,7 @@ class Prec2DConfig:
     gmres_rtol: float = 1.0e-2
     gmres_atol: float = 0.0
     finest: bool = True
+    backtracking: bool = False
 
 
 def flat_operator(

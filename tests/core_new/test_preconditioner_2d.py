@@ -132,6 +132,7 @@ def test_prec2d_config_is_hashable():
     cfg = Prec2DConfig(threshold=1e-6)
     assert hash(cfg) == hash(Prec2DConfig(threshold=1e-6))
     assert hash(cfg) != hash(Prec2DConfig(threshold=1e-7))
+    assert hash(cfg) != hash(Prec2DConfig(threshold=1e-6, backtracking=True))
 
 
 def test_newton_system_contains_only_evolved_physical_entries():
@@ -183,3 +184,20 @@ def test_2d_fewer_iterations_same_equilibrium():
     np.testing.assert_allclose(r2.zmns, r1.zmns, rtol=1e-4, atol=1e-5 * scale)
     # fewer iterations (comfortable margin; measured ~5x on this case)
     assert r2.iterations < 0.75 * r1.iterations
+
+
+@pytest.mark.full
+@pytest.mark.usefixtures("_module_jit_enabled")
+def test_2d_backtracking_converges_stiff_equilibrium():
+    """The opt-in line search executes and preserves strict force convergence."""
+    inp = VmecInput.from_file(str(DATA_DIR / "input.circular_tokamak_aspect_100"))
+    r0 = resolution_from_input(inp)
+    res = Resolution(mpol=r0.mpol, ntor=r0.ntor, ntheta=r0.ntheta, nzeta=r0.nzeta,
+                     nfp=r0.nfp, lasym=r0.lasym, ns=21)
+    cfg = Prec2DConfig(threshold=1e-4, gmres_restart=40, gmres_max_restarts=2,
+                       gmres_rtol=3e-3, backtracking=True)
+
+    result = solve(inp, res, mode="jit", ftol=1e-9, max_iterations=2000, prec2d=cfg)
+
+    assert result.converged
+    assert max(result.fsqr, result.fsqz, result.fsql) < 1e-9

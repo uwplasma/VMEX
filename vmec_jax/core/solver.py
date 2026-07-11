@@ -876,6 +876,23 @@ def _newton_step(
 
     def do_newton(_):
         delta, _sol = newton_direction(g_reduced, x0, rhs, cfg)
+        if cfg.backtracking:
+            factors = jnp.asarray([1.0, 0.5, 0.25, 0.125, 0.0625, 0.0])
+
+            def objective(factor):
+                candidate = {
+                    c: x0[c] + cfg.step * factor * delta[c]
+                    for c in channels
+                }
+                force = g_reduced(candidate)
+                norm_squared = sum(jnp.vdot(value, value).real for value in force.values())
+                _, geometry = _geometry(to_full(candidate), rt)
+                changed = half_mesh_jacobian(geometry, s=rt.setup.s_full).jacobian_sign_changed
+                return jnp.where(changed, jnp.asarray(jnp.inf), norm_squared)
+
+            objectives = lax.map(objective, factors)
+            factor = factors[jnp.argmin(objectives)]
+            delta = {c: factor * value for c, value in delta.items()}
         full = {}
         for channel in _ALL_CHANNELS:
             value = jnp.zeros_like(getattr(gc_signed, channel))
