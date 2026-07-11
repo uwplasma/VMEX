@@ -9,6 +9,10 @@ All runnable examples live under this single `examples/` tree.
     transform (`run_booz_xform` + `plot_boozmn`) on one converged equilibrium.
   - `profiles_power_and_spline.py` — the same equilibrium from power-series and
     cubic-spline pressure/iota profiles (they agree); `NCURR=0` vs `NCURR=1`.
+  - `run_from_json.py` — read/convert VMEC++-style JSON (`to_json` /
+    `from_file`); the JSON and `&INDATA` forms describe one equilibrium.
+  - `hot_restart_scan.py` — seed each scan point from the previous converged
+    state; warm restarts converge in ~1 iteration and recompile nothing.
   - `take_gradients.py` — exact fixed-boundary gradients of wout scalars
     (aspect, magnetic energy, ...) by implicit differentiation, checked against
     finite differences; O(1) memory, no step size to tune.

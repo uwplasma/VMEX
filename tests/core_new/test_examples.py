@@ -94,6 +94,22 @@ def test_take_gradients(tmp_path):
     assert max(rels) < 1e-4, f"adjoint gradient disagrees with FD: rel={rels}"
 
 
+def test_run_from_json(tmp_path):
+    out = _run_example(EXAMPLES / "run_from_json.py", tmp_path, timeout=900)
+    match = re.search(r"\|diff\|=([0-9.eE+-]+)", out)
+    assert match is not None and float(match.group(1)) < 1e-6
+    assert (tmp_path / "output_run_from_json" / "circular_tokamak.json").exists()
+    assert (tmp_path / "output_run_from_json" / "wout_circular_tokamak.nc").exists()
+
+
+def test_hot_restart_scan(tmp_path):
+    out = _run_example(EXAMPLES / "hot_restart_scan.py", tmp_path, timeout=900)
+    base = re.search(r"cold base solve:\s*(\d+) iters", out)
+    warm = [int(m) for m in re.findall(r"^\s*[0-9.]+\s+(\d+)\s+[0-9.]+\s+warm", out, re.M)]
+    assert base is not None and int(base.group(1)) > 10, "base should need many iters"
+    assert len(warm) == 5 and max(warm) <= 5, f"warm restarts should be cheap: {warm}"
+
+
 @pytest.mark.parametrize("case", [
     "QA",  # PR smoke: proves the QS optimization pipeline end-to-end
     pytest.param("QH", marks=pytest.mark.full),  # nightly (subprocess cold-start heavy)

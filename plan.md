@@ -251,9 +251,11 @@ VMEC++ example layouts).**
   indexed in examples/README.md): `plot_and_boozer.py` (every plot_wout figure + Boozer on the LCFS),
   `profiles_power_and_spline.py` (power-series vs cubic-spline profiles → identical equilibrium; NCURR
   0 vs 1), `take_gradients.py` (implicit-adjoint d(aspect)/d(RBC) and d(wb)/d(phiedge) vs central FD,
-  rel ~1e-9). Light ones run in the PR examples shard; take_gradients is nightly (`full`, ~1 min).
-  STILL TODO: run_from_json, free_boundary_mgrid, free_boundary_essos_coils (ESSOS), free_boundary_beta_scan,
-  finite_beta_scan, hot_restart_scan, single_stage_free_boundary_opt (gated on R15 free-bdy diff). Each is one simsopt-style file (params at top, no `main()`, prints
+  rel ~1e-9), `run_from_json.py` (VMEC++ JSON ↔ &INDATA round-trip → one equilibrium),
+  `hot_restart_scan.py` (seed each scan point from the previous state → warm converges in ~1 iter vs
+  ~309 cold, no recompile). Light ones run in the PR examples shard; take_gradients is nightly (`full`).
+  STILL TODO: free_boundary_mgrid, free_boundary_essos_coils (ESSOS), free_boundary_beta_scan,
+  finite_beta_scan, single_stage_free_boundary_opt (gated on R15 free-bdy diff). Each is one simsopt-style file (params at top, no `main()`, prints
 initial→progress→final, teaches one feature) and is CI-smoke-tested (reduced budget) + doubles as the
 docs tutorial (R14.3). Target set:
   - `run_fixed_boundary.py` (exists), `run_from_json.py` (VMEC++ JSON in/out + convert),
