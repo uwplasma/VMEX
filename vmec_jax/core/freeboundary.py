@@ -385,71 +385,397 @@ def _resolve_mgrid(inp: VmecInput, mgrid_path: str | Path | None) -> Path:
     return p
 
 
+# ---------------------------------------------------------------------------
+# Fused on-device vacuum update (JAX ports of the host-assembly functions)
+# ---------------------------------------------------------------------------
+#
+# The NumPy functions above (``_edge_fourier``, ``boundary_from_coefficients``,
+# ``axis_current_field``, ``external_field_channels``) remain the parity-proven
+# reference used by the operator tests.  The ``*_jax`` mirrors below are their
+# pure-``jnp`` equivalents so the whole per-iteration vacuum update can run as
+# ONE jitted program (``_make_fused_vacuum``) with no NumPy<->JAX round-trips
+# (``tests/core_new/test_freeboundary.py::test_fused_vacuum_matches_reference``
+# A/B-locks them to the NumPy path at machine precision).
+
+
+def _edge_fourier_jax(state: SpectralState, rt: SolverRuntime):
+    """On-device edge wout-convention coefficients (JAX ``_edge_fourier``)."""
+    from .residuals import m1_constrained_to_physical
+    from .transforms import physical_to_internal_scale
+
+    setup = rt.setup
+    R_cos, Z_sin, R_sin, Z_cos = m1_constrained_to_physical(
+        state.R_cos, state.Z_sin, state.R_sin, state.Z_cos,
+        modes=rt.modes, lthreed=setup.lthreed, lasym=setup.lasym,
+        lconm1=setup.lconm1,
+    )
+    scale = jnp.asarray(1.0 / physical_to_internal_scale(rt.modes, rt.trig))
+    rmnc = R_cos[-1] * scale
+    zmns = Z_sin[-1] * scale
+    if setup.lasym:
+        return rmnc, zmns, R_sin[-1] * scale, Z_cos[-1] * scale
+    return rmnc, zmns, None, None
+
+
+def _boundary_from_coefficients_jax(rmnc, zmns, rmns, zmnc, *, modes: ModeTable,
+                                    basis: VacuumBasis) -> VacuumBoundary:
+    """On-device boundary synthesis (JAX ``boundary_from_coefficients``)."""
+    xm = jnp.asarray(np.asarray(modes.m, dtype=float))
+    xn = jnp.asarray(np.asarray(modes.n, dtype=float) * float(basis.nfp))
+    th = jnp.asarray(np.asarray(basis.theta, dtype=float))[:, None]
+    ze = jnp.asarray(np.asarray(basis.zeta, dtype=float))[:, None] * float(basis.onp)
+    arg = th * xm[None, :] - ze * xn[None, :]
+    cosmn = jnp.cos(arg)
+    sinmn = jnp.sin(arg)
+    rc = jnp.asarray(rmnc)
+    zs = jnp.asarray(zmns)
+    R = cosmn @ rc
+    Z = sinmn @ zs
+    Ru = -(sinmn * xm[None, :]) @ rc
+    Rv = (sinmn * xn[None, :]) @ rc
+    Zu = (cosmn * xm[None, :]) @ zs
+    Zv = -(cosmn * xn[None, :]) @ zs
+    ruu = -(cosmn * (xm * xm)[None, :]) @ rc
+    ruv = (cosmn * (xm * xn)[None, :]) @ rc
+    rvv = -(cosmn * (xn * xn)[None, :]) @ rc
+    zuu = -(sinmn * (xm * xm)[None, :]) @ zs
+    zuv = (sinmn * (xm * xn)[None, :]) @ zs
+    zvv = -(sinmn * (xn * xn)[None, :]) @ zs
+    if rmns is not None and zmnc is not None:
+        rs = jnp.asarray(rmns)
+        zc = jnp.asarray(zmnc)
+        R = R + sinmn @ rs
+        Z = Z + cosmn @ zc
+        Ru = Ru + (cosmn * xm[None, :]) @ rs
+        Rv = Rv - (cosmn * xn[None, :]) @ rs
+        Zu = Zu - (sinmn * xm[None, :]) @ zc
+        Zv = Zv + (sinmn * xn[None, :]) @ zc
+        ruu = ruu - (sinmn * (xm * xm)[None, :]) @ rs
+        ruv = ruv + (sinmn * (xm * xn)[None, :]) @ rs
+        rvv = rvv - (sinmn * (xn * xn)[None, :]) @ rs
+        zuu = zuu - (cosmn * (xm * xm)[None, :]) @ zc
+        zuv = zuv + (cosmn * (xm * xn)[None, :]) @ zc
+        zvv = zvv - (cosmn * (xn * xn)[None, :]) @ zc
+    shape = (int(basis.ntheta3), int(basis.nzeta))
+    return VacuumBoundary(
+        R=R.reshape(shape), Z=Z.reshape(shape),
+        Ru=Ru.reshape(shape), Zu=Zu.reshape(shape),
+        Rv=Rv.reshape(shape), Zv=Zv.reshape(shape),
+        ruu=ruu.reshape(shape), ruv=ruv.reshape(shape), rvv=rvv.reshape(shape),
+        zuu=zuu.reshape(shape), zuv=zuv.reshape(shape), zvv=zvv.reshape(shape),
+    )
+
+
+def _axis_current_tables(basis: VacuumBasis) -> dict[str, Any]:
+    """Static filament tables for :func:`_axis_current_field_jax` (``tolicu.f``).
+
+    For a non-degenerate axis every replicated node is distinct, so the
+    ``tolicu.f`` ``bsc_construct`` keep-filtering is a no-op and the closed-loop
+    node count is static (``nvper*nzeta + 1``) — verified at build time in
+    :func:`_make_fused_vacuum`.  Returns the geometry-independent period/segment
+    trig tables (device arrays) shared across every iteration.
+    """
+    nv = int(basis.nzeta)
+    nfp = max(1, int(basis.nfp))
+    nvper = 64 if nv == 1 else nfp
+    alvp = (2.0 * np.pi / float(max(1, nv))) / float(nfp)
+    cosuv = np.cos(alvp * np.arange(nv, dtype=float))
+    sinuv = np.sin(alvp * np.arange(nv, dtype=float))
+    alp_per = 2.0 * np.pi / float(nvper)
+    cosper = np.cos(alp_per * np.arange(nvper, dtype=float))
+    sinper = np.sin(alp_per * np.arange(nvper, dtype=float))
+    return {
+        "nv": nv, "nvper": nvper,
+        "cosuv": jnp.asarray(cosuv), "sinuv": jnp.asarray(sinuv),
+        "cosper": jnp.asarray(cosper), "sinper": jnp.asarray(sinper),
+    }
+
+
+def _axis_current_field_jax(R, Z, axis_r, axis_z, current, tables: dict[str, Any]):
+    """On-device axis-filament Biot-Savart (JAX ``tolicu.f`` + ``belicu.f``).
+
+    Static-topology port of :func:`axis_current_field`: the ``nvper*nzeta``
+    replicated nodes are all distinct (non-degenerate axis) and the loop is
+    closed by appending the first node; ``eps_sq`` regularizes the LIBSTELL
+    ``bsc_b`` segment kernel exactly as the NumPy reference.  ``current`` is the
+    filament current ``ctor / mu0``.
+    """
+    nv = int(tables["nv"])
+    nvper = int(tables["nvper"])
+    cosuv = tables["cosuv"]
+    sinuv = tables["sinuv"]
+    cosper = tables["cosper"]
+    sinper = tables["sinper"]
+    ar = jnp.reshape(axis_r, (-1,))
+    az = jnp.reshape(axis_z, (-1,))
+    x0 = ar * cosuv
+    y0 = ar * sinuv
+    xper = cosper[:, None] * x0[None, :] - sinper[:, None] * y0[None, :]
+    yper = sinper[:, None] * x0[None, :] + cosper[:, None] * y0[None, :]
+    zper = jnp.broadcast_to(az[None, :], (nvper, nv))
+    xpts = jnp.stack([xper.reshape(-1), yper.reshape(-1), zper.reshape(-1)], axis=0)
+    xnod = jnp.concatenate([xpts, xpts[:, :1]], axis=1)  # bsc: close the loop
+    dxnod = xnod[:, 1:] - xnod[:, :-1]
+    lsqnod = jnp.sum(dxnod * dxnod, axis=0)
+    eps = float(np.finfo(float).eps)
+    tiny = float(np.finfo(float).tiny)
+    eps_sq = jnp.maximum(eps * jnp.min(jnp.where(lsqnod > 0.0, lsqnod, jnp.inf)), tiny)
+    ntheta = int(R.shape[0])
+    cos1 = jnp.broadcast_to(cosuv[None, :], (ntheta, nv)).reshape(-1)
+    sin1 = jnp.broadcast_to(sinuv[None, :], (ntheta, nv)).reshape(-1)
+    rp = jnp.reshape(R, (-1,))
+    xobs = jnp.stack([rp * cos1, rp * sin1, jnp.reshape(Z, (-1,))], axis=1)
+    capRv = xobs[:, None, :] - xnod.T[None, :, :]
+    capR = jnp.sqrt(jnp.maximum(eps_sq, jnp.sum(capRv * capRv, axis=2)))
+    R1p2 = capR[:, :-1] + capR[:, 1:]
+    denom = jnp.maximum(R1p2 * R1p2 - lsqnod[None, :], eps_sq)
+    Rfactor = 2.0 * R1p2 / (capR[:, :-1] * capR[:, 1:] * denom)
+    crossv = jnp.cross(dxnod.T[None, :, :], capRv[:, :-1, :])
+    bxyz = (current * 1.0e-7) * jnp.sum(crossv * Rfactor[:, :, None], axis=1)
+    br = cos1 * bxyz[:, 0] + sin1 * bxyz[:, 1]
+    bp = -sin1 * bxyz[:, 0] + cos1 * bxyz[:, 1]
+    return (br.reshape((ntheta, nv)), bp.reshape((ntheta, nv)),
+            bxyz[:, 2].reshape((ntheta, nv)))
+
+
+def _external_field_channels_jax(boundary: VacuumBoundary, br, bp, bz, *,
+                                 basis: VacuumBasis, signgs: int):
+    """On-device ``bextern.f`` channels (JAX ``external_field_channels``)."""
+    R = boundary.R
+    Ru = boundary.Ru
+    Zu = boundary.Zu
+    Rv = boundary.Rv
+    Zv = boundary.Zv
+    sgn = float(int(signgs))
+    snr = sgn * R * Zu
+    snv = sgn * (Ru * Zv - Rv * Zu)
+    snz = -sgn * R * Ru
+    bexu = Ru * br + Zu * bz
+    bexv = Rv * br + Zv * bz + R * bp
+    bexn = -(br * snr + bp * snv + bz * snz)
+    wint2 = jnp.asarray(np.asarray(basis.wint, dtype=float).reshape((
+        int(basis.ntheta3), int(basis.nzeta))))
+    bexni = bexn * wint2 * ((2.0 * np.pi) ** 2)
+    return {
+        "bexu": bexu, "bexv": bexv, "bexn": bexn, "bexni": bexni,
+        "guu": Ru * Ru + Zu * Zu,
+        "guv": Ru * Rv + Zu * Zv,
+        "gvv": R * R + Rv * Rv + Zv * Zv,
+    }
+
+
+@dataclass(frozen=True, eq=False)
+class FusedVacuum:
+    """Jitted whole-pipeline NESTOR update closures (host-side full/skip choice).
+
+    ``full(state, rt, field)`` and ``skip(state, rt, field, bvec_nonsing,
+    mode_matrix)`` each run the ENTIRE per-iteration vacuum update on-device —
+    plasma scalars, boundary synthesis, mgrid + axis-current external field,
+    NESTOR solve, surface field and the DEL-BSQ / banner reductions — returning
+    a dict of device arrays.  Composing them into one jitted program removes the
+    ~27 NumPy<->JAX host round-trips the step-by-step host driver incurred.
+    """
+
+    full: Any
+    skip: Any
+
+
+def _make_fused_vacuum(basis: VacuumBasis, *, modes: ModeTable, signgs: int,
+                       solver_vac, axis_r0, axis_z0) -> FusedVacuum:
+    """Build the jitted full/skip whole-pipeline vacuum updates for one basis."""
+    axis_tb = _axis_current_tables(basis)
+    _assert_static_filament_topology(basis, axis_r0, axis_z0)
+    shape = (int(basis.ntheta3), int(basis.nzeta))
+    phi_geom = jnp.asarray(
+        (np.asarray(basis.zeta, dtype=float) * float(basis.onp)).reshape(shape)
+    )
+    wint2 = jnp.asarray(np.asarray(basis.wint, dtype=float).reshape(shape))
+    two_pi = 2.0 * float(np.pi)
+    sgn = float(int(signgs))
+
+    def _pipeline(state, rt, field, boundary, ctor, axis_r, axis_z):
+        br_c, bp_c, bz_c = field.b_cyl(boundary.R, phi_geom, boundary.Z)
+        br_a, bp_a, bz_a = _axis_current_field_jax(
+            boundary.R, boundary.Z, axis_r, axis_z, ctor / MU0, axis_tb
+        )
+        ext = _external_field_channels_jax(
+            boundary, br_c + br_a, bp_c + bp_a, bz_c + bz_a,
+            basis=basis, signgs=signgs,
+        )
+        return ext
+
+    def _diagnostics(bsqvac, bsubu_s, bsubv_s, bsq3, pres_ns, rt):
+        gcon_edge = bsqvac + pres_ns * jnp.asarray(rt.presf_ns_scale)
+        delbsq_num = jnp.sum(jnp.abs(gcon_edge - bsq3) * wint2)
+        delbsq_den = jnp.sum(bsq3 * wint2)
+        bsubuvac = jnp.sum(bsubu_s * wint2) * sgn * two_pi
+        bsubvvac = jnp.sum(bsubv_s * wint2)
+        return delbsq_num, delbsq_den, bsubuvac, bsubvvac
+
+    def _full(state: SpectralState, rt: SolverRuntime, field: MgridField):
+        ctor, rbtor, axis_r, axis_z, bsq3, pres_ns = _vacuum_scalars(state, rt)
+        rmnc, zmns, rmns, zmnc = _edge_fourier_jax(state, rt)
+        boundary = _boundary_from_coefficients_jax(
+            rmnc, zmns, rmns, zmnc, modes=modes, basis=basis
+        )
+        ext = _pipeline(state, rt, field, boundary, ctor, axis_r, axis_z)
+        potvac, mode_matrix, bvec_nonsing, _rhs, _gsrc, _grp = solver_vac.full(
+            boundary, ext["bexni"]
+        )
+        bsqvac, bsubu_s, bsubv_s, _bu, _bv = vacuum_channels(
+            basis=basis, potvac=potvac, bexu=ext["bexu"], bexv=ext["bexv"],
+            guu=ext["guu"], guv=ext["guv"], gvv=ext["gvv"],
+        )
+        delbsq_num, delbsq_den, bsubuvac, bsubvvac = _diagnostics(
+            bsqvac, bsubu_s, bsubv_s, bsq3, pres_ns, rt
+        )
+        return {
+            "bsqvac": bsqvac, "ctor": ctor, "rbtor": rbtor, "potvac": potvac,
+            "mode_matrix": mode_matrix, "bvec_nonsing": bvec_nonsing,
+            "delbsq_num": delbsq_num, "delbsq_den": delbsq_den,
+            "bsubuvac": bsubuvac, "bsubvvac": bsubvvac,
+        }
+
+    def _skip(state: SpectralState, rt: SolverRuntime, field: MgridField,
+              bvec_nonsing, mode_matrix):
+        ctor, rbtor, axis_r, axis_z, bsq3, pres_ns = _vacuum_scalars(state, rt)
+        rmnc, zmns, rmns, zmnc = _edge_fourier_jax(state, rt)
+        boundary = _boundary_from_coefficients_jax(
+            rmnc, zmns, rmns, zmnc, modes=modes, basis=basis
+        )
+        ext = _pipeline(state, rt, field, boundary, ctor, axis_r, axis_z)
+        potvac, _rhs = solver_vac.skip(
+            boundary, ext["bexni"], bvec_nonsing, mode_matrix
+        )
+        bsqvac, bsubu_s, bsubv_s, _bu, _bv = vacuum_channels(
+            basis=basis, potvac=potvac, bexu=ext["bexu"], bexv=ext["bexv"],
+            guu=ext["guu"], guv=ext["guv"], gvv=ext["gvv"],
+        )
+        delbsq_num, delbsq_den, bsubuvac, bsubvvac = _diagnostics(
+            bsqvac, bsubu_s, bsubv_s, bsq3, pres_ns, rt
+        )
+        return {
+            "bsqvac": bsqvac, "ctor": ctor, "rbtor": rbtor, "potvac": potvac,
+            "delbsq_num": delbsq_num, "delbsq_den": delbsq_den,
+            "bsubuvac": bsubuvac, "bsubvvac": bsubvvac,
+        }
+
+    return FusedVacuum(full=jax.jit(_full), skip=jax.jit(_skip))
+
+
+def _assert_static_filament_topology(basis: VacuumBasis, axis_r0, axis_z0) -> None:
+    """Guard the static-topology assumption of :func:`_axis_current_field_jax`.
+
+    Replays ``tolicu.f``'s ``bsc_construct`` keep-filtering on the initial axis;
+    the fused path assumes every replicated node is distinct and the loop closes
+    (true for any non-degenerate axis on ``nzeta > 1``).  Raises if a deck ever
+    violates it, rather than silently diverging from the NumPy reference.
+    """
+    ar = np.asarray(axis_r0, dtype=float).reshape(-1)
+    az = np.asarray(axis_z0, dtype=float).reshape(-1)
+    nv = int(basis.nzeta)
+    nfp = max(1, int(basis.nfp))
+    nvper = 64 if nv == 1 else nfp
+    alvp = (2.0 * np.pi / float(max(1, nv))) / float(nfp)
+    cosuv = np.cos(alvp * np.arange(nv, dtype=float))
+    sinuv = np.sin(alvp * np.arange(nv, dtype=float))
+    alp_per = 2.0 * np.pi / float(nvper)
+    cosper = np.cos(alp_per * np.arange(nvper, dtype=float))
+    sinper = np.sin(alp_per * np.arange(nvper, dtype=float))
+    x0 = ar * cosuv
+    y0 = ar * sinuv
+    xpts = np.zeros((3, nvper * nv), dtype=float)
+    for kper in range(nvper):
+        sl = slice(kper * nv, (kper + 1) * nv)
+        xpts[0, sl] = cosper[kper] * x0 - sinper[kper] * y0
+        xpts[1, sl] = sinper[kper] * x0 + cosper[kper] * y0
+        xpts[2, sl] = az
+    keep = [0]
+    for i in range(1, xpts.shape[1]):
+        d = xpts[:, keep[-1]] - xpts[:, i]
+        if float(d @ d) != 0.0:
+            keep.append(i)
+    closed = float((xpts[:, keep[-1]] - xpts[:, 0]) @ (xpts[:, keep[-1]] - xpts[:, 0])) != 0.0
+    if len(keep) != xpts.shape[1] or not closed:
+        raise NotImplementedError(
+            "fused axis-current filament requires a non-degenerate axis "
+            f"(kept {len(keep)}/{xpts.shape[1]} nodes, closed={closed}); "
+            "this deck needs the NumPy axis_current_field path"
+        )
+
+
+#: Structural executable reuse for the fused vacuum program, mirroring
+#: ``solver._static_tables``: repeated free-boundary solves at one resolution
+#: (the warm benchmark's second solve, hot restarts, optimization iterates)
+#: reuse ONE compiled NESTOR fused program instead of recompiling the
+#: greenf/analyt/solve kernels (~5 s on CPU) every solve.  Keyed on the
+#: hashable ``(resolution, signgs, mf, nf)``; the boundary/profile/mgrid values
+#: enter the jitted program as traced arguments, so one executable serves every
+#: solve at a given resolution.
+_VACUUM_EXECUTABLE_CACHE: dict[tuple[Any, int, int, int], tuple[VacuumBasis, FusedVacuum]] = {}
+
+
+def _vacuum_executables(resolution, *, mf: int, nf: int, signgs: int, wint,
+                        modes: ModeTable, axis_r0, axis_z0) -> tuple[VacuumBasis, FusedVacuum]:
+    """Return the cached ``(basis, fused vacuum)`` for one resolution/signgs.
+
+    ``wint``/``modes``/``axis_r0``/``axis_z0`` are resolution-determined build
+    inputs (not part of the key); they are consumed only on a cache miss.
+    """
+    key = (resolution, int(signgs), int(mf), int(nf))
+    cached = _VACUUM_EXECUTABLE_CACHE.get(key)
+    if cached is not None:
+        return cached
+    basis = vacuum_basis(
+        mf=int(mf), nf=int(nf), ntheta3=int(resolution.ntheta3),
+        nzeta=int(resolution.nzeta), nfp=int(resolution.nfp),
+        lasym=bool(resolution.lasym), wint=wint,
+    )
+    solver_vac = make_vacuum_solver(basis, signgs=int(signgs))
+    fused = _make_fused_vacuum(
+        basis, modes=modes, signgs=int(signgs), solver_vac=solver_vac,
+        axis_r0=axis_r0, axis_z0=axis_z0,
+    )
+    _VACUUM_EXECUTABLE_CACHE[key] = (basis, fused)
+    return basis, fused
+
+
 def _vacuum_step(
     *,
     carry,
     rt: SolverRuntime,
     fb: FreeBoundaryState,
     basis: VacuumBasis,
-    solver_vac,
+    fused_vac: FusedVacuum,
     field: MgridField,
     ivacskip: int,
     emit,
     verbose: bool,
-) -> np.ndarray:
-    """One NESTOR update (``vacuum.f``): returns ``bsqvac`` on the grid."""
-    ctor, rbtor, axis_r, axis_z, bsq3, pres_ns = _vacuum_scalars(carry.state, rt)
-    fb.ctor = float(ctor)
-    fb.rbtor = float(rbtor)
+) -> Array:
+    """One NESTOR update (``vacuum.f``): returns ``bsqvac`` on the grid (device).
 
-    rmnc, zmns, rmns, zmnc = _edge_fourier(carry.state, rt)
-    boundary = boundary_from_coefficients(
-        rmnc=rmnc, zmns=zmns, rmns=rmns, zmnc=zmnc, modes=rt.modes, basis=basis
-    )
-    shape = (basis.ntheta3, basis.nzeta)
-    phi_geom = (np.asarray(basis.zeta) * basis.onp).reshape(shape)
-    br_c, bp_c, bz_c = field.b_cyl(np.asarray(boundary.R), phi_geom, np.asarray(boundary.Z))
-    br_a, bp_a, bz_a = axis_current_field(
-        R=np.asarray(boundary.R), Z=np.asarray(boundary.Z),
-        axis_r=np.asarray(axis_r), axis_z=np.asarray(axis_z),
-        nfp=basis.nfp, plascur=fb.ctor,
-    )
-    br = np.asarray(br_c) + br_a
-    bp = np.asarray(bp_c) + bp_a
-    bz = np.asarray(bz_c) + bz_a
-    ext = external_field_channels(
-        boundary=boundary, br=br, bp=bp, bz=bz, basis=basis,
-        signgs=int(rt.setup.signgs),
-    )
-
+    The whole update — plasma scalars, boundary synthesis, mgrid + axis-current
+    external field, NESTOR solve, surface field and DEL-BSQ reduction — runs as
+    ONE jitted program (:class:`FusedVacuum`).  Only a few diagnostic scalars are
+    pulled to the host (screen line + turn-on banner); ``bsqvac`` and the cached
+    ``amatsav``/``bvecsav`` matrices stay on-device across iterations.
+    """
     if int(ivacskip) == 0 or fb.mode_matrix is None:
-        potvac, mode_matrix, bvec_nonsing, _rhs, _gsrc, _grp = solver_vac.full(
-            boundary, jnp.asarray(ext["bexni"])
-        )
-        fb.mode_matrix = mode_matrix
-        fb.bvec_nonsing = bvec_nonsing
+        out = fused_vac.full(carry.state, rt, field)
+        fb.mode_matrix = out["mode_matrix"]
+        fb.bvec_nonsing = out["bvec_nonsing"]
         fb.full_updates += 1
     else:
-        potvac, _rhs = solver_vac.skip(
-            boundary, jnp.asarray(ext["bexni"]), fb.bvec_nonsing, fb.mode_matrix
-        )
-    fb.potvac = np.asarray(potvac)
+        out = fused_vac.skip(carry.state, rt, field, fb.bvec_nonsing, fb.mode_matrix)
+    bsqvac = out["bsqvac"]
+    fb.potvac = out["potvac"]
+    fb.ctor = float(out["ctor"])
+    fb.rbtor = float(out["rbtor"])
     fb.vacuum_calls += 1
-
-    bsqvac, bsubu_s, bsubv_s, _bsupu, _bsupv = vacuum_channels(
-        basis=basis, potvac=potvac,
-        bexu=jnp.asarray(ext["bexu"]), bexv=jnp.asarray(ext["bexv"]),
-        guu=jnp.asarray(ext["guu"]), guv=jnp.asarray(ext["guv"]),
-        gvv=jnp.asarray(ext["gvv"]),
-    )
-    bsqvac = np.asarray(bsqvac)
 
     if fb.ivac == 0:
         # vacuum.f first-call block: promote ivac and print grid/current info.
         fb.ivac = 1
-        wint2 = np.asarray(basis.wint).reshape(shape)
-        bsubuvac = float(np.sum(np.asarray(bsubu_s) * wint2)) * float(rt.setup.signgs) * 2.0 * np.pi
-        bsubvvac = float(np.sum(np.asarray(bsubv_s) * wint2))
         if verbose:
             emit(
                 f"\n  In VACUUM, np = {basis.nfp:2d}  mf = {basis.mf:2d}  nf = {basis.nf:2d}"
@@ -457,20 +783,16 @@ def _vacuum_step(
             )
             fac = 1.0e-6 / MU0
             emit(
-                f"  2*pi * a * -BPOL(vac) = {bsubuvac*fac:10.2E}"
+                f"  2*pi * a * -BPOL(vac) = {float(out['bsubuvac'])*fac:10.2E}"
                 f" TOROIDAL CURRENT = {fb.ctor*fac:10.2E}\n"
-                f"  R * BTOR(vac) = {bsubvvac:10.2E}"
+                f"  R * BTOR(vac) = {float(out['bsubvvac']):10.2E}"
                 f" R * BTOR(plasma) = {fb.rbtor:10.2E}\n"
             )
 
     # DEL-BSQ diagnostic (funct3d.f dbsq + printout.f delbsq).
-    scale = float(np.asarray(rt.presf_ns_scale)) if rt.presf_ns_scale is not None else 0.0
-    gcon_edge = bsqvac + float(pres_ns) * scale
-    bsq3 = np.asarray(bsq3)
-    wint2 = np.asarray(basis.wint).reshape(shape)
-    den = float(np.sum(bsq3 * wint2))
+    den = float(out["delbsq_den"])
     if den != 0.0:
-        fb.delbsq = float(np.sum(np.abs(gcon_edge - bsq3) * wint2) / den)
+        fb.delbsq = float(out["delbsq_num"]) / den
     fb.bsqvac = bsqvac
     return bsqvac
 
@@ -541,13 +863,13 @@ def solve_free_boundary(
     ns = int(resolution.ns)
     dtype = rt.setup.s_full.dtype
 
-    basis = vacuum_basis(
-        mf=int(inp.mpol) + 1, nf=int(inp.ntor),
-        ntheta3=int(resolution.ntheta3), nzeta=int(resolution.nzeta),
-        nfp=int(resolution.nfp), lasym=bool(resolution.lasym),
-        wint=np.asarray(rt.trig.wint, dtype=float),
+    _init_state = _initial_state(rt.setup)
+    _axis_r0, _axis_z0 = _vacuum_scalars(_init_state, rt)[2:4]
+    basis, fused_vac = _vacuum_executables(
+        resolution, mf=int(inp.mpol) + 1, nf=int(inp.ntor),
+        signgs=int(rt.setup.signgs), wint=np.asarray(rt.trig.wint, dtype=float),
+        modes=rt.modes, axis_r0=_axis_r0, axis_z0=_axis_z0,
     )
-    solver_vac = make_vacuum_solver(basis, signgs=int(rt.setup.signgs))
 
     zeros_edge = jnp.zeros((basis.ntheta3, basis.nzeta), dtype=dtype)
     rt_fixed = replace(rt, lfreeb=False, bsqvac_edge=zeros_edge,
@@ -614,7 +936,7 @@ def solve_free_boundary(
                 fb.nvacskip = max(fb.nvskip0, int(1.0 / max(1.0e-1, 1.0e11 * fsq_rz)))
             bsqvac = _vacuum_step(
                 carry=carry, rt=rt_freeb, fb=fb, basis=basis,
-                solver_vac=solver_vac, field=external_field,
+                fused_vac=fused_vac, field=external_field,
                 ivacskip=ivacskip, emit=emit, verbose=verbose,
             )
             if fb.ivac >= 1 and not fb.turned_on:

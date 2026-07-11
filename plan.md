@@ -281,7 +281,13 @@ docs tutorial (R14.3). Target set:
 double-nfp vacuum phase bug (boundary synthesis used xn=n·nfp against per-period zeta; the
 geometric angle is phi=zeta·onp). input.cth_like_free_bdy: was stalling at NITER; now 574
 iters to fsqr=9.9e-11, wb parity 2.1e-7 vs VMEC2000's 476-iter golden. Remaining: iters 574
-vs 476 (~20% tail); R15.2 perf 13.7× (vacuum host↔device glue → JAX-fusion follow-up); R15.3
+vs 476 (~20% tail); R15.2 DONE (f197e144): vacuum fused into jitted JAX, 27 host↔device
+round-trips/iter → ~0, warm 9.43→3.48 s (2.7×, now 4.5× VMEC2000), convergence bit-identical.
+R15.3 DONE (4dcbbb54): differentiable free boundary via virtual_casing_jax — coil/extcur
+gradients WITHOUT NESTOR-adjoint (B_out.n=0 + pressure balance as a differentiable objective);
+FD-validated 2.2e-13..1.2e-10 vs central FD. **The whole free-boundary lane (converge/fast/
+differentiable) is DONE.** Remaining: full single-stage needs an IFT wrap d(boundary)/d(coils);
+R15.3
 differentiation via virtual_casing_jax (R19) still to do; add cth golden+mgrid to the CI
 bundle.)*
 show it).** Current: CTH free-bdy stops at NITER (fsq~9e-2, unconverged), warm 17 s ≫ Fortran 6.6 s,

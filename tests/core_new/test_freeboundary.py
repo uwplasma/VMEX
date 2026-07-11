@@ -21,7 +21,9 @@ structural + coarse:
 - the final ``fsqr`` is within 10x of the golden stdout's final value,
 - the edge ``rmnc/zmns`` rows agree with the golden wout to a few percent
   of the dominant coefficient (per-coefficient rtol is meaningless between
-  two chaotic unconverged trajectories; measured: ~1% for R, ~4% for Z).
+  two chaotic unconverged trajectories: a ~1e-13 float-op-reordering change
+  re-lands the 1000th-iteration endpoint elsewhere on the attractor, so the
+  bounds are coarse — measured R ~1%, Z 0.01-0.10 depending on op ordering).
 """
 
 from __future__ import annotations
@@ -147,6 +149,82 @@ def test_vacuum_first_call_diagnostics(ab_inputs):
     assert float(ctor) * fac == pytest.approx(4.32e-2, abs=2e-4)
 
 
+def test_fused_vacuum_matches_reference(ab_inputs):
+    """R15.2: the fused on-device vacuum update == the step-by-step NumPy path.
+
+    ``_make_fused_vacuum().full`` runs plasma scalars, boundary synthesis, the
+    mgrid + axis-current external field, the NESTOR solve, the surface field and
+    the DEL-BSQ reduction as ONE jitted program.  It must reproduce the
+    parity-proven step-by-step host path (``_vacuum_scalars`` -> ``_edge_fourier``
+    -> ``boundary_from_coefficients`` -> ``b_cyl`` + ``axis_current_field`` ->
+    ``external_field_channels`` -> ``solver.full`` -> ``vacuum_channels``) to
+    floating-point precision — the two differ only by op ordering.  Uses the
+    LASYM fixture so both parities and the asym solve blocks are exercised.
+    """
+    from dataclasses import replace
+
+    inp = ab_inputs["inp"]
+    res = ab_inputs["res"]
+    rt = ab_inputs["rt"]
+    basis: V.VacuumBasis = ab_inputs["basis"]
+    ns = int(res.ns)
+    dtype = rt.setup.s_full.dtype
+    state = _initial_state(rt.setup)
+    signgs = int(rt.setup.signgs)
+    rt_freeb = replace(
+        rt, lfreeb=True, jmax=ns,
+        bsqvac_edge=jnp.zeros((basis.ntheta3, basis.nzeta), dtype=dtype),
+        presf_ns_scale=jnp.asarray(FB._presf_ns_scale(inp, ns), dtype=dtype),
+    )
+    field = MgridField.from_mgrid_data(
+        read_mgrid(MGRID),
+        extcur=np.asarray(inp.extcur, dtype=float)[: read_mgrid(MGRID).nextcur],
+    )
+    solver = V.make_vacuum_solver(basis, signgs=signgs)
+
+    # -- reference: step-by-step host path --
+    ctor, _rb, axis_r, axis_z, _b3, _pr = FB._vacuum_scalars(state, rt_freeb)
+    rmnc, zmns, rmns, zmnc = FB._edge_fourier(state, rt_freeb)
+    boundary = FB.boundary_from_coefficients(
+        rmnc=rmnc, zmns=zmns, rmns=rmns, zmnc=zmnc, modes=rt.modes, basis=basis
+    )
+    phi = (np.asarray(basis.zeta) * basis.onp).reshape(basis.ntheta3, basis.nzeta)
+    br_c, bp_c, bz_c = field.b_cyl(np.asarray(boundary.R), phi, np.asarray(boundary.Z))
+    br_a, bp_a, bz_a = FB.axis_current_field(
+        R=np.asarray(boundary.R), Z=np.asarray(boundary.Z),
+        axis_r=np.asarray(axis_r), axis_z=np.asarray(axis_z),
+        nfp=basis.nfp, plascur=float(ctor),
+    )
+    ext = FB.external_field_channels(
+        boundary=boundary, br=np.asarray(br_c) + br_a, bp=np.asarray(bp_c) + bp_a,
+        bz=np.asarray(bz_c) + bz_a, basis=basis, signgs=signgs,
+    )
+    potvac_r, mm_r, bv_r, *_ = solver.full(boundary, jnp.asarray(ext["bexni"]))
+    bsqvac_r, *_ = V.vacuum_channels(
+        basis=basis, potvac=potvac_r,
+        bexu=jnp.asarray(ext["bexu"]), bexv=jnp.asarray(ext["bexv"]),
+        guu=jnp.asarray(ext["guu"]), guv=jnp.asarray(ext["guv"]),
+        gvv=jnp.asarray(ext["gvv"]),
+    )
+
+    # -- fused: one jitted program --
+    fused = FB._make_fused_vacuum(
+        basis, modes=rt.modes, signgs=signgs, solver_vac=solver,
+        axis_r0=axis_r, axis_z0=axis_z,
+    )
+    out = fused.full(state, rt_freeb, field)
+
+    def _rel(a, b):
+        a = np.asarray(a); b = np.asarray(b)
+        return np.abs(a - b).max() / max(np.abs(b).max(), 1e-300)
+
+    assert _rel(out["bsqvac"], bsqvac_r) < 1e-10
+    assert _rel(out["potvac"], potvac_r) < 1e-10
+    assert _rel(out["mode_matrix"], mm_r) < 1e-10
+    assert _rel(out["bvec_nonsing"], bv_r) < 1e-10
+    assert float(out["ctor"]) == pytest.approx(float(ctor), rel=1e-12, abs=1e-14)
+
+
 # ---------------------------------------------------------------------------
 # End-to-end golden run
 # ---------------------------------------------------------------------------
@@ -211,8 +289,20 @@ def test_free_boundary_end_to_end_golden(golden_dir):
     idx = np.asarray([mine[(m_, n_)] for m_, n_ in zip(g_xm, g_xn)])
     r_err = np.abs(result.rmnc[-1][idx] - g_rmnc).max() / np.abs(g_rmnc).max()
     z_err = np.abs(result.zmns[-1][idx] - g_zmns).max() / np.abs(g_zmns).max()
-    assert r_err < 0.05, f"edge rmnc scale-relative error {r_err}"
-    assert z_err < 0.08, f"edge zmns scale-relative error {z_err}"
+    # This fixture is DELIBERATELY chaotic (NITER=1000 exhausted, fsq ~ 1e-1),
+    # so the endpoint is a point on a chaotic attractor, not a fixed point: a
+    # ~1e-13 change in floating-point op ordering re-lands it elsewhere on that
+    # attractor.  The R15.2 on-device vacuum fusion is machine-precision
+    # EQUIVALENT to the step-by-step NESTOR path per iteration (A/B-locked by
+    # ``test_fused_vacuum_matches_reference`` to ~5e-13) yet, precisely because
+    # the trajectory is chaotic, it shifts the 1000th-iteration endpoint from
+    # the step-by-step path's (z 0.014 -> 0.098).  Measured for the fused path
+    # on two platforms: macOS/arm64 (r 0.014, z 0.098) and Linux/x86 CI-class
+    # (r 0.037, z 0.098) — z is strikingly platform-stable, R a bit looser — so
+    # the bounds below carry ~1.5-2x headroom.  The converged fixture is the
+    # pointwise-parity gate; here only coarse structure is meaningful.
+    assert r_err < 0.08, f"edge rmnc scale-relative error {r_err}"
+    assert z_err < 0.15, f"edge zmns scale-relative error {z_err}"
 
 
 # ---------------------------------------------------------------------------

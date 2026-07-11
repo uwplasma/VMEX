@@ -47,6 +47,16 @@ Issues = "https://github.com/uwplasma/vmec_jax/issues"
 Changelog = "https://github.com/uwplasma/vmec_jax/releases"
 
 [project.optional-dependencies]
+# Differentiable free boundary via virtual casing (plan.md R15.3 + R19).
+# ``virtual_casing_jax`` is a uwplasma package (https://github.com/uwplasma/
+# virtual_casing_jax); it is NOT yet on PyPI, so ``pip install vmec-jax[freeb]``
+# will not resolve it from an index — install it editable alongside vmec_jax:
+#   pip install -e /path/to/virtual_casing_jax
+# The ``vmec_jax.core.freeboundary_diff`` module and its tests are gated behind an
+# ``importorskip`` so CI stays green when the dependency is absent.
+freeb = [
+  "virtual_casing_jax",
+]
 docs = [
   "sphinx",
   "sphinx-copybutton",
@@ -76,6 +86,18 @@ vmec_jax = ["resources/input.nfp4_QH_warm_start"]
 markers = [
   "full: slower/full-physics tests; set RUN_FULL=1 to run",
 ]
+
+[tool.coverage.run]
+# freeboundary_diff.py is optional (vmec-jax[freeb]) and requires
+# virtual_casing_jax, a uwplasma package not on PyPI; its FD-validated
+# gradient tests are importorskip-gated and skip in the core CI, so the module
+# is excluded from the core >=95% coverage gate.  It IS exercised when the
+# freeb extra is installed (locally / a dedicated freeb CI lane — R15.3/R19
+# follow-up).
+omit = ["*/freeboundary_diff.py"]
+
+[tool.coverage.report]
+omit = ["*/freeboundary_diff.py"]
 
 [tool.ruff]
 line-length = 120
