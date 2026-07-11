@@ -67,6 +67,33 @@ def test_fixed_boundary_run(tmp_path):
     assert (outdir / "li383_low_res_summary.png").exists()
 
 
+def test_plot_and_boozer(tmp_path):
+    out = _run_example(EXAMPLES / "plot_and_boozer.py", tmp_path, timeout=900)
+    assert "converged = True" in out
+    outdir = tmp_path / "output_plot_and_boozer"
+    assert (outdir / "wout_li383_low_res.nc").exists()
+    # every plot_wout figure kind is written unconditionally
+    for suffix in ("summary", "surfaces", "modB", "profiles", "boundary3d"):
+        assert (outdir / f"li383_low_res_{suffix}.png").exists()
+
+
+def test_profiles_power_and_spline(tmp_path):
+    out = _run_example(EXAMPLES / "profiles_power_and_spline.py", tmp_path, timeout=900)
+    # both profile representations converge to the same equilibrium
+    assert out.count("converged=True") == 2
+    match = re.search(r"\|d aspect\| = ([0-9.eE+-]+)", out)
+    assert match is not None and float(match.group(1)) < 1e-3
+
+
+@pytest.mark.full  # nightly: ~1 min (2 adjoint grads + 4 FD solves, subprocess cold-start)
+def test_take_gradients(tmp_path):
+    out = _run_example(EXAMPLES / "take_gradients.py", tmp_path, timeout=900)
+    # both implicit-adjoint gradients agree with central finite differences
+    rels = [float(m) for m in re.findall(r"rel=([0-9.eE+-]+)", out)]
+    assert len(rels) == 2, f"expected two AD-vs-FD checks, got {rels}"
+    assert max(rels) < 1e-4, f"adjoint gradient disagrees with FD: rel={rels}"
+
+
 @pytest.mark.parametrize("case", [
     "QA",  # PR smoke: proves the QS optimization pipeline end-to-end
     pytest.param("QH", marks=pytest.mark.full),  # nightly (subprocess cold-start heavy)

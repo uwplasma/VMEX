@@ -246,7 +246,14 @@ golden-fetch import path, `pyproject.toml` pytest config, and any `tests/core_ne
 Gate: CI green with the flat `tests/` layout; no `core_new` anywhere.
 
 **R13. Many more pedagogic examples (study STELLOPT / VMEC2000 / hiddenSymmetries simsopt / DESC /
-VMEC++ example layouts).** Each is one simsopt-style file (params at top, no `main()`, prints
+VMEC++ example layouts).**
+  **(R13 IN PROGRESS 2026-07-11.)** Shipped so far (each simsopt-style, params-at-top, CI-smoke-tested,
+  indexed in examples/README.md): `plot_and_boozer.py` (every plot_wout figure + Boozer on the LCFS),
+  `profiles_power_and_spline.py` (power-series vs cubic-spline profiles → identical equilibrium; NCURR
+  0 vs 1), `take_gradients.py` (implicit-adjoint d(aspect)/d(RBC) and d(wb)/d(phiedge) vs central FD,
+  rel ~1e-9). Light ones run in the PR examples shard; take_gradients is nightly (`full`, ~1 min).
+  STILL TODO: run_from_json, free_boundary_mgrid, free_boundary_essos_coils (ESSOS), free_boundary_beta_scan,
+  finite_beta_scan, hot_restart_scan, single_stage_free_boundary_opt (gated on R15 free-bdy diff). Each is one simsopt-style file (params at top, no `main()`, prints
 initial→progress→final, teaches one feature) and is CI-smoke-tested (reduced budget) + doubles as the
 docs tutorial (R14.3). Target set:
   - `run_fixed_boundary.py` (exists), `run_from_json.py` (VMEC++ JSON in/out + convert),
