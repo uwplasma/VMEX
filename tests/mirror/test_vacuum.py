@@ -412,6 +412,78 @@ def test_two_coil_anisotropic_free_boundary_calibrates_perpendicular_beta() -> N
 
 
 @pytest.mark.full
+def test_anisotropic_free_boundary_observables_converge_with_resolution() -> None:
+    observables = []
+    normal_fields = []
+    for ns, nxi, nrho in ((5, 7, 5), (7, 13, 7), (9, 17, 9)):
+        config = MirrorConfig(
+            resolution=MirrorResolution(ns=ns, mpol=0, ntheta=1, nxi=nxi),
+            z_min=-0.8,
+            z_max=0.8,
+            ftol=1.0e-12,
+            max_iterations=2000,
+        )
+        grid = config.build_grid()
+        vacuum_grid = build_vacuum_grid(grid, nrho=nrho)
+        on_axis = two_coil_on_axis_bz(
+            jnp.asarray(grid.z),
+            coil_radius=0.9,
+            separation=2.0,
+            current=2.0e5,
+        )
+        center = grid.nxi // 2
+        flux = 0.5 * on_axis[center] * 0.25**2
+        boundary = MirrorBoundary.from_axis_field(flux, on_axis, grid)
+        closure = BiMaxwellianPressureClosure(
+            mass_coefficients=jnp.asarray([1.0, -1.0]),
+            hot_fraction_coefficients=jnp.asarray([0.2]),
+            temperature_ratio=0.7,
+            critical_field=float(on_axis[center]),
+            gamma=0.0,
+        )
+        results = solve_axisymmetric_beta_scan_cli(
+            boundary,
+            grid,
+            vacuum_grid,
+            config,
+            _two_end_coils(),
+            jnp.asarray([0.0, 0.10]),
+            outer_radius=0.65,
+            axial_flux_derivative=flux,
+            reference_field=float(on_axis[center]),
+            pressure_closure=closure,
+        )
+        result = results[-1]
+        diagnostic = summarize_axisymmetric_beta_scan(
+            results,
+            jnp.asarray([0.0, 0.10]),
+            grid,
+            reference_field=float(on_axis[center]),
+        )[-1]
+        anisotropy = jnp.max(
+            jnp.abs(result.plasma_energy.moments_half.perpendicular - result.plasma_energy.moments_half.parallel)
+        ) / jnp.max(result.plasma_energy.moments_half.parallel)
+        observables.append(
+            np.asarray(
+                [
+                    diagnostic.center_radius,
+                    diagnostic.diamagnetic_field_ratio,
+                    diagnostic.volume_averaged_beta,
+                    anisotropy,
+                ]
+            )
+        )
+        normal_fields.append(float(result.interface.vacuum_b_normal_rms))
+        assert result.converged
+        assert float(result.variational_max) <= config.ftol
+        assert bool(jnp.all(result.plasma_energy.indicators_half.valid))
+
+    relative_change = np.abs(observables[-1] - observables[-2]) / np.abs(observables[-1])
+    assert np.max(relative_change) < 1.0e-3
+    assert normal_fields[2] < normal_fields[1] < normal_fields[0]
+
+
+@pytest.mark.full
 def test_free_boundary_mgrid_matches_direct_two_coil_equilibrium() -> None:
     config = MirrorConfig(
         resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=7),
