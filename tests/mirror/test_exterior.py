@@ -30,6 +30,9 @@ from vmec_jax.mirror import (  # noqa: E402
     laplace_reduced_exterior_gradient_off_surface,
     laplace_reduced_green_gradient_off_surface,
     laplace_single_layer_gradient_off_surface,
+    magnetic_field_squared,
+    magnetic_field_xyz,
+    plasma_coil_neumann,
     solve_reduced_exterior_laplace_neumann,
     solve_reduced_interior_laplace_neumann,
     solve_axisymmetric_exterior_vacuum,
@@ -583,6 +586,57 @@ def test_plasma_coil_neumann_adapter_matches_uniform_field_data() -> None:
     assert float(jnp.max(jnp.abs(vacuum.lateral_b_normal))) < 2.0e-12
     assert float(vacuum.neumann_result.compatibility_error) < 2.0e-12
     assert float(vacuum.neumann_result.condition_number) < 10.0
+
+
+def test_nonaxisymmetric_plasma_neumann_data_preserves_closed_flux() -> None:
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=1, ntheta=3, nxi=7),
+        z_min=-0.6,
+        z_max=0.6,
+    ).build_grid()
+    theta = jnp.asarray(grid.theta)[:, None]
+    xi = jnp.asarray(grid.xi)[None, :]
+    boundary = MirrorBoundary.from_radius(
+        0.3 * (1.0 + 0.05 * jnp.cos(theta) * (1.0 - xi**2)), grid
+    )
+    base = MirrorState.from_boundary(boundary, grid)
+    radial = jnp.asarray(grid.s)[:, None, None]
+    state = MirrorState(
+        base.radius_scale,
+        2.0e-3 * radial * jnp.sin(theta)[None] * (1.0 - xi**2)[None],
+    )
+    geometry = evaluate_geometry(state, grid)
+    field = contravariant_field(
+        state,
+        geometry,
+        grid,
+        axial_flux_derivative=0.003,
+        current_derivative=1.0e-3 * jnp.asarray(grid.s),
+    )
+    field_xyz = magnetic_field_xyz(field, geometry)
+    np.testing.assert_allclose(
+        jnp.sum(field_xyz**2, axis=-1),
+        magnetic_field_squared(field, geometry),
+        rtol=5.0e-13,
+        atol=5.0e-15,
+    )
+
+    zero_coil = CoilSet(
+        base_curve_dofs=jnp.zeros((1, 3, 3)),
+        base_currents=jnp.zeros(1),
+        n_segments=16,
+    )
+    surface = build_closed_mirror_surface(boundary, grid, cap_rim_grade=2.5)
+    neumann = plasma_coil_neumann(surface, field, geometry, grid, zero_coil)
+    assert neumann.shape == (surface.reduced_size,)
+    lateral_size = grid.ntheta * grid.nxi
+    np.testing.assert_allclose(neumann[:lateral_size], 0.0, atol=2.0e-15)
+    quadrature_neumann = surface.expand_collocation_values(
+        surface.expand_reduced_values(neumann)
+    )
+    net_flux = jnp.sum(quadrature_neumann * surface.quadrature_weights)
+    flux_scale = surface.area * jnp.sqrt(jnp.mean(neumann**2))
+    assert float(jnp.abs(net_flux) / flux_scale) < 2.0e-3
 
 
 def test_axisymmetric_exterior_vacuum_is_shape_differentiable() -> None:

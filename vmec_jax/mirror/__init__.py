@@ -18,6 +18,7 @@ from .geometry import (
     divergence_b,
     evaluate_geometry,
     magnetic_field_squared,
+    magnetic_field_xyz,
 )
 from .exterior import (
     ClosedMirrorSurface,
@@ -27,6 +28,7 @@ from .exterior_bie import (
     AxisymmetricExteriorVacuum,
     LaplaceNeumannResult,
     axisymmetric_plasma_coil_neumann,
+    plasma_coil_neumann,
     axisymmetric_exterior_lateral_field,
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
@@ -114,6 +116,7 @@ __all__ = [
     "LaplaceNeumannResult",
     "AxisymmetricExteriorVacuum",
     "axisymmetric_plasma_coil_neumann",
+    "plasma_coil_neumann",
     "axisymmetric_exterior_lateral_field",
     "ContravariantField",
     "EndCondition",
@@ -167,6 +170,7 @@ __all__ = [
     "interface_residual",
     "interpolate_fixed_boundary_state",
     "magnetic_field_squared",
+    "magnetic_field_xyz",
     "mass_profile_from_pressure",
     "load_free_boundary_restart",
     "laplace_double_layer_off_surface",

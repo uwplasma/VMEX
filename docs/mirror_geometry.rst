@@ -321,11 +321,20 @@ harmonic manufactured fields ``1``, ``x``, ``z``, and ``x^2-y^2`` while
 returning zero at exterior targets.
 
 The off-surface functions reject malformed source and target arrays. M5 now has
-separately tested interior and decaying-exterior reduced Neumann solves. It
-still needs shaped-boundary and
-finite-beta coil-data studies, broader near-singular targets, resolution/error
-targets tight enough for interface coupling, and replacement of the finite
-outer cylinder in the coupled free-boundary solve.
+separately tested interior and decaying-exterior reduced Neumann solves plus an
+opt-in axisymmetric nonlinear coupling. It still needs broader shaped and
+near-singular references and higher-order side panels before the finite outer
+cylinder can be removed as the default backend.
+
+The first M7 nonaxisymmetric seam is also explicit. ``magnetic_field_xyz``
+converts the full contravariant mirror field without an axisymmetry shortcut,
+and ``plasma_coil_neumann`` assembles lateral plus graded-cap data on a
+theta-dependent closed surface. A finite-current ``mpol=1`` manufactured case
+matches the metric ``|B|^2`` contraction to ``5e-13``, keeps lateral ``B.n``
+below ``2e-15``, and closes integrated flux within ``2e-3`` on a small grid.
+This is boundary data, not yet a nonaxisymmetric free-boundary equilibrium;
+full-theta Dirichlet solve and tangential trace reconstruction are the next M7
+gates.
 
 Two cheaper boundary-limit approximations were tested and rejected. Inward or
 outward offset collocation produced density-system condition numbers from

@@ -202,6 +202,44 @@ def magnetic_field_squared(field: ContravariantField, geometry: MirrorGeometry) 
     )
 
 
+def magnetic_field_xyz(field: ContravariantField, geometry: MirrorGeometry) -> Array:
+    """Convert contravariant magnetic components to Cartesian components."""
+
+    radius = geometry.radius
+    radius_s = _safe_divide(geometry.d_radius_ds_regular, radius)
+    radius_s = radius_s.at[0].set(radius_s[1])
+    theta = jnp.arctan2(geometry.xyz[..., 1], geometry.xyz[..., 0])
+    cosine, sine = jnp.cos(theta), jnp.sin(theta)
+    zeros = jnp.zeros_like(radius)
+    e_s = jnp.stack([radius_s * cosine, radius_s * sine, zeros], axis=-1)
+    e_theta = jnp.stack(
+        [
+            geometry.d_radius_dtheta * cosine - radius * sine,
+            geometry.d_radius_dtheta * sine + radius * cosine,
+            zeros,
+        ],
+        axis=-1,
+    )
+    e_xi = jnp.stack(
+        [
+            geometry.d_radius_dxi * cosine,
+            geometry.d_radius_dxi * sine,
+            jnp.sqrt(
+                jnp.maximum(
+                    geometry.g_xixi - geometry.d_radius_dxi**2,
+                    0.0,
+                )
+            ),
+        ],
+        axis=-1,
+    )
+    return (
+        field.b_sup_s[..., None] * e_s
+        + field.b_sup_theta[..., None] * e_theta
+        + field.b_sup_xi[..., None] * e_xi
+    )
+
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:

@@ -13,6 +13,7 @@ from virtual_casing_jax import laplace_dx_u_eval, laplace_fx_u, laplace_fxd_u_ev
 from ..core.coils import biot_savart
 from .exterior import ClosedMirrorSurface, build_closed_mirror_surface
 from .exterior_mesh import panel_green_boundary_residual, panel_green_gradient_off_surface
+from .geometry import magnetic_field_xyz
 
 Array = Any
 
@@ -51,17 +52,69 @@ jax.tree_util.register_dataclass(
 )
 
 
+def plasma_coil_neumann(
+    surface: ClosedMirrorSurface,
+    plasma_field: "ContravariantField",
+    plasma_geometry: "MirrorGeometry",
+    plasma_grid: "MirrorGrid",
+    coilset: Any,
+) -> Array:
+    """Build ``(B_plasma-B_coil) dot n`` on the closed mirror boundary.
+
+    The lateral plasma trace is sampled directly. End-cut ``Bz`` is
+    interpolated in ``s=r^2/a_end^2`` onto the graded cap rings.
+    """
+
+    ntheta, nxi = surface.lateral_xyz.shape[:2]
+    if plasma_grid.ntheta == 1:
+        raise ValueError("use axisymmetric_plasma_coil_neumann for ntheta=1")
+    if ntheta != plasma_grid.ntheta or nxi != plasma_grid.nxi:
+        raise ValueError("surface and plasma grid have incompatible lateral nodes")
+    coil_normal = jnp.sum(
+        biot_savart(coilset, surface.collocation_xyz)
+        * surface.collocation_normals,
+        axis=1,
+    )
+    field_xyz = magnetic_field_xyz(plasma_field, plasma_geometry)
+    lateral_count = ntheta * nxi
+    lateral_normal = jnp.sum(
+        field_xyz[-1].reshape(-1, 3)
+        * surface.collocation_normals[:lateral_count],
+        axis=1,
+    )
+
+    def cap_normal(cap_xyz: Array, endpoint: int, orientation: float) -> Array:
+        boundary_radius = jnp.linalg.norm(surface.lateral_xyz[:, endpoint, :2], axis=1)
+        cap_s = jnp.sum(cap_xyz[..., :2] ** 2, axis=-1) / boundary_radius[None, :] ** 2
+        source_bz = field_xyz[:, :, endpoint, 2]
+        interpolated = jnp.stack(
+            [
+                jnp.interp(cap_s[:, index], jnp.asarray(plasma_grid.s), source_bz[:, index])
+                for index in range(ntheta)
+            ],
+            axis=1,
+        )
+        return orientation * jnp.concatenate(
+            [jnp.mean(interpolated[0])[None], interpolated[1:-1].reshape(-1)]
+        )
+
+    plasma_normal = jnp.concatenate(
+        [
+            lateral_normal,
+            cap_normal(surface.lower_cap_xyz, 0, -1.0),
+            cap_normal(surface.upper_cap_xyz, -1, 1.0),
+        ]
+    )
+    return surface.reduce_collocation_values(plasma_normal - coil_normal)
+
+
 def axisymmetric_plasma_coil_neumann(
     surface: ClosedMirrorSurface,
     plasma_field: "ContravariantField",
     plasma_grid: "MirrorGrid",
     coilset: Any,
 ) -> Array:
-    """Build ``(B_plasma-B_coil) dot n`` on the closed mirror boundary.
-
-    The lateral plasma contribution is exactly zero on a flux surface. End-cut
-    ``Bz`` is interpolated in ``s=r^2/a_end^2`` onto the graded cap rings.
-    """
+    """Build axisymmetric closed-surface Neumann data without redundant theta."""
 
     if plasma_grid.ntheta != 1:
         raise ValueError("axisymmetric Neumann data requires ntheta=1")
@@ -76,17 +129,18 @@ def axisymmetric_plasma_coil_neumann(
         axis=1,
     )
     neumann = -surface.reduce_collocation_values(coil_normal)
-    representatives = jnp.asarray(surface.reduced_representatives)
-    points = surface.collocation_xyz[representatives]
+    points = surface.collocation_xyz[jnp.asarray(surface.reduced_representatives)]
 
     nxi = plasma_grid.nxi
     cap_size = plasma_grid.ns - 1
     lower = slice(nxi, nxi + cap_size)
     upper = slice(nxi + cap_size, nxi + 2 * cap_size)
-    boundary_radius_lower = jnp.linalg.norm(surface.lateral_xyz[0, 0, :2])
-    boundary_radius_upper = jnp.linalg.norm(surface.lateral_xyz[0, -1, :2])
-    lower_s = jnp.sum(points[lower, :2] ** 2, axis=1) / boundary_radius_lower**2
-    upper_s = jnp.sum(points[upper, :2] ** 2, axis=1) / boundary_radius_upper**2
+    lower_s = jnp.sum(points[lower, :2] ** 2, axis=1) / jnp.sum(
+        surface.lateral_xyz[0, 0, :2] ** 2
+    )
+    upper_s = jnp.sum(points[upper, :2] ** 2, axis=1) / jnp.sum(
+        surface.lateral_xyz[0, -1, :2] ** 2
+    )
     lower_bz = jnp.interp(
         lower_s,
         jnp.asarray(plasma_grid.s),
@@ -506,5 +560,5 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .basis import MirrorGrid
-    from .geometry import ContravariantField
+    from .geometry import ContravariantField, MirrorGeometry
     from .model import MirrorBoundary
