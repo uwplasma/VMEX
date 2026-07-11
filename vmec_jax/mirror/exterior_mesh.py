@@ -156,6 +156,7 @@ def panel_green_boundary_residual(
     neumann: Array,
     *,
     order: int = 8,
+    target_indices: np.ndarray | None = None,
 ) -> Array:
     """Evaluate ``S(q) + K(u-u_target)`` at all mesh vertices.
 
@@ -174,8 +175,18 @@ def panel_green_boundary_residual(
     if dirichlet.shape != (nvertices,) or neumann.shape != (nvertices,):
         raise ValueError("dirichlet and neumann must have one value per vertex")
 
+    if target_indices is None:
+        target_indices = np.arange(nvertices)
+    else:
+        target_indices = np.asarray(target_indices, dtype=int)
+        if target_indices.ndim != 1 or np.any(
+            (target_indices < 0) | (target_indices >= nvertices)
+        ):
+            raise ValueError("target_indices must select valid vertices")
+
     residual = []
-    for target_index in range(nvertices):
+    for target_index in target_indices:
+        target_index = int(target_index)
         ordered = np.array(triangles_np, copy=True)
         rows, positions = np.nonzero(ordered == target_index)
         for row, position in zip(rows, positions, strict=True):

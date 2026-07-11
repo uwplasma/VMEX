@@ -40,6 +40,7 @@ class ClosedMirrorSurface:
     collocation_xyz: Array
     collocation_normals: Array
     quadrature_to_collocation: Array
+    collocation_to_reduced: Array
     triangles: Array
 
     @property
@@ -103,6 +104,33 @@ class ClosedMirrorSurface:
         return values[self.quadrature_to_collocation]
 
     @property
+    def reduced_size(self) -> int:
+        """Number of independent density values after symmetry reduction."""
+
+        return int(np.max(np.asarray(self.collocation_to_reduced))) + 1
+
+    def expand_reduced_values(self, values: Array) -> Array:
+        """Expand reduced density values onto unique collocation nodes."""
+
+        values = jnp.asarray(values)
+        expected = (self.reduced_size,)
+        if values.shape != expected:
+            raise ValueError(f"reduced values shape {values.shape} must be {expected}")
+        return values[self.collocation_to_reduced]
+
+    def reduce_collocation_values(self, values: Array) -> Array:
+        """Average collocation values over each symmetry orbit."""
+
+        values = jnp.asarray(values)
+        expected = (self.collocation_xyz.shape[0],)
+        if values.shape != expected:
+            raise ValueError(f"collocation values shape {values.shape} must be {expected}")
+        indices = jnp.asarray(self.collocation_to_reduced)
+        totals = jnp.zeros(self.reduced_size, dtype=values.dtype).at[indices].add(values)
+        counts = jnp.zeros(self.reduced_size, dtype=values.dtype).at[indices].add(1.0)
+        return totals / counts
+
+    @property
     def triangle_xyz(self) -> Array:
         """Linear-panel vertices with shape ``(ntriangle, 3, 3)``."""
 
@@ -151,7 +179,8 @@ def build_closed_mirror_surface(
     if radius.shape != expected:
         raise ValueError(f"boundary shape {radius.shape} does not match {expected}")
 
-    if grid.ntheta == 1:
+    axisymmetric = grid.ntheta == 1
+    if axisymmetric:
         # The equilibrium stores no redundant angular samples in axisymmetry,
         # but Cartesian surface moments still require an angular quadrature.
         axisymmetric_ntheta = int(axisymmetric_ntheta)
@@ -270,6 +299,25 @@ def build_closed_mirror_surface(
             upper_collocation_normals,
         ]
     )
+    if axisymmetric:
+        lateral_reduced = np.tile(np.arange(nxi), ntheta)
+        next_reduced = nxi
+
+        def cap_reduced() -> np.ndarray:
+            nonlocal next_reduced
+            center = np.asarray([next_reduced])
+            next_reduced += 1
+            rings = np.repeat(
+                np.arange(next_reduced, next_reduced + grid.ns - 2), ntheta
+            )
+            next_reduced += grid.ns - 2
+            return np.concatenate([center, rings])
+
+        collocation_to_reduced = np.concatenate(
+            [lateral_reduced, cap_reduced(), cap_reduced()]
+        )
+    else:
+        collocation_to_reduced = np.arange(collocation_xyz.shape[0])
     triangles = jnp.asarray(
         closed_surface_triangles(lateral_map, lower_map, upper_map)
     )
@@ -283,6 +331,7 @@ def build_closed_mirror_surface(
         collocation_xyz=collocation_xyz,
         collocation_normals=collocation_normals,
         quadrature_to_collocation=quadrature_to_collocation,
+        collocation_to_reduced=jnp.asarray(collocation_to_reduced),
         triangles=triangles,
     )
 
@@ -377,6 +426,27 @@ def laplace_green_boundary_residual(
         dirichlet,
         neumann,
         order=order,
+    )
+
+
+def laplace_reduced_green_boundary_residual(
+    surface: ClosedMirrorSurface,
+    dirichlet: Array,
+    neumann: Array,
+    *,
+    order: int = 8,
+) -> Array:
+    """Evaluate the boundary identity in the surface's symmetry basis."""
+
+    mapping = np.asarray(surface.collocation_to_reduced)
+    _, representatives = np.unique(mapping, return_index=True)
+    return panel_green_boundary_residual(
+        surface.collocation_xyz,
+        surface.triangles,
+        surface.expand_reduced_values(dirichlet),
+        surface.expand_reduced_values(neumann),
+        order=order,
+        target_indices=representatives,
     )
 
 

@@ -25,6 +25,7 @@ from .exterior import (
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
     laplace_green_representation_off_surface,
+    laplace_reduced_green_boundary_residual,
     laplace_single_layer_off_surface,
     laplace_single_layer_gradient_off_surface,
 )
@@ -154,6 +155,7 @@ __all__ = [
     "laplace_double_layer_off_surface",
     "laplace_green_boundary_residual",
     "laplace_green_representation_off_surface",
+    "laplace_reduced_green_boundary_residual",
     "laplace_single_layer_off_surface",
     "laplace_single_layer_gradient_off_surface",
     "mirror_energy",

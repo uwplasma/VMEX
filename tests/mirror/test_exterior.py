@@ -19,6 +19,7 @@ from vmec_jax.mirror import (  # noqa: E402
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
     laplace_green_representation_off_surface,
+    laplace_reduced_green_boundary_residual,
     laplace_single_layer_gradient_off_surface,
 )
 
@@ -106,6 +107,37 @@ def test_collocation_map_identifies_cap_centers_and_rims() -> None:
     expanded = surface.expand_collocation_values(values)
     expected_values = surface.xyz[:, 0] + 2.0 * surface.xyz[:, 1] - 0.5 * surface.xyz[:, 2]
     np.testing.assert_allclose(expanded, expected_values, atol=2.0e-15)
+
+
+def test_axisymmetric_reduction_preserves_ring_values() -> None:
+    grid = _grid(ns=13, nxi=17)
+    surface = build_closed_mirror_surface(
+        MirrorBoundary.from_radius(0.3, grid), grid, axisymmetric_ntheta=12
+    )
+    assert surface.reduced_size == grid.nxi + 2 * (grid.ns - 1)
+    reduced = jnp.linspace(-0.4, 0.7, surface.reduced_size)
+    expanded = surface.expand_reduced_values(reduced)
+    np.testing.assert_allclose(surface.reduce_collocation_values(expanded), reduced)
+
+    residual = laplace_reduced_green_boundary_residual(
+        surface, jnp.ones(surface.reduced_size), jnp.zeros(surface.reduced_size)
+    )
+    np.testing.assert_allclose(residual, 0.0, atol=2.0e-15)
+
+    full_dirichlet = surface.collocation_xyz[:, 2]
+    full_neumann = surface.collocation_normals[:, 2]
+    full = laplace_green_boundary_residual(surface, full_dirichlet, full_neumann)
+    reduced = laplace_reduced_green_boundary_residual(
+        surface,
+        surface.reduce_collocation_values(full_dirichlet),
+        surface.reduce_collocation_values(full_neumann),
+    )
+    np.testing.assert_allclose(
+        reduced,
+        surface.reduce_collocation_values(full),
+        rtol=2.0e-12,
+        atol=2.0e-13,
+    )
 
 
 def test_panel_mesh_is_watertight_oriented_and_convergent() -> None:

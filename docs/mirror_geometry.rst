@@ -180,6 +180,12 @@ rims. For the independent harmonic fields ``u=x`` and ``u=z``, the worst
 normalized residual falls from ``3.47e-3`` on a 154-node mesh to ``1.78e-3``
 on an 862-node mesh. Raising Duffy order from 8 to 10 does not change the
 error, identifying linear-panel/rim resolution as the next limiter.
+For axisymmetric M6 data, angular panel nodes remain fully resolved as sources
+but one target is evaluated per rotational orbit. The density dimension is
+``nxi + 2(ns-1)``. At 57 unknowns and 1,762 panel vertices this representative-
+target Jacobian takes 2.75 seconds instead of 67.5 seconds, with unchanged
+3.27% ``u=z`` boundary error and condition number 19.1. The reduction is exact
+for ring-constant values and does not lower angular integration resolution.
 
 Tests require exact cylinder area and volume, zero integrated normal, the full
 tensor divergence theorem on a theta-shaped flared tube, cap/side ring

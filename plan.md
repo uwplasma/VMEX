@@ -1259,6 +1259,10 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       and avoiding an invalid smooth-surface jump coefficient at the rim. For harmonic `u=x,z`,
       its worst normalized residual falls `3.47e-3 -> 1.78e-3` from 154 to 862 nodes. Duffy orders
       8 and 10 agree, so panel/rim refinement, not quadrature order, is now the measured limiter.
+      Axisymmetric densities now reduce exactly to `nxi+2(ns-1)` ring unknowns while retaining all
+      angular source panels. Evaluating one representative target per orbit cuts the 57-unknown,
+      1,762-vertex Jacobian from 67.5 to 2.75 s; its `u=z` recovery is unchanged at 3.27% with
+      condition number 19.1. Cap-rim grading is the next accuracy step before coupling.
       This does not yet solve the exterior problem: cap-aware singular/near-singular
       quadrature, the second-kind boundary equation and nullspace, harmonic MMS, and coupling that
       deletes the finite outer cylinder remain the next M5 gates.
