@@ -555,6 +555,13 @@ as a longer refactor).**
      run at **ns = 201** (not 51) so the JIT compile time is small relative to run time (a fairer warm
      comparison). Regenerate `readme_runtime_compare.png` + reconcile the numbers. (Watch memory/wall on
      the heaviest decks; ns=201 is much larger — keep the suite honest and machine-load-caveated per R11.)
+     **(R22.6 CONFIG DONE 2026-07-11: `run_baseline.py` `RAMP_NS=201`, multigrid ladders extended to
+     201, docstring updated. Probe confirms the point — cth_like ns=201 warm=3.8 s vs cold=10.5 s, so the
+     solve dominates. Figure REGEN DEFERRED TO R9: a clean, complete ns=201 figure needs (a) an idle
+     machine — the box is currently contended by the user's sfincs at ~300% CPU, and the heaviest deck
+     (NuhrenbergZille ns=201) is minutes-long — and (b) `vmecpp`, which is not importable in the current
+     venv (the figure would drop its column). R9 finalizes benchmarks on a clean machine per R11; ns=201
+     is now the harness default it will use.)**
 
 **R23. Decide whether the 2D block preconditioner should be the DEFAULT (user 2026-07-11: "if it is so
 good, why isn't it the default?").** Measure 2D-vs-1D on representative decks: (a) **accuracy** — the
