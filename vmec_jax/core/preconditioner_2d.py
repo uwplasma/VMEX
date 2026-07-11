@@ -83,6 +83,10 @@ class Prec2DConfig:
     start_iteration:
         Earliest iteration at which the Newton step may activate (VMEC2000
         skips the first 10 iterations: ``IF (iter2 < 10) ictrl_prec2d = 0``).
+    interval:
+        Number of nonlinear iterations between Newton attempts. ``1`` tries
+        every iteration; larger values let inexpensive VMEC updates advance
+        between costly matrix-free GMRES solves.
     step:
         Damping applied to the (full) Newton step, ``state += step * delta``.
         ``1.0`` is the undamped Newton update; VMEC2000 instead folds the step
@@ -102,13 +106,15 @@ class Prec2DConfig:
         last multigrid stage sets this ``True``.
     backtracking:
         If true, try a short geometric sequence below ``step`` and retain the
-        update with the smallest preconditioned force norm, rejecting
-        sign-changing Jacobians. Disabled by default to preserve the measured
-        VMEC-style fixed-step path.
+        update with the smallest maximum normalized physical force component,
+        rejecting sign-changing Jacobians. If no Newton candidate descends,
+        the iteration falls back to the regular 1D-preconditioned VMEC update.
+        Disabled by default to preserve the measured VMEC-style fixed-step path.
     """
 
     threshold: float
     start_iteration: int = 10
+    interval: int = 1
     step: float = 1.0
     gmres_restart: int = 40
     gmres_max_restarts: int = 3

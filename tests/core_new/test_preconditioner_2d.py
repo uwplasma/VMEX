@@ -133,6 +133,7 @@ def test_prec2d_config_is_hashable():
     assert hash(cfg) == hash(Prec2DConfig(threshold=1e-6))
     assert hash(cfg) != hash(Prec2DConfig(threshold=1e-7))
     assert hash(cfg) != hash(Prec2DConfig(threshold=1e-6, backtracking=True))
+    assert hash(cfg) != hash(Prec2DConfig(threshold=1e-6, interval=10))
 
 
 def test_newton_system_contains_only_evolved_physical_entries():

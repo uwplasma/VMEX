@@ -768,6 +768,39 @@ def _force_pipeline(
     return scaled, preconditioned
 
 
+def _force_maps_at_state(
+    state: SpectralState, cache: PreconditionerCache, rt: SolverRuntime,
+    *, iteration: Array, fsqz_previous: Array,
+) -> tuple[Any, Any, Any, Any]:
+    """Jacobian, energies, raw force, and preconditioned force at ``state``.
+
+    This is the shared fixed-cache evaluation used by both the Newton operator
+    and its physical-force line search. It deliberately omits the expensive
+    preconditioner refresh candidates in :func:`_evaluate`.
+    """
+    setup = rt.setup
+    s = setup.s_full
+    (R_cos, R_sin, Z_cos, Z_sin), geometry = _geometry(state, rt)
+    jacobian = half_mesh_jacobian(geometry, s=s)
+    metrics = metric_elements(geometry, s=s)
+    fields = magnetic_fields(
+        geometry=geometry, jacobian=jacobian, metrics=metrics, trig=rt.trig,
+        s=s, phips=setup.phips, phipf=setup.phipf, chips=setup.chips,
+        signgs=setup.signgs, gamma=rt.gamma, mass=setup.mass,
+        ncurr=setup.ncurr, enclosed_current=setup.icurv,
+    )
+    energies = energies_and_force_norms(
+        jacobian=jacobian, metrics=metrics, fields=fields, trig=rt.trig,
+        s=s, signgs=setup.signgs,
+    )
+    scaled, preconditioned = _force_pipeline(
+        geometry=geometry, jacobian=jacobian, metrics=metrics, fields=fields,
+        R_cos=R_cos, R_sin=R_sin, Z_cos=Z_cos, Z_sin=Z_sin,
+        cache=cache, rt=rt, iteration=iteration, fsqz_previous=fsqz_previous,
+    )
+    return jacobian, energies, scaled, preconditioned
+
+
 def _preconditioned_force_signed(
     state: SpectralState, cache: PreconditionerCache, rt: SolverRuntime,
     *, iteration: Array, fsqz_previous: Array,
@@ -784,21 +817,8 @@ def _preconditioned_force_signed(
     frozen ``iteration``/``fsqz_previous`` fix the ``residue.f90`` m=1 release
     gate so the map matches the ``gc`` produced at the linearization point.
     """
-    setup = rt.setup
-    s = setup.s_full
-    (R_cos, R_sin, Z_cos, Z_sin), geometry = _geometry(state, rt)
-    jacobian = half_mesh_jacobian(geometry, s=s)
-    metrics = metric_elements(geometry, s=s)
-    fields = magnetic_fields(
-        geometry=geometry, jacobian=jacobian, metrics=metrics, trig=rt.trig,
-        s=s, phips=setup.phips, phipf=setup.phipf, chips=setup.chips,
-        signgs=setup.signgs, gamma=rt.gamma, mass=setup.mass,
-        ncurr=setup.ncurr, enclosed_current=setup.icurv,
-    )
-    _, preconditioned = _force_pipeline(
-        geometry=geometry, jacobian=jacobian, metrics=metrics, fields=fields,
-        R_cos=R_cos, R_sin=R_sin, Z_cos=Z_cos, Z_sin=Z_sin,
-        cache=cache, rt=rt, iteration=iteration, fsqz_previous=fsqz_previous,
+    _, _, _, preconditioned = _force_maps_at_state(
+        state, cache, rt, iteration=iteration, fsqz_previous=fsqz_previous,
     )
     return _force_to_state(preconditioned, rt)
 
@@ -834,8 +854,9 @@ def _newton_step(
     """2D-preconditioner Newton direction, gated on the activation predicate.
 
     Returns ``(direction, active)``.  When ``active`` (finest grid,
-    ``fsq_raw < threshold``, ``iteration >= start_iteration``, and the base
-    ``gate``), ``direction`` is the damped-Newton replacement for the 1D force
+    ``fsq_raw < threshold``, past ``start_iteration``, on the configured
+    cadence, and the base ``gate``), ``direction`` is the damped-Newton
+    replacement for the 1D force
     ``gc_signed``: it solves ``J delta = -gc_signed`` with matrix-free GMRES
     (``J = d(preconditioned force)/d(state)`` at ``state``, exact HVP via
     ``jax.jvp``), so ``state += cfg.step * delta`` is the block-preconditioned
@@ -843,7 +864,10 @@ def _newton_step(
     ``direction = gc_signed`` and ``active = False``.  The linear solve runs
     only over physical, evolved entries of the non-trivial spectral channels
     (symmetric: R_cos/Z_sin/L_sin). Fixed R/Z edge rows, axis-null harmonics,
-    lambda-axis values, and identically zero/gauge modes are omitted.
+    lambda-axis values, and identically zero/gauge modes are omitted. Optional
+    backtracking minimizes the largest physical force component and rejects
+    sign-changing Jacobians; a rejected correction returns to the regular VMEC
+    update for that iteration.
     Only reached when ``rt.prec2d is not None`` (the branch is otherwise never
     traced, keeping the 1D-only path byte-identical).
     """
@@ -851,7 +875,11 @@ def _newton_step(
     if not cfg.finest:  # non-finest multigrid stage: never activate (static)
         return gc_signed, jnp.zeros((), dtype=bool)
 
-    active = gate & (fsq_raw < cfg.threshold) & (iteration >= cfg.start_iteration)
+    cadence = ((iteration - cfg.start_iteration) % max(int(cfg.interval), 1)) == 0
+    active = (
+        gate & (fsq_raw < cfg.threshold) & (iteration >= cfg.start_iteration)
+        & cadence
+    )
     channels = _ALL_CHANNELS if rt.setup.lasym else ("R_cos", "Z_sin", "L_sin")
     indices = _newton_active_indices(rt, channels)
 
@@ -876,23 +904,36 @@ def _newton_step(
 
     def do_newton(_):
         delta, _sol = newton_direction(g_reduced, x0, rhs, cfg)
+        accepted = jnp.ones((), dtype=bool)
         if cfg.backtracking:
-            factors = jnp.asarray([1.0, 0.5, 0.25, 0.125, 0.0625, 0.0])
+            factors = jnp.asarray([
+                1.0, 0.5, 0.25, 0.125, 0.0625, 0.03125, 0.015625, 0.0,
+            ])
 
             def objective(factor):
                 candidate = {
                     c: x0[c] + cfg.step * factor * delta[c]
                     for c in channels
                 }
-                force = g_reduced(candidate)
-                norm_squared = sum(jnp.vdot(value, value).real for value in force.values())
-                _, geometry = _geometry(to_full(candidate), rt)
-                changed = half_mesh_jacobian(geometry, s=rt.setup.s_full).jacobian_sign_changed
-                return jnp.where(changed, jnp.asarray(jnp.inf), norm_squared)
+                jacobian, energies, scaled, _ = _force_maps_at_state(
+                    to_full(candidate), cache, rt,
+                    iteration=iteration, fsqz_previous=fsqz_previous,
+                )
+                residuals = force_residuals(
+                    scaled, fnorm=cache.fnorm, fnormL=cache.fnormL,
+                    r1=energies.r1, include_edge=False,
+                )
+                merit = jnp.maximum(
+                    residuals.fsqr, jnp.maximum(residuals.fsqz, residuals.fsql)
+                )
+                return jnp.where(
+                    jacobian.jacobian_sign_changed, jnp.asarray(jnp.inf), merit,
+                )
 
             objectives = lax.map(objective, factors)
             factor = factors[jnp.argmin(objectives)]
             delta = {c: factor * value for c, value in delta.items()}
+            accepted = factor > 0.0
         full = {}
         for channel in _ALL_CHANNELS:
             value = jnp.zeros_like(getattr(gc_signed, channel))
@@ -900,10 +941,13 @@ def _newton_step(
                 flat = value.reshape(-1).at[indices[channel]].set(delta[channel])
                 value = flat.reshape(value.shape)
             full[channel] = value
-        return SpectralState(**full)
+        return SpectralState(**full), accepted
 
-    direction = lax.cond(active, do_newton, lambda _: gc_signed, operand=None)
-    return direction, active
+    direction, accepted = lax.cond(
+        active, do_newton,
+        lambda _: (gc_signed, jnp.zeros((), dtype=bool)), operand=None,
+    )
+    return direction, active & accepted
 
 
 def _evaluate(
@@ -1501,6 +1545,7 @@ def solve(
     gamma: float | None = None, nstep: int | None = None,
     lconm1: bool = True, verbose: bool = False, emit=print,
     initial_state: SpectralState | None = None,
+    boundary_from_initial_state: bool = False,
     device: Any = None,
     precon_type: str | None = None, prec2d_threshold: float | None = None,
     prec2d: Prec2DConfig | None = None,
@@ -1534,6 +1579,11 @@ def solve(
     mode, so keeping the old row would silently re-solve the old boundary);
     the interior and lambda are kept.
 
+    Set ``boundary_from_initial_state=True`` to hold the provided state's R/Z
+    edge fixed instead. This is intended for a fixed-boundary predictor on a
+    previously solved free-boundary LCFS. It requires ``initial_state`` and
+    leaves the default hot-restart behavior unchanged.
+
     ``device`` places the jitted iteration lanes: ``"cpu"``/``"gpu"``/
     ``"cuda"``/``"tpu"`` or a ``jax.Device`` (always honored), or ``None``
     (default) to apply the measured small-work-to-CPU policy of
@@ -1550,6 +1600,8 @@ def solve(
     stiff cases (high beta/aspect/mode-number) in far fewer iterations.  The
     default (``NONE``) path is byte-identical to the 1D-only solver.
     """
+    if boundary_from_initial_state and initial_state is None:
+        raise ValueError("boundary_from_initial_state requires initial_state")
     rt = prepare_runtime(
         source, resolution, ftol=ftol, max_iterations=max_iterations,
         time_step=time_step, tcon0=tcon0, gamma=gamma, nstep=nstep,
@@ -1564,7 +1616,8 @@ def solve(
                 f"expected ({ns}, {mnmax}); interpolate with "
                 "vmec_jax.core.multigrid.interpolate_state first"
             )
-        initial_state = hot_restart_state(rt, initial_state)
+        if not boundary_from_initial_state:
+            initial_state = hot_restart_state(rt, initial_state)
         rt = runtime_with_baselines(rt, initial_state)  # funct3d.f iter2==iter1
     with device_context(device, rt.resolution):
         carry = _solve_stage(rt, initial_state, mode=mode, verbose=verbose, emit=emit)
