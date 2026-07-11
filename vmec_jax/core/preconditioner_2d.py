@@ -87,6 +87,10 @@ class Prec2DConfig:
         Number of nonlinear iterations between Newton attempts. ``1`` tries
         every iteration; larger values let inexpensive VMEC updates advance
         between costly matrix-free GMRES solves.
+    row_scales:
+        Static left scaling for the inner ``(R, Z, lambda)`` equations. It
+        changes GMRES conditioning and inexact-solve priorities but not the
+        exact Newton direction. The physical-force line search is unscaled.
     step:
         Damping applied to the (full) Newton step, ``state += step * delta``.
         ``1.0`` is the undamped Newton update; VMEC2000 instead folds the step
@@ -115,6 +119,7 @@ class Prec2DConfig:
     threshold: float
     start_iteration: int = 10
     interval: int = 1
+    row_scales: tuple[float, float, float] = (1.0, 1.0, 1.0)
     step: float = 1.0
     gmres_restart: int = 40
     gmres_max_restarts: int = 3

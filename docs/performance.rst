@@ -272,6 +272,12 @@ iteration. A step of ``-1`` means no Newton attempt was scheduled, while
 regular VMEC update was used. This keeps convergence plots and stall reports
 based on recorded solver diagnostics rather than console parsing.
 
+``Prec2DConfig.row_scales`` optionally left-scales the inner ``(R, Z,
+lambda)`` equations. This does not change an exact Newton direction and is
+never used by the physical-force line search; it only conditions a truncated
+GMRES solve. Keep the default ``(1, 1, 1)`` unless channel diagnostics show a
+clear imbalance and a convergence study validates the alternative.
+
 Memory
 ------
 

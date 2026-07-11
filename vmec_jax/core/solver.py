@@ -889,6 +889,14 @@ def _newton_step(
     )
     channels = _ALL_CHANNELS if rt.setup.lasym else ("R_cos", "Z_sin", "L_sin")
     indices = _newton_active_indices(rt, channels)
+    row_scale = {
+        channel: jnp.asarray(
+            cfg.row_scales[0 if channel.startswith("R_") else
+                           1 if channel.startswith("Z_") else 2],
+            dtype=rt.setup.s_full.dtype,
+        )
+        for channel in channels
+    }
 
     def to_full(reduced: dict) -> SpectralState:
         full = {}
@@ -906,11 +914,18 @@ def _newton_step(
         )
         return {c: getattr(gc_full, c).reshape(-1)[indices[c]] for c in channels}
 
+    def g_scaled(reduced: dict) -> dict:
+        force = g_reduced(reduced)
+        return {channel: row_scale[channel] * force[channel] for channel in channels}
+
     x0 = {c: getattr(state, c).reshape(-1)[indices[c]] for c in channels}
-    rhs = {c: -getattr(gc_signed, c).reshape(-1)[indices[c]] for c in channels}
+    rhs = {
+        c: -row_scale[c] * getattr(gc_signed, c).reshape(-1)[indices[c]]
+        for c in channels
+    }
 
     def do_newton(_):
-        delta, sol = newton_direction(g_reduced, x0, rhs, cfg)
+        delta, sol = newton_direction(g_scaled, x0, rhs, cfg)
         accepted = jnp.ones((), dtype=bool)
         factor = jnp.ones((), dtype=rt.setup.s_full.dtype)
         if cfg.backtracking:

@@ -49,6 +49,23 @@
     ],
     "assessment": "Adaptive step halving and an explicit 1000-iteration state checkpoint do not produce the next equilibrium. Continuing the near-converged 0.35% state for a second chunk worsens FSQR/FSQL, so larger iteration budgets are rejected as the next method."
   },
+  "inexact_newton_screen_at_target_beta_0p0035": {
+    "iterations_per_case": 120,
+    "unscaled_krylov": [
+      {"restart": 40, "max_restarts": 2, "rtol": 0.03, "residuals": [2.6300199530649394e-8, 6.333493218328243e-9, 2.661993417857973e-9], "accepted_attempts": 3, "attempts": 12, "wall_seconds": 86.72},
+      {"restart": 40, "max_restarts": 3, "rtol": 0.01, "residuals": [2.5772794051085866e-8, 6.282033548831687e-9, 2.4171282471536225e-9], "accepted_attempts": 3, "attempts": 12, "wall_seconds": 105.04},
+      {"restart": 80, "max_restarts": 3, "rtol": 0.01, "residuals": [2.342922363984718e-8, 3.9452464698462325e-9, 2.0329178465854e-9], "accepted_attempts": 3, "attempts": 12, "wall_seconds": 152.33},
+      {"restart": 80, "max_restarts": 3, "rtol": 0.001, "residuals": [2.342922363984718e-8, 3.9452464698462325e-9, 2.0329178465854e-9], "accepted_attempts": 3, "attempts": 12, "wall_seconds": 153.15}
+    ],
+    "channel_force_norms": {"R_cos": 4.974971336731868e-6, "Z_sin": 4.5189426987321335e-6, "L_sin": 4.639651593296951e-5},
+    "lambda_row_scale": [
+      {"scale": 1.0, "residuals": [2.342922363984718e-8, 3.9452464698462325e-9, 2.0329178465854e-9], "linear_residual_range": [4.058948542474439e-6, 4.371771760097285e-6], "accepted_attempts": 3},
+      {"scale": 0.3, "residuals": [2.2994994454189313e-8, 5.36105937269648e-9, 2.16780088086895e-9], "linear_residual_range": [3.2762070695512835e-6, 3.958601914197567e-6], "accepted_attempts": 4},
+      {"scale": 0.1, "residuals": [1.7607939764381552e-8, 2.3712395525709216e-9, 1.4847943918760286e-9], "linear_residual_range": [2.9441745952206038e-6, 3.435231391398459e-6], "accepted_attempts": 3},
+      {"scale": 0.03, "residuals": [1.7562305645801742e-8, 2.040592269135557e-9, 1.6068840790670107e-9], "linear_residual_range": [1.9572782814266503e-6, 2.130354810694311e-6], "accepted_attempts": 4}
+    ],
+    "assessment": "GMRES rtol is inactive at the tested Krylov budgets; restart dimension and equation balance control quality. Lambda dominates the preconditioned inner norm by about 10x despite FSQL being physically smallest. Scaling lambda rows to 0.03-0.1 improves the 120-iteration physical maximum by about 25% without changing the physical line-search merit."
+  },
   "blockers": {
     "closed_target_beta": 0.003,
     "former_result": "the 1D corrector exhausted 5000 iterations; safeguarded active-coordinate Newton now converges in 291",

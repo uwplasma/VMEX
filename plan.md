@@ -1660,7 +1660,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       recorded accepted-step and GMRES histories to compare R/Z/lambda block scaling and inexact
       Newton regularization on the reproducible 0.35% predictor, accept a method only if all three
       physical residuals descend, then restart adaptive continuation. No result above 0.30% is
-      claimed yet.
+      claimed yet. **Scaling screen:** changing GMRES `rtol` from `1e-2` to `1e-3` at restart
+      80 is bit-identical because the Krylov budget stops near linear residual `4.1e-6`; tolerance
+      is not the knob. The lambda inner-force norm is `4.64e-5` versus `4.97e-6/4.52e-6` for R/Z,
+      although physical FSQL is already smallest. Optional left row scaling leaves the exact Newton
+      root and physical line search unchanged. Lambda scales 0.1 and 0.03 reduce the 120-iteration
+      maximum from `2.34e-8` to `1.76e-8`; 0.03 lowers the linear residual to about `2.0e-6` and
+      accepts four full 0.25 steps. Next: screen one stronger scale, then extend only the best case.
       The plotted root example
       now writes WOUT, 3D coils/LCFS/pitched field lines, `|B|`, cross-sections, profiles, and force
       histories; only afterward should the 16-coil free-boundary beta scan be attempted.
