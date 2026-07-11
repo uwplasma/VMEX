@@ -255,9 +255,12 @@ VMEC++ example layouts).**
   `hot_restart_scan.py` (seed each scan point from the previous state → warm converges in ~1 iter vs
   ~309 cold, no recompile). Light ones run in the PR examples shard; take_gradients is nightly (`full`).
   `finite_beta_scan.py` (pressure ramp → beta, Shafranov axis shift, Mercier DMerc; hot-restarted).
-  `free_boundary_mgrid.py` (NESTOR free boundary from coil EXTCUR + mgrid; LCFS solved for, nightly).
-  STILL TODO: free_boundary_essos_coils (ESSOS), free_boundary_beta_scan,
-  single_stage_free_boundary_opt (gated on R15 free-bdy diff). Each is one simsopt-style file (params at top, no `main()`, prints
+  `free_boundary_mgrid.py` (NESTOR free boundary from coil EXTCUR + mgrid; LCFS solved for, nightly),
+  `free_boundary_beta_scan.py` (free-bdy pressure ramp → beta 0→2.6%, LCFS re-solved each point, nightly).
+  8 examples shipped this session. DEFERRED (need real coil data / advanced, follow-up):
+  free_boundary_essos_coils (direct-coil free bdy — no bundled CTH coils that reproduce mgrid_cth_like
+  and converge; needs a purpose-built coil set), single_stage_free_boundary_opt (gated on R15 free-bdy
+  IFT wrap). These two are the remaining R13 items; the rest of R13 is done. Each is one simsopt-style file (params at top, no `main()`, prints
 initial→progress→final, teaches one feature) and is CI-smoke-tested (reduced budget) + doubles as the
 docs tutorial (R14.3). Target set:
   - `run_fixed_boundary.py` (exists), `run_from_json.py` (VMEC++ JSON in/out + convert),

@@ -20,6 +20,8 @@ All runnable examples live under this single `examples/` tree.
     finite differences; O(1) memory, no step size to tune.
   - `free_boundary_mgrid.py` — free-boundary equilibrium from coil currents and
     an mgrid vacuum field (NESTOR); the LCFS is solved for, not prescribed.
+  - `free_boundary_beta_scan.py` — ramp the pressure of the free-boundary case
+    (coil currents fixed); the LCFS is re-solved by NESTOR at each beta.
   - `take_free_boundary_gradients.py` — differentiate a free-boundary field
     diagnostic through the virtual-casing vacuum field.
 - `optimization/`: precise QA/QH/QP/QI from a circular torus — one file each,

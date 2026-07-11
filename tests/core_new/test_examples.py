@@ -117,6 +117,14 @@ def test_free_boundary_mgrid(tmp_path):
     assert (tmp_path / "output_free_boundary_mgrid" / "wout_cth_like_free_bdy.nc").exists()
 
 
+@pytest.mark.full  # nightly: one NESTOR solve per pressure point (~40s)
+def test_free_boundary_beta_scan(tmp_path):
+    out = _run_example(EXAMPLES / "free_boundary_beta_scan.py", tmp_path, timeout=1200)
+    betas = [float(b) for _, b in re.findall(
+        r"^\s*([0-9.]+)\s+([0-9.eE+-]+)\s+[0-9.]+\s+\d+\s*$", out, re.M)]
+    assert len(betas) == 3 and betas[-1] > 1e-2, f"beta should reach finite values: {betas}"
+
+
 def test_finite_beta_scan(tmp_path):
     out = _run_example(EXAMPLES / "finite_beta_scan.py", tmp_path, timeout=900)
     # rows: pres_scale  beta_tot  R_axis  Shafranov  minDMerc
