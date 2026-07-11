@@ -1252,6 +1252,9 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       equal-area-disk self terms (8.3% linear-harmonic boundary error at about 1,900 unknowns).
       Following Duffy (1982), the next accepted path is local transformed singular quadrature with
       explicit cap-rim grading; smooth-surface QBX alone does not resolve the artificial sharp rim.
+      The first JAX Duffy primitive now regularizes a vertex-singular linear triangle. Orders
+      `2,4,8,16` converge monotonically to the analytic right-triangle single-layer integral, with
+      order 16 at `1.4e-14`; linear density and geometry/density gradient identities pass.
       This does not yet solve the exterior problem: cap-aware singular/near-singular
       quadrature, the second-kind boundary equation and nullspace, harmonic MMS, and coupling that
       deletes the finite outer cylinder remain the next M5 gates.

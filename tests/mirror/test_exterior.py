@@ -9,6 +9,8 @@ jax = pytest.importorskip("jax")
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
 
+from vmec_jax.mirror.exterior_mesh import duffy_triangle_single_layer  # noqa: E402
+
 from vmec_jax.mirror import (  # noqa: E402
     MirrorBoundary,
     MirrorConfig,
@@ -144,6 +146,42 @@ def test_panel_mesh_is_watertight_oriented_and_convergent() -> None:
 
     assert errors[1] < 0.3 * errors[0]
     assert errors[1] < 7.0e-3
+
+
+def test_duffy_rule_converges_for_constant_and_linear_density() -> None:
+    vertices = jnp.asarray(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+    )
+    exact_constant = np.sqrt(2.0) * np.log1p(np.sqrt(2.0)) / (4.0 * np.pi)
+    errors = []
+    for order in (2, 4, 8, 16):
+        constant = duffy_triangle_single_layer(
+            vertices, jnp.ones(3), order=order
+        )
+        linear = duffy_triangle_single_layer(
+            vertices, jnp.asarray([0.0, 1.0, 1.0]), order=order
+        )
+        errors.append(abs(float(constant) - exact_constant))
+        np.testing.assert_allclose(linear, 0.5 * constant, rtol=3.0e-15)
+
+    assert all(right < left for left, right in zip(errors[:-1], errors[1:], strict=True))
+    assert errors[-1] < 2.0e-14
+
+
+def test_duffy_rule_is_differentiable_in_geometry_and_density() -> None:
+    vertices = jnp.asarray(
+        [[0.0, 0.0, 0.0], [0.8, 0.1, 0.0], [-0.1, 0.7, 0.2]]
+    )
+    density = jnp.asarray([0.4, -0.2, 0.7])
+
+    geometry_gradient, density_gradient = jax.grad(
+        lambda xyz, values: duffy_triangle_single_layer(xyz, values, order=10),
+        argnums=(0, 1),
+    )(vertices, density)
+
+    assert np.all(np.isfinite(np.asarray(geometry_gradient)))
+    assert np.all(np.isfinite(np.asarray(density_gradient)))
+    np.testing.assert_allclose(jnp.sum(geometry_gradient, axis=0), 0.0, atol=3.0e-15)
 
 
 def test_closed_surface_volume_is_differentiable() -> None:

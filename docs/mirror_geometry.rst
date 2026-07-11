@@ -168,6 +168,11 @@ mesh. Every undirected edge belongs to exactly two panels, no panel is
 degenerate, and cylinder area/volume converge at the expected second order as
 the inscribed angular polygon is refined. This topology is the input for local
 Duffy quadrature at singular panels.
+The local Duffy primitive maps a vertex-singular triangle to a regular unit
+square, interpolates density linearly, and is differentiable in panel geometry
+and density. On a right triangle, orders ``2,4,8,16`` converge monotonically;
+order 16 matches the analytic constant-density single-layer integral within
+``1.4e-14`` and the linear ``x+y`` density gives exactly half that value.
 
 Tests require exact cylinder area and volume, zero integrated normal, the full
 tensor divergence theorem on a theta-shaped flared tube, cap/side ring
