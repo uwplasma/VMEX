@@ -406,6 +406,7 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
         vacuum_backend="exterior",
         exterior_ntheta=8,
         exterior_order=6,
+        exterior_spectral_side_density=True,
     )
 
     assert all(result.converged for result in results)
@@ -493,6 +494,7 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
         current_derivative=1.0e-3 * jnp.asarray(grid.s),
         vacuum_backend="exterior",
         exterior_order=6,
+        exterior_spectral_side_density=True,
     )
 
     assert all(result.converged for result in results)
