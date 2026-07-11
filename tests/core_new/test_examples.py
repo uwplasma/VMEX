@@ -110,6 +110,18 @@ def test_hot_restart_scan(tmp_path):
     assert len(warm) == 5 and max(warm) <= 5, f"warm restarts should be cheap: {warm}"
 
 
+def test_finite_beta_scan(tmp_path):
+    out = _run_example(EXAMPLES / "finite_beta_scan.py", tmp_path, timeout=900)
+    # rows: pres_scale  beta_tot  R_axis  Shafranov  minDMerc
+    rows = re.findall(r"^\s*([0-9.eE+-]+)\s+([0-9.eE+-]+)\s+[0-9.]+\s+([+-][0-9.]+)\s",
+                      out, re.M)
+    betas = [float(b) for _, b, _ in rows]
+    shafr = [float(s) for _, _, s in rows]
+    assert len(betas) == 3, f"expected 3 pressure points, got {rows}"
+    assert betas[-1] > betas[0] and betas[-1] > 5e-3, "beta should rise into finite-beta"
+    assert shafr[-1] > shafr[0], "magnetic axis should shift outward (Shafranov)"
+
+
 @pytest.mark.parametrize("case", [
     "QA",  # PR smoke: proves the QS optimization pipeline end-to-end
     pytest.param("QH", marks=pytest.mark.full),  # nightly (subprocess cold-start heavy)

@@ -13,6 +13,8 @@ All runnable examples live under this single `examples/` tree.
     `from_file`); the JSON and `&INDATA` forms describe one equilibrium.
   - `hot_restart_scan.py` — seed each scan point from the previous converged
     state; warm restarts converge in ~1 iteration and recompile nothing.
+  - `finite_beta_scan.py` — ramp the pressure (hot-restarted) and read beta,
+    the Shafranov shift (magnetic-axis motion), and Mercier `DMerc` stability.
   - `take_gradients.py` — exact fixed-boundary gradients of wout scalars
     (aspect, magnetic energy, ...) by implicit differentiation, checked against
     finite differences; O(1) memory, no step size to tune.
