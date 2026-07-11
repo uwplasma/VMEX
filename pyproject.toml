@@ -86,6 +86,18 @@ markers = [
   "full: slower/full-physics tests; set RUN_FULL=1 to run",
 ]
 
+[tool.coverage.run]
+# freeboundary_diff.py is optional (vmec-jax[freeb]) and requires
+# virtual_casing_jax, a uwplasma package not on PyPI; its FD-validated
+# gradient tests are importorskip-gated and skip in the core CI, so the module
+# is excluded from the core >=95% coverage gate.  It IS exercised when the
+# freeb extra is installed (locally / a dedicated freeb CI lane — R15.3/R19
+# follow-up).
+omit = ["*/freeboundary_diff.py"]
+
+[tool.coverage.report]
+omit = ["*/freeboundary_diff.py"]
+
 [tool.ruff]
 line-length = 120
 
