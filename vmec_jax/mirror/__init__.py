@@ -21,8 +21,10 @@ from .geometry import (
 )
 from .exterior import (
     ClosedMirrorSurface,
-    LaplaceNeumannResult,
     build_closed_mirror_surface,
+)
+from .exterior_bie import (
+    LaplaceNeumannResult,
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
     laplace_green_representation_off_surface,

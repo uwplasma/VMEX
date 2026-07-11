@@ -1268,6 +1268,8 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       saddle solve now removes the constant gauge and reports compatibility, condition, gauge, and
       equation residual; its forward JVP is finite. The graded MMS has roundoff flux/gauge closure
       and `8.9e-9` panel-discrete equation residual, so it is not yet a `1e-12` exterior claim.
+      The implementation is split by ownership into 355-line geometry/maps, 205-line panel/Duffy,
+      and 209-line BIE/solve modules; the public `vmec_jax.mirror` API is unchanged.
       This does not yet solve the exterior problem: cap-aware singular/near-singular
       quadrature, the second-kind boundary equation and nullspace, harmonic MMS, and coupling that
       deletes the finite outer cylinder remain the next M5 gates.

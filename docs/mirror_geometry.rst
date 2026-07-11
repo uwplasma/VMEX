@@ -194,6 +194,10 @@ area-weighted saddle solve reports net-flux compatibility, gauge error,
 condition number, and its full equation residual. In this case compatibility
 and gauge close near roundoff, while the panel-discrete equation residual is
 ``8.9e-9``; it is not described as a ``1e-12`` exterior discretization.
+Source ownership is kept narrow: ``exterior.py`` builds geometry and reduction
+maps, ``exterior_mesh.py`` owns panel topology and Duffy quadrature, and
+``exterior_bie.py`` owns layer evaluation and Neumann solves. Public functions
+remain exported from ``vmec_jax.mirror``.
 
 Tests require exact cylinder area and volume, zero integrated normal, the full
 tensor divergence theorem on a theta-shaped flared tube, cap/side ring
