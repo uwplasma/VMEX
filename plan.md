@@ -277,6 +277,13 @@ docs tutorial (R14.3). Target set:
   example smoke-passes in CI; each maps to a docs tutorial.
 
 **R14. Complete the documentation (full theory + algorithms + tutorials, not an overview).**
+  **(R14.3 DONE 2026-07-11.)** `docs/tutorials.rst` rewritten from a "coming soon" stub into a real
+  gallery: every R13 example (`literalinclude` so the page stays in sync with the tested code) grouped
+  by theme — getting started (fixed run, plot+Boozer, JSON), profiles & finite-beta, hot restart,
+  differentiation (implicit + free-bdy), free boundary (mgrid + beta scan), optimization (QA + the
+  QH/QP/QI note). docs `-W` green. R14.1 theory (theory/equations/algorithms/architecture, ~1100 lines)
+  and R14.2 reference (api/input/wout/cli) already substantial from prior lanes; remaining R14 polish is
+  incremental, not a gap.
   1. **Theory & numerics, exhaustive** (`docs/theory/` split into pages, each equation linked to its
      implementing `core` function): ideal-MHD energy functional + Hirshman-Whitson moment method;
      flux coordinates + λ; Fourier representation + parities + lasym; **how |B| is computed** (metric
