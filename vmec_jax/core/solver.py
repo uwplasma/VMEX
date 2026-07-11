@@ -1546,6 +1546,7 @@ def solve(
     lconm1: bool = True, verbose: bool = False, emit=print,
     initial_state: SpectralState | None = None,
     boundary_from_initial_state: bool = False,
+    error_on_no_convergence: bool = True,
     device: Any = None,
     precon_type: str | None = None, prec2d_threshold: float | None = None,
     prec2d: Prec2DConfig | None = None,
@@ -1584,6 +1585,11 @@ def solve(
     previously solved free-boundary LCFS. It requires ``initial_state`` and
     leaves the default hot-restart behavior unchanged.
 
+    Set ``error_on_no_convergence=False`` to return the final iterate with
+    ``converged=False`` and ``ier_flag=2`` when the iteration budget is
+    exhausted. Jacobian and input failures still raise. This supports explicit
+    checkpoint-and-continue workflows without weakening the convergence gate.
+
     ``device`` places the jitted iteration lanes: ``"cpu"``/``"gpu"``/
     ``"cuda"``/``"tpu"`` or a ``jax.Device`` (always honored), or ``None``
     (default) to apply the measured small-work-to-CPU policy of
@@ -1621,4 +1627,6 @@ def solve(
         rt = runtime_with_baselines(rt, initial_state)  # funct3d.f iter2==iter1
     with device_context(device, rt.resolution):
         carry = _solve_stage(rt, initial_state, mode=mode, verbose=verbose, emit=emit)
+    if int(carry.ier) == MORE_ITER_FLAG and not error_on_no_convergence:
+        return _result_from_carry(carry, rt)
     return _finalize(carry, rt)

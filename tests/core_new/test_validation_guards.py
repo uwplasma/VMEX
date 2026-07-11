@@ -66,6 +66,17 @@ def test_boundary_from_initial_state_requires_state():
 
 
 @pytest.mark.full
+def test_fixed_solve_can_return_unconverged_checkpoint():
+    inp = VmecInput.from_file(str(
+        Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
+    ))
+    result = solve(inp, max_iterations=1, error_on_no_convergence=False)
+    assert not result.converged
+    assert result.ier_flag == 2
+    assert result.iterations == 1
+
+
+@pytest.mark.full
 def test_boundary_from_initial_state_holds_supplied_edge():
     inp = VmecInput.from_file(str(
         Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
