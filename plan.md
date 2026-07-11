@@ -1427,6 +1427,11 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       basin/geometry limitation, not a vmec_jax parity defect. Next: construct a coil-informed,
       curvature-bounded target family and repeat the vmec_jax/VMEC2000 parity gate. Do not add the
       root solved example or 16-coil beta scan until that gate passes.
+      A 4,096-point spectral audit at the 44% continuation limit finds minimum curvature
+      `0.332 m^-1` and tightest curvature radius 0.559 m versus 0.1 m minor radius. The basin is lost
+      before the exact-square zero-curvature limit, so a simple curvature-floor constraint does not
+      explain or fix the stall. Do not spend another run on imposed superellipse continuation;
+      extract the next boundary/axis target from the 16-coil vacuum flux geometry.
    10. **M9 — implicit differentiation and optimization.** Wrap the converged mirror residual in a
        `custom_vjp`; solve JVP/VJP systems matrix-free with the primal preconditioner. Validate
        boundary, pressure, current, and coil derivatives against central differences. Do not

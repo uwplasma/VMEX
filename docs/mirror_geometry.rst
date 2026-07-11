@@ -65,6 +65,13 @@ run and was rejected. These parity checks identify a target/basin limitation,
 not a vmec_jax implementation discrepancy. The next M8 gate is therefore a
 coil-informed, curvature-bounded target family followed by the same VMEC2000
 parity test; no root example will label this geometry solved before then.
+An additional 4,096-point spectral curvature audit rules out a simple tube
+curvature violation at the 44% continuation limit: minimum curvature is
+``0.332 m^-1`` and the tightest curvature radius is 0.559 m, versus 0.1 m
+minor radius. The exact square target does approach zero curvature on its
+sides, but the solver basin is lost well before that limit. Another imposed
+superellipse continuation is therefore not the next experiment; the target
+must be extracted from the 16-coil vacuum flux geometry.
 
 Fixed-boundary 3D solver
 ------------------------
