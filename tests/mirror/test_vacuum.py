@@ -484,6 +484,61 @@ def test_anisotropic_free_boundary_observables_converge_with_resolution() -> Non
 
 
 @pytest.mark.full
+def test_anisotropic_high_beta_scan_remains_elliptic_and_diamagnetic() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=7, mpol=0, ntheta=1, nxi=13),
+        z_min=-0.8,
+        z_max=0.8,
+        ftol=1.0e-12,
+        max_iterations=2000,
+    )
+    grid = config.build_grid()
+    vacuum_grid = build_vacuum_grid(grid, nrho=7)
+    on_axis = two_coil_on_axis_bz(
+        jnp.asarray(grid.z),
+        coil_radius=0.9,
+        separation=2.0,
+        current=2.0e5,
+    )
+    center = grid.nxi // 2
+    flux = 0.5 * on_axis[center] * 0.25**2
+    boundary = MirrorBoundary.from_axis_field(flux, on_axis, grid)
+    closure = BiMaxwellianPressureClosure(
+        mass_coefficients=jnp.asarray([1.0, -1.0]),
+        hot_fraction_coefficients=jnp.asarray([0.2]),
+        temperature_ratio=0.7,
+        critical_field=float(on_axis[center]),
+        gamma=0.0,
+    )
+    betas = jnp.asarray([0.0, 0.10, 0.25, 0.50])
+    results = solve_axisymmetric_beta_scan_cli(
+        boundary,
+        grid,
+        vacuum_grid,
+        config,
+        _two_end_coils(),
+        betas,
+        outer_radius=0.65,
+        axial_flux_derivative=flux,
+        reference_field=float(on_axis[center]),
+        pressure_closure=closure,
+    )
+    diagnostics = summarize_axisymmetric_beta_scan(results, betas, grid, reference_field=float(on_axis[center]))
+
+    assert all(result.converged for result in results)
+    assert all(float(result.variational_max) <= config.ftol for result in results)
+    assert all(bool(jnp.all(result.plasma_energy.indicators_half.valid)) for result in results[1:])
+    assert np.all(np.diff([item.center_radius for item in diagnostics]) > 0.0)
+    assert np.all(np.diff([item.diamagnetic_field_ratio for item in diagnostics]) < 0.0)
+    np.testing.assert_allclose(
+        [item.achieved_reference_beta for item in diagnostics],
+        betas,
+        rtol=2.0e-8,
+        atol=1.0e-12,
+    )
+
+
+@pytest.mark.full
 def test_free_boundary_mgrid_matches_direct_two_coil_equilibrium() -> None:
     config = MirrorConfig(
         resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=7),

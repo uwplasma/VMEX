@@ -1201,11 +1201,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       `(ns,nxi,nrho)=(5,7,5),(7,13,7),(9,17,9)` stays below `9.2e-15` residual/stress, reduces
       vacuum `B.n` `1.56e-2,4.25e-3,1.85e-3`, and agrees in the last two grids within `5.6e-4`
       over center radius, field ratio, volume beta, and anisotropy. The root example exposes the
-      same pressure-model switch.
+      same pressure-model switch. At `ns=7`, requested beta `0,10%,25%,50%` remains elliptic with
+      `<5.8e-15` residual, monotonic radius expansion, and field ratios
+      `1.000,0.954,0.880,0.745`.
       An independent Pleiades Green-function study at upstream commit `0161abb3` converges its
       1%,3%,10% field ratios to `0.995370,0.986049,0.952754` on a 51x101 grid; the 10% `vmec_jax`
       ratio differs by 0.061% relative. Higher-resolution vacuum tangency/exterior closure,
-      independent boundary curves and anisotropic high-beta/closure-family scans remain.
+      independent boundary curves and additional anisotropic closure families remain.
    8. **M7 — nonaxisymmetric finite-beta free boundary.** Add helical coils/boundaries, then require
       3D force, interface, field-line, and resolution gates. This lane is supported only after M6;
       no axisymmetric boundary replicated in theta counts as a 3D validation.
