@@ -28,6 +28,7 @@ structural + coarse:
 
 from __future__ import annotations
 
+from dataclasses import replace
 import re
 from pathlib import Path
 
@@ -147,6 +148,19 @@ def test_vacuum_first_call_diagnostics(ab_inputs):
     state = _initial_state(ab_inputs["rt"].setup)
     ctor, *_rest = FB._vacuum_scalars(state, ab_inputs["rt"])
     assert float(ctor) * fac == pytest.approx(4.32e-2, abs=2e-4)
+
+
+def test_free_boundary_hot_state_requires_matching_resolution(ab_inputs):
+    """A scan restart cannot silently reinterpret a different radial grid."""
+    state = _initial_state(ab_inputs["rt"].setup)
+    bad = replace(state, R_cos=state.R_cos[:-1])
+    with pytest.raises(ValueError, match="initial_state has shape"):
+        FB.solve_free_boundary(
+            ab_inputs["inp"],
+            external_field=object(),
+            initial_state=bad,
+            max_iterations=1,
+        )
 
 
 def test_fused_vacuum_matches_reference(ab_inputs):
@@ -383,6 +397,19 @@ def test_free_boundary_converged_golden(golden_dir):
     assert r_err < 1e-3, f"rmnc scale-relative error {r_err}"
     assert z_err < 1e-3, f"zmns scale-relative error {z_err}"
     assert iota_err < 1e-3, f"iotaf scale-relative error {iota_err}"
+
+    # 4. Same-resolution continuation retains the solved LCFS and should be
+    #    materially cheaper than rebuilding the equilibrium from INDATA.
+    warm = FB.solve_free_boundary(
+        inp,
+        mgrid_path=CONV_MGRID,
+        initial_state=result.state,
+        max_iterations=1000,
+        error_on_no_convergence=False,
+    )
+    assert warm.converged
+    assert warm.iterations < result.iterations
+    assert abs(warm.wb - result.wb) <= 1e-6 * abs(result.wb) + 1e-12
 
 
 # ---------------------------------------------------------------------------

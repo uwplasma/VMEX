@@ -42,9 +42,16 @@ print(f"\n{'pres_scale':>11s} {'beta_tot':>10s} {'volume(m^3)':>12s} {'iters':>6
 print(f"{'-'*11} {'-'*10} {'-'*12} {'-'*6}")
 
 betas = []
+state = None
 for ps in PRES_SCALES:
     inp = dataclasses.replace(base, pres_scale=ps)
-    res = vj.solve_free_boundary(inp, mgrid_path=MGRID_FILE, error_on_no_convergence=False)
+    res = vj.solve_free_boundary(
+        inp,
+        mgrid_path=MGRID_FILE,
+        initial_state=state,
+        error_on_no_convergence=False,
+    )
+    state = res.state
     wout = vj.wout_from_state(
         inp=inp, state=res.state, fsqr=float(res.fsqr), fsqz=float(res.fsqz),
         fsql=float(res.fsql), niter=int(res.iterations),

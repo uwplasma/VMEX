@@ -203,6 +203,11 @@ coupling with the VMEC2000 cadence (``funct3d.f``):
   ``rbsq = bsqvac + presf(ns)`` at ``js = ns``, and the constraint reference
   surfaces ``rcon0, zcon0`` ramp by 0.9 per iteration.
 
+Pressure and coil-current scans pass the preceding equilibrium as
+``initial_state``. The evolved LCFS is retained and ``rcon0, zcon0`` are
+rebound to that state before the next NESTOR solve, avoiding a cold INDATA
+restart at every scan point.
+
 The external field comes either from an ``mgrid`` file
 (:mod:`vmec_jax.core.mgrid`, trilinear interpolation weighted by ``EXTCUR``)
 or directly from a Biot-Savart coil set (:mod:`vmec_jax.core.coils`, ESSOS

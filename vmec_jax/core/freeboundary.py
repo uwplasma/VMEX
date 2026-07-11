@@ -59,6 +59,7 @@ from .solver import (
     SolveResult, SolverRuntime, SpectralState,
     _finalize, _geometry, _initial_carry, _initial_state, _make_body,
     _result_from_carry, _zero_cache, prepare_runtime, resolution_from_input,
+    runtime_with_baselines,
 )
 from .vacuum import (
     VacuumBasis, VacuumBoundary, make_vacuum_solver, vacuum_basis,
@@ -828,6 +829,7 @@ def solve_free_boundary(
     verbose: bool = False,
     emit=print,
     error_on_no_convergence: bool = True,
+    initial_state: SpectralState | None = None,
 ) -> SolveResult:
     """Single-grid free-boundary solve (``eqsolve.f`` + ``funct3d.f`` IVAC0).
 
@@ -840,6 +842,11 @@ def solve_free_boundary(
 
     ``error_on_no_convergence=False`` returns the final state instead of
     raising when NITER is exhausted (useful against unconverged goldens).
+
+    ``initial_state`` starts from a previous free-boundary equilibrium at the
+    same resolution. Its edge is retained because the LCFS is an evolved
+    unknown; constraint baselines are recomputed from that state. This is the
+    efficient continuation path for pressure and coil-current scans.
     """
     if not bool(inp.lfreeb):
         raise ValueError("solve_free_boundary requires an LFREEB=T input")
@@ -863,8 +870,16 @@ def solve_free_boundary(
     ns = int(resolution.ns)
     dtype = rt.setup.s_full.dtype
 
-    _init_state = _initial_state(rt.setup)
-    _axis_r0, _axis_z0 = _vacuum_scalars(_init_state, rt)[2:4]
+    start_state = _initial_state(rt.setup) if initial_state is None else initial_state
+    expected = (ns, rt.modes.mnmax)
+    if tuple(start_state.R_cos.shape) != expected:
+        raise ValueError(
+            f"initial_state has shape {tuple(start_state.R_cos.shape)}, expected {expected}; "
+            "interpolate it to the requested radial resolution first"
+        )
+    if initial_state is not None:
+        rt = runtime_with_baselines(rt, start_state)
+    _axis_r0, _axis_z0 = _vacuum_scalars(start_state, rt)[2:4]
     basis, fused_vac = _vacuum_executables(
         resolution, mf=int(inp.mpol) + 1, nf=int(inp.ntor),
         signgs=int(rt.setup.signgs), wint=np.asarray(rt.trig.wint, dtype=float),
@@ -890,7 +905,7 @@ def solve_free_boundary(
         emit(FORCE_ITERATIONS_BANNER, end="")
         emit(screen_header(lasym=resolution.lasym, lfreeb=True), end="")
 
-    carry = _initial_carry(_initial_state(rt.setup), rt_fixed, ijacob=0)
+    carry = _initial_carry(start_state, rt_fixed, ijacob=0)
     printed: set[int] = set()
 
     def _emit_due(final: bool) -> None:

@@ -1559,8 +1559,11 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       within `3.73e-7`, LCFS `|B|` within `2.52e-4` relative L2, and iota within `1.09e-3`
       relative L2. This accepts basin/solver parity at the validated `1e-8` floor, not
       machine-precision parity. The reproducible deck is emitted by the example and compact data
-      live in `benchmarks/mirror_hybrid_fixed_boundary.json`. Next: design a hybrid-specific scaled
-      block preconditioner instead of retuning the current generic block. The plotted root example
+      live in `benchmarks/mirror_hybrid_fixed_boundary.json`. The toroidal NESTOR driver now accepts
+      a same-resolution free-boundary hot state, retains its evolved LCFS, and rebinds constraint
+      baselines; beta scans no longer cold-start every point. Next: design a hybrid-specific scaled
+      block preconditioner, then use this continuation path for the 16-coil `0--50%` beta scan.
+      The plotted root example
       now writes WOUT, 3D coils/LCFS/pitched field lines, `|B|`, cross-sections, profiles, and force
       histories; only afterward should the 16-coil free-boundary beta scan be attempted.
    10. **M9 — implicit differentiation and optimization.** Wrap the converged mirror residual in a

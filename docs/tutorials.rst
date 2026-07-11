@@ -137,7 +137,8 @@ Free-boundary beta scan
 
 Ramp the pressure of the free-boundary case at fixed coil currents; the boundary
 is re-solved by NESTOR at every step as the plasma pushes outward against the
-external field.
+external field. Each converged state seeds the next pressure point, including
+its solved LCFS.
 
 .. literalinclude:: ../examples/free_boundary_beta_scan.py
    :language: python
