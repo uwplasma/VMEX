@@ -41,9 +41,10 @@ makes the plasma field itself depend on them through a re-solve) is discussed in
 the module ``README``/plan notes; it is an implicit-function-theorem wrap around
 this residual and is intentionally out of scope here.
 
-``virtual_casing_jax`` is an optional dependency (``pip install vmec-jax[freeb]``
-or ``pip install -e /path/to/virtual_casing_jax``).  Importing this module raises
-a clear error if it is missing.
+``virtual_casing_jax`` is an optional dependency. Until the extender API is
+released, install the ``feature/jax-vmec-extender`` branch editable with
+``pip install -e /path/to/virtual_casing_jax``. Importing this module raises a
+clear error when that API is missing.
 """
 
 from __future__ import annotations

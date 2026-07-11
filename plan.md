@@ -283,13 +283,12 @@ geometric angle is phi=zeta·onp). input.cth_like_free_bdy: was stalling at NITE
 iters to fsqr=9.9e-11, wb parity 2.1e-7 vs VMEC2000's 476-iter golden. Remaining: iters 574
 vs 476 (~20% tail); R15.2 DONE (f197e144): vacuum fused into jitted JAX, 27 host↔device
 round-trips/iter → ~0, warm 9.43→3.48 s (2.7×, now 4.5× VMEC2000), convergence bit-identical.
-R15.3 DONE (4dcbbb54): differentiable free boundary via virtual_casing_jax — coil/extcur
-gradients WITHOUT NESTOR-adjoint (B_out.n=0 + pressure balance as a differentiable objective);
-FD-validated 2.2e-13..1.2e-10 vs central FD. **The whole free-boundary lane (converge/fast/
-differentiable) is DONE.** Remaining: full single-stage needs an IFT wrap d(boundary)/d(coils);
-R15.3
-differentiation via virtual_casing_jax (R19) still to do; add cth golden+mgrid to the CI
-bundle.)*
+R15.3 PROTOTYPE (4dcbbb54): a fixed-boundary virtual-casing objective gives coil/extcur
+gradients without a NESTOR adjoint and matches central FD to `2.2e-13..1.2e-10`. The required
+`VmecSurfaceFieldData`/exterior-field API currently exists only on `virtual_casing_jax`'s
+`feature/jax-vmec-extender` branch, not its PyPI 0.0.2 release. Production differentiation remains
+open until that API is released and an IFT/adjoint propagates coil changes through the solved
+free-boundary state; add the cth golden and mgrid path to CI only after those gates.)*
 show it).** Current: CTH free-bdy stops at NITER (fsq~9e-2, unconverged), warm 17 s ≫ Fortran 6.6 s,
 coil derivatives unsupported. Steps:
   1. **Converge as well as VMEC2000.** Diagnose why the free-bdy solve stalls (nvacskip cadence, ivac
@@ -1378,6 +1377,14 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       1%,3%,10% field ratios to `0.995370,0.986049,0.952754` on a 51x101 grid; the 10% `vmec_jax`
       ratio differs by 0.061% relative. Higher-resolution vacuum tangency/exterior closure,
       independent boundary curves remain.
+      **Unbounded high-beta gate (2026-07-11):** the exterior backend now continues through
+      requested beta `0,10%,25%,50%` at `ftol=1e-12`. All three grids converge below `8.1e-15`.
+      On `(ns,nxi,ntheta_panel)=(9,17,16)`, beta 50% gives center radius `0.2726602 m`, central
+      field ratio `0.747645`, volume beta `0.219148`, exterior compatibility `2.09e-9`, and
+      condition 3.23. Medium-to-fine relative changes are `7.4e-4` in radius, `4.2e-3` in field,
+      and `4.7e-3` in volume beta, so the permanent gate keeps `5e-4` below 50% and uses an honest
+      `5e-3` high-beta tolerance. The root example defaults to this unbounded backend and scans
+      `0,1%,3%,10%,25%,50%`; annulus output remains available in a separate result directory.
    8. **M7 — nonaxisymmetric finite-beta free boundary.** Add helical coils/boundaries, then require
       3D force, interface, field-line, and resolution gates. This lane is supported only after M6;
       no axisymmetric boundary replicated in theta counts as a 3D validation.
@@ -1409,6 +1416,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       `boundary_fourier_amplitudes` now removes odd-grid peak-to-peak bias and recovers analytic
       `m=0,1,2` amplitudes to `5e-17`; future studies must gate this modal metric plus global
       volume/energy/theta-averaged fields rather than raw theta-node extrema.
+      The coarse genuine-3D continuation now also reaches beta `25%` and `50%` without stalling:
+      residual stays below `3.7e-15`, normal stress below `2.1e-15`, and vacuum tangency below
+      `4.4e-17`. From beta zero to 50%, mean midplane radius grows `0.201794 -> 0.217968 m`, mean
+      central field falls `0.082215 -> 0.071173 T`, and the physical `m=1` radius amplitude grows
+      `0.255 -> 0.421 mm`. This closes nonlinear-continuation robustness, but not the documented
+      spatial-resolution blocker; no 3D production-accuracy claim is made yet.
    9. **M8 — toroidal stellarator–mirror hybrid.** Model the closed square/rounded-square torus with
       straight mirror sides and stellarator corners using ordinary VMEC Fourier equilibrium.
       Piecewise splines are low-dimensional axis/boundary design controls projected to Fourier.
@@ -1632,8 +1645,8 @@ Structure:
       nonaxisymmetric mirror is supported only after its physical-residual and resolution gates.
 - [ ] Straight-axis finite-beta free-boundary mirrors are supported in axisymmetric and 3D modes:
       solved lateral interfaces satisfy total `B·n` and anisotropic normal-stress balance, every
-      beta scan point is a converged equilibrium, ellipticity gates pass, and axisymmetric results
-      agree with independent Pleiades/WHAM-style reference data.
+      beta scan point through 50% is a converged equilibrium, ellipticity gates pass, and
+      axisymmetric results agree with independent Pleiades/WHAM-style reference data.
 - [ ] Toroidal stellarator–mirror hybrid converges in the Fourier representation with VMEC2000
       parity; its spline parameterization demonstrably reduces design variables without changing
       the equilibrium equations. Free-boundary beta scans use solved surfaces and total `B·n`.

@@ -391,13 +391,14 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
     )
     center = plasma_grid.nxi // 2
     flux = 0.5 * on_axis[center] * 0.25**2
+    betas = jnp.asarray([0.0, 0.10, 0.25, 0.50])
     results = solve_axisymmetric_beta_scan_cli(
         MirrorBoundary.from_axis_field(flux, on_axis, plasma_grid),
         plasma_grid,
         vacuum_grid,
         config,
         _two_end_coils(),
-        jnp.asarray([0.0, 0.10]),
+        betas,
         outer_radius=0.1,
         axial_flux_derivative=flux,
         reference_field=float(on_axis[center]),
@@ -420,16 +421,22 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
     assert all(np.all(np.asarray(result.vacuum_potential) == 0.0) for result in results)
     diagnostics = summarize_axisymmetric_beta_scan(
         results,
-        jnp.asarray([0.0, 0.10]),
+        betas,
         plasma_grid,
         reference_field=float(on_axis[center]),
     )
     np.testing.assert_allclose(
         [item.achieved_reference_beta for item in diagnostics],
-        [0.0, 0.10],
+        betas,
         rtol=2.0e-8,
         atol=1.0e-12,
     )
+    center_radii = np.asarray([item.center_radius for item in diagnostics])
+    field_ratios = np.asarray([item.diamagnetic_field_ratio for item in diagnostics])
+    assert np.all(np.diff(center_radii) > 0.0)
+    assert np.all(np.diff(field_ratios) < 0.0)
+    assert center_radii[-1] > 1.07 * center_radii[0]
+    assert field_ratios[-1] < 0.77
     assert all(
         np.isfinite(float(item.center_vacuum_side_field)) for item in diagnostics
     )
@@ -471,13 +478,14 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
         * jnp.asarray(grid.xi)[None, :]
         * jnp.cos(jnp.asarray(grid.theta)[:, None])
     )
-    result, finite_beta = solve_beta_scan_cli(
+    betas = jnp.asarray([0.0, 0.10, 0.25, 0.50])
+    results = solve_beta_scan_cli(
         boundary,
         grid,
         vacuum_grid,
         config,
         coils,
-        jnp.asarray([0.0, 0.10]),
+        betas,
         outer_radius=0.1,
         axial_flux_derivative=flux,
         reference_field=float(on_axis[center]),
@@ -486,33 +494,49 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
         exterior_order=6,
     )
 
-    assert result.converged and float(result.variational_max) <= config.ftol
-    assert float(result.interface.vacuum_b_normal_rms) < 1.0e-12
-    assert float(result.interface.normal_stress_rms) < 1.0e-12
-    assert float(result.vacuum_field.neumann_result.compatibility_error) < 2.0e-3
-    assert float(result.vacuum_field.neumann_result.condition_number) < 5.0
-    center_radii = np.asarray(result.boundary.radius_scale[:, center])
-    assert np.ptp(center_radii) > 1.0e-4
+    assert all(result.converged for result in results)
+    assert all(float(result.variational_max) <= config.ftol for result in results)
+    assert all(float(result.interface.vacuum_b_normal_rms) < 1.0e-12 for result in results)
+    assert all(float(result.interface.normal_stress_rms) < 1.0e-12 for result in results)
+    assert all(
+        float(result.vacuum_field.neumann_result.compatibility_error) < 2.0e-3
+        for result in results
+    )
+    assert all(
+        float(result.vacuum_field.neumann_result.condition_number) < 5.0
+        for result in results
+    )
 
-    assert finite_beta.converged and float(finite_beta.variational_max) <= config.ftol
-    assert float(finite_beta.interface.normal_stress_rms) < 1.0e-12
-    achieved_beta = (
-        2.0
-        * MU0
-        * finite_beta.perpendicular_pressure[0, 0, center]
-        / float(on_axis[center]) ** 2
+    achieved_betas = np.asarray(
+        [
+            2.0
+            * MU0
+            * result.perpendicular_pressure[0, 0, center]
+            / float(on_axis[center]) ** 2
+            for result in results
+        ]
     )
-    np.testing.assert_allclose(achieved_beta, 0.10, rtol=2.0e-8)
-    assert float(finite_beta.boundary.radius_scale[0, center]) > 1.01 * float(
-        result.boundary.radius_scale[0, center]
+    np.testing.assert_allclose(achieved_betas, betas, rtol=2.0e-8, atol=1.0e-12)
+    mean_radii = np.asarray(
+        [np.mean(np.asarray(result.boundary.radius_scale[:, center])) for result in results]
     )
-    assert np.ptp(np.asarray(finite_beta.boundary.radius_scale[:, center])) > 1.0e-4
+    mean_fields = np.asarray(
+        [np.mean(np.sqrt(np.asarray(result.plasma_b_squared[:, 0, center]))) for result in results]
+    )
+    mode_one = np.asarray(
+        [boundary_fourier_amplitudes(result.boundary)[1, center] for result in results]
+    )
+    assert np.all(np.diff(mean_radii) > 0.0)
+    assert np.all(np.diff(mean_fields) < 0.0)
+    assert np.all(mode_one > 1.0e-4)
+    assert mode_one[-1] > 1.5 * mode_one[0]
 
 
 @pytest.mark.full
 def test_unbounded_exterior_beta_observables_converge_with_resolution() -> None:
     observables = []
     compatibility = []
+    betas = jnp.asarray([0.0, 0.10, 0.50])
     for ns, nxi, ntheta_panel in ((5, 7, 8), (7, 13, 12), (9, 17, 16)):
         config = MirrorConfig(
             resolution=MirrorResolution(ns=ns, mpol=0, ntheta=1, nxi=nxi),
@@ -537,7 +561,7 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution() -> None:
             vacuum_grid,
             config,
             _two_end_coils(),
-            jnp.asarray([0.0, 0.10]),
+            betas,
             outer_radius=0.1,
             axial_flux_derivative=flux,
             reference_field=float(on_axis[center]),
@@ -568,10 +592,11 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution() -> None:
         )
 
     relative_change = np.abs((observables[-1] - observables[-2]) / observables[-1])
-    assert np.max(relative_change) < 5.0e-4
-    assert np.max(compatibility[-1]) < 2.0e-9
+    assert np.max(relative_change[:2]) < 5.0e-4
+    assert np.max(relative_change[2]) < 5.0e-3
+    assert np.max(compatibility[-1]) < 3.0e-9
     assert np.all(compatibility[-1] < compatibility[0])
-    assert float(results[1].boundary.radius_scale[0, center]) > 1.01 * float(
+    assert float(results[-1].boundary.radius_scale[0, center]) > 1.07 * float(
         results[0].boundary.radius_scale[0, center]
     )
 

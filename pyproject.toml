@@ -31,7 +31,6 @@ dependencies = [
   "packaging",
   "booz_xform_jax",
   "solvax>=0.2.0",
-  "virtual-casing-jax>=0.0.2",
   "tomli; python_version < '3.11'",
 ]
 
@@ -48,15 +47,13 @@ Changelog = "https://github.com/uwplasma/vmec_jax/releases"
 
 [project.optional-dependencies]
 # Differentiable free boundary via virtual casing (plan.md R15.3 + R19).
-# ``virtual_casing_jax`` is a uwplasma package (https://github.com/uwplasma/
-# virtual_casing_jax); it is NOT yet on PyPI, so ``pip install vmec-jax[freeb]``
-# will not resolve it from an index — install it editable alongside vmec_jax:
+# The required extender API currently lives on uwplasma/virtual_casing_jax's
+# ``feature/jax-vmec-extender`` branch, not in the PyPI 0.0.2 release. Install
+# a checkout of that branch editable alongside vmec_jax before using this lane:
 #   pip install -e /path/to/virtual_casing_jax
 # The ``vmec_jax.core.freeboundary_diff`` module and its tests are gated behind an
-# ``importorskip`` so CI stays green when the dependency is absent.
-freeb = [
-  "virtual_casing_jax",
-]
+# API check so normal installs stay independent of this experimental dependency.
+freeb = []
 docs = [
   "sphinx",
   "sphinx-copybutton",
