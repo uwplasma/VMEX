@@ -84,6 +84,11 @@ strength, and the thin-flux-tube scale ``sqrt(B_ref/B_axis)``. For the default
 16 coils, the traced axis is planar to roundoff, has straight-side error below
 1.7 mm, and is represented to 0.057 mm by ``ntor=20``.
 
+For free-boundary initialization, the trace also reports signed ``B_phi`` and
+``toroidal_flux_scale``. ``coil_informed_toroidal_flux`` estimates the signed
+VMEC ``PHIEDGE`` through a constant-toroidal-angle section; this avoids using
+the total-field tube area when the square axis has a radial tangent component.
+
 Using that axis and flux-conserving cross-section, the ``ns=5`` unshaped
 fixed-boundary solve converges at ``1e-8`` in 62 iterations. Ten-percent
 continuation steps then reach the complete rotating-corner ellipse target;
@@ -106,6 +111,14 @@ before the free-boundary 16-coil beta scan is promoted. The current
 generic 2D block preconditioner was tested at step factors 0.25, 0.5, and 1.0
 on the 3 kA base and increased, rather than reduced, the residual; a
 hybrid-scaled block is needed rather than further tuning of that path.
+
+The first toroidal free-boundary gate exposed and fixed two hot-start defects:
+a force-converged fixed seed could return before NESTOR activation, and its
+pre-vacuum best checkpoint could reject every coupled update. With signed
+coil-matched ``PHIEDGE``, the unshaped toroidal-flux seed now completes a real
+beta-zero NESTOR turn-on and converges at ``ftol=1e-8`` in three iterations
+using ``DELT=0.002``. Finite-pressure continuation and the full 0--50% scan
+remain open.
 
 Fixed-boundary 3D solver
 ------------------------

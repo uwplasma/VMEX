@@ -830,6 +830,7 @@ def solve_free_boundary(
     emit=print,
     error_on_no_convergence: bool = True,
     initial_state: SpectralState | None = None,
+    max_vacuum_skip: int | None = None,
 ) -> SolveResult:
     """Single-grid free-boundary solve (``eqsolve.f`` + ``funct3d.f`` IVAC0).
 
@@ -847,9 +848,15 @@ def solve_free_boundary(
     same resolution. Its edge is retained because the LCFS is an evolved
     unknown; constraint baselines are recomputed from that state. This is the
     efficient continuation path for pressure and coil-current scans.
+
+    ``max_vacuum_skip`` optionally caps the adaptive ``NVACSKIP`` cadence.
+    ``1`` recomputes the full NESTOR solution every iteration and is useful as
+    a high-cost reference; ``None`` preserves VMEC2000's uncapped behavior.
     """
     if not bool(inp.lfreeb):
         raise ValueError("solve_free_boundary requires an LFREEB=T input")
+    if max_vacuum_skip is not None and int(max_vacuum_skip) < 1:
+        raise ValueError("max_vacuum_skip must be >= 1")
     if external_field is None:
         path = _resolve_mgrid(inp, mgrid_path)
         data_extcur = np.atleast_1d(np.asarray(inp.extcur if inp.extcur is not None else [], dtype=float))
@@ -948,7 +955,12 @@ def solve_free_boundary(
             if fb.ivac <= 2:
                 ivacskip = 0
             if ivacskip == 0:
-                fb.nvacskip = max(fb.nvskip0, int(1.0 / max(1.0e-1, 1.0e11 * fsq_rz)))
+                adaptive_skip = max(fb.nvskip0, int(1.0 / max(1.0e-1, 1.0e11 * fsq_rz)))
+                fb.nvacskip = (
+                    adaptive_skip
+                    if max_vacuum_skip is None
+                    else min(adaptive_skip, int(max_vacuum_skip))
+                )
             bsqvac = _vacuum_step(
                 carry=carry, rt=rt_freeb, fb=fb, basis=basis,
                 fused_vac=fused_vac, field=external_field,
@@ -962,6 +974,15 @@ def solve_free_boundary(
                 # iteration's force evaluation).
                 fb.turned_on = True
                 fb.banner_pending = True
+                hot_reset = (
+                    {
+                        "fsq": jnp.asarray(1.0, dtype=dtype),
+                        "res0": jnp.asarray(jnp.inf, dtype=dtype),
+                        "res1": jnp.asarray(jnp.inf, dtype=dtype),
+                    }
+                    if initial_state is not None
+                    else {}
+                )
                 carry = replace(
                     carry,
                     state=carry.xstore,
@@ -973,6 +994,7 @@ def solve_free_boundary(
                     # iter1 = iteration forces an immediate ns4 refresh, so
                     # the zeroed cache is never consumed.
                     cache=_zero_cache(rt_freeb),
+                    **hot_reset,
                 )
             if fb.ivac >= 1:
                 rt_freeb = replace(rt_freeb, bsqvac_edge=jnp.asarray(bsqvac, dtype=dtype))

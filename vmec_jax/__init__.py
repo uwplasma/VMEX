@@ -101,6 +101,7 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     "write_mgrid": (".core.mgrid", "write_mgrid"),
     # toroidal stellarator-mirror hybrid geometry
     "CoilInformedAxis": (".core.hybrid", "CoilInformedAxis"),
+    "coil_informed_toroidal_flux": (".core.hybrid", "coil_informed_toroidal_flux"),
     "HybridBoundarySamples": (".core.hybrid", "HybridBoundarySamples"),
     "sample_stellarator_mirror_hybrid": (".core.hybrid", "sample_stellarator_mirror_hybrid"),
     "stellarator_mirror_hybrid_input": (".core.hybrid", "stellarator_mirror_hybrid_input"),

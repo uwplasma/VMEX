@@ -1561,8 +1561,15 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       machine-precision parity. The reproducible deck is emitted by the example and compact data
       live in `benchmarks/mirror_hybrid_fixed_boundary.json`. The toroidal NESTOR driver now accepts
       a same-resolution free-boundary hot state, retains its evolved LCFS, and rebinds constraint
-      baselines; beta scans no longer cold-start every point. Next: design a hybrid-specific scaled
-      block preconditioner, then use this continuation path for the 16-coil `0--50%` beta scan.
+      baselines; beta scans no longer cold-start every point. Two hot-start defects are closed: a
+      fixed seed can no longer terminate before NESTOR activation, and the pre-vacuum best-residual
+      checkpoint is reset when vacuum pressure turns on. The coil trace now supplies signed
+      `B_phi`, a toroidal-plane flux-tube scale, and a signed `PHIEDGE` estimate. With that matched
+      flux, the unshaped beta-zero LCFS executes NESTOR and converges at `ftol=1e-8` in 3 iterations
+      (`DELT=0.002`, volume `0.33298 m^3`, aspect 16.55). The optional `max_vacuum_skip` cap can
+      force a full NESTOR update every iteration without changing default VMEC2000 cadence. Next:
+      close finite-pressure stepping, design a hybrid-specific scaled block preconditioner, then
+      use this continuation path for the 16-coil `0--50%` beta scan.
       The plotted root example
       now writes WOUT, 3D coils/LCFS/pitched field lines, `|B|`, cross-sections, profiles, and force
       histories; only afterward should the 16-coil free-boundary beta scan be attempted.

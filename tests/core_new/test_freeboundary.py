@@ -163,6 +163,15 @@ def test_free_boundary_hot_state_requires_matching_resolution(ab_inputs):
         )
 
 
+def test_free_boundary_rejects_invalid_vacuum_skip_cap(ab_inputs):
+    with pytest.raises(ValueError, match="max_vacuum_skip must be >= 1"):
+        FB.solve_free_boundary(
+            ab_inputs["inp"],
+            external_field=object(),
+            max_vacuum_skip=0,
+        )
+
+
 def test_fused_vacuum_matches_reference(ab_inputs):
     """R15.2: the fused on-device vacuum update == the step-by-step NumPy path.
 

@@ -41,7 +41,9 @@ class CoilInformedAxis:
     xyz: np.ndarray
     radius: np.ndarray
     field_strength: np.ndarray
+    toroidal_field: np.ndarray
     flux_tube_scale: np.ndarray
+    toroidal_flux_scale: np.ndarray
     closure_error: float
     planarity_error: float
 
@@ -101,17 +103,43 @@ def trace_square_coil_vacuum_axis(
         [np.interp(-(angle[0] - 2.0 * np.pi), -angle, points[:, component]) for component in range(3)]
     )
     radius = np.linalg.norm(xyz[:, :2], axis=1)
-    field_strength = np.linalg.norm(np.asarray(biot_savart(coilset, jnp.asarray(xyz))), axis=1)
+    field_xyz = np.asarray(biot_savart(coilset, jnp.asarray(xyz)))
+    field_strength = np.linalg.norm(field_xyz, axis=1)
+    toroidal_unit = np.column_stack((-xyz[:, 1] / radius, xyz[:, 0] / radius, np.zeros(nzeta)))
+    toroidal_field = np.einsum("ij,ij->i", field_xyz, toroidal_unit)
+    if np.any(toroidal_field == 0.0) or np.any(np.sign(toroidal_field) != np.sign(toroidal_field[0])):
+        raise RuntimeError("square-coil axis toroidal field changes sign")
     reference_field = np.exp(np.mean(np.log(field_strength)))
+    reference_toroidal_field = np.exp(np.mean(np.log(np.abs(toroidal_field))))
     return CoilInformedAxis(
         zeta=zeta,
         xyz=xyz,
         radius=radius,
         field_strength=field_strength,
+        toroidal_field=toroidal_field,
         flux_tube_scale=np.sqrt(reference_field / field_strength),
+        toroidal_flux_scale=np.sqrt(reference_toroidal_field / np.abs(toroidal_field)),
         closure_error=float(np.linalg.norm(endpoint - xyz[0])),
         planarity_error=float(np.max(np.abs(xyz[:, 2]))),
     )
+
+
+def coil_informed_toroidal_flux(axis: CoilInformedAxis, minor_radius: float) -> float:
+    """Estimate signed ``PHIEDGE`` from the traced axis and tube radius.
+
+    The VMEC toroidal flux crosses a constant-``zeta`` plane. The initializer
+    therefore conserves ``B_phi * area`` rather than total ``|B| * area``
+    when the square axis has a radial tangent component.
+    """
+
+    radius = float(minor_radius)
+    if radius <= 0.0:
+        raise ValueError("minor_radius must be positive")
+    field = np.asarray(axis.toroidal_field, dtype=float)
+    if np.any(field == 0.0) or np.any(np.sign(field) != np.sign(field[0])):
+        raise ValueError("axis toroidal field must have one nonzero sign")
+    reference = np.sign(field[0]) * np.exp(np.mean(np.log(np.abs(field))))
+    return float(np.pi * radius**2 * reference)
 
 
 def sample_stellarator_mirror_hybrid(

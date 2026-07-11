@@ -206,7 +206,13 @@ coupling with the VMEC2000 cadence (``funct3d.f``):
 Pressure and coil-current scans pass the preceding equilibrium as
 ``initial_state``. The evolved LCFS is retained and ``rcon0, zcon0`` are
 rebound to that state before the next NESTOR solve, avoiding a cold INDATA
-restart at every scan point.
+restart at every scan point. A hot start cannot terminate before vacuum
+pressure turns on, and its best-residual checkpoint is reset at that turn-on
+so the prescribed seed cannot suppress legitimate LCFS motion.
+
+The optional ``max_vacuum_skip`` API cap leaves VMEC2000 cadence unchanged by
+default. Setting it to 1 is the expensive reference that recomputes NESTOR on
+every iteration when diagnosing incremental-update stalls.
 
 The external field comes either from an ``mgrid`` file
 (:mod:`vmec_jax.core.mgrid`, trilinear interpolation weighted by ``EXTCUR``)

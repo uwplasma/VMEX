@@ -5,6 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from vmec_jax.core.hybrid import (
+    coil_informed_toroidal_flux,
     hybrid_projection_error,
     sample_stellarator_mirror_hybrid,
     stellarator_mirror_hybrid_input,
@@ -77,9 +78,22 @@ def test_square_coil_vacuum_axis_is_closed_planar_and_fourier_resolved() -> None
     assert 1.49 < np.min(axis.radius) < 1.51
     assert 1.85 < np.max(axis.radius) < 1.87
     assert np.max(axis.field_strength) > 1.5 * np.min(axis.field_strength)
+    assert np.all(axis.toroidal_field < 0.0)
     np.testing.assert_allclose(
         axis.field_strength * axis.flux_tube_scale**2,
         np.exp(np.mean(np.log(axis.field_strength))),
+        rtol=2.0e-14,
+    )
+    np.testing.assert_allclose(
+        np.abs(axis.toroidal_field) * axis.toroidal_flux_scale**2,
+        np.exp(np.mean(np.log(np.abs(axis.toroidal_field)))),
+        rtol=2.0e-14,
+    )
+    flux = coil_informed_toroidal_flux(axis, 0.1)
+    assert -0.05 < flux < -0.04
+    np.testing.assert_allclose(
+        np.pi * (0.1 * axis.toroidal_flux_scale) ** 2 * axis.toroidal_field,
+        flux,
         rtol=2.0e-14,
     )
     coefficients = np.fft.rfft(axis.radius)
