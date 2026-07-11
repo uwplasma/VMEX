@@ -1294,6 +1294,10 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       gates; this manufactured coil cancellation is not yet free-boundary coupling.
       A tested adapter now converts an axisymmetric plasma end field plus direct coils into complete
       wall/cap Neumann data and matches a uniform-cylinder construction to roundoff.
+      `solve_axisymmetric_exterior_vacuum` now consolidates closure, Neumann assembly, the decaying
+      solve, and lateral total-field reconstruction. Its direct-coil tangency is below `2e-12`,
+      compatibility is below `2e-12`, conditioning is below 10, and a complete boundary-shape JVP
+      is finite and nonzero. The M5-to-M6 differentiation seam is therefore implemented.
       Shaped/finite-beta exterior MMS, higher-order side density, tighter trace/near-field convergence,
       and coupling that deletes the finite outer cylinder remain the next M5 gates.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior

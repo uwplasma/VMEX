@@ -11,7 +11,7 @@ import numpy as np
 from virtual_casing_jax import laplace_dx_u_eval, laplace_fx_u, laplace_fxd_u_eval
 
 from ..core.coils import biot_savart
-from .exterior import ClosedMirrorSurface
+from .exterior import ClosedMirrorSurface, build_closed_mirror_surface
 from .exterior_mesh import panel_green_boundary_residual, panel_green_gradient_off_surface
 
 Array = Any
@@ -28,9 +28,25 @@ class LaplaceNeumannResult:
     gauge_error: Array
 
 
+@dataclass(frozen=True)
+class AxisymmetricExteriorVacuum:
+    """Solved free-space vacuum field on an axisymmetric mirror boundary."""
+
+    surface: ClosedMirrorSurface
+    neumann: Array
+    neumann_result: LaplaceNeumannResult
+    lateral_field_xyz: Array
+    lateral_b_normal: Array
+
+
 jax.tree_util.register_dataclass(
     LaplaceNeumannResult,
     data_fields=[field.name for field in fields(LaplaceNeumannResult)],
+    meta_fields=[],
+)
+jax.tree_util.register_dataclass(
+    AxisymmetricExteriorVacuum,
+    data_fields=[field.name for field in fields(AxisymmetricExteriorVacuum)],
     meta_fields=[],
 )
 
@@ -129,6 +145,64 @@ def axisymmetric_exterior_lateral_field(
         + (potential_xi / arc_xi)[:, None] * tangent_hat
     )
     return external_xyz + correction
+
+
+def solve_axisymmetric_exterior_vacuum(
+    boundary: "MirrorBoundary",
+    plasma_field: "ContravariantField",
+    plasma_grid: "MirrorGrid",
+    coilset: Any,
+    *,
+    axisymmetric_ntheta: int = 40,
+    cap_rim_grade: float = 3.5,
+    order: int = 8,
+) -> AxisymmetricExteriorVacuum:
+    """Solve the unbounded vacuum field and reconstruct its lateral trace.
+
+    The two end cuts are closed by graded disks. Their Neumann data continue
+    the plasma axial field into free space, while the lateral data cancel the
+    direct coil normal field. The returned trace is sampled at theta zero on
+    the plasma grid's axial nodes.
+    """
+
+    surface = build_closed_mirror_surface(
+        boundary,
+        plasma_grid,
+        axisymmetric_ntheta=axisymmetric_ntheta,
+        cap_rim_grade=cap_rim_grade,
+    )
+    neumann = axisymmetric_plasma_coil_neumann(
+        surface, plasma_field, plasma_grid, coilset
+    )
+    result = solve_reduced_exterior_laplace_neumann(
+        surface, neumann, order=order
+    )
+    external = biot_savart(coilset, surface.lateral_xyz[0])
+    lateral = axisymmetric_exterior_lateral_field(
+        surface,
+        result.boundary_potential,
+        neumann,
+        plasma_grid,
+        external,
+    )
+    radius = jnp.linalg.norm(surface.lateral_xyz[0, :, :2], axis=1)
+    radius_xi = plasma_grid.axial_basis.differentiate(radius)
+    normal = jnp.stack(
+        [
+            jnp.full_like(radius_xi, plasma_grid.dz_dxi),
+            jnp.zeros_like(radius_xi),
+            -radius_xi,
+        ],
+        axis=1,
+    )
+    normal /= jnp.linalg.norm(normal, axis=1)[:, None]
+    return AxisymmetricExteriorVacuum(
+        surface=surface,
+        neumann=neumann,
+        neumann_result=result,
+        lateral_field_xyz=lateral,
+        lateral_b_normal=jnp.sum(lateral * normal, axis=1),
+    )
 
 
 def laplace_double_layer_off_surface(
@@ -432,3 +506,4 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .basis import MirrorGrid
     from .geometry import ContravariantField
+    from .model import MirrorBoundary

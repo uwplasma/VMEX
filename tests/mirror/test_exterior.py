@@ -32,6 +32,7 @@ from vmec_jax.mirror import (  # noqa: E402
     laplace_single_layer_gradient_off_surface,
     solve_reduced_exterior_laplace_neumann,
     solve_reduced_interior_laplace_neumann,
+    solve_axisymmetric_exterior_vacuum,
 )
 
 
@@ -569,6 +570,64 @@ def test_plasma_coil_neumann_adapter_matches_uniform_field_data() -> None:
     )
 
     np.testing.assert_allclose(adapted, expected, rtol=3.0e-13, atol=3.0e-14)
+
+    vacuum = solve_axisymmetric_exterior_vacuum(
+        boundary,
+        plasma_field,
+        grid,
+        coils,
+        axisymmetric_ntheta=24,
+    )
+    np.testing.assert_allclose(vacuum.neumann, adapted, rtol=3.0e-13, atol=3.0e-14)
+    assert vacuum.lateral_field_xyz.shape == (grid.nxi, 3)
+    assert float(jnp.max(jnp.abs(vacuum.lateral_b_normal))) < 2.0e-12
+    assert float(vacuum.neumann_result.compatibility_error) < 2.0e-12
+    assert float(vacuum.neumann_result.condition_number) < 10.0
+
+
+def test_axisymmetric_exterior_vacuum_is_shape_differentiable() -> None:
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=7),
+        z_min=-0.6,
+        z_max=0.6,
+    ).build_grid()
+    dofs = np.zeros((2, 3, 3))
+    dofs[:, 0, 2] = 0.9
+    dofs[:, 1, 1] = 0.9
+    dofs[:, 2, 0] = [-1.0, 1.0]
+    coils = CoilSet(
+        base_curve_dofs=jnp.asarray(dofs),
+        base_currents=jnp.asarray([2.0e5, 2.0e5]),
+        n_segments=64,
+    )
+
+    def lateral_field(radius):
+        boundary = MirrorBoundary.from_radius(radius, grid)
+        state = MirrorState.from_boundary(boundary, grid)
+        geometry = evaluate_geometry(state, grid)
+        plasma_field = contravariant_field(
+            state,
+            geometry,
+            grid,
+            axial_flux_derivative=0.0036,
+        )
+        return solve_axisymmetric_exterior_vacuum(
+            boundary,
+            plasma_field,
+            grid,
+            coils,
+            axisymmetric_ntheta=8,
+            cap_rim_grade=3.0,
+            order=6,
+        ).lateral_field_xyz
+
+    _, tangent = jax.jvp(
+        lateral_field,
+        (jnp.asarray(0.3),),
+        (jnp.asarray(1.0),),
+    )
+    assert np.all(np.isfinite(np.asarray(tangent)))
+    assert float(jnp.linalg.norm(tangent)) > 0.0
 
 
 def test_green_representation_converges_for_harmonic_polynomials() -> None:

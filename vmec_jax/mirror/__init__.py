@@ -24,6 +24,7 @@ from .exterior import (
     build_closed_mirror_surface,
 )
 from .exterior_bie import (
+    AxisymmetricExteriorVacuum,
     LaplaceNeumannResult,
     axisymmetric_plasma_coil_neumann,
     axisymmetric_exterior_lateral_field,
@@ -39,6 +40,7 @@ from .exterior_bie import (
     laplace_single_layer_gradient_off_surface,
     solve_reduced_exterior_laplace_neumann,
     solve_reduced_interior_laplace_neumann,
+    solve_axisymmetric_exterior_vacuum,
 )
 from .forces import (
     AnisotropicMirrorEnergy,
@@ -110,6 +112,7 @@ __all__ = [
     "ChebyshevBasis",
     "ClosedMirrorSurface",
     "LaplaceNeumannResult",
+    "AxisymmetricExteriorVacuum",
     "axisymmetric_plasma_coil_neumann",
     "axisymmetric_exterior_lateral_field",
     "ContravariantField",
@@ -178,6 +181,7 @@ __all__ = [
     "laplace_single_layer_gradient_off_surface",
     "solve_reduced_exterior_laplace_neumann",
     "solve_reduced_interior_laplace_neumann",
+    "solve_axisymmetric_exterior_vacuum",
     "mirror_energy",
     "project_fixed_boundary_state",
     "solve_anisotropic_fixed_boundary_cli",

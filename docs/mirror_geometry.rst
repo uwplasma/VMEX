@@ -249,6 +249,12 @@ Source ownership is kept narrow: ``exterior.py`` builds geometry and reduction
 maps, ``exterior_mesh.py`` owns panel topology and Duffy quadrature, and
 ``exterior_bie.py`` owns layer evaluation and Neumann solves. Public functions
 remain exported from ``vmec_jax.mirror``.
+``solve_axisymmetric_exterior_vacuum`` now owns the complete M6 adapter:
+it closes the moving boundary, continues the plasma field through both end
+cuts, cancels direct-coil normal field on the side, solves the exterior
+Neumann problem, and returns the lateral total-field trace. Tangency and a
+full shape JVP pass on the coupled adapter, so the remaining gate is nonlinear
+equilibrium behavior rather than a missing differentiation path.
 An analytic Green-gradient evaluator avoids differentiating safe-distance
 branches on the symmetry axis. Duffy panel evaluation also controls near-cap
 targets in the interior validation: for two circular coils outside a
