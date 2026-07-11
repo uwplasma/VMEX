@@ -1196,7 +1196,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       with the scaled Hessian. The prototype was not promoted. M4 remains open, but the scaled-state
       rewrite is deferred until it is paired from inception with parity-aware SOLVAX block
       preconditioning; acceptance still requires decreasing axis and bulk residuals plus materially
-      lower Krylov work/memory at `ns>=31`.
+      lower Krylov work/memory at `ns>=31`. Main's matrix-free SOLVAX 2D Newton primitive was merged
+      in `e3d0e74d` and tested as a direct replacement for the mirror host SciPy GMRES. A controlled
+      cold `ns=15,nxi=15,ntheta=5` A/B produced identical energy and continuum force; SOLVAX reduced
+      Krylov iterations `3000 -> 2000` and the final relative linear residual `0.107 -> 0.0101`, but
+      regressed wall time `14.42 -> 16.38 s` and peak RSS `0.94 -> 1.27 GB`. The adapter was removed.
+      Reconsider it only as a compiled-loop/recycled solve that beats both CLI wall time and memory;
+      sharing an API alone is not sufficient for promotion.
    6. **M5 — open-vacuum solver.** Implement the annular scalar-potential solve and couple direct
       coils/mgrid fields. Validate Laplace MMS, reciprocity, gauge removal, coil-only fields,
       side-interface `B.n`, end flux, outer-boundary convergence, and axisymmetric comparisons
