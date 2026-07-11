@@ -15,6 +15,7 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorResolution,
     build_closed_mirror_surface,
     laplace_double_layer_off_surface,
+    laplace_green_representation_off_surface,
     laplace_single_layer_gradient_off_surface,
 )
 
@@ -129,3 +130,39 @@ def test_single_layer_gradient_has_far_field_monopole_limit() -> None:
 
     assert float(relative_error[1]) < 0.3 * float(relative_error[0])
     np.testing.assert_allclose(field[:, :2], 0.0, atol=2.0e-16)
+
+
+def test_green_representation_converges_for_harmonic_polynomials() -> None:
+    targets = jnp.asarray([[0.1, 0.05, 0.2], [0.0, 0.0, 4.0]])
+    errors = []
+    for ns, nxi, ntheta in ((17, 25, 16), (33, 49, 32)):
+        grid = _grid(ns=ns, nxi=nxi)
+        surface = build_closed_mirror_surface(
+            MirrorBoundary.from_radius(0.37, grid),
+            grid,
+            axisymmetric_ntheta=ntheta,
+        )
+        xyz = surface.xyz
+        normal = surface.normals
+        cases = (
+            (jnp.ones(xyz.shape[0]), jnp.zeros(xyz.shape[0]), 1.0),
+            (xyz[:, 0], normal[:, 0], targets[0, 0]),
+            (xyz[:, 2], normal[:, 2], targets[0, 2]),
+            (
+                xyz[:, 0] ** 2 - xyz[:, 1] ** 2,
+                2.0 * (xyz[:, 0] * normal[:, 0] - xyz[:, 1] * normal[:, 1]),
+                targets[0, 0] ** 2 - targets[0, 1] ** 2,
+            ),
+        )
+        case_errors = []
+        for dirichlet, neumann, interior_value in cases:
+            represented = laplace_green_representation_off_surface(
+                surface, dirichlet, neumann, targets
+            )
+            case_errors.append(
+                float(jnp.max(jnp.abs(represented - jnp.asarray([interior_value, 0.0]))))
+            )
+        errors.append(max(case_errors))
+
+    assert errors[1] < 0.4 * errors[0]
+    assert errors[1] < 2.0e-5

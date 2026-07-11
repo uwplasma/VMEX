@@ -15,7 +15,7 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
-from virtual_casing_jax import laplace_dx_u_eval, laplace_fxd_u_eval
+from virtual_casing_jax import laplace_dx_u_eval, laplace_fx_u, laplace_fxd_u_eval
 
 Array = Any
 
@@ -96,7 +96,10 @@ jax.tree_util.register_dataclass(
 
 
 def build_closed_mirror_surface(
-    boundary: "MirrorBoundary", grid: "MirrorGrid"
+    boundary: "MirrorBoundary",
+    grid: "MirrorGrid",
+    *,
+    axisymmetric_ntheta: int = 16,
 ) -> ClosedMirrorSurface:
     """Close a star-shaped mirror LCFS with disks on both axial cuts.
 
@@ -113,7 +116,12 @@ def build_closed_mirror_surface(
     if grid.ntheta == 1:
         # The equilibrium stores no redundant angular samples in axisymmetry,
         # but Cartesian surface moments still require an angular quadrature.
-        theta = jnp.asarray(np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False))
+        axisymmetric_ntheta = int(axisymmetric_ntheta)
+        if axisymmetric_ntheta < 4:
+            raise ValueError("axisymmetric_ntheta must be at least 4")
+        theta = jnp.asarray(
+            np.linspace(0.0, 2.0 * np.pi, axisymmetric_ntheta, endpoint=False)
+        )
         theta_weights_1d = jnp.full(theta.shape, 2.0 * jnp.pi / theta.size)
         radius = jnp.broadcast_to(radius, (theta.size, grid.nxi))
         d_radius_dtheta = jnp.zeros_like(radius)
@@ -203,14 +211,7 @@ def laplace_double_layer_off_surface(
     singular and near-singular evaluation is a separate M5 gate.
     """
 
-    density = jnp.asarray(density)
-    targets = jnp.asarray(targets)
-    if density.shape != (surface.xyz.shape[0],):
-        raise ValueError(
-            f"density shape {density.shape} must be ({surface.xyz.shape[0]},)"
-        )
-    if targets.ndim != 2 or targets.shape[1] != 3:
-        raise ValueError("targets must have shape (n, 3)")
+    density, targets = _validate_off_surface_inputs(surface, density, targets)
     value = laplace_dx_u_eval(
         surface.xyz.T,
         surface.normals.T,
@@ -231,14 +232,7 @@ def laplace_single_layer_gradient_off_surface(
 ) -> Array:
     """Evaluate ``grad integral G density dA`` away from the surface."""
 
-    density = jnp.asarray(density)
-    targets = jnp.asarray(targets)
-    if density.shape != (surface.xyz.shape[0],):
-        raise ValueError(
-            f"density shape {density.shape} must be ({surface.xyz.shape[0]},)"
-        )
-    if targets.ndim != 2 or targets.shape[1] != 3:
-        raise ValueError("targets must have shape (n, 3)")
+    density, targets = _validate_off_surface_inputs(surface, density, targets)
     value = laplace_fxd_u_eval(
         surface.xyz.T,
         targets.T,
@@ -247,6 +241,49 @@ def laplace_single_layer_gradient_off_surface(
         chunk_size=chunk_size,
     )
     return value.T
+
+
+def laplace_single_layer_off_surface(
+    surface: ClosedMirrorSurface, density: Array, targets: Array
+) -> Array:
+    """Evaluate ``integral G density dA`` away from the surface."""
+
+    density, targets = _validate_off_surface_inputs(surface, density, targets)
+    displacement = targets[:, None, :] - surface.xyz[None, :, :]
+    weighted_density = density * surface.quadrature_weights
+    return jnp.sum(laplace_fx_u(displacement, weighted_density[None, :]), axis=1)
+
+
+def laplace_green_representation_off_surface(
+    surface: ClosedMirrorSurface,
+    dirichlet: Array,
+    neumann: Array,
+    targets: Array,
+) -> Array:
+    """Evaluate Green's representation from harmonic boundary data.
+
+    For consistent Dirichlet and outward-normal Neumann data this returns the
+    harmonic function inside the closed surface and zero outside.  It is a
+    manufactured-solution validator for the mixed wall/cap quadrature.
+    """
+
+    return laplace_single_layer_off_surface(surface, neumann, targets) + (
+        laplace_double_layer_off_surface(surface, dirichlet, targets)
+    )
+
+
+def _validate_off_surface_inputs(
+    surface: ClosedMirrorSurface, density: Array, targets: Array
+) -> tuple[Array, Array]:
+    density = jnp.asarray(density)
+    targets = jnp.asarray(targets)
+    if density.shape != (surface.xyz.shape[0],):
+        raise ValueError(
+            f"density shape {density.shape} must be ({surface.xyz.shape[0]},)"
+        )
+    if targets.ndim != 2 or targets.shape[1] != 3:
+        raise ValueError("targets must have shape (n, 3)")
+    return density, targets
 
 
 from typing import TYPE_CHECKING

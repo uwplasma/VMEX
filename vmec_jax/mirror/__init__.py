@@ -23,6 +23,8 @@ from .exterior import (
     ClosedMirrorSurface,
     build_closed_mirror_surface,
     laplace_double_layer_off_surface,
+    laplace_green_representation_off_surface,
+    laplace_single_layer_off_surface,
     laplace_single_layer_gradient_off_surface,
 )
 from .forces import (
@@ -149,6 +151,8 @@ __all__ = [
     "mass_profile_from_pressure",
     "load_free_boundary_restart",
     "laplace_double_layer_off_surface",
+    "laplace_green_representation_off_surface",
+    "laplace_single_layer_off_surface",
     "laplace_single_layer_gradient_off_surface",
     "mirror_energy",
     "project_fixed_boundary_state",

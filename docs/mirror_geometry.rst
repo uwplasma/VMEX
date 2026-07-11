@@ -156,14 +156,18 @@ lateral LCFS with disks at both fixed-flux cuts. It stores outward ``n dA``
 directly, including quadrature weights, so the disk center is regular and no
 unit-normal division enters geometric identities. For axisymmetric equilibrium
 grids, which intentionally store one theta node, the adapter supplies an
-independent eight-point Cartesian angular quadrature.
+independent Cartesian angular quadrature. ``axisymmetric_ntheta`` controls its
+resolution without adding redundant theta unknowns to the equilibrium solve.
 
 Tests require exact cylinder area and volume, zero integrated normal, the full
 tensor divergence theorem on a theta-shaped flared tube, cap/side ring
 continuity, and a JAX shape derivative. The off-surface double-layer and
 single-layer-gradient adapters call the released ``virtual_casing_jax>=0.0.2``
 kernels; a constant double layer converges to one inside and zero outside, and
-the single layer reaches its far-field monopole limit.
+the single layer reaches its far-field monopole limit. Green's representation
+converges jointly under disk-radial, axial, and angular refinement for the
+harmonic manufactured fields ``1``, ``x``, ``z``, and ``x^2-y^2`` while
+returning zero at exterior targets.
 
 These functions are nonsingular evaluators only. They reject malformed source
 and target arrays and do not label on-surface collocation as supported. M5

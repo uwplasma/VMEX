@@ -1239,7 +1239,10 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       `virtual_casing_jax>=0.0.2` low-level kernels now evaluate nonsingular off-surface double
       layers and single-layer gradients on this mixed wall/cap quadrature. Constant-density solid
       angle converges to one inside and zero outside; the gradient reaches its far-field monopole
-      limit. This does not yet solve the exterior problem: cap-aware singular/near-singular
+      limit. Axisymmetric kernel quadrature has an angular resolution independent of the one-node
+      equilibrium representation. Green's third identity converges for constant, linear, and
+      quadratic harmonic polynomials under joint disk-radial, axial, and angular refinement and
+      vanishes at exterior targets. This does not yet solve the exterior problem: cap-aware singular/near-singular
       quadrature, the second-kind boundary equation and nullspace, harmonic MMS, and coupling that
       deletes the finite outer cylinder remain the next M5 gates.
    7. **M6 — axisymmetric finite-beta free boundary.** Vary the lateral interface and interior
