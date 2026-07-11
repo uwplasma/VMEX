@@ -331,13 +331,18 @@ def test_spectral_side_density_improves_exterior_dipole() -> None:
     neumann = surface.reduce_collocation_values(
         jnp.sum(gradient * surface.collocation_normals, axis=1)
     )
+    with pytest.raises(ValueError, match="requires spectral side density"):
+        solve_reduced_exterior_laplace_neumann(
+            surface, neumann, curved_side_geometry=True
+        )
 
     errors = []
-    for spectral in (False, True):
+    for spectral, curved in ((False, False), (True, False), (True, True)):
         result = solve_reduced_exterior_laplace_neumann(
             surface,
             neumann,
             spectral_side_density=spectral,
+            curved_side_geometry=curved,
         )
         boundary_error = jnp.linalg.norm(result.boundary_potential - exact) / jnp.linalg.norm(exact)
         recovered = laplace_reduced_exterior_gradient_off_surface(
@@ -346,6 +351,7 @@ def test_spectral_side_density_improves_exterior_dipole() -> None:
             neumann,
             jnp.asarray([[0.0, 0.0, 2.0]]),
             spectral_side_density=spectral,
+            curved_side_geometry=curved,
         )
         field_error = jnp.abs(recovered[0, 2] + 0.25) / 0.25
         errors.append((float(boundary_error), float(field_error)))
@@ -354,6 +360,7 @@ def test_spectral_side_density_improves_exterior_dipole() -> None:
 
     assert errors[1][0] < 0.3 * errors[0][0]
     assert errors[1][1] < 0.7 * errors[0][1]
+    assert errors[2][0] < 0.7 * errors[1][0]
 
 
 def test_panel_mesh_is_watertight_oriented_and_convergent() -> None:
@@ -801,6 +808,7 @@ def test_axisymmetric_exterior_vacuum_is_shape_differentiable() -> None:
             cap_rim_grade=3.0,
             order=6,
             spectral_side_density=True,
+            curved_side_geometry=True,
         ).lateral_field_xyz
 
     _, tangent = jax.jvp(
@@ -849,6 +857,7 @@ def test_nonaxisymmetric_exterior_vacuum_is_shape_differentiable() -> None:
             cap_rim_grade=2.5,
             order=4,
             spectral_side_density=True,
+            curved_side_geometry=True,
         ).lateral_field_xyz
 
     _, tangent = jax.jvp(

@@ -54,6 +54,7 @@ VACUUM_BACKEND = "exterior"  # "annulus" retains a finite outer cylinder
 EXTERIOR_NTHETA = 12
 EXTERIOR_ORDER = 8
 EXTERIOR_SPECTRAL_SIDE_DENSITY = False  # accurate dipole BIE; costlier and not 3D-promoted
+EXTERIOR_CURVED_SIDE_GEOMETRY = False  # requires spectral side density
 EXTERIOR_JACOBIAN_CHUNK_SIZE = 6
 FTOL = 1.0e-12
 MAX_ITERATIONS = 2000
@@ -147,6 +148,7 @@ results = solve_axisymmetric_beta_scan_cli(
     exterior_ntheta=EXTERIOR_NTHETA,
     exterior_order=EXTERIOR_ORDER,
     exterior_spectral_side_density=EXTERIOR_SPECTRAL_SIDE_DENSITY,
+    exterior_curved_side_geometry=EXTERIOR_CURVED_SIDE_GEOMETRY,
     exterior_jacobian_chunk_size=EXTERIOR_JACOBIAN_CHUNK_SIZE,
 )
 if SAVE_RESTARTS:

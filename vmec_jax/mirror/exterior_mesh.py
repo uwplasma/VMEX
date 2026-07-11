@@ -9,6 +9,7 @@ from typing import Any
 import jax.numpy as jnp
 import jax
 import numpy as np
+from .basis import _cgl_derivative_matrix
 
 Array = Any
 
@@ -138,6 +139,60 @@ def _periodic_interpolation_weights(targets: Array, ntheta: int) -> Array:
     return weights / ntheta
 
 
+def _side_parameter_data(
+    triangle_indices: Array,
+    *,
+    ntheta: int,
+    nxi: int,
+    order: int,
+    dtype: Any,
+) -> tuple[Array, Array, Array, Array, Array, Array]:
+    """Map Duffy nodes to side ``(theta, xi)`` coordinates and derivatives."""
+
+    indices = jnp.asarray(triangle_indices)
+    nodes, _ = _unit_gauss_legendre(order)
+    u = jnp.asarray(nodes, dtype=dtype)[None, :, None]
+    v = jnp.asarray(nodes, dtype=dtype)[None, None, :]
+    shape = (indices.shape[0], order, order)
+    barycentric = jnp.stack(
+        [
+            jnp.broadcast_to(1.0 - u, shape),
+            jnp.broadcast_to(u * (1.0 - v), shape),
+            jnp.broadcast_to(u * v, shape),
+        ],
+        axis=-1,
+    )
+    derivative_u = jnp.stack(
+        [
+            -jnp.ones(shape, dtype=dtype),
+            jnp.broadcast_to(1.0 - v, shape),
+            jnp.broadcast_to(v, shape),
+        ],
+        axis=-1,
+    )
+    derivative_v = jnp.stack(
+        [
+            jnp.zeros(shape, dtype=dtype),
+            -jnp.broadcast_to(u, shape),
+            jnp.broadcast_to(u, shape),
+        ],
+        axis=-1,
+    )
+    axial_nodes = jnp.cos(jnp.pi * jnp.arange(nxi, dtype=dtype) / (nxi - 1))[::-1]
+    triangle_axial = axial_nodes[indices % nxi]
+    axial = jnp.sum(barycentric * triangle_axial[:, None, None, :], axis=-1)
+    axial_u = jnp.sum(derivative_u * triangle_axial[:, None, None, :], axis=-1)
+    axial_v = jnp.sum(derivative_v * triangle_axial[:, None, None, :], axis=-1)
+
+    angular = 2.0 * jnp.pi * (indices // nxi) / ntheta
+    anchor = angular[:, :1]
+    angular = anchor + (angular - anchor + jnp.pi) % (2.0 * jnp.pi) - jnp.pi
+    theta = jnp.sum(barycentric * angular[:, None, None, :], axis=-1)
+    theta_u = jnp.sum(derivative_u * angular[:, None, None, :], axis=-1)
+    theta_v = jnp.sum(derivative_v * angular[:, None, None, :], axis=-1)
+    return theta, axial, theta_u, theta_v, axial_u, axial_v
+
+
 def _spectral_side_density_samples(
     triangle_indices: Array,
     lateral_values: Array,
@@ -149,39 +204,153 @@ def _spectral_side_density_samples(
 ) -> Array:
     """Interpolate lateral nodal data spectrally within side triangles."""
 
-    indices = jnp.asarray(triangle_indices)
-    nodes, _ = _unit_gauss_legendre(order)
-    u = jnp.asarray(nodes, dtype=lateral_values.dtype)[None, :, None]
-    v = jnp.asarray(nodes, dtype=lateral_values.dtype)[None, None, :]
-    barycentric = jnp.stack(
-        [jnp.broadcast_to(1.0 - u, (indices.shape[0], order, order)),
-         jnp.broadcast_to(u * (1.0 - v), (indices.shape[0], order, order)),
-         jnp.broadcast_to(u * v, (indices.shape[0], order, order))],
-        axis=-1,
+    theta, axial, *_ = _side_parameter_data(
+        triangle_indices,
+        ntheta=ntheta,
+        nxi=nxi,
+        order=order,
+        dtype=lateral_values.dtype,
     )
-    axial_nodes = jnp.cos(
-        jnp.pi * jnp.arange(nxi, dtype=lateral_values.dtype) / (nxi - 1)
-    )[::-1]
-    triangle_axial_nodes = axial_nodes[indices % nxi]
-    axial_targets = jnp.sum(
-        barycentric * triangle_axial_nodes[:, None, None, :], axis=-1
-    )
-    axial_weights = _cgl_interpolation_weights(axial_targets, nxi)
+    axial_weights = _cgl_interpolation_weights(axial, nxi)
     scalar_input = lateral_values.ndim == 1
     values = lateral_values.reshape((-1, ntheta, nxi))
     if axisymmetric:
         samples = jnp.einsum("tqrk,ak->atqr", axial_weights, values[:, 0])
         return samples[0] if scalar_input else samples
 
-    angular_nodes = 2.0 * jnp.pi * (indices // nxi) / ntheta
-    anchor = angular_nodes[:, :1]
-    unwrapped = anchor + (angular_nodes - anchor + jnp.pi) % (2.0 * jnp.pi) - jnp.pi
-    angular_targets = jnp.sum(barycentric * unwrapped[:, None, None, :], axis=-1)
-    angular_weights = _periodic_interpolation_weights(angular_targets, ntheta)
+    angular_weights = _periodic_interpolation_weights(theta, ntheta)
     samples = jnp.einsum(
         "tqrj,ajk,tqrk->atqr", angular_weights, values, axial_weights
     )
     return samples[0] if scalar_input else samples
+
+
+def _curved_side_geometry(
+    triangle_indices: Array,
+    lateral_xyz: Array,
+    *,
+    order: int,
+    axisymmetric: bool,
+) -> tuple[Array, Array]:
+    """Evaluate the spectral side surface and oriented ``dX/du x dX/dv``."""
+
+    lateral_xyz = jnp.asarray(lateral_xyz)
+    ntheta, nxi = lateral_xyz.shape[:2]
+    theta, axial, theta_u, theta_v, axial_u, axial_v = _side_parameter_data(
+        triangle_indices,
+        ntheta=ntheta,
+        nxi=nxi,
+        order=order,
+        dtype=lateral_xyz.dtype,
+    )
+    radius = jnp.linalg.norm(lateral_xyz[..., :2], axis=-1)
+    modes = jnp.fft.fftfreq(ntheta, d=1.0 / ntheta)
+    radius_theta = jnp.fft.ifft(
+        1j * modes[:, None] * jnp.fft.fft(radius, axis=0), axis=0
+    ).real
+    derivative = jnp.asarray(_cgl_derivative_matrix(nxi), dtype=radius.dtype)
+    radius_axial = jnp.einsum("kl,jl->jk", derivative, radius)
+    radius_samples = _spectral_side_density_samples(
+        triangle_indices,
+        jnp.stack([radius, radius_theta, radius_axial]).reshape(3, -1),
+        ntheta=ntheta,
+        nxi=nxi,
+        order=order,
+        axisymmetric=axisymmetric,
+    )
+    sampled_radius, sampled_theta, sampled_axial = radius_samples
+    cosine, sine = jnp.cos(theta), jnp.sin(theta)
+    z_nodes = lateral_xyz[0, :, 2]
+    z_mid = 0.5 * (z_nodes[0] + z_nodes[-1])
+    dz_dxi = 0.5 * (z_nodes[-1] - z_nodes[0])
+    source = jnp.stack(
+        [sampled_radius * cosine, sampled_radius * sine, z_mid + dz_dxi * axial],
+        axis=-1,
+    )
+    tangent_theta = jnp.stack(
+        [
+            sampled_theta * cosine - sampled_radius * sine,
+            sampled_theta * sine + sampled_radius * cosine,
+            jnp.zeros_like(sampled_radius),
+        ],
+        axis=-1,
+    )
+    tangent_axial = jnp.stack(
+        [sampled_axial * cosine, sampled_axial * sine, jnp.full_like(sampled_radius, dz_dxi)],
+        axis=-1,
+    )
+    tangent_u = tangent_theta * theta_u[..., None] + tangent_axial * axial_u[..., None]
+    tangent_v = tangent_theta * theta_v[..., None] + tangent_axial * axial_v[..., None]
+    return source, jnp.cross(tangent_u, tangent_v)
+
+
+@partial(jax.jit, static_argnames=("order", "axisymmetric"))
+def _curved_side_layer_sum(
+    target: Array,
+    triangle_indices: Array,
+    lateral_xyz: Array,
+    dirichlet: Array,
+    neumann: Array,
+    *,
+    order: int,
+    axisymmetric: bool,
+) -> Array:
+    """Sum Green layers on the curved lateral surface."""
+
+    nodes, weights = _unit_gauss_legendre(order)
+    source, area_vectors = _curved_side_geometry(
+        triangle_indices, lateral_xyz, order=order, axisymmetric=axisymmetric
+    )
+    displacement = target[None, None, None, :] - source
+    inverse_radius = jax.lax.rsqrt(jnp.sum(displacement**2, axis=-1))
+    area_scale = jnp.linalg.norm(area_vectors, axis=-1)
+    normal_displacement_area = jnp.sum(area_vectors * displacement, axis=-1)
+    weights_2d = (
+        jnp.asarray(weights, dtype=source.dtype)[None, :, None]
+        * jnp.asarray(weights, dtype=source.dtype)[None, None, :]
+    )
+    integrand = (
+        neumann * area_scale * inverse_radius
+        - dirichlet * normal_displacement_area * inverse_radius**3
+    ) / (4.0 * jnp.pi)
+    return jnp.sum(weights_2d * integrand)
+
+
+@partial(jax.jit, static_argnames=("order", "axisymmetric"))
+def _curved_side_gradient_sum(
+    target: Array,
+    triangle_indices: Array,
+    lateral_xyz: Array,
+    dirichlet: Array,
+    neumann: Array,
+    *,
+    order: int,
+    axisymmetric: bool,
+) -> Array:
+    """Evaluate the Green-layer gradient on the curved lateral surface."""
+
+    _, weights = _unit_gauss_legendre(order)
+    source, area_vectors = _curved_side_geometry(
+        triangle_indices, lateral_xyz, order=order, axisymmetric=axisymmetric
+    )
+    displacement = target[None, None, None, :] - source
+    radius_squared = jnp.sum(displacement**2, axis=-1)
+    inverse_radius3 = jax.lax.rsqrt(radius_squared) ** 3
+    area_scale = jnp.linalg.norm(area_vectors, axis=-1)
+    normal_displacement_area = jnp.sum(area_vectors * displacement, axis=-1)
+    single = -neumann[..., None] * area_scale[..., None] * displacement * inverse_radius3[..., None]
+    double = dirichlet[..., None] * (
+        -area_vectors * inverse_radius3[..., None]
+        + 3.0
+        * normal_displacement_area[..., None]
+        * displacement
+        * (inverse_radius3 / radius_squared)[..., None]
+    )
+    weights_2d = (
+        jnp.asarray(weights, dtype=source.dtype)[None, :, None, None]
+        * jnp.asarray(weights, dtype=source.dtype)[None, None, :, None]
+    )
+    return jnp.sum(weights_2d * (single + double), axis=(0, 1, 2)) / (4.0 * jnp.pi)
 
 
 @partial(jax.jit, static_argnames=("order",))
@@ -311,7 +480,9 @@ def panel_green_gradient_off_surface(
     *,
     order: int = 8,
     lateral_shape: tuple[int, int] | None = None,
+    lateral_xyz: Array | None = None,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
     axisymmetric_side: bool = False,
 ) -> Array:
     """Evaluate Green-layer gradients using triangular panels."""
@@ -346,6 +517,42 @@ def panel_green_gradient_off_surface(
         triangle_neumann = _linear_density_samples(
             triangle_neumann, order=order
         ).at[:side_count].set(side_samples[1])
+    elif curved_side_geometry:
+        raise ValueError("curved side geometry requires spectral side density")
+
+    if curved_side_geometry:
+        if lateral_xyz is None:
+            raise ValueError("lateral_xyz is required for curved side geometry")
+        side_gradient = jnp.stack(
+            [
+                _curved_side_gradient_sum(
+                    target,
+                    triangles[:side_count],
+                    lateral_xyz,
+                    triangle_dirichlet[:side_count],
+                    triangle_neumann[:side_count],
+                    order=order,
+                    axisymmetric=axisymmetric_side,
+                )
+                for target in targets
+            ]
+        )
+        cap_vertices = vertices[side_count:]
+        cap_dirichlet = triangle_dirichlet[side_count:]
+        cap_neumann = triangle_neumann[side_count:]
+        cap_gradient = jnp.stack(
+            [
+                _triangle_gradient_sum(
+                    target,
+                    cap_vertices,
+                    cap_dirichlet,
+                    cap_neumann,
+                    order=order,
+                )
+                for target in targets
+            ]
+        )
+        return side_gradient + cap_gradient
     return jnp.stack(
         [
             _triangle_gradient_sum(
@@ -369,7 +576,9 @@ def panel_green_boundary_residual(
     order: int = 8,
     target_indices: np.ndarray | None = None,
     lateral_shape: tuple[int, int] | None = None,
+    lateral_xyz: Array | None = None,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
     axisymmetric_side: bool = False,
 ) -> Array:
     """Evaluate ``S(q) + K(u-u_target)`` at all mesh vertices.
@@ -404,7 +613,7 @@ def panel_green_boundary_residual(
         ordered = np.array(triangles_np, copy=True)
         rows, positions = np.nonzero(ordered == target_index)
         for row, position in zip(rows, positions, strict=True):
-            ordered[row, [0, position]] = ordered[row, [position, 0]]
+            ordered[row] = np.roll(ordered[row], -int(position))
         triangle_indices = jnp.asarray(ordered)
         triangle_dirichlet = dirichlet[triangle_indices] - dirichlet[target_index]
         triangle_neumann = neumann[triangle_indices]
@@ -430,6 +639,29 @@ def panel_green_boundary_residual(
             triangle_neumann = _linear_density_samples(
                 triangle_neumann, order=order
             ).at[:side_count].set(side_samples[1])
+        elif curved_side_geometry:
+            raise ValueError("curved side geometry requires spectral side density")
+        if curved_side_geometry:
+            if lateral_xyz is None:
+                raise ValueError("lateral_xyz is required for curved side geometry")
+            side_integral = _curved_side_layer_sum(
+                xyz[target_index],
+                triangle_indices[:side_count],
+                lateral_xyz,
+                triangle_dirichlet[:side_count],
+                triangle_neumann[:side_count],
+                order=order,
+                axisymmetric=axisymmetric_side,
+            )
+            cap_integral = _triangle_layer_sum(
+                xyz[target_index],
+                xyz[triangle_indices[side_count:]],
+                triangle_dirichlet[side_count:],
+                triangle_neumann[side_count:],
+                order=order,
+            )
+            residual.append(side_integral + cap_integral)
+            continue
         residual.append(
             _triangle_layer_sum(
                 xyz[target_index],

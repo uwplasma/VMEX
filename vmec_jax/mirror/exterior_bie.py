@@ -295,6 +295,7 @@ def solve_axisymmetric_exterior_vacuum(
     cap_rim_grade: float = 3.5,
     order: int = 8,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
 ) -> AxisymmetricExteriorVacuum:
     """Solve the unbounded vacuum field and reconstruct its lateral trace.
 
@@ -318,6 +319,7 @@ def solve_axisymmetric_exterior_vacuum(
         neumann,
         order=order,
         spectral_side_density=spectral_side_density,
+        curved_side_geometry=curved_side_geometry,
     )
     external = biot_savart(coilset, surface.lateral_xyz[0])
     lateral = axisymmetric_exterior_lateral_field(
@@ -357,6 +359,7 @@ def solve_nonaxisymmetric_exterior_vacuum(
     cap_rim_grade: float = 3.5,
     order: int = 8,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
 ) -> NonaxisymmetricExteriorVacuum:
     """Solve and reconstruct the unbounded theta-dependent vacuum field."""
 
@@ -375,6 +378,7 @@ def solve_nonaxisymmetric_exterior_vacuum(
         neumann,
         order=order,
         spectral_side_density=spectral_side_density,
+        curved_side_geometry=curved_side_geometry,
     )
     external = biot_savart(coilset, surface.lateral_xyz)
     lateral = nonaxisymmetric_exterior_lateral_field(
@@ -503,6 +507,7 @@ def laplace_reduced_green_gradient_off_surface(
     *,
     order: int = 8,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
 ) -> Array:
     """Evaluate a reduced solution with Duffy panel quadrature."""
 
@@ -514,7 +519,9 @@ def laplace_reduced_green_gradient_off_surface(
         targets,
         order=order,
         lateral_shape=surface.lateral_xyz.shape[:2],
+        lateral_xyz=surface.lateral_xyz,
         spectral_side_density=spectral_side_density,
+        curved_side_geometry=curved_side_geometry,
         axisymmetric_side=surface.reduced_size < surface.collocation_xyz.shape[0],
     )
 
@@ -544,6 +551,7 @@ def laplace_reduced_green_boundary_residual(
     *,
     order: int = 8,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
 ) -> Array:
     """Evaluate the boundary identity in the surface's symmetry basis."""
 
@@ -555,7 +563,9 @@ def laplace_reduced_green_boundary_residual(
         order=order,
         target_indices=np.asarray(surface.reduced_representatives),
         lateral_shape=surface.lateral_xyz.shape[:2],
+        lateral_xyz=surface.lateral_xyz,
         spectral_side_density=spectral_side_density,
+        curved_side_geometry=curved_side_geometry,
         axisymmetric_side=surface.reduced_size < surface.collocation_xyz.shape[0],
     )
 
@@ -567,6 +577,7 @@ def laplace_reduced_exterior_boundary_residual(
     *,
     order: int = 8,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
 ) -> Array:
     """Boundary residual for a harmonic potential decaying in the exterior."""
 
@@ -577,6 +588,7 @@ def laplace_reduced_exterior_boundary_residual(
         neumann,
         order=order,
         spectral_side_density=spectral_side_density,
+        curved_side_geometry=curved_side_geometry,
     )
 
 
@@ -588,6 +600,7 @@ def laplace_reduced_exterior_gradient_off_surface(
     *,
     order: int = 8,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
 ) -> Array:
     """Gradient of the decaying exterior representation."""
 
@@ -598,6 +611,7 @@ def laplace_reduced_exterior_gradient_off_surface(
         targets,
         order=order,
         spectral_side_density=spectral_side_density,
+        curved_side_geometry=curved_side_geometry,
     )
 
 
@@ -607,6 +621,7 @@ def solve_reduced_interior_laplace_neumann(
     *,
     order: int = 8,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
 ) -> LaplaceNeumannResult:
     """Solve the interior Neumann problem with a zero-mean gauge."""
 
@@ -616,6 +631,7 @@ def solve_reduced_interior_laplace_neumann(
         order=order,
         exterior=False,
         spectral_side_density=spectral_side_density,
+        curved_side_geometry=curved_side_geometry,
     )
 
 
@@ -625,6 +641,7 @@ def solve_reduced_exterior_laplace_neumann(
     *,
     order: int = 8,
     spectral_side_density: bool = False,
+    curved_side_geometry: bool = False,
 ) -> LaplaceNeumannResult:
     """Solve for the unique harmonic potential decaying in the exterior."""
 
@@ -634,6 +651,7 @@ def solve_reduced_exterior_laplace_neumann(
         order=order,
         exterior=True,
         spectral_side_density=spectral_side_density,
+        curved_side_geometry=curved_side_geometry,
     )
 
 
@@ -644,9 +662,12 @@ def _solve_reduced_laplace_neumann(
     order: int,
     exterior: bool,
     spectral_side_density: bool,
+    curved_side_geometry: bool,
 ) -> LaplaceNeumannResult:
     """Shared dense differentiable solve for the two Calderon limits."""
 
+    if curved_side_geometry and not spectral_side_density:
+        raise ValueError("curved side geometry requires spectral side density")
     neumann = jnp.asarray(neumann)
     expected = (surface.reduced_size,)
     if neumann.shape != expected:
@@ -661,6 +682,7 @@ def _solve_reduced_laplace_neumann(
                 zero,
                 order=order,
                 spectral_side_density=spectral_side_density,
+                curved_side_geometry=curved_side_geometry,
             )
         return laplace_reduced_green_boundary_residual(
             surface,
@@ -668,6 +690,7 @@ def _solve_reduced_laplace_neumann(
             zero,
             order=order,
             spectral_side_density=spectral_side_density,
+            curved_side_geometry=curved_side_geometry,
         )
 
     matrix = jax.jacfwd(dirichlet_operator)(zero)
@@ -682,6 +705,7 @@ def _solve_reduced_laplace_neumann(
         neumann,
         order=order,
         spectral_side_density=spectral_side_density,
+        curved_side_geometry=curved_side_geometry,
     )
     quadrature_to_reduced = surface.collocation_to_reduced[
         surface.quadrature_to_collocation
