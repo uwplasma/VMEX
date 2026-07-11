@@ -294,6 +294,7 @@ def solve_axisymmetric_exterior_vacuum(
     axisymmetric_ntheta: int = 40,
     cap_rim_grade: float = 3.5,
     order: int = 8,
+    spectral_side_density: bool = False,
 ) -> AxisymmetricExteriorVacuum:
     """Solve the unbounded vacuum field and reconstruct its lateral trace.
 
@@ -313,7 +314,10 @@ def solve_axisymmetric_exterior_vacuum(
         surface, plasma_field, plasma_grid, coilset
     )
     result = solve_reduced_exterior_laplace_neumann(
-        surface, neumann, order=order
+        surface,
+        neumann,
+        order=order,
+        spectral_side_density=spectral_side_density,
     )
     external = biot_savart(coilset, surface.lateral_xyz[0])
     lateral = axisymmetric_exterior_lateral_field(
@@ -352,6 +356,7 @@ def solve_nonaxisymmetric_exterior_vacuum(
     *,
     cap_rim_grade: float = 3.5,
     order: int = 8,
+    spectral_side_density: bool = False,
 ) -> NonaxisymmetricExteriorVacuum:
     """Solve and reconstruct the unbounded theta-dependent vacuum field."""
 
@@ -366,7 +371,10 @@ def solve_nonaxisymmetric_exterior_vacuum(
         surface, plasma_field, plasma_geometry, plasma_grid, coilset
     )
     result = solve_reduced_exterior_laplace_neumann(
-        surface, neumann, order=order
+        surface,
+        neumann,
+        order=order,
+        spectral_side_density=spectral_side_density,
     )
     external = biot_savart(coilset, surface.lateral_xyz)
     lateral = nonaxisymmetric_exterior_lateral_field(
@@ -494,6 +502,7 @@ def laplace_reduced_green_gradient_off_surface(
     targets: Array,
     *,
     order: int = 8,
+    spectral_side_density: bool = False,
 ) -> Array:
     """Evaluate a reduced solution with Duffy panel quadrature."""
 
@@ -504,6 +513,9 @@ def laplace_reduced_green_gradient_off_surface(
         surface.expand_reduced_values(neumann),
         targets,
         order=order,
+        lateral_shape=surface.lateral_xyz.shape[:2],
+        spectral_side_density=spectral_side_density,
+        axisymmetric_side=surface.reduced_size < surface.collocation_xyz.shape[0],
     )
 
 
@@ -531,6 +543,7 @@ def laplace_reduced_green_boundary_residual(
     neumann: Array,
     *,
     order: int = 8,
+    spectral_side_density: bool = False,
 ) -> Array:
     """Evaluate the boundary identity in the surface's symmetry basis."""
 
@@ -541,6 +554,9 @@ def laplace_reduced_green_boundary_residual(
         surface.expand_reduced_values(neumann),
         order=order,
         target_indices=np.asarray(surface.reduced_representatives),
+        lateral_shape=surface.lateral_xyz.shape[:2],
+        spectral_side_density=spectral_side_density,
+        axisymmetric_side=surface.reduced_size < surface.collocation_xyz.shape[0],
     )
 
 
@@ -550,12 +566,17 @@ def laplace_reduced_exterior_boundary_residual(
     neumann: Array,
     *,
     order: int = 8,
+    spectral_side_density: bool = False,
 ) -> Array:
     """Boundary residual for a harmonic potential decaying in the exterior."""
 
     dirichlet = jnp.asarray(dirichlet)
     return dirichlet + laplace_reduced_green_boundary_residual(
-        surface, dirichlet, neumann, order=order
+        surface,
+        dirichlet,
+        neumann,
+        order=order,
+        spectral_side_density=spectral_side_density,
     )
 
 
@@ -566,11 +587,17 @@ def laplace_reduced_exterior_gradient_off_surface(
     targets: Array,
     *,
     order: int = 8,
+    spectral_side_density: bool = False,
 ) -> Array:
     """Gradient of the decaying exterior representation."""
 
     return -laplace_reduced_green_gradient_off_surface(
-        surface, dirichlet, neumann, targets, order=order
+        surface,
+        dirichlet,
+        neumann,
+        targets,
+        order=order,
+        spectral_side_density=spectral_side_density,
     )
 
 
@@ -579,11 +606,16 @@ def solve_reduced_interior_laplace_neumann(
     neumann: Array,
     *,
     order: int = 8,
+    spectral_side_density: bool = False,
 ) -> LaplaceNeumannResult:
     """Solve the interior Neumann problem with a zero-mean gauge."""
 
     return _solve_reduced_laplace_neumann(
-        surface, neumann, order=order, exterior=False
+        surface,
+        neumann,
+        order=order,
+        exterior=False,
+        spectral_side_density=spectral_side_density,
     )
 
 
@@ -592,11 +624,16 @@ def solve_reduced_exterior_laplace_neumann(
     neumann: Array,
     *,
     order: int = 8,
+    spectral_side_density: bool = False,
 ) -> LaplaceNeumannResult:
     """Solve for the unique harmonic potential decaying in the exterior."""
 
     return _solve_reduced_laplace_neumann(
-        surface, neumann, order=order, exterior=True
+        surface,
+        neumann,
+        order=order,
+        exterior=True,
+        spectral_side_density=spectral_side_density,
     )
 
 
@@ -606,6 +643,7 @@ def _solve_reduced_laplace_neumann(
     *,
     order: int,
     exterior: bool,
+    spectral_side_density: bool,
 ) -> LaplaceNeumannResult:
     """Shared dense differentiable solve for the two Calderon limits."""
 
@@ -618,9 +656,19 @@ def _solve_reduced_laplace_neumann(
     def dirichlet_operator(values: Array) -> Array:
         if exterior:
             return laplace_reduced_exterior_boundary_residual(
-                surface, values, zero, order=order
+                surface,
+                values,
+                zero,
+                order=order,
+                spectral_side_density=spectral_side_density,
             )
-        return laplace_reduced_green_boundary_residual(surface, values, zero, order=order)
+        return laplace_reduced_green_boundary_residual(
+            surface,
+            values,
+            zero,
+            order=order,
+            spectral_side_density=spectral_side_density,
+        )
 
     matrix = jax.jacfwd(dirichlet_operator)(zero)
     residual_function = (
@@ -628,7 +676,13 @@ def _solve_reduced_laplace_neumann(
         if exterior
         else laplace_reduced_green_boundary_residual
     )
-    right_hand_side = -residual_function(surface, zero, neumann, order=order)
+    right_hand_side = -residual_function(
+        surface,
+        zero,
+        neumann,
+        order=order,
+        spectral_side_density=spectral_side_density,
+    )
     quadrature_to_reduced = surface.collocation_to_reduced[
         surface.quadrature_to_collocation
     ]

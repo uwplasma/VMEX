@@ -53,6 +53,7 @@ NRHO = 7
 VACUUM_BACKEND = "exterior"  # "annulus" retains a finite outer cylinder
 EXTERIOR_NTHETA = 12
 EXTERIOR_ORDER = 8
+EXTERIOR_SPECTRAL_SIDE_DENSITY = False
 EXTERIOR_JACOBIAN_CHUNK_SIZE = 6
 FTOL = 1.0e-12
 MAX_ITERATIONS = 2000
@@ -145,6 +146,7 @@ results = solve_axisymmetric_beta_scan_cli(
     vacuum_backend=VACUUM_BACKEND,
     exterior_ntheta=EXTERIOR_NTHETA,
     exterior_order=EXTERIOR_ORDER,
+    exterior_spectral_side_density=EXTERIOR_SPECTRAL_SIDE_DENSITY,
     exterior_jacobian_chunk_size=EXTERIOR_JACOBIAN_CHUNK_SIZE,
 )
 if SAVE_RESTARTS:

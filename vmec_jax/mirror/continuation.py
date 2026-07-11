@@ -73,6 +73,7 @@ def solve_beta_scan_cli(
     vacuum_backend: str = "annulus",
     exterior_ntheta: int = 40,
     exterior_order: int = 8,
+    exterior_spectral_side_density: bool = False,
     exterior_jacobian_chunk_size: int = 6,
 ) -> tuple[FreeBoundaryMirrorResult, ...]:
     """Solve a fully hot-started free-boundary mirror beta scan.
@@ -144,6 +145,7 @@ def solve_beta_scan_cli(
             vacuum_backend=vacuum_backend,
             exterior_ntheta=exterior_ntheta,
             exterior_order=exterior_order,
+            exterior_spectral_side_density=exterior_spectral_side_density,
             exterior_jacobian_chunk_size=exterior_jacobian_chunk_size,
             target_central_pressure=None if beta == 0.0 else central_pressure,
             require_convergence=True,

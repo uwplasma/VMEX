@@ -115,6 +115,7 @@ def solve_free_boundary_cli(
     vacuum_backend: str = "annulus",
     exterior_ntheta: int = 40,
     exterior_order: int = 8,
+    exterior_spectral_side_density: bool = False,
     exterior_jacobian_chunk_size: int = 6,
     require_convergence: bool = False,
 ) -> FreeBoundaryMirrorResult:
@@ -274,6 +275,7 @@ def solve_free_boundary_cli(
                     coilset,
                     axisymmetric_ntheta=exterior_ntheta,
                     order=exterior_order,
+                    spectral_side_density=exterior_spectral_side_density,
                 )
             else:
                 vacuum_field = solve_nonaxisymmetric_exterior_vacuum(
@@ -283,6 +285,7 @@ def solve_free_boundary_cli(
                     plasma_grid,
                     coilset,
                     order=exterior_order,
+                    spectral_side_density=exterior_spectral_side_density,
                 )
             vacuum_geometry = vacuum_field.surface
             vacuum_functional = jnp.asarray(0.0, dtype=state.radius_scale.dtype)
