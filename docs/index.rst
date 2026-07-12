@@ -26,7 +26,11 @@ Why vmec-jax?
   :doc:`optimization`), with an O(1)-memory adjoint. Free-boundary
   equilibria are differentiable end-to-end through the virtual-casing vacuum
   field (coil / ``extcur`` derivatives), finite-difference-validated
-  (:mod:`vmec_jax.core.freeboundary_diff`).
+  (:mod:`vmec_jax.core.freeboundary_diff`). A growing :doc:`objectives
+  library <objectives>` — quasisymmetry, omnigenity, Redl bootstrap,
+  ballooning stability, gyrokinetic turbulence proxies — plugs straight
+  into a least-squares driver with those exact gradients, reaching precise
+  QA in a single 14.5-minute CPU call (:doc:`optimization`).
 - **Drop-in workflow.** The ``vmec`` command reads VMEC2000 ``input.*``
   namelists and VMEC++-style JSON, prints VMEC2000-format iteration output,
   and writes ``wout_*.nc`` files that load unchanged in simsopt and
@@ -107,6 +111,7 @@ Documentation
       :caption: Developer guide
 
       optimization
+      objectives
       contributing
       references
 

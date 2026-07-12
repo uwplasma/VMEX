@@ -1,60 +1,145 @@
 Optimization and differentiability
 ==================================
 
-.. note::
+``vmec_jax`` turns VMEC into a differentiable building block: converged
+equilibria expose exact gradients with respect to boundary shape, profile,
+and coil parameters, and a simsopt-style least-squares driver uses them to
+run whole stellarator-design campaigns in minutes on a CPU.  This page
+covers the driver and the gradient machinery; the catalog of objective
+functions (quasisymmetry, omnigenity, bootstrap, stability, turbulence, …)
+lives on its own page, :doc:`objectives`, and every worked example is a
+runnable script in ``examples/optimization/`` (see :doc:`tutorials`).
 
-   This page is a short orientation. Full optimization tutorials (QA/QH/QP/QI
-   from a circular torus, free-boundary beta scans, single-stage runs) arrive
-   with the rewritten ``examples/`` gallery — see :doc:`tutorials`.
+.. contents:: On this page
+   :local:
+   :depth: 1
 
-Objectives (:mod:`vmec_jax.core.optimize`)
-------------------------------------------
+The least-squares driver
+------------------------
 
-Simsopt-style building blocks, all pure functions of a converged core state:
+:func:`~vmec_jax.core.optimize.least_squares` is a thin
+``scipy.optimize.least_squares`` driver over the boundary Fourier degrees
+of freedom (:func:`~vmec_jax.core.optimize.pack_boundary` /
+:func:`~vmec_jax.core.optimize.unpack_boundary`; ``RBC(0,0)`` stays fixed),
+taking simsopt-style ``(callable, target, weight)`` terms:
 
-- :class:`~vmec_jax.core.optimize.QuasisymmetryRatioResidual` — the
-  Landreman-Paul two-term quasisymmetry ratio residual (QA: ``m=1, n=0``;
-  QH: ``m=1, n=-1``; QP: ``m=0, n=1`` in ``nfp`` units);
-- scalar targets: :func:`~vmec_jax.core.optimize.aspect_ratio`,
-  :func:`~vmec_jax.core.optimize.mean_iota`,
-  :func:`~vmec_jax.core.optimize.edge_iota`,
-  :func:`~vmec_jax.core.optimize.mirror_ratio`,
-  :func:`~vmec_jax.core.optimize.volume`,
-  :func:`~vmec_jax.core.optimize.magnetic_well`,
-  :func:`~vmec_jax.core.optimize.d_merc`,
-  :func:`~vmec_jax.core.optimize.l_grad_b`;
-- a Goodman-style quasi-isodynamic residual
-  (:func:`~vmec_jax.core.optimize.quasi_isodynamic_residual`);
-- :func:`~vmec_jax.core.optimize.least_squares` — a thin
-  ``scipy.optimize.least_squares`` driver over boundary Fourier degrees of
-  freedom (:func:`~vmec_jax.core.optimize.pack_boundary` /
-  :func:`~vmec_jax.core.optimize.unpack_boundary`), taking simsopt-style
-  ``(callable, target, weight)`` terms. Jacobians default to scipy
-  finite differences (``jac=None``); ``jac="implicit"`` switches to exact
-  implicit-differentiation Jacobians through
-  :mod:`vmec_jax.core.implicit`. Implicit mode is restricted to
-  fixed-boundary, stellarator-symmetric (``LASYM = F``) problems whose
-  objective terms are implicit-differentiable (the Mercier/`L_grad_B`/QI
-  diagnostics run on host NumPy and need ``jac=None``).
+.. code-block:: python
+
+   import numpy as np
+   import vmec_jax as vj
+   from vmec_jax import optimize as opt
+
+   inp = vj.VmecInput.from_file("input.minimal_seed_nfp2")
+   qs = opt.QuasisymmetryRatioResidual(np.linspace(0.1, 1.0, 10),
+                                       helicity_m=1, helicity_n=0)   # QA
+   result = opt.least_squares(
+       [(qs, 0.0, 1.0),
+        (opt.aspect_ratio, 6.0, 1.0),
+        (opt.mean_iota, 0.42, 1.0)],
+       inp, max_mode=5,
+       jac="implicit",       # exact implicit-differentiation Jacobians
+       use_ess=True)         # spectral trust-region scaling (below)
+   result.input.to_indata("input.QA_optimized")
+
+Repeated trial solves are cheap by construction: solver executables are
+cached per structure, so only the first solve of a stage compiles, and every
+trial is warm-started from the previous converged state (``hot_restart``,
+sharpened by the perturbation seed below).  Failed trial solves return a
+large finite residual — the trust region backs off instead of crashing.
+
+Two gradient modes share the same term list.  ``jac=None`` uses scipy
+``"2-point"`` finite differences — one full equilibrium solve per degree of
+freedom per Jacobian, works with *every* objective.  ``jac="implicit"``
+computes the exact residual Jacobian by implicit differentiation (one
+amortized linear-algebra pass instead of ~2N solves) and requires traceable
+terms and a stellarator-symmetric fixed-boundary problem — the
+compatibility table is in :doc:`objectives`.  ``current_dofs=k``
+additionally frees the first ``k`` current-profile (``AC``) coefficients
+plus ``CURTOR`` in either mode — the dof set of the self-consistent
+bootstrap objective.
+
+Single-call ESS optimization (the recommended pattern)
+------------------------------------------------------
+
+The classic way to keep a shape optimization from tearing itself apart is
+*staged continuation*: optimize at ``max_mode = 1``, then 2, … releasing
+finer boundary harmonics only after the coarse shape has settled
+(``max_mode=(1, 2, 3, 4, 5)`` runs that ladder automatically).  The
+recommended pattern since R26 makes the ladder unnecessary: hand the
+optimizer **all** the harmonics at once and let **Exponential Spectral
+Scaling** (``use_ess=True``) impose the coarse-to-fine ordering through the
+trust region itself.  Each dof's trust radius is scaled by
+
+.. math::
+
+   \mathrm{x\_scale}_i
+   = \frac{e^{-\alpha\,\max(|m_i|,\,|n_i|)}}{e^{-\alpha}},
+
+so high harmonics move on exponentially shorter leashes — the optimizer
+explores the same hierarchy the ladder enforced, in a single
+``least_squares`` call, with no stage boundaries for the objective to
+stall at.
+
+.. figure:: _static/figures/ess_x_scale.png
+   :alt: ESS trust-region scale versus harmonic level for alpha 0.7 and 1.2
+   :align: center
+   :width: 78%
+
+   The ESS trust-region weight per harmonic level
+   (:math:`\alpha = 0.7` as in the bundled examples, :math:`\alpha = 1.2`
+   the ``ess_alpha`` default).  At :math:`\alpha = 1.2` a ``max_mode``-6
+   dof moves ~400x more cautiously than a ``max_mode``-1 dof.
+
+Measured on a 36-core CPU from a near-circular torus seed (single call, all
+harmonics released at once; scripts
+``examples/optimization/QA_optimization_ess.py`` and
+``QI_optimization_ess.py``):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 10 8 18 14 14 12 12 12
+
+   * - class
+     - nfp
+     - residual
+     - seed
+     - achieved
+     - max_mode
+     - dofs
+     - wall
+   * - QA
+     - 2
+     - QS (1, 0)
+     - 2.04e-01
+     - **7.2e-06**
+     - 5
+     - 120
+     - **14.5 min**
+   * - QI
+     - 1
+     - omnigenity
+     - 4.52e-01
+     - **1.81e-02** (25x)
+     - 6
+     - 168
+     - **17.3 min**
+
+The staged ladder remains available (``max_mode=(1, ..., 5)``) and reaches
+comparable precision — QA at QS 3.7e-7 in 25.5 min — but takes ~1.8x
+longer for the same precision class.  Both patterns ship as side-by-side
+example scripts so the comparison stays honest.
 
 Gradients (:mod:`vmec_jax.core.implicit`)
 -----------------------------------------
 
 Derivatives through the equilibrium use **implicit differentiation** of the
 converged fixed point: the solve is wrapped in ``jax.custom_vjp``; the
-forward pass runs the fast (opaque) solver, and the backward pass solves the
-adjoint linear system matrix-free with preconditioned GMRES. This replaced
-the earlier discrete-adjoint / replay-tape machinery entirely — coarse
-multigrid stages are just an initializer and are stop-gradient by
-construction. See the *Implicit differentiation* section of
-:doc:`algorithms` for the formulation and cost analysis.
-
-Gradient accuracy is validated in CI against central finite differences for
-**fixed-boundary** degrees of freedom: boundary Fourier coefficients,
-``phiedge``, and profile parameters (``pres_scale``), on a 2D (solovev) and
-a 3D (li383) case — the gradient table lives in
-``tests/test_implicit_grad.py``, with agreement at the 1e-6
-relative level (2D) and at the finite-difference noise floor (3D).
+forward pass runs the fast (opaque) host solver, and the backward pass
+solves the adjoint linear system matrix-free with preconditioned GMRES —
+O(1) memory in the iteration count, no unrolling, no finite-difference
+step-size to tune.  Coarse multigrid stages are just an initializer and are
+stop-gradient by construction.  See the *Implicit differentiation* section
+of :doc:`algorithms` for the formulation and cost analysis.
 
 .. code-block:: python
 
@@ -68,27 +153,101 @@ relative level (2D) and at the finite-difference noise floor (3D).
    sol = implicit.run(inp, p0)                        # ImplicitSolution pytree
    grad = jax.grad(lambda p: implicit.run(inp, p).wb)(p0)   # adjoint gradient
 
+Gradient accuracy is validated in CI against central finite differences for
+fixed-boundary degrees of freedom — boundary Fourier coefficients,
+``phiedge``, and profile parameters (``pres_scale``) — on a 2D (solovev)
+and a 3D (li383) case, with agreement at the 1e-6 relative level (2D) and
+at the finite-difference noise floor (3D)
+(``tests/test_implicit_grad.py``).
+
+Implicit gradients are not merely faster than finite differences here —
+on the flagship campaigns they are *necessary*: the exact-axisymmetric seed
+is a saddle of the QS residual where finite differences stall, and on the
+QP class the implicit path selects a better basin.
+
+The gradient stack: what makes a Jacobian cheap
+-----------------------------------------------
+
+A trust-region iteration spends its time in two places: the **Jacobian**
+(one linear solve per dof) and the **trial solves** (one equilibrium per
+proposed boundary).  The R25 work attacked both, and all of it is on by
+default:
+
+.. figure:: _static/figures/gradient_stack_speedup.png
+   :alt: measured before/after of the three gradient-stack optimizations
+   :align: center
+   :width: 100%
+
+   Measured on the nfp2 minimal-seed deck (Jacobian phase and trial
+   iterations) and the full QA campaign (right); 2026-07-12, CPU.
+   Reproduce the campaign numbers with the two
+   ``examples/optimization/QA_optimization*.py`` scripts.
+
+- **Block-tridiagonal Jacobian factorization** (``jac_solver="block"``,
+  default).  The raw force Jacobian ``dF/dz`` is *exactly*
+  block-tridiagonal in radius (nearest-neighbor coupling; verified to
+  1e-14), so ``ns`` dense ``(3mn, 3mn)`` blocks are assembled with
+  3-colored ``jax.jvp`` probes — a cost independent of the dof count —
+  factored once (``solvax.block_thomas``), and back-substituted for every
+  dof right-hand side.  A short warm-started GMRES corrector certifies each
+  column to the same ``adjoint_tol`` as the old path.  Measured: the warm
+  Jacobian phase drops 20.35 s to 0.61 s (**33x**); ``jac_solver="gmres"``
+  (one preconditioned GMRES per dof) remains as a fallback.
+- **Converged-state memo.**  scipy's trust-region drivers call ``jac(x)``
+  at exactly the ``x`` that ``fun(x)`` just converged; a one-entry
+  params-keyed memo removes that redundant solve per accepted iterate, and
+  the final diagnostic ``result.equilibrium`` hot-seeds from the last trial
+  state instead of re-solving cold.
+- **Perturbation warm start** (``warm_start="perturbation"``, default).
+  Each *trial* solve is seeded with the DESC-style first-order prediction
+  :math:`z_{\mathrm{ref}} + \sum_j (dx)_j\, dz_j` — the per-dof state
+  responses :math:`dz_j` are exactly the columns the Jacobian already
+  computed, so the linearization is stashed for free at each ``jac(x)``
+  call.  Measured: total forward-solve iterations drop **3.7x** (23,685 to
+  6,364 over 20 trials), and the predicted seed rescued a trial whose plain
+  hot restart hit a Jacobian-sign failure.  ``"state"`` (plain hot restart)
+  and ``None`` are the fallbacks; all three converge to identical fixed
+  points.
+- **Memory** stays bounded by column chunking
+  (``jac_chunk_size="auto"``, the same knob DESC exposes): peak Jacobian
+  memory is ``m0 + m1*chunk`` instead of scaling with the dof count, and
+  the chunked columns are identical to float64 round-off.
+- **Krylov recycling** (``recycle=True``) carries a GCROT deflation space
+  across the per-dof solves.  It is **off by default for a measured
+  reason**: solvax v0.1's FIFO recycle space *slows* warm-started columns
+  (1.7–3.4x more iterations on the benchmark operator).  The plumbing is
+  exact and ready for a harmonic-Ritz GCRO-DR upgrade in SOLVAX; benchmark
+  per-column iteration counts before enabling it.
+
+The end-to-end effect on the profiled production ``opt_step`` and the CPU
+versus GPU placement question are quantified in :doc:`performance`.
+
+Free-boundary gradients (virtual casing)
+----------------------------------------
+
 **Free boundary** is differentiable through a different route
 (:mod:`vmec_jax.core.freeboundary_diff`): rather than differentiating the
-NESTOR vacuum solve, the plasma boundary contribution to the vacuum field is
-computed by **virtual casing**, which is a smooth function of the coil /
-``extcur`` parameters and the plasma surface. Coil-parameter derivatives of
-free-boundary outputs are obtained end-to-end this way and are
-finite-difference-validated. (The two scopes are complementary: the
+NESTOR vacuum solve, the plasma-boundary contribution to the vacuum field
+is computed by **virtual casing**, which is a smooth function of the coil /
+``extcur`` parameters and the plasma surface.  Coil-parameter derivatives
+of free-boundary outputs are obtained end-to-end this way and are
+finite-difference-validated.  (The two scopes are complementary: the
 fixed-boundary implicit adjoint is validated to ~1e-6 relative; the
-free-boundary virtual-casing path is FD-validated.)
+free-boundary virtual-casing path is FD-validated.)  See the
+*Differentiable free boundary* section of :doc:`algorithms`.
 
 Worked results
 --------------
 
-From a near-circular torus seed, staged ``max_mode`` continuation with ESS and
-``jac="implicit"`` reaches precise quasisymmetry (measured on an office CPU):
-QA (nfp 2) QS ``1.70e-4``, QH (nfp 4) QS ``5.83e-5``, QP (nfp 2) QS
-``9.4e-2`` (basin-limited), and QI (nfp 1, QP→QI) ``2.14e-2``. Implicit
-gradients are *essential* here, not merely faster: the exact-axisymmetric seed
-is a saddle of the QS residual where finite differences stall, and for QP the
-implicit path selects a better basin. The complete scripts are in
-``examples/optimization/`` (``QA``/``QH``/``QP``/``QI``).
+From a near-circular torus seed, ``jac="implicit"`` with ESS reaches
+precise quasisymmetry and strong quasi-isodynamicity (measured on an office
+CPU): QA (nfp 2) QS **7.2e-6** in one 14.5-minute call (the staged ladder
+reaches 3.7e-7 in 25.5 min), QH (nfp 4) QS **5.83e-5**, QP (nfp 2) QS
+9.4e-2 (honestly the hardest class — basin-limited), and QI (nfp 1)
+omnigenity residual **1.81e-2**, 25x below the seed, in one 17.3-minute
+call.  The complete scripts are in ``examples/optimization/``
+(``QA``/``QH``/``QP``/``QI``, each with an ``_ess`` single-call variant
+where measured).
 
 .. figure:: _static/figures/readme_optimization.png
    :alt: QA/QH/QP seed vs optimized boundary, 3-D |B|, and Boozer |B| on the LCFS

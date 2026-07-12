@@ -86,6 +86,23 @@ Differentiation and optimization
 .. automodule:: vmec_jax.core.optimize
    :members:
 
+Physics objectives
+------------------
+
+The objective catalog with usage snippets is :doc:`/objectives`.
+
+.. automodule:: vmec_jax.core.omnigenity
+   :members:
+
+.. automodule:: vmec_jax.core.bootstrap
+   :members:
+
+.. automodule:: vmec_jax.core.stability
+   :members:
+
+.. automodule:: vmec_jax.core.turbulence
+   :members:
+
 Outputs
 -------
 

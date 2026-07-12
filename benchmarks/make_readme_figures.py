@@ -6,9 +6,6 @@ Produces (into ``docs/_static/figures/``):
 - ``readme_runtime_compare.png``      — VMEC2000 vs vmec_jax (cold/warm CPU,
   GPU where comparable) vs VMEC++, from ``benchmarks/baseline.json`` and
   ``benchmarks/gpu_baseline.json``.  Run ``benchmarks/run_baseline.py`` first.
-- ``readme_parity.png``               — iteration-for-iteration parity table
-  vs the golden VMEC2000 fixtures (solves the five cases; needs the golden
-  bundle, see ``tests/conftest.py``).
 - ``readme_convergence.png``          — force residual vs iteration for one
   representative case (nfp4_QH_warm_start at ns=51) in vmec_jax, VMEC2000
   (NSTEP=1 stdout trace), and VMEC++ (wout ``fsqt``).  Traces are cached in
@@ -32,7 +29,7 @@ Produces (into ``docs/_static/figures/``):
 
 Usage:
     python benchmarks/make_readme_figures.py
-        [--only runtime,parity,convergence,optimization,qi,precond,showcase]
+        [--only runtime,convergence,optimization,qi,precond,showcase]
         [--outdir docs/_static/figures]
 
 Figures are written uncompressed; compress before committing:
@@ -884,7 +881,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--only",
-        default="runtime,parity,convergence,optimization,qi,precond,showcase")
+        default="runtime,convergence,optimization,qi,precond,showcase")
     ap.add_argument("--outdir", default=str(REPO / "docs" / "_static" / "figures"))
     args = ap.parse_args()
     outdir = Path(args.outdir)
@@ -893,8 +890,6 @@ def main() -> None:
     which = set(args.only.split(","))
     if "runtime" in which:
         make_runtime_figure(outdir / "readme_runtime_compare.png")
-    if "parity" in which:
-        make_parity_figure(outdir / "readme_parity.png")
     if "convergence" in which:
         make_convergence_figure(outdir / "readme_convergence.png")
     if "optimization" in which:

@@ -9,121 +9,168 @@ matrix, ``benchmarks/run_gpu_matrix.py``; 2x NVIDIA RTX A4000, jax 0.6.2
 cuda12) — and from the end-to-end parity suite in
 ``tests/test_parity_breadth.py``.
 
-Benchmark suite (CPU)
----------------------
+Benchmark suite (CPU, ns = 201)
+-------------------------------
 
 Wall times in seconds; "cold" is a fresh process including JIT compilation,
 "warm" is a second in-process solve reusing the compiled executable (the
 number that matters inside optimization loops, where the structural
-executable cache makes every solve after the first warm).
+executable cache makes every solve after the first warm). Every deck's
+final ``NS_ARRAY`` stage is ramped to **ns = 201** — production radial
+resolution, where the physics dominates the compile overhead and the warm
+comparison is fairest.
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 8 14 14 14 14
+   :widths: 34 14 14 14 14
 
    * - case
-     - ns
      - VMEC2000
      - vmec_jax cold
      - vmec_jax warm
      - VMEC++
-   * - li383_low_res (NCSX)
-     - 51
-     - 0.24
-     - 5.5
-     - **0.17**
-     - 0.18
-   * - circular_tokamak
-     - 51
-     - 0.26
-     - 9.5
-     - **0.13**
-     - 0.77
    * - solovev
-     - 51
-     - 0.31
-     - 6.7
-     - **0.08**
-     - 0.45
-   * - nfp4_QH_warm_start (multigrid)
-     - 51
-     - 0.37
-     - 16.9
-     - 0.38
-     - 1.00
-   * - nfp4_QH_warm_start
-     - 51
-     - 0.40
-     - 6.3
-     - **0.30**
-     - 0.81
-   * - cth_like_fixed_bdy (multigrid)
-     - 51
-     - 1.09
-     - 14.2
+     - 1.41
+     - 11.5
+     - **0.62**
+     - 1.45
+   * - li383_low_res (NCSX)
+     - 1.06
+     - 8.3
      - **0.69**
+     - 0.53
+   * - nfp4_QH_warm_start
+     - 1.91
+     - 10.9
+     - **1.32**
+     - 1.35
+   * - nfp4_QH_warm_start (multigrid)
+     - 1.89
+     - 29.1
+     - **1.44**
+     - 1.56
+   * - circular_tokamak
+     - 2.02
+     - 22.6
+     - **1.63**
+     - 3.70
+   * - DSHAPE
+     - 2.31
+     - 32.7
+     - 2.37
+     - 5.45
+   * - cth_like_fixed_bdy (multigrid)
+     - 10.2
+     - 38.5
+     - **7.76**
      - failed
    * - cth_like_fixed_bdy
-     - 51
-     - 1.16
-     - 7.6
-     - **0.82**
-     - failed
-   * - DSHAPE
-     - 128
-     - 1.34
-     - 18.7
-     - **0.61**
-     - 2.07
-   * - cth_like_free_bdy (free boundary)
-     - 51
-     - 2.93
-     - 34.6
-     - 5.11
-     - 2.71
-   * - LandremanPaul2021_QA_lowres (multigrid)
-     - 51
-     - 6.77
-     - 23.9
-     - 7.50
-     - 5.15
-   * - cth_like_free_bdy_lasym_small (free bdy, lasym)
-     - 51
-     - 8.44
-     - --
      - 13.2
-     - n/a
+     - 28.0
+     - **9.51**
+     - failed
+   * - cth_like_free_bdy (free boundary)
+     - 26.7
+     - 71.3
+     - **24.9**
+     - 6.9
+   * - LandremanPaul2021_QA_lowres
+     - 45.0
+     - 72.3
+     - **42.7**
+     - 24.7
+   * - LandremanPaul2021_QA_lowres (multigrid)
+     - 73.7
+     - 103.4
+     - **68.1**
+     - 30.9
    * - LandremanPaul2021_QH_reactorScale_lowres
-     - 51
-     - 12.4
-     - 33.4
-     - **12.0**
+     - 64.8
+     - 76.8
+     - 65.6
      - failed
    * - NuhrenbergZille_1988_QHS
-     - 201
-     - 144
-     - 193
-     - **114**
-     - 94.5
+     - 137
+     - **108**
+     - **76.8**
+     - 72.7
+   * - cth_like_free_bdy_lasym_small (free bdy, lasym)
+     - 228
+     - --
+     - **196**
+     - n/a
 
-Every row runs at ``ns >= 51`` (the harness ramps each deck's final NS_ARRAY
-stage to at least 51; see ``benchmarks/run_baseline.py``). Bold marks the warm
-solve beating VMEC2000. These are wall-clock seconds on a shared Apple-Silicon
-CPU, so the warm/Fortran *ratio* is the comparable quantity, not the absolute
-numbers.
+Bold marks vmec_jax beating VMEC2000. These are wall-clock seconds on a
+shared Apple-Silicon CPU (``benchmarks/baseline.json``), so the
+warm/Fortran *ratio* is the comparable quantity, not the absolute numbers.
 
 Reading the table:
 
-- **Cold** runs are dominated by one-time XLA compilation, not physics; the
-  persistent compilation cache removes most of it on subsequent processes.
-- **Warm** solves are faster than VMEC2000 on 9 of the 13 converged rows,
-  typically 1.3–2.2x and up to ~4x on the smallest decks. The two
-  **free-boundary** rows now *converge* to VMEC2000 parity (fixed in R15 —
-  they previously stalled), but their warm wall is not yet faster than Fortran
-  because the NESTOR vacuum solve is not fully tuned.
-- VMEC++ rows marked *failed* aborted during the first iterations on those
-  decks; ``vmec_jax`` converges on the full suite (zero-crash policy). ``n/a``
-  marks a configuration VMEC++ does not support (``lasym`` free boundary).
+- **Warm** solves beat VMEC2000 on 12 of the 14 rows — typically 1.2–2.3x —
+  and tie on the other two (DSHAPE, the reactor-scale QH). This includes
+  both **free-boundary** rows: the NESTOR path converges to VMEC2000 parity
+  *and* now edges out the Fortran wall clock.
+- **Cold** runs pay a one-time 7–30 s XLA compile, so a single
+  fire-and-forget run is slower than Fortran — except on the biggest deck
+  (NuhrenbergZille at ns=201), where even the cold run, compile included,
+  beats VMEC2000. The persistent compilation cache removes most of the
+  compile cost on subsequent processes.
+- **VMEC++** is genuinely faster on some converged large decks (free
+  boundary, LandremanPaul QA) but *failed* rows aborted during the first
+  iterations; ``vmec_jax`` converges on the full suite (zero-crash policy).
+  ``n/a`` marks a configuration VMEC++ does not support (``lasym`` free
+  boundary).
+
+Production workflows: CPU vs GPU
+--------------------------------
+
+``benchmarks/profile_production.py`` times the five workflows a design
+loop actually runs, at production resolution. Warm wall-clock, measured
+2026-07-12 (CPU: local Apple-Silicon, idle; GPU: office 2x NVIDIA RTX
+A4000, jax cuda12 — different hosts, so read each column on its own terms):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 46 18 18
+
+   * - workflow (warm)
+     - M-series CPU
+     - A4000 GPU
+   * - fixed-boundary solve, ns = 201
+     - **5.5 s** (4.3 ms/iter)
+     - 6.9 s (5.4 ms/iter)
+   * - multigrid ladder 51/101/201
+     - **7.8 s**
+     - 9.3 s
+   * - implicit ``value_and_grad`` (boundary dofs)
+     - **17.3 s**
+     - 27.8 s
+   * - ``least_squares`` opt step (2 nfev)
+     - **88.8 s**
+     - 151 s
+
+The headline: **a fast desktop CPU beats the A4000 GPU on every production
+workflow, even at ns = 201.** Forward solves are close (the GPU is
+iteration-competitive at this size — free-boundary NESTOR runs 13.9 ms/iter
+on the GPU), but the gradient pipeline is launch-bound on an accelerator,
+which is why :func:`vmec_jax.core.device.resolve_implicit_device` pins
+implicit-gradient work to the CPU by default (an earlier placement leak
+here cost 2x on GPU boxes — fixed, and the pin is now automatic). The
+GPU's wins come against slower server cores and larger-than-production
+problem sizes (see the GPU guidance below).
+
+Optimization wall time
+~~~~~~~~~~~~~~~~~~~~~~
+
+Whole-campaign numbers, from a near-circular torus to a precise
+configuration on a 36-core office CPU (details and scripts in
+:doc:`optimization`): QA to QS 7.2e-6 in **14.5 min** with a single
+ESS-scaled ``least_squares`` call (the staged ``max_mode`` 1–5 ladder
+reaches 3.7e-7 in 25.5 min), and QI to a 25x omnigenity-residual reduction
+in **17.3 min**. Two measured gradient-stack optimizations make that
+possible — the block-tridiagonal implicit Jacobian (33x on the Jacobian
+phase) and the perturbation warm start (3.7x fewer trial-solve iterations)
+— both on by default and documented in :doc:`optimization`.
 
 Parity with VMEC2000
 --------------------
@@ -273,6 +320,9 @@ solves. Two knobs bound the optimization-time footprint:
 - Factoring the residual and field pipelines into reusable compiled
   sub-computations cut the implicit-gradient compile ~20% in memory and ~21% in
   wall time, bit-identically (plan.md R16).
+- The converged-state memo (plan.md R25.1) removed a redundant equilibrium
+  solve per accepted optimizer iterate and cut the profiled ``opt_step``
+  peak RSS from 6.0 to 3.5 GB.
 
 GPU guidance
 ------------
@@ -286,6 +336,11 @@ Measured behavior (``benchmarks/gpu_baseline.json``):
   floor plus compile or cache-load in cold processes), so small decks that
   finish in well under a second of CPU work stay faster on the CPU
   (``solovev``: 0.043 s CPU vs 0.29 s CUDA warm).
+- **Fast desktop CPUs change the calculus**: the GPU wins above were
+  measured against the office box's slower server cores. Against an idle
+  Apple-Silicon CPU, the CPU wins every production workflow even at
+  ``ns = 201`` (the table above) — on a modern desktop, treat the GPU as
+  an option for very large or heavily batched solves, not a default.
 
 Device policy
 ~~~~~~~~~~~~~
@@ -335,9 +390,10 @@ Reproducing the numbers
 
 .. code-block:: bash
 
-   python benchmarks/run_baseline.py       # CPU suite -> benchmarks/baseline.json
-   python benchmarks/run_gpu_matrix.py     # GPU matrix -> benchmarks/gpu_baseline.json
-   pytest tests/test_parity_breadth.py   # end-to-end parity suite
+   python benchmarks/run_baseline.py         # CPU suite -> benchmarks/baseline.json
+   python benchmarks/run_gpu_matrix.py       # GPU matrix -> benchmarks/gpu_baseline.json
+   python benchmarks/profile_production.py   # the five production workflows
+   pytest tests/test_parity_breadth.py     # end-to-end parity suite
 
 The parity suite needs the golden VMEC2000 fixtures (fetched release assets);
 it is skipped automatically when they are unavailable.

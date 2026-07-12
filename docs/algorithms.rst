@@ -429,3 +429,34 @@ initializer and are stop-gradient by construction. Gradient accuracy is
 validated against central finite differences in CI. See :doc:`optimization`
 for usage and the references (Skene & Burns 2026; jaxopt; DESC) in
 :doc:`references`.
+
+Forward-mode Jacobians for least squares (block-tridiagonal)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The adjoint above is the right tool for *one* scalar objective and many
+parameters. A least-squares optimizer needs the opposite object — the full
+residual Jacobian over all boundary dofs — which is computed in **forward**
+mode: per dof tangent :math:`t_j`, the state response is
+
+.. math::
+
+   dz_j = -\left(\frac{\partial F}{\partial z}\right)^{-1}
+          \frac{\partial F}{\partial p}\, t_j ,
+
+one linear solve per dof. Rather than running an independent GMRES per
+column, the default path (``jac_solver="block"``) exploits a structural
+fact: in the **raw** force formulation the radial coupling of
+:math:`\partial F/\partial z` is exactly nearest-neighbor (the
+finite-difference stencil in :math:`s`), so the operator is *exactly*
+block-tridiagonal — ``ns`` dense :math:`(3\,mn \times 3\,mn)` blocks.
+(The preconditioned formulation used by the adjoint is dense in radius,
+because the 1D preconditioner's inverse is.) The blocks are assembled with
+3-colored ``jax.jvp`` probes — a cost independent of the dof count —
+factored once with SOLVAX's block-Thomas elimination (the BCYCLIC
+analogue), and back-substituted for every dof right-hand side; a short
+warm-started GMRES pass against the preconditioned system certifies each
+column to the same tolerance as the per-column path. Measured: 33x on the
+Jacobian phase of the benchmark optimization step (see
+:doc:`optimization`). The same per-dof responses :math:`dz_j` double as a
+first-order perturbation warm start for the optimizer's next trial solves —
+the DESC-style ``eq.perturb`` pattern — making the linearization pay twice.
