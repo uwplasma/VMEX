@@ -1167,6 +1167,7 @@ def least_squares(
     jac_solver: str = "block",
     recycle: bool = False,
     hot_restart: bool = True,
+    warm_start: str | None = "perturbation",
     use_ess: bool = False,
     ess_alpha: float = 1.2,
     device: Any = None,
@@ -1261,13 +1262,39 @@ def least_squares(
 
     ``hot_restart`` seeds each trial solve from the previous converged state
     (both modes; in implicit mode via the per-config host-solve cache).
+
+    ``warm_start`` (plan R25.4, ``jac="implicit"`` only) refines what that
+    seed is.  ``"perturbation"`` (default) seeds each *trial* solve with the
+    DESC-style first-order prediction ``x_ref + sum_j (dx)_j dz_j``
+    (arXiv:2203.15927 ``eq.perturb`` before ``eq.solve``): the per-dof state
+    responses ``dz_j = -(dF/dz)^{-1} dF/dp t_j`` are exactly the columns the
+    implicit Jacobian already solves, so the linearization is stashed at
+    each ``jac(x_ref)`` call for free and evaluated per trial at the cost of
+    one small tensor contraction.  ``"state"`` is the plain hot restart
+    (seed = last converged state); ``None`` disables warm starting entirely
+    (every trial re-solves from the interior guess).  All three converge to
+    the same fixed points — only the inner iteration count changes — and
+    anything missing or mismatched (first call, stage change, failed seed)
+    falls back silently down the ladder perturbation -> state -> cold.
+    ``recycle=True`` bypasses the perturbation stash (its Jacobian variant
+    carries the GCROT pair instead); ``hot_restart=False`` forces
+    ``warm_start=None``.  Inert for ``jac=None``.  Measured (2026-07-12,
+    M-series CPU, nfp2 minimal seed, max_mode=2, QS+aspect, ``max_nfev=20``):
+    total forward-solve iterations 23685 (``"state"``) -> 6364
+    (``"perturbation"``), **3.7x fewer**, wall 156 s -> 145 s (this deck's
+    wall is Jacobian-dominated at ns=35; the solve-phase win grows with
+    ``ns``), and the seed additionally rescued a trial whose plain hot
+    restart failed with a Jacobian-sign error.
+
     Remaining keywords go to :func:`scipy.optimize.least_squares` (e.g.
     ``max_nfev``, ``ftol``, ``xtol``, ``diff_step``).
 
     Returns the scipy ``OptimizeResult`` of the final stage with extra
     attributes: ``input`` (optimized :class:`VmecInput`), ``equilibrium``
-    (last successfully solved :class:`Equilibrium`) and ``stage_results``
-    (per-``max_mode`` results for schedules).
+    (last successfully solved :class:`Equilibrium`), ``stage_results``
+    (per-``max_mode`` results for schedules) and, in implicit mode,
+    ``solve_stats`` (``{"solves", "iterations"}`` totals of the stage's host
+    forward solves — the R25.4 warm-start instrumentation).
     """
     import scipy.optimize
 
@@ -1283,7 +1310,8 @@ def least_squares(
             result = least_squares(
                 objective_terms, current, max_mode=mm, jac=jac,
                 jac_chunk_size=jac_chunk_size, jac_solver=jac_solver,
-                recycle=recycle, hot_restart=hot_restart, use_ess=use_ess,
+                recycle=recycle, hot_restart=hot_restart,
+                warm_start=warm_start, use_ess=use_ess,
                 ess_alpha=ess_alpha, device=device, solve_kwargs=solve_kwargs,
                 verbose=verbose, **scipy_kwargs)
             stage_results.append(result)
@@ -1299,7 +1327,9 @@ def least_squares(
         return _least_squares_implicit(
             objective_terms, inp, max_mode=max_mode, x0=x0,
             jac_chunk_size=jac_chunk_size, jac_solver=jac_solver,
-            recycle=recycle, solve_kwargs=dict(solve_kwargs or {}),
+            recycle=recycle,
+            warm_start=(warm_start if hot_restart else None),
+            solve_kwargs=dict(solve_kwargs or {}),
             device=device, verbose=verbose, **scipy_kwargs)
     if jac is not None:
         raise ValueError(f"jac must be None or 'implicit', got {jac!r}")
@@ -1387,6 +1417,7 @@ def _least_squares_implicit(
     jac_chunk_size: int | str | None = "auto",
     jac_solver: str = "block",
     recycle: bool = False,
+    warm_start: str | None = "perturbation",
     solve_kwargs: dict,
     device: Any = None,
     verbose: int = 0,
@@ -1396,7 +1427,8 @@ def _least_squares_implicit(
 
     ``fun`` maps the dof vector through the traceable boundary update ->
     :func:`~vmec_jax.core.implicit.solve_implicit` (host solver behind
-    ``pure_callback``, hot-restarted) ->
+    ``pure_callback``, warm-started per ``warm_start`` — see
+    :func:`least_squares`) ->
     :func:`~vmec_jax.core.implicit.runtime_from_params` -> the stacked
     objective rows: one warm host solve per trial ``x``.  ``jac`` computes
     the exact residual Jacobian by *forward* implicit differentiation:
@@ -1439,7 +1471,16 @@ def _least_squares_implicit(
     # hot_restart seeds each trial's host solve from the stage's previous
     # converged state (same fixed points, far fewer iterations) — the
     # implicit-mode analogue of the finite-difference path's hot restart.
-    cfg = imp.make_config(inp, multigrid=True, hot_restart=True,
+    # warm_start="perturbation" (R25.4) sharpens that seed to the DESC-style
+    # first-order prediction; see least_squares.
+    if warm_start not in ("perturbation", "state", None):
+        raise ValueError(
+            "warm_start must be 'perturbation', 'state' or None, "
+            f"got {warm_start!r}")
+    if recycle and warm_start == "perturbation":
+        warm_start = "state"  # the recycled variant carries (C, U) instead
+    cfg = imp.make_config(inp, multigrid=True,
+                          hot_restart=(warm_start is not None),
                           adjoint_tol=1e-6, adjoint_maxiter=30)
     # Pin the residual/Jacobian graphs to the fastest device for this launch-
     # bound path (CPU by default; explicit device= honored) — committing the
@@ -1543,7 +1584,7 @@ def _least_squares_implicit(
 
         return Fz, tangent_of, rhs_of, column_of, (params, frozen, P, z_star)
 
-    def jacobian_rows(x: jnp.ndarray) -> jnp.ndarray:
+    def jacobian_rows(x: jnp.ndarray):
         """Exact residual Jacobian by *forward* implicit differentiation.
 
         One batched preconditioned GMRES per boundary dof (see
@@ -1551,16 +1592,20 @@ def _least_squares_implicit(
         differences) — while exposing the *full* pointwise Gauss-Newton
         geometry to scipy.  Columns are mathematically independent, so the
         result is identical across chunk sizes to float64 round-off.
+        Also returns the per-dof state responses ``dz_j`` (leading axis
+        ``2*nm``): they are the R25.4 perturbation warm-start linearization,
+        already paid for by the column solves.
         """
         Fz, tangent_of, rhs_of, column_of, _ = _jac_parts(x)
 
         def column(tp_pair):
             tp = tangent_of(tp_pair)
             dz, _ = imp._adjoint_solve(Fz, rhs_of(tp), cfg)
-            return column_of(dz, tp)
+            return column_of(dz, tp), dz
 
-        cols = chunk_map(column, (tangent_rbc, tangent_zbs), chunk_size=chunk)
-        return jnp.transpose(cols)
+        cols, dz_cols = chunk_map(column, (tangent_rbc, tangent_zbs),
+                                  chunk_size=chunk)
+        return jnp.transpose(cols), dz_cols
 
     # R25.2 amortized block-tridiagonal variant.  The *raw* residual
     # formulation (un-preconditioned scalxc-scaled spectral force; see
@@ -1606,12 +1651,15 @@ def _least_squares_implicit(
             f: parts.get(f, jnp.zeros((ns_state, mn_state), mat.dtype))
             for f in imp._STATE_FIELDS})
 
-    def jacobian_rows_block(x: jnp.ndarray) -> jnp.ndarray:
+    def jacobian_rows_block(x: jnp.ndarray):
         """``jacobian_rows`` via one block-tridiagonal factorization (R25.2).
 
         Same Jacobian as the default path to ``cfg.adjoint_tol`` (the GMRES
         corrector runs against the identical preconditioned system) at a
-        cost that does not grow with the boundary-dof count.
+        cost that does not grow with the boundary-dof count.  Returns the
+        certified per-dof responses ``dz_j`` alongside the rows (the R25.4
+        perturbation warm-start linearization, same contract as
+        ``jacobian_rows``).
         """
         Fz, tangent_of, rhs_of, column_of, (params, frozen, P, z_star) = \
             _jac_parts(x)
@@ -1670,12 +1718,12 @@ def _least_squares_implicit(
             dz, _ = imp._adjoint_solve(
                 Fz, rhs_of(tp), cfg, x0=_unpack(dz0_mat),
                 max_restarts=min(3, cfg.adjoint_maxiter))
-            return column_of(dz, tp)
+            return column_of(dz, tp), dz
 
-        cols = chunk_map(
+        cols, dz_cols = chunk_map(
             column, (tangent_rbc, tangent_zbs, jnp.moveaxis(dz0, -1, 0)),
             chunk_size=chunk)
-        return jnp.transpose(cols)
+        return jnp.transpose(cols), dz_cols
 
     # R25.3 recycled variant: all 2*nm solves share the operator Fz (and Fz
     # drifts slowly between accepted trust-region iterates), so a GCROT
@@ -1739,7 +1787,7 @@ def _least_squares_implicit(
         jac_impl = jacobian_rows
     jac_jit = jax.jit(jac_impl)
 
-    holder: dict[str, Any] = {"nres": None}
+    holder: dict[str, Any] = {"nres": None, "lin": None}
     if recycle:
         # An all-zero pair is a cold start (gcrot's warm-start QR masks the
         # rank-deficient columns out); shapes are static so jac_jit compiles
@@ -1747,7 +1795,50 @@ def _least_squares_implicit(
         holder["recycle"] = (_place(np.zeros((n_flat, imp._RECYCLE_K))),
                              _place(np.zeros((n_flat, imp._RECYCLE_K))))
 
+    # R25.4 perturbation warm start (DESC arXiv:2203.15927 ``eq.perturb``
+    # before ``eq.solve``): each jac(x_ref) call stashes its linearization —
+    # the converged state plus the per-dof responses dz_j its columns just
+    # solved — and every subsequent trial fun(x) deposits the first-order
+    # predicted state in implicit._PERTURB_SEED for the host solve to
+    # consume, instead of restarting from the unmoved last converged state.
+    P_seed = imp._dof_projector(cfg, mask_const)
+    edge_seed = imp._edge_mask(cfg)
+
+    @jax.jit
+    def predicted_state(x_trial, x_ref, frozen, dz_cols):
+        """First-order trial-state prediction around the stashed jac point.
+
+        ``x_pred = frozen + P(sum_j (x_trial - x_ref)_j dz_j) +
+        edge*(boundary(p_trial) - frozen)`` through the same dof-projector /
+        assemble machinery the implicit residual uses, so the edge row lands
+        exactly on the trial boundary (the solver's ``hot_restart_state``
+        boundary shift becomes a no-op) and frozen directions stay frozen.
+        """
+        rt_p = imp.runtime_from_params(params_of(x_trial), cfg)
+        dz = jax.tree.map(
+            lambda d: jnp.tensordot(x_trial - x_ref, d, axes=1), dz_cols)
+        z = jax.tree.map(jnp.add, P_seed(frozen), dz)
+        return imp._assemble(z, rt_p, frozen, P_seed, edge_seed)
+
+    def _stash_linearization(x: np.ndarray, dz_cols) -> None:
+        """Record ``(x_ref, converged state, dz columns)`` for trial seeding."""
+        hit = imp._LAST_SOLVE.get(cfg)
+        params_np = jax.tree.map(lambda a: np.asarray(a, dtype=np.float64),
+                                 params_of(jnp.asarray(x, dtype=jnp.float64)))
+        if hit is not None and hit[0] == imp._params_key(params_np):
+            holder["lin"] = (np.array(x, dtype=float), hit[1].state, dz_cols)
+        else:  # unexpected call pattern: better no seed than a wrong one
+            holder["lin"] = None
+
     def fun(x: np.ndarray) -> np.ndarray:
+        lin = holder["lin"]
+        if lin is not None and lin[0].shape == np.shape(x):
+            seed = jax.tree.map(
+                lambda a: np.asarray(a, dtype=np.float64),
+                jax.device_get(predicted_state(
+                    _place(x), _place(lin[0]), lin[1], lin[2])))
+            if all(np.all(np.isfinite(a)) for a in jax.tree.leaves(seed)):
+                imp._PERTURB_SEED[cfg] = seed
         try:
             residual = np.asarray(
                 jax.device_get(rows_jit(_place(x))), dtype=float)
@@ -1757,6 +1848,8 @@ def _least_squares_implicit(
             if verbose:
                 print(f"[least_squares] trial solve failed: {exc}")
             return np.full((holder["nres"],), 1.0e6)
+        finally:
+            imp._PERTURB_SEED.pop(cfg, None)  # one-shot: never leak a seed
         if not np.all(np.isfinite(residual)):
             residual = np.where(np.isfinite(residual), residual, 1.0e6)
         holder["nres"] = residual.size
@@ -1769,11 +1862,16 @@ def _least_squares_implicit(
             rows, C, U = jac_jit(_place(x), *holder["recycle"])
             holder["recycle"] = (C, U)  # deflate the next jac evaluation
             return np.asarray(jax.device_get(rows), dtype=float)
-        return np.asarray(jax.device_get(jac_jit(_place(x))), dtype=float)
+        rows, dz_cols = jac_jit(_place(x))
+        if warm_start == "perturbation":
+            _stash_linearization(np.asarray(x, dtype=float), dz_cols)
+        return np.asarray(jax.device_get(rows), dtype=float)
 
     result = scipy.optimize.least_squares(fun, np.asarray(x0, dtype=float),
                                           jac=jac_fn, **scipy_kwargs)
     result.input = unpack_boundary(inp, result.x, max_mode)
+    stats = imp._SOLVE_STATS.get(cfg)
+    result.solve_stats = None if stats is None else dict(stats)
     try:
         # Hot-seed the diagnostic re-solve from the stage's last converged
         # trial state (plan R25.1): the optimizer's final x was just solved
