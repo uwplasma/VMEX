@@ -113,6 +113,17 @@ def test_residual_zero_on_analytic_qi_field():
     assert float(out_qa["total"]) > 1e-3
 
 
+def test_component_totals_partition_objective():
+    """Named physics diagnostics exactly partition the least-squares total."""
+    out = _analytic_residual(
+        [1.0, 0.08, 0.03], [(0, 0), (0, 3), (1, 0)], nfp=3)
+    component_total = sum(float(out[name]) for name in (
+        "well_total", "extremum_total", "squash_total"))
+    assert component_total == pytest.approx(float(out["total"]), rel=1e-14)
+    assert all(float(out[name]) >= 0.0 for name in (
+        "well_total", "extremum_total", "squash_total"))
+
+
 def test_qi_deck_far_below_circular_tokamak(qi_eq, tok_eq):
     qi = omn.QIResidual(SURFACES, **FAST)
     total_qi = float(qi.total(qi_eq))

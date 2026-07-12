@@ -979,10 +979,14 @@ def iota_profile(state: SpectralState, rt: SolverRuntime) -> Array:
 
 
 def iota_axis(state: SpectralState, rt: SolverRuntime) -> Array:
+    """Rotational transform on the magnetic axis."""
+
     return iota_profile(state, rt)[0]
 
 
 def iota_edge(state: SpectralState, rt: SolverRuntime) -> Array:
+    """Rotational transform on the last closed flux surface."""
+
     return iota_profile(state, rt)[-1]
 
 
