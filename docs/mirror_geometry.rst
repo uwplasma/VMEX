@@ -315,7 +315,9 @@ GMRES remains the default and block mode is an opt-in verification path.
 Anisotropic closure pytrees use the same adjoint. A consistent isotropic closure evaluated through
 the anisotropic functional validates closure coefficients, boundary, flux, and
 current together to ``5.22e-9`` relative against reconverged finite
-differences. Dedicated bi-Maxwellian/tabulated closure cases and coupled
+differences. A bi-Maxwellian case with positive ellipticity indicators also
+validates mass and hot-fraction coefficient gradients to ``2.99e-9``.
+Dedicated tabulated-closure and coupled
 free-boundary coil derivatives remain M9 promotion gates.
 
 ``device=None`` uses the shared measured device policy. On the office host,

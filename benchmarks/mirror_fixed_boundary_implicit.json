@@ -22,6 +22,18 @@
     "central_finite_difference": 0.0017937423554825749,
     "relative_error": 5.220809394438049e-9
   },
+  "bi_maxwellian_case": {
+    "grid": {"ns": 3, "ntheta": 1, "nxi": 5},
+    "temperature_ratio": 0.7,
+    "critical_field_T": 2.0,
+    "controls": ["boundary", "axial_flux", "mass_coefficients", "hot_fraction_coefficients", "current_derivative"],
+    "ellipticity_valid": true,
+    "adjoint_iterations": 4,
+    "adjoint_relative_residual": 8.920299382263387e-17,
+    "directional_derivative": 0.0016952463568259619,
+    "central_finite_difference": 0.0016952463618991054,
+    "relative_error": 2.9925700625012225e-9
+  },
   "matrix_free_case": {
     "grid": {"ns": 17, "ntheta": 1, "nxi": 41},
     "active_unknowns": 585,
@@ -36,5 +48,5 @@
     "block_adjoint_relative_residual": 2.6913e-15,
     "process_peak_rss_mib": 983.6
   },
-  "assessment": "The exact reverse solve is independent of the number of physical controls. It is FD-validated with all four isotropic control groups active and with registered closure coefficients through the anisotropic functional, and remains matrix-free above the dense reference threshold. Three-color block Thomas is exact but takes 4.79 s versus 3.41 s for one preconditioned-GMRES right-hand side, so GMRES remains the scalar-adjoint default; block mode is retained for future batched sensitivities. Dedicated bi-Maxwellian/tabulated and coupled free-boundary adjoints remain open."
+  "assessment": "The exact reverse solve is independent of the number of physical controls. It is FD-validated with all four isotropic control groups active, with registered closure coefficients through the anisotropic functional, and with bi-Maxwellian mass/hot-fraction coefficients under a valid ellipticity gate. It remains matrix-free above the dense reference threshold. Three-color block Thomas is exact but takes 4.79 s versus 3.41 s for one preconditioned-GMRES right-hand side, so GMRES remains the scalar-adjoint default; block mode is retained for future batched sensitivities. Dedicated tabulated and coupled free-boundary adjoints remain open."
 }

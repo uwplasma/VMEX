@@ -16,6 +16,7 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorResolution,
     MirrorState,
     IsotropicPressureClosure,
+    BiMaxwellianPressureClosure,
     fixed_boundary_adjoint,
     fixed_boundary_parameters,
     project_fixed_boundary_state,
@@ -124,14 +125,40 @@ def test_fixed_boundary_adjoint_rejects_unconverged_state() -> None:
         )
 
 
-def test_anisotropic_closure_adjoint_matches_central_difference() -> None:
+@pytest.mark.parametrize(
+    ("closure", "closure_direction"),
+    [
+        (
+            IsotropicPressureClosure(jnp.asarray([2.0e3, -2.0e3])),
+            IsotropicPressureClosure(jnp.asarray([100.0, -100.0])),
+        ),
+        (
+            BiMaxwellianPressureClosure(
+                jnp.asarray([2.0e3, -2.0e3]),
+                jnp.asarray([0.2]),
+                0.7,
+                2.0,
+                gamma=0.0,
+            ),
+            BiMaxwellianPressureClosure(
+                jnp.asarray([100.0, -100.0]),
+                jnp.asarray([0.05]),
+                0.7,
+                2.0,
+                gamma=0.0,
+            ),
+        ),
+    ],
+)
+def test_anisotropic_closure_adjoint_matches_central_difference(
+    closure, closure_direction
+) -> None:
     config = MirrorConfig(
         resolution=MirrorResolution(ns=3, nxi=5), ftol=1.0e-12, max_iterations=500
     )
     grid = config.build_grid()
     xi, s = jnp.asarray(grid.xi), jnp.asarray(grid.s)
     boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.12 * (1.0 - xi**2)), grid)
-    closure = IsotropicPressureClosure(jnp.asarray([2.0e3, -2.0e3]))
     current = 1.0e-2 * s
     result = solve_anisotropic_fixed_boundary_cli(
         MirrorState.from_boundary(boundary, grid),
@@ -158,14 +185,19 @@ def test_anisotropic_closure_adjoint_matches_central_difference() -> None:
     boundary_direction = 0.002 * (1.0 - xi**2)[None, :]
     flux_direction = 0.1
     current_direction = 0.05 * s
-    closure_direction = jnp.asarray([100.0, -100.0])
+    closure_contribution = sum(
+        jnp.vdot(gradient, direction)
+        for gradient, direction in zip(
+            jax.tree.leaves(adjoint.gradient.pressure_closure),
+            jax.tree.leaves(closure_direction),
+            strict=True,
+        )
+    )
     predicted = float(
         jnp.vdot(adjoint.gradient.boundary_radius, boundary_direction)
         + adjoint.gradient.axial_flux_derivative * flux_direction
         + jnp.vdot(adjoint.gradient.current_derivative, current_direction)
-        + jnp.vdot(
-            adjoint.gradient.pressure_closure.coefficients, closure_direction
-        )
+        + closure_contribution
     )
     epsilon = 1.0e-4
     values = []
@@ -173,8 +205,10 @@ def test_anisotropic_closure_adjoint_matches_central_difference() -> None:
         varied_boundary = MirrorBoundary(
             boundary.radius_scale + sign * epsilon * boundary_direction
         )
-        varied_closure = IsotropicPressureClosure(
-            closure.coefficients + sign * epsilon * closure_direction
+        varied_closure = jax.tree.map(
+            lambda value, direction: value + sign * epsilon * direction,
+            closure,
+            closure_direction,
         )
         varied = solve_anisotropic_fixed_boundary_cli(
             project_fixed_boundary_state(result.state, varied_boundary, grid),
