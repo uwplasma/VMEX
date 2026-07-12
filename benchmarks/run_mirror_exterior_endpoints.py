@@ -122,8 +122,8 @@ def run(
                 m1_radius_m=float(diagnostic.center_boundary_modes[1]),
                 m1_axial_l2_m=float(diagnostic.boundary_mode_l2[1]),
                 m1_axial_max_m=float(diagnostic.boundary_mode_max[1]),
-                m1_interior_l2_m=float(diagnostic.boundary_mode_interior_l2[1]),
-                m1_interior_max_m=float(diagnostic.boundary_mode_interior_max[1]),
+                m1_core_l2_m=float(diagnostic.boundary_mode_core_l2[1]),
+                m1_core_max_m=float(diagnostic.boundary_mode_core_max[1]),
                 m1_midplane_leakage_fraction=float(
                     diagnostic.center_boundary_modes[1] / diagnostic.boundary_mode_max[1]
                 ),

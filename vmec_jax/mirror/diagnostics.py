@@ -41,23 +41,41 @@ def boundary_fourier_norms(
     boundary: "MirrorBoundary",
     grid: "MirrorGrid",
     *,
-    exclude_end_cuts: bool = False,
+    central_fraction: float | None = None,
 ) -> tuple[Array, Array]:
     """Return weighted axial L2 and maximum amplitude of each theta mode.
 
     Axial norms remain meaningful when a mode vanishes at a symmetry plane,
     where a relative error based on one collocation point is ill-conditioned.
+    ``central_fraction`` evaluates the Fourier-CGL interpolant on the fixed
+    window ``|xi| <= central_fraction``. This avoids comparing
+    different near-cap CGL nodes as axial resolution changes.
     """
 
-    amplitudes = boundary_fourier_amplitudes(boundary)
-    if amplitudes.shape[1] != grid.nxi:
+    radius = jnp.asarray(boundary.radius_scale)
+    if radius.shape[1] != grid.nxi:
         raise ValueError("boundary axial size does not match mirror grid")
-    weights = jnp.asarray(grid.axial_basis.weights)
-    if exclude_end_cuts:
-        amplitudes = amplitudes[:, 1:-1]
-        weights = weights[1:-1]
+    if central_fraction is not None:
+        if not 0.0 < central_fraction < 1.0:
+            raise ValueError("central_fraction must lie strictly between zero and one")
+        nodes, weights = np.polynomial.legendre.leggauss(grid.nxi)
+        quadrature_nodes = central_fraction * nodes
+        quadrature_radius = grid.axial_basis.interpolate(
+            radius, quadrature_nodes, axis=1
+        )
+        amplitudes = boundary_fourier_amplitudes(boundary.__class__(quadrature_radius))
+        extrema_nodes = np.linspace(-central_fraction, central_fraction, 257)
+        extrema_radius = grid.axial_basis.interpolate(radius, extrema_nodes, axis=1)
+        maximum = jnp.max(
+            boundary_fourier_amplitudes(boundary.__class__(extrema_radius)), axis=1
+        )
+        weights = jnp.asarray(weights)
+    else:
+        amplitudes = boundary_fourier_amplitudes(boundary)
+        weights = jnp.asarray(grid.axial_basis.weights)
+        maximum = jnp.max(amplitudes, axis=1)
     l2 = jnp.sqrt(jnp.sum(amplitudes**2 * weights[None, :], axis=1) / jnp.sum(weights))
-    return l2, jnp.max(amplitudes, axis=1)
+    return l2, maximum
 
 
 @dataclass(frozen=True)
@@ -88,8 +106,8 @@ class NonaxisymmetricBetaDiagnostics:
     center_boundary_modes: Array
     boundary_mode_l2: Array
     boundary_mode_max: Array
-    boundary_mode_interior_l2: Array
-    boundary_mode_interior_max: Array
+    boundary_mode_core_l2: Array
+    boundary_mode_core_max: Array
     plasma_volume: Array
     plasma_energy: Array
 
@@ -196,8 +214,8 @@ def summarize_nonaxisymmetric_beta_scan(
         center_field = jnp.sqrt(result.plasma_b_squared[0, :, center])
         boundary_modes = boundary_fourier_amplitudes(result.boundary)
         mode_l2, mode_max = boundary_fourier_norms(result.boundary, grid)
-        interior_l2, interior_max = boundary_fourier_norms(
-            result.boundary, grid, exclude_end_cuts=True
+        core_l2, core_max = boundary_fourier_norms(
+            result.boundary, grid, central_fraction=0.75
         )
         summaries.append(
             NonaxisymmetricBetaDiagnostics(
@@ -216,8 +234,8 @@ def summarize_nonaxisymmetric_beta_scan(
                 center_boundary_modes=boundary_modes[:, center],
                 boundary_mode_l2=mode_l2,
                 boundary_mode_max=mode_max,
-                boundary_mode_interior_l2=interior_l2,
-                boundary_mode_interior_max=interior_max,
+                boundary_mode_core_l2=core_l2,
+                boundary_mode_core_max=core_max,
                 plasma_volume=_plasma_volume(result, grid),
                 plasma_energy=result.plasma_energy.total,
             )

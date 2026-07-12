@@ -114,22 +114,15 @@ def test_boundary_fourier_norms_do_not_use_a_symmetry_zero() -> None:
     boundary = MirrorBoundary(0.2 + 0.03 * xi * jnp.cos(theta))
 
     l2, maximum = boundary_fourier_norms(boundary, grid)
-    interior_l2, interior_maximum = boundary_fourier_norms(
-        boundary, grid, exclude_end_cuts=True
+    core_l2, core_maximum = boundary_fourier_norms(
+        boundary, grid, central_fraction=0.75
     )
 
     np.testing.assert_allclose(l2[1], 0.03 / np.sqrt(3.0), rtol=2.0e-14)
     np.testing.assert_allclose(maximum[1], 0.03, rtol=2.0e-14)
-    expected_interior = 0.03 * np.sqrt(
-        np.average(
-            np.asarray(grid.xi[1:-1]) ** 2,
-            weights=np.asarray(grid.axial_basis.weights[1:-1]),
-        )
-    )
-    np.testing.assert_allclose(interior_l2[1], expected_interior, rtol=2.0e-14)
-    np.testing.assert_allclose(
-        interior_maximum[1], 0.03 * np.max(np.abs(grid.xi[1:-1])), rtol=2.0e-14
-    )
+    expected_interior = 0.03 * 0.75 / np.sqrt(3.0)
+    np.testing.assert_allclose(core_l2[1], expected_interior, rtol=2.0e-14)
+    np.testing.assert_allclose(core_maximum[1], 0.03 * 0.75, rtol=2.0e-14)
     np.testing.assert_allclose(boundary_fourier_amplitudes(boundary)[1, grid.nxi // 2], 0.0, atol=5e-17)
 
 
@@ -535,8 +528,8 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
     mode_one = np.asarray([item.center_boundary_modes[1] for item in diagnostics])
     mode_one_l2 = np.asarray([item.boundary_mode_l2[1] for item in diagnostics])
     mode_one_max = np.asarray([item.boundary_mode_max[1] for item in diagnostics])
-    mode_one_interior_l2 = np.asarray(
-        [item.boundary_mode_interior_l2[1] for item in diagnostics]
+    mode_one_core_l2 = np.asarray(
+        [item.boundary_mode_core_l2[1] for item in diagnostics]
     )
     assert np.all(np.diff(mean_radii) > 0.0)
     assert np.all(np.diff(mean_fields) < 0.0)
@@ -544,7 +537,7 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
     assert mode_one[-1] > 1.5 * mode_one[0]
     assert np.all(mode_one_l2 > 1.0e-2)
     assert np.all(mode_one_max > 2.5e-2)
-    assert np.all(mode_one_interior_l2 > 1.0e-3)
+    assert np.all(mode_one_core_l2 > 1.0e-3)
     assert np.all(mode_one / mode_one_max < 2.0e-2)
     assert all(float(item.plasma_volume) > 0.0 for item in diagnostics)
     assert all(float(item.plasma_energy) > 0.0 for item in diagnostics)
