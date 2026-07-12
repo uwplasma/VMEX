@@ -1730,6 +1730,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       `2.657e-8/5.85e-10/2.599e-8` after 1,000 iterations and is removed. Synthetic and stiff
       axisymmetric tests pass, isolating the problem to the hybrid's nonlocal constrained
       Jacobian. The next method must preserve that nonlocal coupling.
+      A complete 2,294-unknown reduced Jacobian is then assembled and solved directly. It fits in
+      5.5 GiB on the RTX A4000 but finishes the same cap at
+      `7.100e-8/5.51e-10/4.499e-9`. Since exact linear coupling does not globalize the residual,
+      the Fourier free-boundary hybrid lane is **deferred above achieved beta 0.8333%**. Do not
+      extrapolate it to 1--50% or add more solver variants without a new equilibrium/globalization
+      formulation. The straight-axis mirror lanes remain the validated 50% high-beta capability.
       The previous block-preconditioner
       requirement was premature: use the staged widths 80/120/160 and continue through a refined
       ladder to 1%. Implement a larger block/Schur method only if these simpler settings reach

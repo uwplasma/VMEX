@@ -203,6 +203,12 @@ nearest-radial block-tridiagonal Hessian also fails at
 Its synthetic block and stiff axisymmetric tests pass, isolating the failure
 to nonlocal constrained coupling in this hybrid. The next method must preserve
 that coupling rather than impose nearest-radial structure.
+A complete 2,294-unknown reduced Jacobian also fits on the RTX A4000 at 5.5
+GiB, but ends at ``(7.100e-8, 5.51e-10, 4.499e-9)`` after the same cap. Exact
+linear coupling therefore does not globalize this residual. The toroidal
+Fourier free-boundary lane is deferred above achieved beta 0.8333% and is not
+extrapolated to 1--50%. Straight-axis free-boundary mirrors remain the
+validated high-beta path through 50%.
 The refined continuation therefore stages widths 80, 120, and 160; a coupled
 block or Schur preconditioner is deferred until these simpler bases encounter
 a new measured barrier.

@@ -55,6 +55,15 @@
     "residuals": [2.6573781893756443e-8, 5.851784953673308e-10, 2.598707516924535e-8],
     "assessment": "rejected: the nearest-radial truncation misses nonlocal constrained hybrid coupling"
   },
+  "dense_direct_screen": {
+    "from_target_beta": 0.008125,
+    "target_beta": 0.00825,
+    "active_unknowns": 2294,
+    "peak_gpu_memory_gib": 5.5,
+    "corrector_iterations": 1000,
+    "residuals": [7.100497350504706e-8, 5.51037377641673e-10, 4.498932804857587e-9],
+    "assessment": "rejected: complete reduced Jacobian solve fits in memory but does not globalize the hybrid residual"
+  },
   "rejected_step_examples": [
     {"from_target_beta": 0.005, "target_beta": 0.0055, "lambda_row_scale": 0.01, "corrector_iterations": 1000, "residuals": [2.1482004262961658e-8, 1.547161233909098e-9, 7.690856349249837e-9]},
     {"from_target_beta": 0.005, "target_beta": 0.00525, "lambda_row_scale": 0.01, "corrector_iterations": 1000, "residuals": [1.9660782267945982e-8, 1.5766451610779146e-9, 7.310534559762974e-9]},
@@ -87,5 +96,5 @@
     "lcfs_delta_from_target_beta_0p003_max_m": 7.819948555385524e-8,
     "lcfs_delta_from_target_beta_0p003_rms_m": 2.1610656093927775e-8
   },
-  "assessment": "Equation balancing converts the isolated 0.35% result into a genuine adaptive free-boundary branch through achieved beta 0.833%. The limiting physical components shift between FSQR and FSQL, requiring static then norm-derived lambda scaling. Cadence 20 remains the best globalization screen. At target beta 0.7040625%, increasing total Krylov work at restart 80 does not converge, while expanding the Arnoldi basis to 120 converges in 121 corrector iterations. At target 0.72%, width 120 remains GPU-bound after 578 seconds, while width 160 converges in 171 iterations and releases through NESTOR in 3. Width 160 then accepts targets through 0.8%. Direct steps to 0.825% fail after 1,000 iterations from both 0.8% and 0.8125%; the accepted step collapses first to 1.25e-4 and then 6.25e-5, with the 0.81875% midpoint requiring 746 iterations. Residual-weighted coarse Schur and exact-JVP VMEC2000-style nearest-radial blocks are both worse and are removed. Widths 240 and 320 also exceed the baseline wall time. This lane is too expensive to extrapolate to 1--50%; a future preconditioner must retain the nonlocal constrained hybrid Jacobian, not only radial, channel, or Fourier-local structure."
+  "assessment": "Equation balancing converts the isolated 0.35% result into a genuine adaptive free-boundary branch through achieved beta 0.833%. The limiting physical components shift between FSQR and FSQL, requiring static then norm-derived lambda scaling. Cadence 20 remains the best globalization screen. At target beta 0.7040625%, increasing total Krylov work at restart 80 does not converge, while expanding the Arnoldi basis to 120 converges in 121 corrector iterations. At target 0.72%, width 120 remains GPU-bound after 578 seconds, while width 160 converges in 171 iterations and releases through NESTOR in 3. Width 160 then accepts targets through 0.8%. Direct steps to 0.825% fail after 1,000 iterations from both 0.8% and 0.8125%; the accepted step collapses first to 1.25e-4 and then 6.25e-5, with the 0.81875% midpoint requiring 746 iterations. Coarse Schur, VMEC2000-style nearest-radial blocks, widths 240/320, and a complete 2,294-unknown dense Jacobian solve all fail the exact barrier and are removed. The dense result isolates nonlinear/globalization behavior rather than missing linear coupling. This Fourier free-boundary lane is deferred above achieved beta 0.833%; it is not extrapolated to 1--50%."
 }
