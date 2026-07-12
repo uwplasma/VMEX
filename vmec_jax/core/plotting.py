@@ -715,11 +715,11 @@ def plot_mout(mout, outdir: str | Path, *, name: str | None = None) -> dict[str,
     for coil in np.asarray(data.coil_xyz):
         closed = np.vstack([coil, coil[0]])
         ax.plot(closed[:, 2], closed[:, 0], closed[:, 1], color="#C44E52", lw=2)
-    radial_index = max(1, len(s) // 2)
+    radial_index = len(s) - 1
     for theta0 in np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False):
         line_z, line_x, line_y = _mirror_field_line(data, radial_index, theta0, z_order)
-        ax.plot(line_z, line_x, line_y, color="black", lw=2.6)
-        ax.plot(line_z, line_x, line_y, color="#00BFC4", lw=1.2)
+        ax.plot(line_z, 1.01 * line_x, 1.01 * line_y, color="black", lw=3.2)
+        ax.plot(line_z, 1.01 * line_x, 1.01 * line_y, color="#00BFC4", lw=1.5)
     fig.colorbar(plt.cm.ScalarMappable(norm=norm, cmap="viridis"), ax=ax, shrink=0.72, pad=0.05, label="LCFS |B| [T]")
     ax.set(title="Solved mirror equilibrium", xlabel="z [m]", ylabel="x [m]", zlabel="y [m]")
     ax.set_box_aspect((2.2, 1.0, 1.0))
