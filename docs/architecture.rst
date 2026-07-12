@@ -93,6 +93,19 @@ Module map
      - objectives (quasisymmetry ratio residual, QI residual, aspect, iota,
        mirror, well, DMerc, ...) + least-squares driver
      - (no VMEC2000 equivalent)
+   * - :mod:`~vmec_jax.core.omnigenity`
+     - traceable Boozer ``|B|`` spectrum + Goodman constructed-QI residual
+     - (no VMEC2000 equivalent)
+   * - :mod:`~vmec_jax.core.bootstrap`
+     - differentiable Redl bootstrap ``<J.B>``, mismatch objective,
+       self-consistency Picard loop
+     - (no VMEC2000 equivalent; BOOTSJ-adjacent scope)
+   * - :mod:`~vmec_jax.core.stability`
+     - infinite-n ideal-ballooning eigenvalue objective (COBRA-style)
+     - (no VMEC2000 equivalent; COBRA companion code)
+   * - :mod:`~vmec_jax.core.turbulence`
+     - GK flux-tube geometry adapter + SPECTRAX-GK turbulence proxies
+     - (no VMEC2000 equivalent)
    * - :mod:`~vmec_jax.core.nyquist`
      - Nyquist-resolution Fourier tables, ``bsubs``, jxbforce, Mercier
      - ``wrout.f``, ``bss.f``, ``jxbforce.f``, ``mercier.f``

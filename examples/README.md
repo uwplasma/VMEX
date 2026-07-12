@@ -47,8 +47,11 @@ All runnable examples live under this single `examples/` tree.
     only accepted equilibria. The requested schedule extends through 50%, but
     the present Fourier corrector stops honestly at its documented sub-1%
     conditioning barrier; no prescribed high-beta surfaces are plotted.
-- `optimization/`: precise QA/QH/QP/QI from a circular torus — one file each;
-  the QI ESS example reports each omnigenity component and writes the standard
+- `optimization/`: precise QA/QH/QP/QI from a circular torus — one file each,
+  plus `QA_bootstrap_selfconsistent.py` / `QH_bootstrap_selfconsistent.py`,
+  which reproduce the self-consistent Redl bootstrap-current workflow of
+  arXiv:2205.02914. The QI ESS example reports each omnigenity component and
+  writes the standard
   cross-section, profile, `|B|`, and field-line-overlaid 3D figures.
   `QA_optimization_ess.py` is the single-call variant. The QI ESS script
   releases all large-`max_mode` harmonics at once, then runs three measured

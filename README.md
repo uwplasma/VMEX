@@ -318,6 +318,28 @@ implicit path is **CPU-pinned by default** (it is kernel-launch-bound; GPUs
 lose at every production size measured), while forward solves at high radial
 resolution are GPU-competitive — the device policy picks per stage.
 
+### Self-consistent bootstrap current
+
+vmec-jax implements the **Redl** analytic bootstrap-current formula
+([Redl et al. 2021](https://doi.org/10.1063/5.0012664)) as a differentiable
+objective, and a fixed-boundary self-consistency loop that regenerates the
+toroidal current from the plasma geometry and kinetic profiles. Below,
+reproducing [Landreman, Buller & Drevlak 2022](https://arxiv.org/abs/2205.02914):
+the published precise QA and QH optima are loaded, their current profile is
+**erased**, and `self_consistent_bootstrap` recovers it from the Redl formula
+plus the paper's density/temperature profiles.
+
+![Self-consistent bootstrap current vs the published equilibria and SFINCS](docs/_static/figures/readme_bootstrap.png)
+
+*Recovered current density &#10216;J·B&#10217; (VMEC, blue) matches the analytic
+Redl profile (green), the published self-consistent equilibrium (grey), and —
+for QA — the paper's SFINCS drift-kinetic benchmark (circles). Converged in 7
+(QA) / 4 (QH) Picard iterations to bootstrap mismatch `f_boot` = 2.0e-6 / 7.5e-6;
+the recovered plasma current lands within **1.9 % (QA)** and **0.3 % (QH)** of
+the published `CURTOR`. Reproduce with
+`python examples/optimization/{QA,QH}_bootstrap_selfconsistent.py` (needs the
+paper's Zenodo dataset).*
+
 ## vmec-jax vs DESC
 
 [DESC](https://desc-docs.readthedocs.io/) is the other JAX-native,

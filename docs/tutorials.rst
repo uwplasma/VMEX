@@ -150,16 +150,42 @@ Optimization
 The ``examples/optimization/`` gallery drives a circular torus to precise
 quasisymmetric (QA, QH, QP) and quasi-isodynamic (QI) configurations with
 gradient-based least squares — user-authored ``(function, target, weight)``
-objective terms and one least-squares call per ``max_mode`` continuation stage,
-using implicit-differentiation gradients (``jac="implicit"``).  See
-:doc:`optimization` for the objective library (quasisymmetry residual, aspect
-ratio, magnetic well, Mercier ``DMerc``, ``|grad B|`` length) and the differentiation
-machinery, and the QA example for the canonical pattern:
+objective terms with implicit-differentiation gradients
+(``jac="implicit"``).  See :doc:`objectives` for the full objective library
+(quasisymmetry and omnigenity residuals, Redl bootstrap, ballooning
+stability, turbulence proxies, scalar targets) and :doc:`optimization` for
+the differentiation machinery and the measured campaign timings.
+
+Single-call ESS optimization (recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The recommended pattern is **one** ``least_squares`` call with *all* the
+boundary harmonics released at once and Exponential Spectral Scaling
+(``use_ess=True``) ordering them through the trust region — no
+``max_mode`` continuation loop.  Measured: precise QA (QS 7.2e-6) in
+14.5 minutes on a CPU.
+
+.. literalinclude:: ../examples/optimization/QA_optimization_ess.py
+   :language: python
+
+``QI_optimization_ess.py`` is the quasi-isodynamic analogue: the traceable
+Goodman constructed-QI residual (:class:`~vmec_jax.core.omnigenity.QIResidual`)
+plus practical targets, one call at ``max_mode = 6`` (25x residual
+reduction in 17.3 minutes).
+
+Staged ``max_mode`` continuation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The classic ladder — one least-squares stage per ``max_mode``, each seeded
+with the previous stage's boundary — remains available and is what
+``QA_optimization.py``, ``QH_optimization.py``, ``QP_optimization.py``, and
+``QI_optimization.py`` run (QI with a quasi-poloidal basin stage first).
+It reaches the same precision class as the single-call pattern at roughly
+twice the wall time; the scripts stay side by side so the comparison is
+reproducible.
 
 .. literalinclude:: ../examples/optimization/QA_optimization.py
    :language: python
 
-The QH, QP, and QI scripts follow the same structure at different field periods;
-QI runs a quasi-poloidal stage first, then refines to omnigenity.  These are the
-heaviest examples (thousands of solves across the continuation ladder) and are
+These are the heaviest examples (hundreds to thousands of solves) and are
 exercised in the nightly CI run.
