@@ -135,6 +135,20 @@ def test_free_boundary_beta_scan(tmp_path):
     assert len(betas) == 3 and betas[-1] > 1e-2, f"beta should reach finite values: {betas}"
 
 
+@pytest.mark.full  # nightly: free-bdy NESTOR solve with direct-coil Biot-Savart (~30s)
+def test_free_boundary_essos_coils(tmp_path):
+    pytest.importorskip("essos")
+    out = _run_example(EXAMPLES / "free_boundary_essos_coils.py", tmp_path, timeout=900)
+    # table rows: nominal%  PRES_SCALE  actual-beta%  iters  fsq  aspect  axis-R
+    rows = re.findall(r"^\s*([0-9.]+)%\s+([0-9.]+)\s+([0-9.]+)%\s+\d+\s+([0-9.eE+-]+)",
+                      out, re.M)
+    assert len(rows) == 1, f"CI mode should solve exactly one beta point:\n{out}"
+    nominal, _pres_scale, actual, fsq = (float(x) for x in rows[0])
+    assert abs(actual - nominal) <= 0.15, (
+        f"actual betatotal {actual}% not calibrated to nominal {nominal}%")
+    assert fsq < 1e-7, f"free-boundary point should converge, fsq={fsq}"
+
+
 def test_finite_beta_scan(tmp_path):
     out = _run_example(EXAMPLES / "finite_beta_scan.py", tmp_path, timeout=900)
     # rows: pres_scale  beta_tot  R_axis  Shafranov  minDMerc
