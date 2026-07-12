@@ -12,6 +12,16 @@
     "central_finite_difference": 0.0028769273738293855,
     "relative_error": 1.1029371517885357e-7
   },
+  "anisotropic_closure_case": {
+    "grid": {"ns": 3, "ntheta": 1, "nxi": 5},
+    "closure": "IsotropicPressureClosure evaluated through the anisotropic functional",
+    "controls": ["boundary", "axial_flux", "closure_coefficients", "current_derivative"],
+    "adjoint_iterations": 4,
+    "adjoint_relative_residual": 1.809034721792946e-16,
+    "directional_derivative": 0.001793742346117788,
+    "central_finite_difference": 0.0017937423554825749,
+    "relative_error": 5.220809394438049e-9
+  },
   "matrix_free_case": {
     "grid": {"ns": 17, "ntheta": 1, "nxi": 41},
     "active_unknowns": 585,
@@ -26,5 +36,5 @@
     "block_adjoint_relative_residual": 2.6913e-15,
     "process_peak_rss_mib": 983.6
   },
-  "assessment": "The exact reverse solve is independent of the number of physical controls. It is FD-validated with all four control groups active and remains matrix-free above the dense reference threshold. Three-color block Thomas is exact but takes 4.79 s versus 3.41 s for one preconditioned-GMRES right-hand side, so GMRES remains the scalar-adjoint default; block mode is retained for future batched sensitivities. Anisotropic and coupled free-boundary adjoints remain open."
+  "assessment": "The exact reverse solve is independent of the number of physical controls. It is FD-validated with all four isotropic control groups active and with registered closure coefficients through the anisotropic functional, and remains matrix-free above the dense reference threshold. Three-color block Thomas is exact but takes 4.79 s versus 3.41 s for one preconditioned-GMRES right-hand side, so GMRES remains the scalar-adjoint default; block mode is retained for future batched sensitivities. Dedicated bi-Maxwellian/tabulated and coupled free-boundary adjoints remain open."
 }

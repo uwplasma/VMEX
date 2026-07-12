@@ -1880,7 +1880,7 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        `custom_vjp`; solve JVP/VJP systems matrix-free with the primal preconditioner. Validate
        boundary, pressure, current, and coil derivatives against central differences. Do not
        differentiate through iteration histories or restore fingerprint/replay machinery.
-       **STATUS (2026-07-12): fixed-boundary isotropic adjoint landed.** The packed, constrained
+       **STATUS (2026-07-12): fixed-boundary adjoint landed.** The packed, constrained
        energy-gradient residual now has an exact reverse-AD transpose solve using the primal
        separable radial/poloidal/axial preconditioner. One solve returns total gradients with
        respect to boundary, axial flux, mass/pressure profile, and axial current. A finite-current,
@@ -1892,8 +1892,11 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        the scheduled full test keeps it above the dense-reference threshold. Core's three-color
        radial block factorization was ported and reaches `2.69e-15` with zero GMRES corrections,
        but costs 4.79 s for this single RHS; unlike a many-column forward Jacobian it cannot
-       amortize assembly, so GMRES remains the scalar-adjoint default. Anisotropic controls, a public
-       custom-VJP solve wrapper, and free-boundary coil derivatives remain before M9 promotion.
+       amortize assembly, so GMRES remains the scalar-adjoint default. Registered closure pytrees
+       now use the same path: closure coefficients plus boundary/flux/
+       current match reconverged FD to `5.22e-9` through the anisotropic functional. Dedicated
+       bi-Maxwellian/tabulated cases, a public custom-VJP solve wrapper, and free-boundary coil
+       derivatives remain before M9 promotion.
    11. **M10 — performance, outputs, and promotion.** Benchmark CPU/GPU cold/warm time, memory,
        scaling, and CLI versus JAX lanes; add mirror-native `mout` output, restart, `--plot`, docs,
        and short root examples. Remove obsolete archived implementations only after parity data are

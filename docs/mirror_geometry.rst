@@ -312,9 +312,11 @@ factorization reaches ``2.69e-15`` without a GMRES correction, but costs 4.79
 seconds for this one right-hand side. Unlike a many-column forward Jacobian,
 the scalar reverse adjoint cannot amortize its assembly, so preconditioned
 GMRES remains the default and block mode is an opt-in verification path.
-Anisotropic closure
-parameters and coupled free-boundary coil derivatives remain M9 promotion
-gates.
+Anisotropic closure pytrees use the same adjoint. A consistent isotropic closure evaluated through
+the anisotropic functional validates closure coefficients, boundary, flux, and
+current together to ``5.22e-9`` relative against reconverged finite
+differences. Dedicated bi-Maxwellian/tabulated closure cases and coupled
+free-boundary coil derivatives remain M9 promotion gates.
 
 ``device=None`` uses the shared measured device policy. On the office host,
 the corrected ``15x15`` case took 35.2 seconds on CPU and 44.2 seconds on one

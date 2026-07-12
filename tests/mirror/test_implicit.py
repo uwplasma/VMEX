@@ -15,10 +15,12 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
+    IsotropicPressureClosure,
     fixed_boundary_adjoint,
     fixed_boundary_parameters,
     project_fixed_boundary_state,
     solve_fixed_boundary_cli,
+    solve_anisotropic_fixed_boundary_cli,
 )
 
 
@@ -121,11 +123,82 @@ def test_fixed_boundary_adjoint_rejects_unconverged_state() -> None:
             Result(), parameters, grid, lambda state, energy: energy.total
         )
 
+
+def test_anisotropic_closure_adjoint_matches_central_difference() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=3, nxi=5), ftol=1.0e-12, max_iterations=500
+    )
+    grid = config.build_grid()
+    xi, s = jnp.asarray(grid.xi), jnp.asarray(grid.s)
+    boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.12 * (1.0 - xi**2)), grid)
+    closure = IsotropicPressureClosure(jnp.asarray([2.0e3, -2.0e3]))
+    current = 1.0e-2 * s
+    result = solve_anisotropic_fixed_boundary_cli(
+        MirrorState.from_boundary(boundary, grid),
+        boundary,
+        grid,
+        config,
+        closure,
+        axial_flux_derivative=0.1,
+        current_derivative=current,
+        solve_lambda=True,
+        require_convergence=True,
+    )
+    parameters = fixed_boundary_parameters(
+        boundary,
+        axial_flux_derivative=0.1,
+        current_derivative=current,
+        pressure_closure=closure,
+    )
+    def quantity(state, _energy):
+        return state.radius_scale[1, 0, grid.nxi // 2]
+    adjoint = fixed_boundary_adjoint(
+        result, parameters, grid, quantity, solve_lambda=True, rtol=1.0e-10
+    )
+    boundary_direction = 0.002 * (1.0 - xi**2)[None, :]
+    flux_direction = 0.1
+    current_direction = 0.05 * s
+    closure_direction = jnp.asarray([100.0, -100.0])
+    predicted = float(
+        jnp.vdot(adjoint.gradient.boundary_radius, boundary_direction)
+        + adjoint.gradient.axial_flux_derivative * flux_direction
+        + jnp.vdot(adjoint.gradient.current_derivative, current_direction)
+        + jnp.vdot(
+            adjoint.gradient.pressure_closure.coefficients, closure_direction
+        )
+    )
+    epsilon = 1.0e-4
+    values = []
+    for sign in (-1.0, 1.0):
+        varied_boundary = MirrorBoundary(
+            boundary.radius_scale + sign * epsilon * boundary_direction
+        )
+        varied_closure = IsotropicPressureClosure(
+            closure.coefficients + sign * epsilon * closure_direction
+        )
+        varied = solve_anisotropic_fixed_boundary_cli(
+            project_fixed_boundary_state(result.state, varied_boundary, grid),
+            varied_boundary,
+            grid,
+            config,
+            varied_closure,
+            axial_flux_derivative=0.1 + sign * epsilon * flux_direction,
+            current_derivative=current + sign * epsilon * current_direction,
+            solve_lambda=True,
+            require_convergence=True,
+        )
+        values.append(float(quantity(varied.state, varied.energy)))
+    finite_difference = (values[1] - values[0]) / (2.0 * epsilon)
+
+    assert adjoint.converged
+    assert adjoint.relative_residual < 1.0e-10
+    np.testing.assert_allclose(predicted, finite_difference, rtol=2.0e-7)
+
     class AnisotropicResult:
         converged = True
         energy = object()
 
-    with pytest.raises(ValueError, match="isotropic"):
+    with pytest.raises(ValueError, match="energy model"):
         fixed_boundary_adjoint(
             AnisotropicResult(),
             parameters,
