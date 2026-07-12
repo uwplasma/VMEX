@@ -151,8 +151,23 @@ _register(ImplicitParams)
 
 
 def params_from_input(inp: VmecInput) -> ImplicitParams:
-    """Extract the differentiable parameters of an input as a pytree."""
-    arr = lambda a: jnp.asarray(np.asarray(a, dtype=np.float64))  # noqa: E731
+    """Extract the differentiable parameters of an input as a pytree.
+
+    On an accelerator box the pytree is *committed* to the CPU
+    (:func:`vmec_jax.core.device.resolve_implicit_device`): every eager op of
+    a ``jax.grad``/``jax.jacrev`` over :func:`run` then executes there, which
+    is where the launch-bound implicit adjoint is fastest — measured 57 s
+    (GPU) vs seconds (CPU) for one solovev ``value_and_grad`` (plan.md R24).
+    A user ``JAX_PLATFORMS`` pin or an already-CPU backend stands the pin
+    down; ``optimize.least_squares`` applies the same rule to its dof vector.
+    """
+    from .device import resolve_implicit_device
+
+    dev = resolve_implicit_device(None, None)
+    if dev is None:
+        arr = lambda a: jnp.asarray(np.asarray(a, dtype=np.float64))  # noqa: E731
+    else:
+        arr = lambda a: jax.device_put(np.asarray(a, dtype=np.float64), dev)  # noqa: E731
     return ImplicitParams(
         rbc=arr(inp.rbc), rbs=arr(inp.rbs), zbc=arr(inp.zbc), zbs=arr(inp.zbs),
         phiedge=arr(inp.phiedge), pres_scale=arr(inp.pres_scale),
