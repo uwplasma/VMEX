@@ -1889,7 +1889,10 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        reconverged central-difference equilibria to `1.10e-7` relative. The root example writes
        MOUT and reviewed geometry/field/residual/sensitivity plots. A 585-unknown matrix-free case
        reaches `9.23e-10` adjoint residual in 171 iterations and 3.41 s versus 8.61 s for the primal;
-       the scheduled full test keeps it above the dense-reference threshold. Anisotropic controls, a public
+       the scheduled full test keeps it above the dense-reference threshold. Core's three-color
+       radial block factorization was ported and reaches `2.69e-15` with zero GMRES corrections,
+       but costs 4.79 s for this single RHS; unlike a many-column forward Jacobian it cannot
+       amortize assembly, so GMRES remains the scalar-adjoint default. Anisotropic controls, a public
        custom-VJP solve wrapper, and free-boundary coil derivatives remain before M9 promotion.
    11. **M10 — performance, outputs, and promotion.** Benchmark CPU/GPU cold/warm time, memory,
        scaling, and CLI versus JAX lanes; add mirror-native `mout` output, restart, `--plot`, docs,

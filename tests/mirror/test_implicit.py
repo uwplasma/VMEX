@@ -167,8 +167,27 @@ def test_fixed_boundary_adjoint_closes_above_dense_reference_limit() -> None:
         ],
         rtol=1.0e-9,
     )
+    block_adjoint = fixed_boundary_adjoint(
+        result,
+        fixed_boundary_parameters(boundary, axial_flux_derivative=0.1),
+        grid,
+        lambda state, _energy: state.radius_scale[
+            grid.ns // 2, 0, grid.nxi // 2
+        ],
+        linear_solver="block",
+        rtol=1.0e-9,
+    )
 
     assert (grid.ns - 2) * (grid.nxi - 2) > 512
     assert adjoint.converged
     assert adjoint.iterations < 250
     assert adjoint.relative_residual < 1.0e-8
+    assert block_adjoint.converged
+    assert block_adjoint.iterations == 0
+    assert block_adjoint.relative_residual < 1.0e-12
+    np.testing.assert_allclose(
+        block_adjoint.gradient.boundary_radius,
+        adjoint.gradient.boundary_radius,
+        rtol=1.0e-5,
+        atol=5.0e-10,
+    )

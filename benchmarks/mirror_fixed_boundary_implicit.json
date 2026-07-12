@@ -21,7 +21,10 @@
     "adjoint_wall_s": 3.4138,
     "adjoint_iterations": 171,
     "adjoint_relative_residual": 9.2273e-10,
+    "block_adjoint_wall_s": 4.7895,
+    "block_adjoint_iterations": 0,
+    "block_adjoint_relative_residual": 2.6913e-15,
     "process_peak_rss_mib": 983.6
   },
-  "assessment": "The exact reverse solve is independent of the number of physical controls. It is FD-validated with all four control groups active and remains matrix-free above the dense reference threshold. Anisotropic and coupled free-boundary adjoints remain open."
+  "assessment": "The exact reverse solve is independent of the number of physical controls. It is FD-validated with all four control groups active and remains matrix-free above the dense reference threshold. Three-color block Thomas is exact but takes 4.79 s versus 3.41 s for one preconditioned-GMRES right-hand side, so GMRES remains the scalar-adjoint default; block mode is retained for future batched sensitivities. Anisotropic and coupled free-boundary adjoints remain open."
 }

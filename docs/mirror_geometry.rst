@@ -307,7 +307,12 @@ sensitivity figures. Above the dense-reference threshold, an ``ns=17,
 nxi=41`` case with 585 active unknowns takes 3.41 seconds and 171 adjoint
 iterations to reach ``9.23e-10`` relative residual; its primal polish takes
 8.61 seconds and 951 linear iterations. Compact evidence is in
-``benchmarks/mirror_fixed_boundary_implicit.json``. Anisotropic closure
+``benchmarks/mirror_fixed_boundary_implicit.json``. A three-color radial block
+factorization reaches ``2.69e-15`` without a GMRES correction, but costs 4.79
+seconds for this one right-hand side. Unlike a many-column forward Jacobian,
+the scalar reverse adjoint cannot amortize its assembly, so preconditioned
+GMRES remains the default and block mode is an opt-in verification path.
+Anisotropic closure
 parameters and coupled free-boundary coil derivatives remain M9 promotion
 gates.
 

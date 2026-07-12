@@ -14,6 +14,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
+from solvax import block_thomas_factor, block_thomas_solve
 
 from .forces import MirrorEnergy, mirror_energy
 from .model import MirrorBoundary, MirrorState, project_fixed_boundary_state
@@ -42,6 +43,7 @@ class MirrorAdjointResult:
     iterations: int
     relative_residual: float
     converged: bool
+    linear_solver: str
 
 
 jax.tree_util.register_dataclass(
@@ -57,7 +59,7 @@ jax.tree_util.register_dataclass(
 jax.tree_util.register_dataclass(
     MirrorAdjointResult,
     data_fields=["value", "gradient"],
-    meta_fields=["iterations", "relative_residual", "converged"],
+    meta_fields=["iterations", "relative_residual", "converged", "linear_solver"],
 )
 
 
@@ -86,6 +88,7 @@ def fixed_boundary_adjoint(
     *,
     gamma: float = 5.0 / 3.0,
     solve_lambda: bool = False,
+    linear_solver: str = "gmres",
     rtol: float = 1.0e-10,
     max_restarts: int = 20,
 ) -> MirrorAdjointResult:
@@ -94,7 +97,11 @@ def fixed_boundary_adjoint(
     The packed equilibrium equation is the gradient of the normalized MHD
     energy with all fixed side/end geometry and the stream-function gauge
     already eliminated. The transpose system is solved matrix-free with exact
-    JAX products and the primal separable preconditioner.
+    JAX products and the primal separable preconditioner. ``linear_solver`` is
+    ``"gmres"`` for the usual one-RHS reverse solve. ``"block"`` assembles the
+    exact nearest-radial block-tridiagonal Hessian with three-color probes and
+    certifies its SOLVAX block-Thomas solution with GMRES; this is useful for
+    verification or future batched right-hand sides, not faster for one scalar.
     """
 
     if not bool(result.converged):
@@ -103,6 +110,8 @@ def fixed_boundary_adjoint(
         raise ValueError("fixed_boundary_adjoint currently supports isotropic energy only")
     if rtol <= 0.0 or max_restarts < 1:
         raise ValueError("rtol and max_restarts must be positive")
+    if linear_solver not in {"block", "gmres"}:
+        raise ValueError("linear_solver must be 'block' or 'gmres'")
     boundary = MirrorBoundary(jnp.asarray(parameters.boundary_radius))
     vectorizer = _MirrorStateVectorizer.build(
         result.state,
@@ -174,17 +183,63 @@ def fixed_boundary_adjoint(
         nonlocal iterations
         iterations += 1
 
-    adjoint, info = gmres(
-        operator,
-        np.asarray(quantity_x, dtype=float),
-        M=inverse,
-        restart=min(50, x_star.size),
-        maxiter=int(max_restarts),
-        rtol=float(rtol),
-        atol=0.0,
-        callback=count_iteration,
-        callback_type="pr_norm",
-    )
+    right_hand_side = np.asarray(quantity_x, dtype=float)
+    initial_adjoint = None
+    solver_used = "gmres"
+    if linear_solver == "block" and not vectorizer.lambda_size:
+        radial_blocks = grid.ns - 2
+        block_size = grid.ntheta * (grid.nxi - 2)
+        if radial_blocks * block_size != x_star.size:
+            raise ValueError("packed geometry does not match radial block structure")
+        colors = jnp.repeat(jnp.arange(3), block_size)
+        columns = jnp.tile(jnp.arange(block_size), 3)
+        active_rows = jnp.arange(radial_blocks)[None, :] % 3 == colors[:, None]
+        probes = (
+            active_rows[:, :, None]
+            * jax.nn.one_hot(columns, block_size, dtype=x_star.dtype)[:, None, :]
+        ).reshape(3 * block_size, x_star.size)
+        responses = jax.jit(jax.vmap(transpose_action))(probes).reshape(
+            3, block_size, radial_blocks, block_size
+        )
+        radial_index = jnp.arange(radial_blocks)
+
+        def band(offset: int) -> Array:
+            values = responses[
+                (radial_index + offset) % 3, :, radial_index, :
+            ]
+            return jnp.swapaxes(values, 1, 2)
+
+        factors = block_thomas_factor(band(-1), band(0), band(1))
+        initial_adjoint = np.asarray(
+            block_thomas_solve(
+                factors, jnp.asarray(right_hand_side).reshape(radial_blocks, block_size)
+            )
+        ).reshape(-1)
+        solver_used = "block+gmres"
+
+    if initial_adjoint is not None:
+        initial_error = matrix_vector(initial_adjoint) - right_hand_side
+        initial_relative_residual = float(
+            np.linalg.norm(initial_error)
+            / max(np.linalg.norm(right_hand_side), np.finfo(float).tiny)
+        )
+    else:
+        initial_relative_residual = np.inf
+    if initial_relative_residual <= rtol:
+        adjoint, info = initial_adjoint, 0
+    else:
+        adjoint, info = gmres(
+            operator,
+            right_hand_side,
+            x0=initial_adjoint,
+            M=inverse,
+            restart=min(50, x_star.size),
+            maxiter=min(3, int(max_restarts)) if initial_adjoint is not None else int(max_restarts),
+            rtol=float(rtol),
+            atol=0.0,
+            callback=count_iteration,
+            callback_type="pr_norm",
+        )
     linear_error = matrix_vector(adjoint) - np.asarray(quantity_x, dtype=float)
     relative_residual = float(
         np.linalg.norm(linear_error)
@@ -203,6 +258,7 @@ def fixed_boundary_adjoint(
         iterations=iterations,
         relative_residual=relative_residual,
         converged=bool(info == 0 and relative_residual <= max(10.0 * rtol, 1.0e-12)),
+        linear_solver=solver_used,
     )
 
 
