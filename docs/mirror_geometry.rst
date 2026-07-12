@@ -365,6 +365,14 @@ the corrected ``15x15`` case took 35.2 seconds on CPU and 44.2 seconds on one
 RTX A4000. Energy and force diagnostics agree to numerical precision. Explicit
 ``device=`` arguments and JAX platform environment pins are always honored.
 
+At the small finite-pressure/current fixed point used to compare public lanes,
+the office-CPU CLI takes ``16.28/3.75 s`` cold/warm. The custom-VJP forward
+takes ``18.65/4.04 s``, or 14.6% cold and 7.7% warm overhead, with a 5.6%
+peak-RSS increase. The CLI therefore remains the fastest forward interface;
+the differentiable lane pays a bounded callback cost and supplies the
+iteration-independent reverse solve. Complete scaling values are in
+``benchmarks/mirror_performance.json``.
+
 .. image:: _static/figures/mirror_fixed_boundary_3d.png
    :alt: Fixed-boundary helical mirror refinement, force residuals, and CPU/GPU timing
    :width: 100%

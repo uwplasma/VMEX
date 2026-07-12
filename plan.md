@@ -1934,6 +1934,11 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        7,846 lines, its largest module is 855 lines, and generated outputs remain ignored. This meets
        the revised 50--60 file / 30--31k line budget without merging distinct operators into oversized
        modules.
+       The office-CPU CLI/custom-VJP fixed-forward comparison is
+       `16.28/18.65 s` cold and `3.75/4.04 s` warm, with 1.06x RSS; the CLI remains the fastest
+       forward path. The launch-bound `(15,5,15)` fixed case remains faster on CPU than A4000
+       (`35.21/44.20 s`). Fixed scaling through 3,805 unknowns and the rejected M7 BIE scaling are
+       consolidated in `benchmarks/mirror_performance.json`.
        Coverage instrumentation is an explicit promotion gate: the dedicated mirror shard passes,
        but coverage.py currently aborts when tracing nested JAX/BIE solves. The release-core 95%
        report transparently omits `vmec_jax/mirror/*` until that crash is fixed; no mirror coverage
