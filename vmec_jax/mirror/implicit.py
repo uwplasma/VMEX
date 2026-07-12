@@ -99,6 +99,8 @@ def fixed_boundary_adjoint(
 
     if not bool(result.converged):
         raise ValueError("implicit differentiation requires a converged mirror result")
+    if not isinstance(result.energy, MirrorEnergy):
+        raise ValueError("fixed_boundary_adjoint currently supports isotropic energy only")
     if rtol <= 0.0 or max_restarts < 1:
         raise ValueError("rtol and max_restarts must be positive")
     boundary = MirrorBoundary(jnp.asarray(parameters.boundary_radius))

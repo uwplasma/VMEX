@@ -111,3 +111,15 @@ def test_fixed_boundary_adjoint_rejects_unconverged_state() -> None:
         fixed_boundary_adjoint(
             Result(), parameters, grid, lambda state, energy: energy.total
         )
+
+    class AnisotropicResult:
+        converged = True
+        energy = object()
+
+    with pytest.raises(ValueError, match="isotropic"):
+        fixed_boundary_adjoint(
+            AnisotropicResult(),
+            parameters,
+            grid,
+            lambda state, energy: energy.total,
+        )
