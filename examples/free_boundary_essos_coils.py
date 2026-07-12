@@ -107,11 +107,18 @@ while targets:
     )
     # Local secant predictor. Resetting every point from the global SLOPE
     # made a nominal 0.1% beta step jump pressure by 13% near beta=2.6%.
-    ps = (
-        rows[-1][1] * target / max(rows[-1][2], 1e-6)
-        if rows and target > 0.0 and rows[-1][2] > 0.0
-        else target / SLOPE
-    )
+    if len(rows) >= 2 and abs(rows[-1][2] - rows[-2][2]) > 1e-8:
+        ps = rows[-1][1] + (
+            (target - rows[-1][2])
+            * (rows[-1][1] - rows[-2][1])
+            / (rows[-1][2] - rows[-2][2])
+        )
+    elif rows and target > 0.0 and rows[-1][2] > 0.0:
+        ps = rows[-1][1] * target / rows[-1][2]
+    else:
+        ps = target / SLOPE
+    if not np.isfinite(ps) or ps <= 0.0:
+        ps = target / SLOPE
     failed_fsq = None
     for attempt in range(3):  # solve, read actual beta, rescale (~linear)
         inp_i = dataclasses.replace(current, pres_scale=ps)
