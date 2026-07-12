@@ -181,11 +181,16 @@ implicit value. Evidence is retained in ``benchmarks/free_boundary_sensitivity.j
 coil-shape solved-LCFS derivatives until a strict-tolerance continuation yields a smooth independent
 finite-difference gate.
 
-**R3. Memory + cold-start workstream.** Current: solves 0.7-1.5 GB (Fortran 27-43 MB), implicit grad
-3.4 GB; cold CLI pays 5-25 s XLA setup. Gate: profile XLA graph construction + peak buffers; donate
-CLI-lane buffers; eliminate redundant structural jit variants; reuse fixed-shape residual/adjoint
-kernels; persistent-cache guidance documented. Targets: ≥2x solve-memory reduction; cold small-deck
-CLI < ~2.5 s; record in benchmarks. This is the lane the reviews scored lowest (cold/memory 40%).
+**R3. Default memory controls COMPLETE; cold start OPEN.** R26e established that
+``jac_chunk_size="auto"`` bounds Jacobian columns, the converged-state memo reduced the measured
+optimization peak from 6.0 to 3.5 GB, and the faster block-Jacobian default peaks at 4.9 GB because
+of transient XLA compilation rather than retained solver data. ``jac_solver="gmres"`` remains the
+documented lower-memory fallback. No additional runtime-memory knob is justified. The remaining
+gate is cold-start graph/cache work: profile graph construction, reduce structural JIT variants,
+and document persistent-cache setup; target a small-deck CLI cold start below roughly 2.5 s. The
+current circular-tokamak measurement is 9.51 s with a fresh cache and 3.37 s in a second process
+using that cache (0.42 s import-only), so import trimming is not the main remaining lever. Evidence
+is in ``benchmarks/cold_start.json``.
 
 **R4. GPU production evidence.** Current: microbenchmarks + fixes done; production runs across all
 solver types/modes/geometries not yet benchmarked. Gate: `benchmarks/gpu_baseline.json` extended on

@@ -1,0 +1,18 @@
+{
+  "schema": "vmec_jax.cold_start/1",
+  "date": "2026-07-12",
+  "platform": "Apple CPU, Python 3.11, JAX x64",
+  "case": "examples/data/input.circular_tokamak, 368 iterations",
+  "fresh_cache": {
+    "process_wall_s": 9.51,
+    "reported_solver_and_io_s": 8.73,
+    "peak_rss_gb": 0.94
+  },
+  "persistent_cache_second_process": {
+    "process_wall_s": 3.37,
+    "reported_solver_and_io_s": 2.60,
+    "peak_rss_gb": 0.85
+  },
+  "import_only_wall_s": 0.42,
+  "assessment": "The persistent cache removes 6.14 s (65%) but the second-process wall remains above the approximate 2.5 s target. Further work must reduce cached executable dispatch/solve cost or provide a non-JAX CLI lane; import time is not the dominant remainder."
+}
