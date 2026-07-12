@@ -179,6 +179,15 @@ def test_qs_optimization_examples(case, tmp_path):
     assert match is not None and np.isfinite(float(match.group(2)))
 
 
+@pytest.mark.full  # nightly: single-stage ESS variants (one least_squares call, no ladder)
+@pytest.mark.parametrize("case", ["QA", "QI"])
+def test_ess_optimization_examples(case, tmp_path):
+    script = EXAMPLES / "optimization" / f"{case}_optimization_ess.py"
+    out = _run_example(script, tmp_path)
+    _assert_cost_decreased(out, f"{case}-ESS")
+    assert "one call, no max_mode ladder" in out
+
+
 @pytest.mark.full  # nightly: QP-basin + QI stages + Boozer, subprocess cold-start heavy
 def test_qi_optimization_example(tmp_path):
     pytest.importorskip("booz_xform_jax")
