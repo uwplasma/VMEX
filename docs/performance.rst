@@ -124,7 +124,7 @@ Reading the table:
 Production workflows: CPU vs GPU
 --------------------------------
 
-``benchmarks/profile_production.py`` times the five workflows a design
+``benchmarks/profile_production.py`` times the production workflows a design
 loop actually runs, at production resolution. Warm wall-clock, measured
 2026-07-12 (CPU: local Apple-Silicon, idle; GPU: office 2x NVIDIA RTX
 A4000, jax cuda12 — different hosts, so read each column on its own terms):
@@ -144,10 +144,13 @@ A4000, jax cuda12 — different hosts, so read each column on its own terms):
      - 9.3 s
    * - implicit ``value_and_grad`` (boundary dofs)
      - **17.3 s**
-     - 27.8 s
+     - 24.3 s
    * - ``least_squares`` opt step (2 nfev)
-     - **88.8 s**
-     - 151 s
+     - **34.3 s**
+     - 85.2 s
+   * - CTH free-boundary solve (574 iterations)
+     - n/a
+     - 7.40 s (12.9 ms/iter)
 
 The headline: **a fast desktop CPU beats the A4000 GPU on every production
 workflow, even at ns = 201.** Forward solves are close (the GPU is
@@ -158,6 +161,12 @@ implicit-gradient work to the CPU by default (an earlier placement leak
 here cost 2x on GPU boxes — fixed, and the pin is now automatic). The
 GPU's wins come against slower server cores and larger-than-production
 problem sizes (see the GPU guidance below).
+
+Cold GPU walls are much larger: 31.3 s fixed, 60.2 s multigrid, 83.4 s
+implicit gradient, 93.4 s free boundary, and 203 s for the optimization
+case. Coupled free-boundary sensitivity exceeded a five-minute case cap.
+See ``benchmarks/production_gpu_2026-07-12.json``; never compare a cold GPU
+number with a warm CPU number.
 
 Optimization wall time
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -339,7 +348,10 @@ solves. Two knobs bound the optimization-time footprint:
   wall time, bit-identically (plan.md R16).
 - The converged-state memo (plan.md R25.1) removed a redundant equilibrium
   solve per accepted optimizer iterate and cut the profiled ``opt_step``
-  peak RSS from 6.0 to 3.5 GB.
+  peak RSS from 6.0 to 3.5 GB. The faster block-Jacobian default trades this
+  to about 4.9 GB CPU compile peak for a 33x Jacobian-phase speedup;
+  ``jac_solver="gmres"`` remains the lower-memory fallback. The office GPU
+  optimization process peaked at 8.64 GB host RSS.
 
 GPU guidance
 ------------

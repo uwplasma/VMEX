@@ -192,10 +192,15 @@ current circular-tokamak measurement is 9.51 s with a fresh cache and 3.37 s in 
 using that cache (0.42 s import-only), so import trimming is not the main remaining lever. Evidence
 is in ``benchmarks/cold_start.json``.
 
-**R4. GPU production evidence.** Current: microbenchmarks + fixes done; production runs across all
-solver types/modes/geometries not yet benchmarked. Gate: `benchmarks/gpu_baseline.json` extended on
-office to fixed+free, sym+lasym, single+multigrid, small→large ns, with the crossover documented and
-the auto device policy validated end-to-end; README/docs GPU section updated.
+**R4. GPU production evidence COMPLETE.** The existing small-to-large matrix is now joined by a
+fresh office A4000 production run at the merged main tip: fixed ``ns=201`` warm 6.91 s, multigrid
+9.57 s, CTH free boundary 7.40 s, implicit gradient 24.3 s, and a two-evaluation optimization 85.2 s
+with 8.64 GB peak host RSS. Coupled free-boundary sensitivity exceeded a five-minute case cap. GPU
+is therefore allowed for large forward solves, while gradients, optimization, and coupled
+sensitivity remain CPU-preferred. Cold graph construction (31--203 s) must always be reported
+separately. Full evidence and CPU references are in
+``benchmarks/production_gpu_2026-07-12.json``; micro/crossover data remain in
+``benchmarks/gpu_baseline.json``.
 
 **R5. Finite-beta + diagnostics parity. FORWARD COMPLETE; PROFILE AD DEFERRED.** The four-case
 golden WOUT suite passes all 12 completeness/value/roundtrip tests and checks current harmonics,
@@ -621,21 +626,15 @@ everything), paired with R12 (`tests/core_new/` → `tests/`):
   **Finding #2:** `opt_step` (2-nfev max_mode-1 least_squares, minimal_seed_nfp2) warm ~63 s / peak
   RSS ~6 GB on a contended local CPU — the heaviest per-call production path; profile where the time
   goes (per-dof implicit JVP solves vs forward solves vs trf overhead) and cut it.
-  **CPU profile (local M-series, idle, post-R25.1, 2026-07-12):** fixed ns=201 warm 5.5 s
-  (4.3 ms/iter), multigrid 7.8 s, implicit_grad warm 17.3 s (cold 59.9 — compile is 42 s, an R26c
-  target), opt_step warm 88.8 s (the R25 baseline number on idle hardware). **CPU beats the A4000 GPU
-  on every case even at ns=201** (GPU: 6.9/9.3/27.8/151 s) — on fast desktop CPUs the accelerator adds
-  nothing at production sizes; the device policy's GPU wins were vs the office box's slower cores.
-  **Measured (office 2x A4000, CPU contended by QA/QP):** before-fix GPU warm — fixed ns=201 6.9 s
-  (5.4 ms/iter), multigrid 9.3 s, free-bdy 8.0 s (13.9 ms/iter) → forward solves ARE GPU-competitive at
-  ns=201; implicit_grad 57 s, opt_step 151 s → gradients pathological on GPU. **After the params-pin fix
-  (9f239620): implicit_grad 57→27.8 s (2×+, on contended cores; more when idle). opt_step unchanged
-  (152 s) — its dof vector was already pinned; the remaining cost is ALGORITHMIC:** scipy trf's fun(x0)
-  + jac(x0) each trigger a separate solve_implicit at the same x, and least_squares re-solves the final
-  equilibrium via solve_equilibrium for the .equilibrium attribute (no hot restart). Next levers: share
-  the frozen solve between fun/jac at the same x (hot-restart makes the 2nd cheap but not free), reuse
-  the last trial state for result.equilibrium, and re-measure. CPU profile still pending (local bench
-  occupies the box).
+  **Current CPU/GPU profile (2026-07-12, post-R25/R26 main integration):** local M-series CPU warm
+  walls are fixed ns=201 5.5 s, multigrid 7.8 s, implicit gradient 17.3 s, and opt step 34.3 s. Office
+  A4000 warm walls are 6.91, 9.57, 24.3, and 85.2 s respectively; CTH free boundary is 7.40 s
+  (12.9 ms/iteration). Cold GPU walls are 31.3--203 s, optimization peaks at 8.64 GB host RSS, and
+  coupled sensitivity exceeds a five-minute case cap. Thus forward solves are GPU-competitive, but a
+  fast desktop CPU wins every measured production case and remains mandatory for gradients and
+  optimization. The converged-state memo and block Jacobian explain the opt-step improvement from
+  the former 88.8/151 s CPU/GPU baselines. Exact records are in
+  ``benchmarks/production_gpu_2026-07-12.json``.
 
 **R26. FINAL PRE-VMEX SWEEP (user 2026-07-12; the last content pass — after R24/R25 conclude, before
 R9 release and the VMEX rename R21).** Ten items (+k added 2026-07-12):
