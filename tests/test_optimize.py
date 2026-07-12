@@ -432,6 +432,34 @@ def test_least_squares_implicit_jac_solver_block(solovev_eq):
                           jac_solver="svd", max_nfev=1)
 
 
+def test_least_squares_implicit_warm_start_modes(solovev_eq):
+    """R25.4 perturbation warm start reaches the same optimum as plain hot restart.
+
+    ``warm_start`` only changes the *initial guess* of each trial's host
+    solve (perturbation = first-order DESC-style prediction from the stashed
+    Jacobian linearization; state = last converged state), never the fixed
+    point — so the optimizer must walk the same trust-region path to the
+    same cost.  ``solve_stats`` exposes the forward-solve effort totals that
+    the R25.4 benchmark compares.
+    """
+    jax.config.update("jax_disable_jit", False)
+    inp = VmecInput.from_file(DATA_DIR / "input.solovev")
+    obj = [(opt.aspect_ratio, 4.0, 1.0)]
+    ref = opt.least_squares(obj, inp, max_mode=1, jac="implicit",
+                            warm_start="state", max_nfev=3)
+    got = opt.least_squares(obj, inp, max_mode=1, jac="implicit",
+                            warm_start="perturbation", max_nfev=3)
+    np.testing.assert_allclose(got.cost, ref.cost, rtol=1e-10)
+    np.testing.assert_allclose(got.x, ref.x, rtol=1e-8, atol=1e-12)
+    for res in (ref, got):
+        assert res.solve_stats is not None
+        assert res.solve_stats["solves"] >= res.nfev
+        assert res.solve_stats["iterations"] > 0
+    with pytest.raises(ValueError, match="warm_start"):
+        opt.least_squares(obj, inp, max_mode=1, jac="implicit",
+                          warm_start="broyden", max_nfev=1)
+
+
 def test_least_squares_max_mode_schedule():
     """Staged max_mode continuation: stages chain through result.input.
 

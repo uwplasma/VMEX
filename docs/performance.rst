@@ -179,14 +179,6 @@ the *same number of iterations* as VMEC2000 on the benchmark decks:
      - within the ±25% parity gate
      -
 
-.. figure:: _static/figures/readme_parity.png
-   :alt: iteration parity of vmec_jax against VMEC2000 golden runs
-   :align: center
-   :width: 95%
-
-   Iteration-for-iteration parity against the golden VMEC2000 fixtures
-   (regenerated with ``benchmarks/make_readme_figures.py --only parity``).
-
 Parity holds not just at the converged endpoint but along the whole
 trajectory.  The trace below runs the quick-start QH case
 (``nfp4_QH_warm_start``, single grid at ``ns=51``) through all three codes

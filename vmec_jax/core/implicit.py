@@ -655,6 +655,21 @@ _HOT_CACHE = weakref.WeakKeyDictionary()  # cfg -> last converged SpectralState
 # this removes one full equilibrium solve per accepted iterate (plan R25.1).
 _LAST_SOLVE = weakref.WeakKeyDictionary()
 
+# cfg -> one-shot SpectralState seed for the NEXT host solve (plan R25.4):
+# the optimizer's trial evaluation deposits the DESC-style first-order
+# perturbation prediction ``x_ref + sum_j (dx)_j dz_j`` (arXiv:2203.15927,
+# ``eq.perturb`` before ``eq.solve``) right before the solve that consumes
+# (pops) it.  A missing/failed seed falls back silently to the plain
+# ``_HOT_CACHE`` hot restart — only the initial guess changes, never the
+# fixed point.
+_PERTURB_SEED = weakref.WeakKeyDictionary()
+
+# cfg -> {"solves": int, "iterations": int}: cumulative host forward-solve
+# effort of a config (memo hits excluded) — the instrumentation behind the
+# R25.4 warm-start benchmarks (``optimize.least_squares`` attaches it to the
+# scipy result as ``solve_stats``).
+_SOLVE_STATS = weakref.WeakKeyDictionary()
+
 
 def _params_key(params: ImplicitParams) -> bytes:
     return b"".join(np.asarray(leaf, dtype=np.float64).tobytes()
@@ -665,9 +680,11 @@ def _host_solve(cfg: ImplicitConfig, params: ImplicitParams) -> SolveResult:
     key = _params_key(params)
     hit = _LAST_SOLVE.get(cfg)
     if hit is not None and hit[0] == key:
+        _PERTURB_SEED.pop(cfg, None)  # already solved: drop the stale seed
         return hit[1]
     inp2 = input_with_params(cfg.inp, params)
-    seed = _HOT_CACHE.get(cfg) if cfg.hot_restart else None
+    hot = _HOT_CACHE.get(cfg) if cfg.hot_restart else None
+    perturb = _PERTURB_SEED.pop(cfg, None) if cfg.hot_restart else None
     if cfg.multigrid:
         ns_arr = np.asarray(inp2.ns_array)
         ftol_arr = np.asarray(inp2.ftol_array, dtype=float).copy()
@@ -684,15 +701,23 @@ def _host_solve(cfg: ImplicitConfig, params: ImplicitParams) -> SolveResult:
             inp2, cfg.resolution, ftol=cfg.ftol,
             max_iterations=cfg.max_iterations, mode=cfg.mode,
             lconm1=cfg.lconm1, initial_state=init)
-    try:
-        result = run(seed)
-    except Exception:
-        if seed is None:
-            raise
-        result = run(None)  # a bad hot seed must not fail the trial
+    # Seed ladder: perturbation prediction -> plain hot restart -> cold.
+    # A bad warm seed must not fail the trial (only the initial guess is at
+    # stake — every rung converges to the same fixed point).
+    attempts = [s for s in (perturb, hot) if s is not None] + [None]
+    for k, init in enumerate(attempts):
+        try:
+            result = run(init)
+            break
+        except Exception:
+            if k == len(attempts) - 1:
+                raise
     if cfg.hot_restart and bool(result.converged):
         _HOT_CACHE[cfg] = result.state
     _LAST_SOLVE[cfg] = (key, result)
+    stats = _SOLVE_STATS.setdefault(cfg, {"solves": 0, "iterations": 0})
+    stats["solves"] += 1
+    stats["iterations"] += int(result.iterations)
     return result
 
 

@@ -1,52 +1,47 @@
 #!/usr/bin/env python
 """Quasi-isodynamic (QI) optimization from a circular torus, nfp=1.
 
-Two-stage campaign, one terms-list swap — the "QP first, then QI" route:
+Two-stage campaign, one terms-list swap — the "QP first, then QI" route,
+now with exact implicit gradients in *both* stages (plan.md R26h.h2):
 
 1. **QP basin** (implicit gradients): drive the quasisymmetry ratio residual
    with helicity (m, n) = (0, 1) plus aspect / iota-floor / mirror targets.
    This forms poloidally closed ``|B|`` contours — the topological
    prerequisite of omnigenity — from the crude circular seed.
-2. **QI refinement** (finite differences): swap the QP term for the
-   Goodman-style quasi-isodynamic residual
-   (:func:`vmec_jax.optimize.quasi_isodynamic_residual_from_wout` — bounce
-   width variance, branch widths, profile consistency, branch-shuffle), which
-   aligns the bounce distances of the trapped-particle wells across field
-   lines.  The Boozer transform runs on host (booz_xform_jax), so this stage
-   uses ``jac=None``.
+2. **QI refinement** (implicit gradients): swap the QP term for the
+   *traceable* omnigenity residual (:class:`vmec_jax.core.omnigenity.
+   QIResidual` — Goodman constructed-QI-target distance on a fully
+   differentiable in-state Boozer ``|B|`` transform: bounce-distance
+   uniformity, extremum-contour closure, single-well monotonicity;
+   Goodman et al., J. Plasma Phys. 89, 905890504 (2023), arXiv:2211.09829).
+   Unlike the earlier wout/booz_xform residual this stage runs with
+   ``jac="implicit"`` too — one exact Jacobian per trust-region step instead
+   of one finite-difference equilibrium solve per boundary dof — so the
+   continuation ladder extends to max_mode 6 (168 boundary dofs).
 
-Honest comparison with the legacy seed machinery: the old
-``QI_optimization_nfp1.py`` prepared its start with a bespoke seed
-preconditioner (``prepare_simple_omnigenity_seed_input`` + target-helicity
-sign seeding + a staged runner, ~1.5k lines of support code, since removed
-from the tree, so a side-by-side rerun is no longer possible).  The staged
-route below replaces all of it: stage 1 alone takes the raw circular torus
-into a QP basin, and stage 2 refines omnigenity from there — the achieved
-values quoted above come from exactly this script with no seed machinery.
+The full boundary-harmonic ladder is ``MAX_MODE_SCHEDULE = (1, 2, 3, 4, 5,
+6)``: the QP stages climb 1 -> 3 (the basin is insensitive to the deep
+harmonics), the QI stages refine at 3 and continue 4 -> 6.  The seed is
+built from scratch (mpol = ntor = 7, one harmonic above the deepest stage)
+with the same circular-torus coefficients as ``input.minimal_seed_nfp1``.
 
-Expected runtime: multi-hour on the office 36-core CPU at the default
-budget (the stage-2 finite differences dominate; the implicit QP stages
-are CPU-pinned).  Achieved (default budget, office 36-core CPU,
-2026-07-11, this script as-is): the implicit QP stages take the QI residual
-total 2.430 (circular nfp1 seed) -> ~0.64, and the Boozer QI stage then
-refines it to QI total 2.139e-02 (QP total 1.38e-02, |mean iota| 0.15) --
-a > 2-order improvement.  This is a strong QP->QI result but *not* precise
-QI: the aspect ratio drifts to ~10.9 at the low aspect weight, and the
-omnigenity residual plateaus well above the ~1e-3 precise bar.  Requires
-``pip install booz_xform_jax``.
+Honest history: the previous revision of this script (git history) used the
+distilled 4-term wout-engine QI residual with finite differences for stage
+2 (max_mode 3 only) and reached QI total 2.139e-02 from a 2.430 seed on the
+office 36-core CPU — a > 2-order improvement but *not* precise QI, with the
+residual plateauing near the FD noise floor.  This revision replaces the
+formulation and the gradient path (the two suspects for that plateau);
+full-budget achieved numbers for the new pipeline are not yet recorded —
+expect a multi-hour CPU run at the default budget.  Stage 1 remains
+basin-sensitive: different CPU runs can land in different QP basins, and
+the implicit path is required (finite differences land in a much worse
+basin; cf. ``QP_optimization.py``).
 
-Honest caveat (2026-07-11): QI is the class most dependent on the quality
-of the QP basin and on the omnigenity residual.  Reaching a *good* QP
-basin is the prerequisite and it is basin-sensitive -- stage 1 must use
-the implicit path (finite differences land in a much worse basin; cf.
-``QP_optimization.py``), and different CPU runs land in different basins
-(QI total 2.1e-2 to 6.6e-1 observed across runs).  Precise QI is *not*
-reached by the current 4-term Goodman residual (bounce-width variance,
-branch widths, profile consistency, branch shuffle); it would need a
-richer omnigenity formulation -- a proper Omnigenity/OmnigenousField
-target plus an EffectiveRipple (eps_eff) neoclassical metric (plan.md
-R17.7) -- which is not yet implemented here.  Do not expect precise QI
-from this script as-is.
+Validation of the objective itself lives in ``tests/test_omnigenity.py``:
+the traceable Boozer spectrum matches booz_xform_jax mode-by-mode, the
+residual is exactly zero on an analytic QI field, far lower on the bundled
+QI deck than on tokamak/QA states (same ordering as the wout-engine QI
+total), and composes through ``jac="implicit"``.
 """
 
 import os
@@ -57,16 +52,21 @@ import jax.numpy as jnp
 
 import vmec_jax as vj
 from vmec_jax import optimize as opt
+from vmec_jax.core.omnigenity import QIResidual
 
 # --------------------------- parameters ------------------------------------
-INPUT_FILE = Path(__file__).resolve().parents[1] / "data" / "input.minimal_seed_nfp1"
+NFP = 1
+MPOL = NTOR = 7                            # one harmonic above max_mode 6
+R0, A_MINOR = 1.0, 0.2                     # circular-torus seed (minimal_seed_nfp1)
+PHIEDGE = 0.083
 OUT_DIR = Path("output_QI_optimization")
 SURFACES = np.linspace(0.1, 1.0, 6)        # QP and QI surfaces
 ASPECT_TARGET = 6.0
 IOTA_FLOOR = 0.15
 MIRROR_TARGET = 0.20
-QP_SCHEDULE = (1, 2, 3)                    # stage 1 (implicit gradients)
-QI_SCHEDULE = (3,)                         # stage 2 (finite differences)
+MAX_MODE_SCHEDULE = (1, 2, 3, 4, 5, 6)     # full boundary-harmonic ladder
+QP_SCHEDULE = MAX_MODE_SCHEDULE[:3]        # stage 1: QP basin (implicit)
+QI_SCHEDULE = MAX_MODE_SCHEDULE[2:]        # stage 2: QI refinement (implicit)
 QP_NFEV, QI_NFEV = 2000, 1000              # trial budgets per stage
 FTOL = 1e-6                                # per-stage convergence tolerance
 if os.environ.get("VMEC_JAX_EXAMPLES_CI") == "1":  # smoke-test budget
@@ -74,15 +74,20 @@ if os.environ.get("VMEC_JAX_EXAMPLES_CI") == "1":  # smoke-test budget
     FTOL = 1e-4
 
 # --------------------------- seed equilibrium -------------------------------
-inp = vj.VmecInput.from_file(INPUT_FILE)
+rbc = np.zeros((2 * NTOR + 1, MPOL))       # dense INDATA layout [n + NTOR, m]
+zbs = np.zeros((2 * NTOR + 1, MPOL))
+rbc[NTOR, 0] = R0                          # RBC(0,0): major radius
+rbc[NTOR, 1] = A_MINOR                     # RBC(0,1) = ZBS(0,1): circular
+zbs[NTOR, 1] = A_MINOR                     # cross-section of radius a
+inp = vj.VmecInput(
+    nfp=NFP, mpol=MPOL, ntor=NTOR, rbc=rbc, zbs=zbs, phiedge=PHIEDGE,
+    lasym=False, lfreeb=False, mgrid_file="NONE",
+    ncurr=1, curtor=0.0, pres_scale=1.0,   # AM defaults to 0: vacuum, no net current
+    ns_array=[35], ftol_array=[1e-13], niter_array=[1500], delt=0.9,
+)
 eq = opt.solve_equilibrium(inp)
 qp = opt.QuasisymmetryRatioResidual(SURFACES, helicity_m=0, helicity_n=1)
-
-
-def qi_residuals(eq):
-    """Goodman-style QI residual vector of a converged equilibrium."""
-    out = opt.quasi_isodynamic_residual_from_wout(eq, surfaces=SURFACES)
-    return out["residuals1d"]
+qi = QIResidual(SURFACES)                  # traceable omnigenity residual
 
 
 def iota_shortfall(state, rt):
@@ -90,7 +95,7 @@ def iota_shortfall(state, rt):
 
 
 def report(tag, eq):
-    qi_total = float(np.sum(np.asarray(qi_residuals(eq)) ** 2))
+    qi_total = float(qi.total(eq))
     print(f"[{tag}] QI total = {qi_total:.6e}, QP total = {float(qp.total(eq)):.6e}, "
           f"aspect = {float(opt.aspect_ratio(eq.state, eq.runtime)):.4f}, "
           f"mean iota = {float(opt.mean_iota(eq.state, eq.runtime)):.4f}")
@@ -106,7 +111,7 @@ practical_terms = [
     (opt.mirror_ratio, MIRROR_TARGET, 10.0),
 ]
 qp_terms = [(qp, 0.0, 1.0)] + practical_terms             # stage 1
-qi_terms = [(qi_residuals, 0.0, 10.0)] + practical_terms  # stage 2
+qi_terms = [(qi, 0.0, 10.0)] + practical_terms            # stage 2
 
 # --------------------------- stage 1: QP basin ------------------------------
 for max_mode in QP_SCHEDULE:
@@ -120,13 +125,13 @@ for max_mode in QP_SCHEDULE:
         report(f"QP stage {max_mode}", result.equilibrium)
 
 # --------------------------- stage 2: QI refinement -------------------------
-# The Boozer-based QI residual is a host (wout-engine) objective, so this
-# stage differentiates by finite differences (jac=None, hot-restarted trials).
+# The traceable omnigenity residual differentiates end-to-end, so the QI
+# stages use the same implicit-gradient path as the QP basin stages.
 for max_mode in QI_SCHEDULE:
     print(f"\n===== QI stage, max_mode = {max_mode} =====")
     result = opt.least_squares(
-        qi_terms, inp, max_mode=max_mode, jac=None,
-        use_ess=True, verbose=1, max_nfev=QI_NFEV, ftol=FTOL, xtol=1e-10, diff_step=1e-4,
+        qi_terms, inp, max_mode=max_mode, jac="implicit",
+        use_ess=True, verbose=1, max_nfev=QI_NFEV, ftol=FTOL, xtol=1e-10,
     )
     inp = result.input
     if result.equilibrium is not None:

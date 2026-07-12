@@ -48,6 +48,9 @@ All runnable examples live under this single `examples/` tree.
     the present Fourier corrector stops honestly at its documented sub-1%
     conditioning barrier; no prescribed high-beta surfaces are plotted.
 - `optimization/`: precise QA/QH/QP/QI from a circular torus — one file each,
+  plus `QA_optimization_ess.py` / `QI_optimization_ess.py`: the SINGLE-call
+  variants — all large-max_mode harmonics at once, Exponential Spectral
+  Scaling (`use_ess`) replacing the continuation ladder,
   simsopt-style (`(function, target, weight)` terms + one least-squares call
   per `max_mode` continuation stage, implicit adjoint gradients).  All read
   `VMEC_JAX_EXAMPLES_CI=1` to shrink budgets for the CI smoke tests
