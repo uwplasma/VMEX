@@ -653,8 +653,11 @@ Jacobian, redundant final solve_equilibrium):
      jax.jvp probes (cost independent of dof count), solvax.block_thomas factor once, backsolve all
      24-120 dof RHS, keep a 2-3-iter GMRES corrector for exactness. 2-5x on the jac phase; also reuses
      as forward Newton preconditioner + perturbation seed.
-  3. **GCROT recycle-space carry across dof chunks and iterates** (SOLVAX gcrot already returns (C,U);
-     lax.scan over chunks carrying the pair). ~1.3-2x on jac, stacks with 1+2.
+  3. **GCROT recycle-space carry — LANDED AS OPT-IN, NEGATIVE RESULT (f1fdd509).** Plumbing exact
+     (lax.scan carry, vmap-shared within chunks) but solvax v0.1's FIFO cycle-correction recycle space
+     POISONS later solves (1.7-3.4x more iterations, Jacobian drift 1.6e-2): needs harmonic-Ritz
+     GCRO-DR in SOLVAX (→ R26b item). Default recycle=False keeps the exact path; flip when SOLVAX
+     upgrades.
   Runner-up Broyden secant (only option that weakens the per-iterate exactness); long-term: one-shot/
   SAND (~4x one solve for a whole optimization, needs replacing the scipy driver).
   Gate: a QA/QH-class max_mode-5 campaign (same schedule as R1) completes in <1 h on the office CPU
