@@ -17,7 +17,13 @@ mirror practical targets.
 
 Physics: nfp=1 vacuum quasi-isodynamic shaping from a circular torus,
 mpol=ntor=7.  All gradients via ``jac="implicit"`` (adjoint + block-
-tridiagonal Jacobian + perturbation warm start).
+tridiagonal Jacobian + perturbation warm start).  Measured 2026-07-12 on the
+office 36-core CPU:
+
+    seed QI 4.515e-01 -> final QI 1.812e-02 (25x) in ONE call, 1037 s
+    (17.3 min), 168 dofs; iota 0.137, mirror 0.28 held (aspect relaxed to
+    10.8 under its weak 0.25 weight — retighten it if a compact device is
+    the goal).
 """
 
 import os
