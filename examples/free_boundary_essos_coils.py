@@ -41,7 +41,7 @@ INPUT_FILE = DATA / "input.LandremanPaul2021_QA_lowres"       # plasma seed deck
 OUT_DIR = Path("output_free_boundary_essos_coils")
 REPORT_BETAS = [0.0, 1.0, 2.0, 3.0]  # review/plot targets [%]
 # The local pressure response steepens above 2%, so retain 0.1% branch steps.
-TARGET_BETAS = [0.0, 1.0, 2.0] + [round(x, 1) for x in np.arange(2.1, 3.01, 0.1)]
+TARGET_BETAS = REPORT_BETAS[:3] + [round(x, 1) for x in np.arange(2.1, 3.01, 0.1)]
 BETA_TOL = 0.15                       # accept |betatotal - target| below this [%]
 SLOPE = 1.45e-3                       # first-guess beta[%] per unit PRES_SCALE
 NS, MPOL, NTOR = 51, 5, 5
