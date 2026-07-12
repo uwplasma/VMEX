@@ -24,7 +24,8 @@ All runnable examples live under this single `examples/` tree.
     (coil currents fixed); the LCFS is re-solved by NESTOR at each beta.
   - `free_boundary_essos_coils.py` — free-boundary beta scan directly from
     ESSOS coils (direct JAX Biot-Savart, no mgrid file); `PRES_SCALE` is
-    calibrated per point so the *actual* wout `betatotal` hits 0/1/2/3 %.
+    calibrated per point so the *actual* wout `betatotal` targets 0--5 % with
+    bounded adaptive continuation.
   - `take_free_boundary_gradients.py` — differentiate a free-boundary field
     diagnostic through the virtual-casing vacuum field.
   - `mirror_free_boundary_beta_scan.py` — solve the straight-axis two-coil
@@ -47,6 +48,8 @@ All runnable examples live under this single `examples/` tree.
     only accepted equilibria. The requested schedule extends through 50%, but
     the present Fourier corrector stops honestly at its documented sub-1%
     conditioning barrier; no prescribed high-beta surfaces are plotted.
+  - `single_stage_free_boundary_opt.py` — optimize coil currents to confine a
+    target plasma by minimizing <(B.n)^2> with the exact virtual-casing gradient.
 - `optimization/`: precise QA/QH/QP/QI from a circular torus — one file each,
   plus `QA_bootstrap_selfconsistent.py` / `QH_bootstrap_selfconsistent.py`,
   which reproduce the self-consistent Redl bootstrap-current workflow of
