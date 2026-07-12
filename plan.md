@@ -1715,8 +1715,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       corrector iterations and releases at achieved beta 0.7896%. Target 0.8% then converges in
       565 corrector iterations and releases at achieved beta 0.8147%. A direct step to target
       0.825% exhausts 1,000 iterations at `1.075e-8/6.55e-10/1.001e-8`; bisecting to 0.8125%
-      converges in 554 iterations and releases at achieved beta 0.8272%. Continue with measured
-      target-beta increments of `1.25e-4`. The previous block-preconditioner
+      converges in 554 iterations and releases at achieved beta 0.8272%. A second direct 0.825%
+      attempt from that midpoint also exhausts 1,000 iterations; bisecting again to 0.81875%
+      converges in 746 iterations and releases at achieved beta 0.8333%. Accepted increments have
+      collapsed to `6.25e-5`, so the matrix-free path is not viable to extrapolate to 1--50%.
+      Retain a coarse radial/channel Schur correction only if it beats the exact 0.825% barrier.
+      The previous block-preconditioner
       requirement was premature: use the staged widths 80/120/160 and continue through a refined
       ladder to 1%. Implement a larger block/Schur method only if these simpler settings reach
       another measured barrier.

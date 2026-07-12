@@ -185,7 +185,12 @@ Target 0.8% converges in 565 corrector iterations and releases at achieved
 beta 0.8147%. A direct target-beta step to 0.825% exhausts 1,000 iterations
 above the component gate. Its 0.8125% midpoint converges in 554 iterations and
 releases at achieved beta 0.8272%, selecting target-beta increments of
-``1.25e-4`` for the next continuation segment.
+``1.25e-4`` for the next continuation segment. A second direct 0.825% attempt
+from that midpoint also exhausts 1,000 iterations. Bisecting again to 0.81875%
+converges in 746 iterations and releases at achieved beta 0.8333%. Because the
+accepted increment has collapsed to ``6.25e-5``, the matrix-free path is not
+extrapolated to 1--50%; an opt-in coarse radial/channel Schur correction must
+beat the exact 0.825% barrier before it is retained.
 The refined continuation therefore stages widths 80, 120, and 160; a coupled
 block or Schur preconditioner is deferred until these simpler bases encounter
 a new measured barrier.
