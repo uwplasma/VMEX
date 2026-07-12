@@ -602,9 +602,22 @@ R9 release and the VMEX rename R21).** Ten items:
      /Users/rogerio/local/20220708-01-zenodo_for_QS_optimization_with_self_consistent_bootstrap_current
      (calculations/ + configurations/). Requires the **Redl (2021) bootstrap formula in vmec_jax,
      DIFFERENTIABLE**, + a loop iterating the current profile to self-consistency with the equilibrium.
-  h. **Literature/code deep dive** (papers, preprints, reports, docs, textbooks; DESC and others) for
-     better implementations of existing functionality AND new research-grade functionality — produce a
-     proposal document and RUN IT BY THE USER before implementing anything.
+  h. **Literature/code deep dive — DONE + USER-APPROVED SCOPE (2026-07-12).** Proposal in
+     notes_r26h_research_proposal.md. User approved for implementation (in this order, respecting
+     file-conflict windows):
+       h1. **Stability objectives**: infinite-n ballooning (JAX COBRA port, batched 1D eigh; blueprint
+           arXiv:2302.07673) + differentiable Mercier/magnetic-well optimization terms. NEW module
+           core/stability.py + tests; no conflicts — START FIRST.
+       h2. **General omnigenity residual** (Dudt arXiv:2305.08026) + constructed-QI targets (Goodman
+           arXiv:2211.09829), reusing the in-tree Boozer transform — fixes the documented "QI not
+           precise" weakness. Touches optimize.py — AFTER R25.3 merges.
+       h3. **Single-stage plasma–coil optimization with exact gradients**, using ESSOS from
+           github.com/uwplasma/ESSOS for the coil side (differentiable Biot-Savart already in-tree via
+           CoilSet.from_essos) + virtual casing + implicit diff composed end-to-end.
+       h4. **Turbulence proxies from spectrax-gk (github.com/uwplasma/spectrax-gk)** — its available
+           LINEAR, NONLINEAR and QUASILINEAR proxies wired as optimization objectives on vmec_jax
+           geometry.
+     NOT selected: bounce-averaged eps_eff/Gamma_c module (deferred).
   i. **Docs upgrade** — deeper algorithms/performance/differentiability/equations explanations, more
      engaging with plots; better tutorials/examples/use cases; user-friendly.
   j. **Release hygiene:** repo <= 10 MB; coverage >= 95% with SIMPLE, CONCISE tests in a SMALL number
