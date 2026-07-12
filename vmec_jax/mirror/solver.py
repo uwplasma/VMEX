@@ -345,6 +345,35 @@ class SeparableMirrorPreconditioner:
         return projected.reshape(np.asarray(vector).shape)
 
 
+def _packed_preconditioner(
+    grid: "MirrorGrid", vectorizer: _MirrorStateVectorizer
+) -> tuple[Any, np.ndarray]:
+    """Build the shared geometry/lambda inverse and mutable block scales."""
+
+    geometry = SeparableMirrorPreconditioner.build(grid)
+    stream = None
+    if vectorizer.lambda_size:
+        stream = SeparableMirrorPreconditioner.build(grid, radial_nodes=grid.ns - 1)
+    scales = np.ones(2)
+
+    def apply(vector: np.ndarray) -> np.ndarray:
+        vector = np.asarray(vector, dtype=float)
+        result = np.array(vector, copy=True)
+        result[: vectorizer.radius_size] = geometry.apply(
+            vector[: vectorizer.radius_size]
+        ) * scales[0]
+        if stream is not None:
+            result[vectorizer.radius_size :] = stream.apply_gauge_free(
+                vector[vectorizer.radius_size :],
+                free_indices=vectorizer.lambda_free_indices,
+                pivot=vectorizer.lambda_pivot,
+                weights=vectorizer.lambda_interior_weights,
+            ) * scales[1]
+        return result
+
+    return apply, scales
+
+
 def _matrix_free_newton_polish(
     x0: np.ndarray,
     gradient_function: Any,
@@ -361,28 +390,7 @@ def _matrix_free_newton_polish(
     """Damped Newton-GMRES polish using exact JAX Hessian products."""
 
     x = np.asarray(x0, dtype=float)
-    geometry_preconditioner = SeparableMirrorPreconditioner.build(grid)
-    lambda_preconditioner = None
-    if vectorizer.lambda_size:
-        lambda_preconditioner = SeparableMirrorPreconditioner.build(
-            grid, radial_nodes=grid.ns - 1
-        )
-    block_scales = np.ones(2)
-
-    def apply_preconditioner(vector: np.ndarray) -> np.ndarray:
-        vector = np.asarray(vector, dtype=float)
-        result = np.array(vector, copy=True)
-        result[: geometry_preconditioner.size] = geometry_preconditioner.apply(
-            vector[: geometry_preconditioner.size]
-        ) * block_scales[0]
-        if lambda_preconditioner is not None:
-            result[vectorizer.radius_size :] = lambda_preconditioner.apply_gauge_free(
-                vector[vectorizer.radius_size :],
-                free_indices=vectorizer.lambda_free_indices,
-                pivot=vectorizer.lambda_pivot,
-                weights=vectorizer.lambda_interior_weights,
-            ) * block_scales[1]
-        return result
+    apply_preconditioner, block_scales = _packed_preconditioner(grid, vectorizer)
 
     hessian_vector = jax.jit(
         lambda point, direction: jax.jvp(

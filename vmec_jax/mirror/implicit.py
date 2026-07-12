@@ -17,7 +17,7 @@ from scipy.sparse.linalg import LinearOperator, gmres
 
 from .forces import MirrorEnergy, mirror_energy
 from .model import MirrorBoundary, MirrorState, project_fixed_boundary_state
-from .solver import SeparableMirrorPreconditioner, _MirrorStateVectorizer
+from .solver import _MirrorStateVectorizer, _packed_preconditioner
 
 Array = Any
 MirrorQuantity = Callable[[MirrorState, MirrorEnergy], Array]
@@ -76,31 +76,6 @@ def fixed_boundary_parameters(
         mass_profile=jnp.asarray(mass_profile),
         current_derivative=jnp.asarray(current_derivative),
     )
-
-
-def _packed_preconditioner(grid, vectorizer):
-    geometry = SeparableMirrorPreconditioner.build(grid)
-    stream = None
-    if vectorizer.lambda_size:
-        stream = SeparableMirrorPreconditioner.build(grid, radial_nodes=grid.ns - 1)
-    scales = np.ones(2)
-
-    def apply(vector: np.ndarray) -> np.ndarray:
-        vector = np.asarray(vector, dtype=float)
-        result = np.array(vector, copy=True)
-        result[: vectorizer.radius_size] = geometry.apply(
-            vector[: vectorizer.radius_size]
-        ) * scales[0]
-        if stream is not None:
-            result[vectorizer.radius_size :] = stream.apply_gauge_free(
-                vector[vectorizer.radius_size :],
-                free_indices=vectorizer.lambda_free_indices,
-                pivot=vectorizer.lambda_pivot,
-                weights=vectorizer.lambda_interior_weights,
-            ) * scales[1]
-        return result
-
-    return apply, scales
 
 
 def fixed_boundary_adjoint(
