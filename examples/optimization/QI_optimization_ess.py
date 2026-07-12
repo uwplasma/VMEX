@@ -78,8 +78,12 @@ def iota_shortfall(state, rt):
 
 
 def report(tag, eq):
-    total = float(qi.total(eq))
+    diagnostics = qi.compute_state(eq.state, eq.runtime)
+    total = float(diagnostics["total"])
     print(f"[{tag}] QI total = {total:.6e}, "
+          f"components = ({float(diagnostics['well_total']):.3e}, "
+          f"{float(diagnostics['extremum_total']):.3e}, "
+          f"{float(diagnostics['squash_total']):.3e}), "
           f"aspect = {float(opt.aspect_ratio(eq.state, eq.runtime)):.4f}, "
           f"mean iota = {float(opt.mean_iota(eq.state, eq.runtime)):.4f}, "
           f"mirror = {float(opt.mirror_ratio(eq.state, eq.runtime)):.4f}")
@@ -120,3 +124,5 @@ if result.equilibrium is not None:
     wout_path = vj.write_wout(OUT_DIR / "wout_QI_ess_optimized.nc",
                               result.equilibrium.wout)
     print(f"wrote {wout_path}")
+    for key, path in vj.plot_wout(wout_path, OUT_DIR).items():
+        print(f"wrote {key}: {path}")

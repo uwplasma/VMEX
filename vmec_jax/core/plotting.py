@@ -129,6 +129,18 @@ def _eval_modes(cos_coeff, sin_coeff, xm, xn, theta, phi):
     )
 
 
+def _eval_modes_paired(cos_coeff, sin_coeff, xm, xn, theta, phi):
+    """Evaluate modes at paired ``(theta[i], phi[i])`` points."""
+    angle = (
+        np.asarray(xm, dtype=float)[:, None] * np.asarray(theta)[None]
+        - np.asarray(xn, dtype=float)[:, None] * np.asarray(phi)[None]
+    )
+    return (
+        np.asarray(cos_coeff, dtype=float) @ np.cos(angle)
+        + np.asarray(sin_coeff, dtype=float) @ np.sin(angle)
+    )
+
+
 def surface_rz(wout, *, s_index: int, theta: np.ndarray, phi: np.ndarray):
     """R, Z on one full-mesh surface, shape (ntheta, nphi)."""
     rmnc, rmns = _coeff_pair(wout, "rmnc", "rmns", s_index)
@@ -408,7 +420,7 @@ def plot_boundary_3d(
     ntheta: int = 60,
     nzeta: int | None = None,
 ) -> Path:
-    """3-D plasma boundary colored by ``|B|`` (full torus)."""
+    """3-D plasma boundary colored by ``|B|`` with LCFS field lines."""
     plt = _import_matplotlib()
     from matplotlib import cm
     from matplotlib.colors import Normalize
@@ -424,13 +436,24 @@ def plot_boundary_3d(
     phi2d = np.meshgrid(phi, theta)[0]
     X, Y = R * np.cos(phi2d), R * np.sin(phi2d)
     B_scaled = (B - B.min()) / (B.max() - B.min() + 1e-30)
+    surface_colors = cm.viridis(B_scaled)
+    surface_colors[..., 3] = 0.82
 
     fig = plt.figure(figsize=(5.2, 4.4), frameon=False)
-    ax = fig.add_subplot(111, projection="3d")
+    ax = fig.add_subplot(111, projection="3d", computed_zorder=False)
     ax.plot_surface(
-        X, Y, Z, facecolors=cm.viridis(B_scaled), rstride=1, cstride=1,
-        antialiased=False, linewidth=0.0,
+        X, Y, Z, facecolors=surface_colors, rstride=1, cstride=1,
+        antialiased=False, linewidth=0.0, zorder=1,
     )
+    line_phi = np.linspace(0.0, 4.0 * np.pi, 720)
+    axis_r, axis_z = axis_rz(wout, line_phi)
+    for alpha in np.linspace(0.0, 2.0 * np.pi, 7, endpoint=False):
+        line_r, line_z = _field_line_rz(wout, alpha, line_phi)
+        line_r = axis_r + 1.015 * (line_r - axis_r)
+        line_z = axis_z + 1.015 * (line_z - axis_z)
+        line_x, line_y = line_r * np.cos(line_phi), line_r * np.sin(line_phi)
+        ax.plot(line_x, line_y, line_z, color="white", lw=1.8, alpha=0.8, zorder=2)
+        ax.plot(line_x, line_y, line_z, color="#111111", lw=0.65, zorder=3)
     scale = 0.7 * max(np.abs(X).max(), np.abs(Y).max())
     ax.auto_scale_xyz([-scale, scale], [-scale, scale], [-scale, scale])
     ax.set_box_aspect([1, 1, 1])
@@ -457,9 +480,11 @@ def _field_line_rz(wout, alpha: float, phi: np.ndarray) -> tuple[np.ndarray, np.
             angle = np.asarray(wout.xm)[:, None] * theta[None] - np.asarray(wout.xn)[:, None] * phi[None]
             lam = np.sum(lmnc[:, None] * np.cos(angle) + lmns[:, None] * np.sin(angle), axis=0)
             theta = theta_star - lam
-    radius, height = surface_rz(wout, s_index=-1, theta=theta, phi=phi)
-    diagonal = np.arange(phi.size)
-    return radius[diagonal, diagonal], height[diagonal, diagonal]
+    rmnc, rmns = _coeff_pair(wout, "rmnc", "rmns", -1)
+    zmns, zmnc = _coeff_pair(wout, "zmns", "zmnc", -1)
+    radius = _eval_modes_paired(rmnc, rmns, wout.xm, wout.xn, theta, phi)
+    height = _eval_modes_paired(zmnc, zmns, wout.xm, wout.xn, theta, phi)
+    return radius, height
 
 
 def plot_hybrid_free_boundary_scan(scan, outdir: str | Path) -> dict[str, Path]:

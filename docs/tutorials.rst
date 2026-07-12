@@ -36,7 +36,7 @@ All diagnostics and the Boozer transform
 
 vmec-jax ships its plotting and its Boozer transform in the box.  This produces
 every ``plot_wout`` figure (flux-surface summary, cross-sections, ``|B|``,
-profiles, 3D render) and the straight-field-line Boozer ``|B|`` spectrum on the last closed
+profiles, and a 3D ``|B|`` render with LCFS field lines) and the straight-field-line Boozer ``|B|`` spectrum on the last closed
 flux surface — the view used to judge quasisymmetry.
 
 .. literalinclude:: ../examples/plot_and_boozer.py

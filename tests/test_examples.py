@@ -219,6 +219,12 @@ def test_ess_optimization_examples(case, tmp_path):
     out = _run_example(script, tmp_path)
     _assert_cost_decreased(out, f"{case}-ESS")
     assert "one call, no max_mode ladder" in out
+    outdir = tmp_path / f"output_{case}_optimization_ess"
+    assert (outdir / f"input.{case}_ess_optimized").exists()
+    assert (outdir / f"wout_{case}_ess_optimized.nc").exists()
+    if case == "QI":
+        assert "components =" in out
+        assert (outdir / "QI_ess_optimized_summary.png").exists()
 
 
 @pytest.mark.full  # nightly: QP-basin + QI stages + Boozer, subprocess cold-start heavy
