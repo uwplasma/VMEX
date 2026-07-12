@@ -118,7 +118,8 @@ a force-converged fixed seed could return before NESTOR activation, and its
 pre-vacuum best checkpoint could reject every coupled update. With signed
 coil-matched ``PHIEDGE``, the unshaped toroidal-flux seed now completes a real
 beta-zero NESTOR turn-on and converges at ``ftol=1e-8`` in three iterations
-using ``DELT=0.002``. Finite-pressure continuation through 50% remains open.
+using ``DELT=0.002``. The finite-pressure continuation result is bounded below;
+it is not a claimed 50% capability.
 
 A split fixed-predictor/fixed-corrector/NESTOR continuation then converges
 target beta 0.05--0.25% (achieved 0.0511--0.2555%); each released-boundary
@@ -138,9 +139,8 @@ matrix-free correction every ten iterations closes the former 0.30% barrier:
 the fixed corrector converges in 291 iterations to
 ``(9.99e-9, 2.49e-9, 3.28e-9)``. The subsequent full NESTOR release converges
 in three iterations at achieved beta 0.3064%. Complete values are in
-``benchmarks/mirror_hybrid_free_boundary.json``. The 0--50% scan remains open
-until adaptive continuation has produced and validated every higher-beta
-equilibrium; no prescribed-boundary result is counted as completion.
+``benchmarks/mirror_hybrid_free_boundary.json``. No prescribed-boundary result
+is counted as completion.
 
 Adaptive continuation above that point rejects target beta 0.50%, 0.40%, and
 0.35% after 1,000 corrector iterations; their largest residual components are
@@ -209,9 +209,9 @@ linear coupling therefore does not globalize this residual. The toroidal
 Fourier free-boundary lane is deferred above achieved beta 0.8333% and is not
 extrapolated to 1--50%. Straight-axis free-boundary mirrors remain the
 validated high-beta path through 50%.
-The refined continuation therefore stages widths 80, 120, and 160; a coupled
-block or Schur preconditioner is deferred until these simpler bases encounter
-a new measured barrier.
+The accepted implementation retains staged widths 80, 120, and 160. Further
+preconditioner or globalization work requires a new formulation and is not a
+release blocker for the straight-axis mirror model.
 
 ``examples/toroidal_stellarator_mirror_hybrid_free_boundary.py`` is the
 reproducible front end for this lane. Its editable target schedule includes
@@ -230,6 +230,19 @@ clone cannot be imported accidentally::
    python -m venv venv
    venv/bin/python -m pip install -e .
    venv/bin/python examples/toroidal_stellarator_mirror_hybrid_free_boundary.py
+
+Plotting and output scope
+-------------------------
+
+Toroidal hybrids use ordinary WOUT files, so ``vmec --plot wout_*.nc`` emits
+surface, ``|B|``, profile, force-history, and 3D figures. The hybrid example
+adds coils, solved LCFS field lines, and beta-continuation cross-sections.
+
+Straight-axis mirror examples currently render the required horizontal 3D,
+coil, field-line, ``|B|``, pressure, cross-section, and residual figures
+directly from the solved in-memory result. Mirror-native ``mout_*.nc`` output
+and ``vmec --plot mout_*.nc`` dispatch are the remaining M10 integration gate;
+straight-axis mirror data must not be encoded as a toroidal WOUT file.
 
 Fixed-boundary 3D solver
 ------------------------

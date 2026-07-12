@@ -11,9 +11,11 @@ the working tree **and from git history** in Phase 1. Keep this plan.md under 20
 document, updated with a short status line per phase as work proceeds, and moved to `docs/dev/` (or
 deleted) at the v0.1.0 release.
 
-**Mirror status (2026-07-09): FINAL IMPLEMENTATION PLAN.** Straight-axis finite-beta free boundary
-is a supported target under the anisotropic `fixed_flux_cut` model in Phase 5; implementation proceeds
-through M0–M10 without reopening the archived solver architecture.
+**Mirror status (2026-07-11): ACTIVE IMPLEMENTATION PLAN.** Straight-axis finite-beta free boundary
+is the supported high-beta target under the anisotropic `fixed_flux_cut` model in Phase 5. The
+toroidal Fourier hybrid is validated only through achieved beta 0.8333% and is deferred above that
+measured limit. Implementation proceeds through the remaining M9--M10 integration gates without
+reopening rejected solver variants.
 
 ---
 
@@ -1736,10 +1738,6 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       the Fourier free-boundary hybrid lane is **deferred above achieved beta 0.8333%**. Do not
       extrapolate it to 1--50% or add more solver variants without a new equilibrium/globalization
       formulation. The straight-axis mirror lanes remain the validated 50% high-beta capability.
-      The previous block-preconditioner
-      requirement was premature: use the staged widths 80/120/160 and continue through a refined
-      ladder to 1%. Implement a larger block/Schur method only if these simpler settings reach
-      another measured barrier.
    10. **M9 — implicit differentiation and optimization.** Wrap the converged mirror residual in a
        `custom_vjp`; solve JVP/VJP systems matrix-free with the primal preconditioner. Validate
        boundary, pressure, current, and coil derivatives against central differences. Do not
@@ -1936,9 +1934,10 @@ Structure:
       solved lateral interfaces satisfy total `B·n` and anisotropic normal-stress balance, every
       beta scan point through 50% is a converged equilibrium, ellipticity gates pass, and
       axisymmetric results agree with independent Pleiades/WHAM-style reference data.
-- [ ] Toroidal stellarator–mirror hybrid converges in the Fourier representation with VMEC2000
-      parity; its spline parameterization demonstrably reduces design variables without changing
-      the equilibrium equations. Free-boundary beta scans use solved surfaces and total `B·n`.
+- [ ] Toroidal stellarator–mirror hybrid has VMEC2000 parity at its documented fixed-boundary
+      tolerance and a reproducible free-boundary continuation through the measured 0.8333% beta
+      limit. Every published point uses a solved surface and total `B·n`; higher beta and a native
+      spline equilibrium state remain explicitly deferred rather than release blockers.
 - [ ] CLI ≥ VMEC2000 speed on ≥80% of suite rows (cold CPU); multigrid faster than VMEC2000
       multigrid on the suite median and faster than our own single-grid; GPU benchmarked;
       hot restart works and is used by examples.
