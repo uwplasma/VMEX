@@ -37,6 +37,23 @@ def boundary_fourier_amplitudes(boundary: "MirrorBoundary") -> Array:
     return jnp.abs(coefficients) * scale[:, None]
 
 
+def boundary_fourier_norms(
+    boundary: "MirrorBoundary", grid: "MirrorGrid"
+) -> tuple[Array, Array]:
+    """Return weighted axial L2 and maximum amplitude of each theta mode.
+
+    Axial norms remain meaningful when a mode vanishes at a symmetry plane,
+    where a relative error based on one collocation point is ill-conditioned.
+    """
+
+    amplitudes = boundary_fourier_amplitudes(boundary)
+    if amplitudes.shape[1] != grid.nxi:
+        raise ValueError("boundary axial size does not match mirror grid")
+    weights = jnp.asarray(grid.axial_basis.weights)
+    l2 = jnp.sqrt(jnp.sum(amplitudes**2 * weights[None, :], axis=1) / jnp.sum(weights))
+    return l2, jnp.max(amplitudes, axis=1)
+
+
 @dataclass(frozen=True)
 class AxisymmetricBetaDiagnostics:
     """Scalar checks for one axisymmetric free-boundary beta point."""
@@ -63,6 +80,8 @@ class NonaxisymmetricBetaDiagnostics:
     center_mean_radius: Array
     center_mean_field: Array
     center_boundary_modes: Array
+    boundary_mode_l2: Array
+    boundary_mode_max: Array
     plasma_volume: Array
     plasma_energy: Array
 
@@ -167,6 +186,8 @@ def summarize_nonaxisymmetric_beta_scan(
     for requested_beta, result in zip(betas, results, strict=True):
         pressure = result.perpendicular_pressure
         center_field = jnp.sqrt(result.plasma_b_squared[0, :, center])
+        boundary_modes = boundary_fourier_amplitudes(result.boundary)
+        mode_l2, mode_max = boundary_fourier_norms(result.boundary, grid)
         summaries.append(
             NonaxisymmetricBetaDiagnostics(
                 requested_beta=requested_beta,
@@ -181,7 +202,9 @@ def summarize_nonaxisymmetric_beta_scan(
                 ),
                 center_mean_radius=jnp.mean(result.boundary.radius_scale[:, center]),
                 center_mean_field=jnp.mean(center_field),
-                center_boundary_modes=boundary_fourier_amplitudes(result.boundary)[:, center],
+                center_boundary_modes=boundary_modes[:, center],
+                boundary_mode_l2=mode_l2,
+                boundary_mode_max=mode_max,
                 plasma_volume=_plasma_volume(result, grid),
                 plasma_energy=result.plasma_energy.total,
             )

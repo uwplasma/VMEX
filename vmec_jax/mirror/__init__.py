@@ -13,6 +13,7 @@ from .diagnostics import (
     AxisymmetricBetaDiagnostics,
     NonaxisymmetricBetaDiagnostics,
     boundary_fourier_amplitudes,
+    boundary_fourier_norms,
     summarize_axisymmetric_beta_scan,
     summarize_nonaxisymmetric_beta_scan,
 )
@@ -173,6 +174,7 @@ __all__ = [
     "build_closed_mirror_surface",
     "build_vacuum_grid",
     "boundary_fourier_amplitudes",
+    "boundary_fourier_norms",
     "anisotropy_indicators",
     "anisotropic_fixed_boundary_energy_gradient",
     "anisotropic_fixed_boundary_variational_residual",

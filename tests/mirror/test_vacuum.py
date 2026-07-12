@@ -21,6 +21,7 @@ from vmec_jax.mirror import (  # noqa: E402
     TabulatedPressureClosure,
     build_vacuum_grid,
     boundary_fourier_amplitudes,
+    boundary_fourier_norms,
     evaluate_vacuum_field,
     evaluate_vacuum_geometry,
     external_field_from_coils,
@@ -102,6 +103,21 @@ def test_boundary_fourier_amplitudes_are_grid_independent() -> None:
     np.testing.assert_allclose(amplitudes[1], 0.01 * (1.0 - axial**2), atol=5.0e-17)
     np.testing.assert_allclose(amplitudes[2], 0.004, atol=5.0e-17)
     np.testing.assert_allclose(amplitudes[3], 0.0, atol=5.0e-17)
+
+
+def test_boundary_fourier_norms_do_not_use_a_symmetry_zero() -> None:
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=2, ntheta=7, nxi=9)
+    ).build_grid()
+    theta = jnp.asarray(grid.theta)[:, None]
+    xi = jnp.asarray(grid.xi)[None, :]
+    boundary = MirrorBoundary(0.2 + 0.03 * xi * jnp.cos(theta))
+
+    l2, maximum = boundary_fourier_norms(boundary, grid)
+
+    np.testing.assert_allclose(l2[1], 0.03 / np.sqrt(3.0), rtol=2.0e-14)
+    np.testing.assert_allclose(maximum[1], 0.03, rtol=2.0e-14)
+    np.testing.assert_allclose(boundary_fourier_amplitudes(boundary)[1, grid.nxi // 2], 0.0, atol=5e-17)
 
 
 def _two_end_coils() -> CoilSet:
@@ -504,10 +520,15 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
     mean_radii = np.asarray([item.center_mean_radius for item in diagnostics])
     mean_fields = np.asarray([item.center_mean_field for item in diagnostics])
     mode_one = np.asarray([item.center_boundary_modes[1] for item in diagnostics])
+    mode_one_l2 = np.asarray([item.boundary_mode_l2[1] for item in diagnostics])
+    mode_one_max = np.asarray([item.boundary_mode_max[1] for item in diagnostics])
     assert np.all(np.diff(mean_radii) > 0.0)
     assert np.all(np.diff(mean_fields) < 0.0)
     assert np.all(mode_one > 1.0e-4)
     assert mode_one[-1] > 1.5 * mode_one[0]
+    assert np.all(mode_one_l2 > 1.0e-2)
+    assert np.all(mode_one_max > 2.5e-2)
+    assert np.all(mode_one / mode_one_max < 2.0e-2)
     assert all(float(item.plasma_volume) > 0.0 for item in diagnostics)
     assert all(float(item.plasma_energy) > 0.0 for item in diagnostics)
 
