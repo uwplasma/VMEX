@@ -115,6 +115,13 @@ from .free_boundary import (
     solve_axisymmetric_free_boundary_cli,
     solve_free_boundary_cli,
 )
+from .free_boundary_implicit import (
+    FreeBoundaryAdjointConfig,
+    FreeBoundaryAdjointResult,
+    FreeBoundaryParameters,
+    free_boundary_adjoint,
+    free_boundary_parameters,
+)
 from .vacuum import (
     VacuumField,
     VacuumGeometry,
@@ -174,6 +181,9 @@ __all__ = [
     "VariationalResidual",
     "VacuumField",
     "FreeBoundaryMirrorResult",
+    "FreeBoundaryAdjointConfig",
+    "FreeBoundaryAdjointResult",
+    "FreeBoundaryParameters",
     "FreeBoundaryRestart",
     "FixedBoundaryParameters",
     "FixedBoundaryImplicitConfig",
@@ -204,6 +214,8 @@ __all__ = [
     "fixed_boundary_parameters",
     "make_fixed_boundary_implicit_config",
     "fixed_boundary_variational_residual",
+    "free_boundary_adjoint",
+    "free_boundary_parameters",
     "isotropic_force_residual",
     "interface_residual",
     "interpolate_fixed_boundary_state",
