@@ -194,6 +194,15 @@ Schur correction reaches only
 ``(1.229e-8, 8.12e-10, 1.219e-8)`` after 1,000 iterations on the exact 0.825%
 barrier, worse than the baseline, and is removed. A future preconditioner must
 retain radial, channel, and Fourier coupling.
+Arnoldi widths 240 and 320 remain unconverged after 1,020 seconds at the same
+barrier, already slower than width 160, and are terminated. Increasing Krylov
+width further is therefore rejected.
+An exact-JVP implementation of VMEC2000's dense Fourier/channel,
+nearest-radial block-tridiagonal Hessian also fails at
+``(2.657e-8, 5.85e-10, 2.599e-8)`` after 1,000 iterations and is removed.
+Its synthetic block and stiff axisymmetric tests pass, isolating the failure
+to nonlocal constrained coupling in this hybrid. The next method must preserve
+that coupling rather than impose nearest-radial structure.
 The refined continuation therefore stages widths 80, 120, and 160; a coupled
 block or Schur preconditioner is deferred until these simpler bases encounter
 a new measured barrier.

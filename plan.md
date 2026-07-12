@@ -1722,6 +1722,14 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
       A residual-weighted radial/channel exact-JVP coarse Schur correction fails the exact 0.825%
       barrier at `1.229e-8/8.12e-10/1.219e-8` after 1,000 iterations, worse than the baseline.
       It is removed. Any future preconditioner must retain radial, channel, and Fourier coupling.
+      Arnoldi widths 240 and 320 are also rejected at the same barrier: both remain unconverged
+      after 1,020 s, already slower than the width-160 failure, and are terminated. More Krylov
+      width is not the next method.
+      An exact-JVP implementation of VMEC2000's dense Fourier/channel,
+      nearest-radial block-tridiagonal Hessian also fails at
+      `2.657e-8/5.85e-10/2.599e-8` after 1,000 iterations and is removed. Synthetic and stiff
+      axisymmetric tests pass, isolating the problem to the hybrid's nonlocal constrained
+      Jacobian. The next method must preserve that nonlocal coupling.
       The previous block-preconditioner
       requirement was premature: use the staged widths 80/120/160 and continue through a refined
       ladder to 1%. Implement a larger block/Schur method only if these simpler settings reach

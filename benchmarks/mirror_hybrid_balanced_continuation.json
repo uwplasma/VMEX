@@ -34,7 +34,9 @@
     {"gmres_restart": 80, "gmres_max_restarts": 5, "converged_after_400": false, "corrector_residuals": [1.0160670566926098e-8, 2.412513804990351e-10, 1.012360233347372e-8], "wall_seconds": 314.77},
     {"gmres_restart": 120, "gmres_max_restarts": 3, "converged_after_121": true, "corrector_residuals": [9.93922969887609e-9, 6.774912574426952e-10, 9.983173885001325e-9], "wall_seconds": 115.30},
     {"target_beta": 0.0072, "gmres_restart": 120, "gmres_max_restarts": 3, "converged_by_578_seconds": false},
-    {"target_beta": 0.0072, "gmres_restart": 160, "gmres_max_restarts": 3, "converged_after_171": true, "corrector_residuals": [9.732848575886954e-9, 8.622680103392719e-10, 9.901270687558404e-9], "wall_seconds": 277.87}
+    {"target_beta": 0.0072, "gmres_restart": 160, "gmres_max_restarts": 3, "converged_after_171": true, "corrector_residuals": [9.732848575886954e-9, 8.622680103392719e-10, 9.901270687558404e-9], "wall_seconds": 277.87},
+    {"target_beta": 0.00825, "gmres_restart": 240, "gmres_max_restarts": 3, "converged_by_1020_seconds": false, "assessment": "terminated after exceeding the width-160 failure wall time"},
+    {"target_beta": 0.00825, "gmres_restart": 320, "gmres_max_restarts": 3, "converged_by_1020_seconds": false, "assessment": "terminated after exceeding the width-160 failure wall time"}
   ],
   "coarse_block_screen": {
     "from_target_beta": 0.008125,
@@ -44,6 +46,14 @@
     "corrector_iterations": 1000,
     "residuals": [1.2293782746037529e-8, 8.117753131401212e-10, 1.2189365118429552e-8],
     "assessment": "rejected: slower and less accurate than the unpreconditioned matrix-free corrector"
+  },
+  "assembled_block_screen": {
+    "from_target_beta": 0.008125,
+    "target_beta": 0.00825,
+    "basis": "exact-JVP VMEC2000-style dense Fourier/channel blocks with nearest-radial coupling",
+    "corrector_iterations": 1000,
+    "residuals": [2.6573781893756443e-8, 5.851784953673308e-10, 2.598707516924535e-8],
+    "assessment": "rejected: the nearest-radial truncation misses nonlocal constrained hybrid coupling"
   },
   "rejected_step_examples": [
     {"from_target_beta": 0.005, "target_beta": 0.0055, "lambda_row_scale": 0.01, "corrector_iterations": 1000, "residuals": [2.1482004262961658e-8, 1.547161233909098e-9, 7.690856349249837e-9]},
@@ -77,5 +87,5 @@
     "lcfs_delta_from_target_beta_0p003_max_m": 7.819948555385524e-8,
     "lcfs_delta_from_target_beta_0p003_rms_m": 2.1610656093927775e-8
   },
-  "assessment": "Equation balancing converts the isolated 0.35% result into a genuine adaptive free-boundary branch through achieved beta 0.833%. The limiting physical components shift between FSQR and FSQL, requiring static then norm-derived lambda scaling. Cadence 20 remains the best globalization screen. At target beta 0.7040625%, increasing total Krylov work at restart 80 does not converge, while expanding the Arnoldi basis to 120 converges in 121 corrector iterations. At target 0.72%, width 120 remains GPU-bound after 578 seconds, while width 160 converges in 171 iterations and releases through NESTOR in 3. Width 160 then accepts targets through 0.8%. Direct steps to 0.825% fail after 1,000 iterations from both 0.8% and 0.8125%; the accepted step collapses first to 1.25e-4 and then 6.25e-5, with the 0.81875% midpoint requiring 746 iterations. A residual-weighted radial/channel coarse Schur correction is worse at the exact barrier and is removed. This matrix-free path is too expensive to extrapolate to 1--50%; a future preconditioner must retain radial, channel, and Fourier coupling rather than applying only a coarse radial/channel projection."
+  "assessment": "Equation balancing converts the isolated 0.35% result into a genuine adaptive free-boundary branch through achieved beta 0.833%. The limiting physical components shift between FSQR and FSQL, requiring static then norm-derived lambda scaling. Cadence 20 remains the best globalization screen. At target beta 0.7040625%, increasing total Krylov work at restart 80 does not converge, while expanding the Arnoldi basis to 120 converges in 121 corrector iterations. At target 0.72%, width 120 remains GPU-bound after 578 seconds, while width 160 converges in 171 iterations and releases through NESTOR in 3. Width 160 then accepts targets through 0.8%. Direct steps to 0.825% fail after 1,000 iterations from both 0.8% and 0.8125%; the accepted step collapses first to 1.25e-4 and then 6.25e-5, with the 0.81875% midpoint requiring 746 iterations. Residual-weighted coarse Schur and exact-JVP VMEC2000-style nearest-radial blocks are both worse and are removed. Widths 240 and 320 also exceed the baseline wall time. This lane is too expensive to extrapolate to 1--50%; a future preconditioner must retain the nonlocal constrained hybrid Jacobian, not only radial, channel, or Fourier-local structure."
 }
