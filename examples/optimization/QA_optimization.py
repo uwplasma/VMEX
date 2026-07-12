@@ -88,6 +88,14 @@ objective_terms = [
     # (opt.magnetic_well, 0.05, 1.0),
     # (lambda eq: np.minimum(opt.d_merc(eq)[2:-1], 0.0), 0.0, 100.0),
     # (lambda eq: max(1.0 / opt.l_grad_b(eq) - 1.0 / 0.35, 0.0), 0.0, 1.0),
+    # Turbulence proxies (plan R26h.h4; optional dep: pip install spectraxgk;
+    # gates in tests/test_turbulence.py).  SPECTRAX-GK linear ITG growth rate
+    # (traceable -> works with JAC="implicit" or JAC=None) and quasilinear
+    # heat-flux proxy (eigenvector-weighted -> JAC=None only) on a core flux
+    # tube:
+    #   from vmec_jax.core import turbulence as turb
+    # (turb.turbulent_growth_rate, 0.0, 1.0),
+    # (turb.quasilinear_flux_proxy, 0.0, 0.1),
 ]
 
 # --------------------------- staged optimization ----------------------------

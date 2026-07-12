@@ -370,6 +370,13 @@ jobs:
           path: ~/.cache/vmec_jax
           key: golden-v1
 
+      # The free-boundary example smokes run the examples as subprocesses,
+      # which read examples/data/mgrid_*.nc directly — fetched assets, not
+      # git-tracked (repo size budget). Without this step they raise
+      # MgridNotFoundError (nightly failure 2026-07-12).
+      - name: Fetch reference assets (mgrid files for free-boundary examples)
+        run: python tools/fetch_assets.py --bundle reference-nc
+
       - name: Run the whole suite including full-marked tests
         env:
           JAX_ENABLE_X64: "1"

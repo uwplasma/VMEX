@@ -90,14 +90,19 @@ def _sha256(data: bytes) -> str:
     return h.hexdigest()
 
 
-def _safe_extract(tf: tarfile.TarFile, dest: Path) -> None:
-    """Extract ``tf`` under ``dest`` without allowing path traversal."""
+def _safe_extract(tf: tarfile.TarFile, dest: Path, members=None) -> None:
+    """Extract ``tf`` under ``dest`` without allowing path traversal.
+
+    ``members`` restricts extraction to the given tar members (used by the
+    no-clobber default of :func:`_download_and_extract_bundle`).
+    """
     dest_resolved = dest.resolve()
-    for member in tf.getmembers():
+    selected = tf.getmembers() if members is None else members
+    for member in selected:
         target = (dest_resolved / member.name).resolve()
         if target != dest_resolved and dest_resolved not in target.parents:
             raise SystemExit(f"Refusing to extract path outside destination: {member.name}")
-    tf.extractall(dest_resolved)
+    tf.extractall(dest_resolved, members=selected)
 
 
 def _print_bundle_info(bundles: Sequence[AssetBundle]) -> None:
@@ -157,7 +162,22 @@ def _download_and_extract_bundle(bundle: AssetBundle, *, dest: Path, force: bool
 
     print(f"Extracting {bundle.name} assets...")
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as tf:
-        _safe_extract(tf, dest)
+        if not force:
+            # Never clobber files that already exist — some bundle paths
+            # (e.g. examples/data/mgrid_cth_like_lasym_small.nc) are ALSO
+            # git-tracked, and a stale bundle copy overwriting the tracked
+            # one poisoned the nightly free-boundary golden test
+            # (edge zmns 17.8% error, 2026-07-12).  --force restores the
+            # old overwrite-everything behavior.
+            members = [m for m in tf.getmembers()
+                       if not (dest / m.name).exists()]
+            skipped = len(tf.getmembers()) - len(members)
+            if skipped:
+                print(f"  (skipping {skipped} already-present files; "
+                      "--force overwrites)")
+            _safe_extract(tf, dest, members=members)
+        else:
+            _safe_extract(tf, dest)
 
     _migrate_release_asset_paths(dest)
     marker.write_text(f"{bundle.url}\n{digest}\n")

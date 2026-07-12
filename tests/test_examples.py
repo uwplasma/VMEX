@@ -159,6 +159,7 @@ def test_toroidal_hybrid_free_boundary_example(tmp_path):
 
 
 def test_mirror_fixed_boundary_gradients_example(tmp_path):
+    pytest.importorskip("virtual_casing_jax")
     out = _run_example(
         EXAMPLES / "mirror_fixed_boundary_gradients.py", tmp_path, timeout=900
     )
