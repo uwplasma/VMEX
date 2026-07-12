@@ -567,6 +567,11 @@ everything), paired with R12 (`tests/core_new/` → `tests/`):
   **Finding #2:** `opt_step` (2-nfev max_mode-1 least_squares, minimal_seed_nfp2) warm ~63 s / peak
   RSS ~6 GB on a contended local CPU — the heaviest per-call production path; profile where the time
   goes (per-dof implicit JVP solves vs forward solves vs trf overhead) and cut it.
+  **CPU profile (local M-series, idle, post-R25.1, 2026-07-12):** fixed ns=201 warm 5.5 s
+  (4.3 ms/iter), multigrid 7.8 s, implicit_grad warm 17.3 s (cold 59.9 — compile is 42 s, an R26c
+  target), opt_step warm 88.8 s (the R25 baseline number on idle hardware). **CPU beats the A4000 GPU
+  on every case even at ns=201** (GPU: 6.9/9.3/27.8/151 s) — on fast desktop CPUs the accelerator adds
+  nothing at production sizes; the device policy's GPU wins were vs the office box's slower cores.
   **Measured (office 2x A4000, CPU contended by QA/QP):** before-fix GPU warm — fixed ns=201 6.9 s
   (5.4 ms/iter), multigrid 9.3 s, free-bdy 8.0 s (13.9 ms/iter) → forward solves ARE GPU-competitive at
   ns=201; implicit_grad 57 s, opt_step 151 s → gradients pathological on GPU. **After the params-pin fix
