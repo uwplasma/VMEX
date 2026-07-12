@@ -14,7 +14,7 @@ The coils are the Landreman & Paul (2021) precise-QA set as optimized in
 ESSOS (github.com/uwplasma/ESSOS), bundled here as a 3 KB JSON.  Holding
 their currents fixed, we ramp a parabolic pressure ``p(s) = PRES_SCALE(1-s)``
 and *calibrate* PRES_SCALE at each step so the converged equilibrium's actual
-volume-average beta (wout ``betatotal``) lands on 0, 1, 2, 3 % -- a nominal
+volume-average beta (wout ``betatotal``) lands on 0, 1, 2, 3, 4, 5 % -- a nominal
 pressure is not enough, because at fixed coil currents the plasma dilates and
 shifts as beta rises, feeding back on <B^2>.  Each pressure step warm-starts
 from the previous accepted boundary (how experiments ramp, and much more
@@ -22,8 +22,9 @@ robust than re-solving from the vacuum guess).
 
 Physics: nfp=2 precise-QA plasma held by 16 modular coils; watch the
 Shafranov shift (axis moves outboard) and the LCFS response as beta rises.
-Runtime: ~4 min for the full scan (one NESTOR free-boundary solve per
-calibration attempt); the CI budget solves a single beta point coarsely.
+The 0.1% continuation points above 2% are solver waypoints; only the six
+requested equilibria are plotted. The CI budget solves a single beta point
+coarsely.
 """
 
 import dataclasses
@@ -39,9 +40,9 @@ DATA = Path(__file__).resolve().parent / "data"
 COILS_JSON = DATA / "ESSOS_biot_savart_LandremanPaulQA.json"  # ESSOS coil DOFs
 INPUT_FILE = DATA / "input.LandremanPaul2021_QA_lowres"       # plasma seed deck
 OUT_DIR = Path("output_free_boundary_essos_coils")
-REPORT_BETAS = [0.0, 1.0, 2.0, 3.0]  # review/plot targets [%]
+REPORT_BETAS = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]  # review/plot targets [%]
 # The local pressure response steepens above 2%, so retain 0.1% branch steps.
-TARGET_BETAS = REPORT_BETAS[:3] + [round(x, 1) for x in np.arange(2.1, 3.01, 0.1)]
+TARGET_BETAS = REPORT_BETAS[:3] + [round(x, 1) for x in np.arange(2.1, 5.01, 0.1)]
 BETA_TOL = 0.15                       # accept |betatotal - target| below this [%]
 SLOPE = 1.45e-3                       # first-guess beta[%] per unit PRES_SCALE
 NS, MPOL, NTOR = 51, 5, 5
@@ -142,8 +143,9 @@ if not CI:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     fig, (ax, ax2) = plt.subplots(1, 2, figsize=(8.4, 4.8), dpi=110, width_ratios=[1.1, 1.0])
     theta = np.linspace(0.0, 2.0 * np.pi, 361)
-    shades = plt.cm.Blues(np.linspace(0.35, 0.95, len(rows)))
-    for (_target, _ps, beta, axis_r, wout), color in zip(rows, shades):
+    report_rows = [row for row in rows if row[0] in REPORT_BETAS]
+    shades = plt.cm.Blues(np.linspace(0.35, 0.95, len(report_rows)))
+    for (_target, _ps, beta, axis_r, wout), color in zip(report_rows, shades):
         R, Z = surface_rz(wout, s_index=-1, theta=theta, phi=np.array([0.0]))
         ax.plot(R[:, 0], Z[:, 0], color=color, lw=2.0,
                 label=f"$\\langle\\beta\\rangle$ = {beta:.2f}%")
@@ -151,7 +153,8 @@ if not CI:
         ax2.plot(beta, 100.0 * (axis_r - rows[0][3]), "o", ms=7, color=color, zorder=2)
     ax.set(xlabel="R [m]", ylabel="Z [m]", title="LCFS and magnetic axis at $\\phi=0$")
     ax.set_aspect("equal"); ax.grid(alpha=0.25, lw=0.5)
-    ax2.plot([r[2] for r in rows], [100.0 * (r[3] - rows[0][3]) for r in rows],
+    ax2.plot([r[2] for r in report_rows],
+             [100.0 * (r[3] - report_rows[0][3]) for r in report_rows],
              "-", color="#9a9a9a", lw=1.0, zorder=1)
     ax2.set(xlabel="actual $\\langle\\beta\\rangle$ [%]",
             ylabel="axis Shafranov shift at $\\phi=0$ [cm]", title="Shafranov shift")

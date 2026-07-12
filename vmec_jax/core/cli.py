@@ -36,9 +36,9 @@ Documented divergences of the free-boundary lane:
   with no warm-start seam, so only the *final* ``NS_ARRAY`` stage is run
   (from the standard interior guess); VMEC2000 runs the whole ladder with
   vacuum re-activating per stage.  Multi-stage decks print a note.
-- The NESTOR vacuum potential is not returned by the solver, so the wout
-  ``potsin``/``xmpot``/``xnpot`` and ``*_sur`` variables are written as
-  netCDF fill (see :func:`vmec_jax.core.wout.wout_from_state`).
+- The final NESTOR state is retained and exported to wout
+  ``potsin``/``potcos``/``xmpot``/``xnpot`` and ``*_sur`` variables (see
+  :func:`vmec_jax.core.wout.wout_from_state`).
 - An NITER-exhausted free-boundary run still writes the wout (VMEC2000
   behavior) and exits with ``ier_flag = 2`` (MORE ITERATIONS REQUIRED).
 """

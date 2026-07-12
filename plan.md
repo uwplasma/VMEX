@@ -139,8 +139,10 @@ _R2 status (2026-07-12):_ the direct ESSOS Landreman-Paul scan is repeatably con
 beta 0, 1, 2, 3% (`fsq <=2.1e-10`, ns=51) with full-state hot restarts. The former 2→3% barrier
 was a continuation-driver bug: each point reset pressure from a crude global slope, producing a
 13% pressure jump for a nominal 0.1% beta step. A local predictor and 0.1% internal steps reach
-actual beta 3.059%, though critical slowing reaches 15,675 iterations near beta 2.927%. The example
-therefore stops honestly at 3%; 4--5% remains part of the coupled-globalization gate. The forward
+actual beta 3.059%, though critical slowing reaches 15,675 iterations near beta 2.927%. The public
+example now expresses the full 0--5% target with internal 0.1% continuation steps above 2%, while
+plotting only the six requested equilibria. The 4--5% endpoints remain part of the
+coupled-globalization gate until the running branch converges and is recorded. The forward
 result now retains its final NESTOR cache/potential and CLI/library WOUT files populate
 ``potsin``/``potcos`` plus ``xmpot``/``xnpot`` and all covariant/contravariant ``*_sur`` tables.
 The surface tables reconstruct the retained real-space fields to transform roundoff and match a
@@ -164,6 +166,10 @@ Krylov iterations 2,270→1,312 but increased sensitivity wall time to 159.7 s a
 is not an exact inverse (direct residual 1.33%). The implementation was removed; evidence remains in
 ``benchmarks/free_boundary_sensitivity.json``. The next preconditioner must represent that global
 coupling without assembling the full reverse graph.
+The production 2D Newton preconditioner was also rejected for this scan: with
+``precon_type="GMRES"`` and ``prec2d_threshold=1e-5`` it did not complete the first reported
+equilibrium within the default 1D path's practical run budget. It remains opt-in and is not used by
+the showcase.
 
 **R3. Memory + cold-start workstream.** Current: solves 0.7-1.5 GB (Fortran 27-43 MB), implicit grad
 3.4 GB; cold CLI pays 5-25 s XLA setup. Gate: profile XLA graph construction + peak buffers; donate
