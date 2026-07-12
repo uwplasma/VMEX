@@ -142,7 +142,11 @@ def make_multigrid_deck(deck: Path, ladder: str | None, dest: Path) -> None:
     text = re.sub(r"^\s*FTOL_ARRAY\s*=\s*[\deE.+\- \t,]+",
                   f"FTOL_ARRAY = {' '.join(['1e-8'] * (len(stages) - 1))} 1e-14\n ",
                   text, count=1, flags=re.I | re.M)
-    niter_line = f"NITER_ARRAY = {' '.join(['4000'] * len(stages))}\n "
+    # Final stage gets the same >=10000 budget as make_ramped_deck: at the
+    # 1e-14 final ftol the ns=201 stage can legitimately need >4000 sweeps
+    # (measured: QA_lowres multigrid raised VmecConvergenceError at 4000).
+    niter_line = ("NITER_ARRAY = "
+                  + " ".join(["4000"] * (len(stages) - 1)) + " 10000\n ")
     text, n = re.subn(r"^\s*NITER_ARRAY\s*=\s*[\d,\s]+", niter_line, text,
                       count=1, flags=re.I | re.M)
     if n == 0:
@@ -292,7 +296,11 @@ def main() -> None:
 
     cases = args.cases.split(",") if args.cases else list(CASES)
     skip = set(args.skip.split(",")) if args.skip else set()
-    results: dict[str, dict] = {}
+    # Merge semantics: --cases reruns update their rows in the existing file
+    # instead of clobbering the other cases' results.
+    out_path = Path(args.out)
+    results: dict[str, dict] = (
+        json.loads(out_path.read_text()) if out_path.exists() else {})
 
     for name in cases:
         aux = CASES.get(name, [])
