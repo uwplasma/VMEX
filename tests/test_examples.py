@@ -234,3 +234,25 @@ def test_extra_terms_work_uncommented():
                               jac="implicit", max_nfev=1)
     finally:
         jax.config.update("jax_disable_jit", was_disabled)
+
+
+# The self-consistent-bootstrap examples reproduce arXiv:2205.02914 against the
+# Zenodo dataset, which is a large local-only archive (not in CI) — skip when
+# absent.  Nightly-gated: each runs a multi-iteration Picard loop of solves.
+_ZENODO_2205 = Path(os.environ.get(
+    "VMEC_JAX_ZENODO_2205_02914",
+    str(Path.home() / "local" /
+        "20220708-01-zenodo_for_QS_optimization_with_self_consistent_bootstrap_current")))
+
+
+@pytest.mark.full
+@pytest.mark.skipif(not _ZENODO_2205.is_dir(),
+                    reason="arXiv:2205.02914 Zenodo dataset not present")
+@pytest.mark.parametrize("case", ["QA", "QH"])
+def test_bootstrap_selfconsistent_examples(case, tmp_path):
+    script = EXAMPLES / "optimization" / f"{case}_bootstrap_selfconsistent.py"
+    out = _run_example(script, tmp_path, timeout=1200)
+    m = re.search(r"final f_boot = ([0-9.eE+-]+)", out)
+    assert m is not None and float(m.group(1)) < 5e-2, f"{case} f_boot: {out[-400:]}"
+    assert (tmp_path / f"output_{case}_bootstrap_selfconsistent"
+            / f"wout_{case}_bootstrap_selfconsistent.nc").exists()
