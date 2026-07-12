@@ -358,6 +358,13 @@ class TabulatedPressureClosure:
     gamma: float = 0.0
 
     def __post_init__(self) -> None:
+        # JAX rebuilds registered dataclasses with tracers while differentiating.
+        # Inputs were already validated when the user constructed the closure.
+        if any(
+            isinstance(value, jax.core.Tracer)
+            for value in (self.s_nodes, self.b_nodes, self.parallel_values)
+        ):
+            return
         s_nodes = np.asarray(self.s_nodes)
         b_nodes = np.asarray(self.b_nodes)
         values = np.asarray(self.parallel_values)
@@ -433,6 +440,24 @@ def anisotropy_indicators(
     )
 
 
+def _flatten_tabulated_closure(closure: TabulatedPressureClosure):
+    """Keep interpolation knots static and table values differentiable."""
+
+    metadata = (
+        tuple(np.asarray(closure.s_nodes, dtype=float)),
+        tuple(np.asarray(closure.b_nodes, dtype=float)),
+        closure.gamma,
+    )
+    return (closure.parallel_values,), metadata
+
+
+def _unflatten_tabulated_closure(metadata, children):
+    s_nodes, b_nodes, gamma = metadata
+    return TabulatedPressureClosure(
+        jnp.asarray(s_nodes), jnp.asarray(b_nodes), children[0], gamma=gamma
+    )
+
+
 jax.tree_util.register_dataclass(MirrorBoundary, data_fields=["radius_scale"], meta_fields=[])
 jax.tree_util.register_dataclass(
     MirrorState,
@@ -446,10 +471,14 @@ for _closure, _data, _meta in (
         ["mass_coefficients", "hot_fraction_coefficients"],
         ["temperature_ratio", "critical_field", "gamma"],
     ),
-    (TabulatedPressureClosure, ["s_nodes", "b_nodes", "parallel_values"], ["gamma"]),
     (AnisotropyIndicators, ["sigma", "mirror_ellipticity", "valid"], []),
 ):
     jax.tree_util.register_dataclass(_closure, data_fields=_data, meta_fields=_meta)
+jax.tree_util.register_pytree_node(
+    TabulatedPressureClosure,
+    _flatten_tabulated_closure,
+    _unflatten_tabulated_closure,
+)
 jax.tree_util.register_dataclass(
     PressureMoments,
     data_fields=["parallel", "perpendicular", "energy_density"],

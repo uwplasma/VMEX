@@ -1896,8 +1896,9 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        now use the same path: closure coefficients plus boundary/flux/
        current match reconverged FD to `5.22e-9` through the anisotropic functional. Dedicated
        bi-Maxwellian mass/hot-fraction gradients pass at `2.99e-9` with positive ellipticity.
-       A tabulated case, a public custom-VJP solve wrapper, and free-boundary coil
-       derivatives remain before M9 promotion.
+       Tabulated pressure-value gradients pass at `5.34e-8`; interpolation knots are correctly
+       static pytree metadata. A public custom-VJP solve wrapper and free-boundary coil derivatives
+       remain before M9 promotion.
    11. **M10 — performance, outputs, and promotion.** Benchmark CPU/GPU cold/warm time, memory,
        scaling, and CLI versus JAX lanes; add mirror-native `mout` output, restart, `--plot`, docs,
        and short root examples. Remove obsolete archived implementations only after parity data are

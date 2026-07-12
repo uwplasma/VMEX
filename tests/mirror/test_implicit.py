@@ -17,6 +17,7 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorState,
     IsotropicPressureClosure,
     BiMaxwellianPressureClosure,
+    TabulatedPressureClosure,
     fixed_boundary_adjoint,
     fixed_boundary_parameters,
     project_fixed_boundary_state,
@@ -239,6 +240,73 @@ def test_anisotropic_closure_adjoint_matches_central_difference(
             grid,
             lambda state, energy: energy.total,
         )
+
+
+def test_tabulated_closure_adjoint_matches_central_difference() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=3, nxi=5), ftol=1.0e-12, max_iterations=500
+    )
+    grid = config.build_grid()
+    xi, s = jnp.asarray(grid.xi), jnp.asarray(grid.s)
+    boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.12 * (1.0 - xi**2)), grid)
+    s_nodes = jnp.asarray([0.0, 0.5, 1.0])
+    b_nodes = jnp.asarray([0.1, 1.0, 3.0])
+    values = 2.0e3 * (1.0 - s_nodes[:, None]) * (
+        1.0 + 0.05 * (b_nodes[None, :] - 1.0)
+    )
+    closure = TabulatedPressureClosure(s_nodes, b_nodes, values)
+    current = 1.0e-2 * s
+    result = solve_anisotropic_fixed_boundary_cli(
+        MirrorState.from_boundary(boundary, grid),
+        boundary,
+        grid,
+        config,
+        closure,
+        axial_flux_derivative=0.1,
+        current_derivative=current,
+        solve_lambda=True,
+        require_convergence=True,
+    )
+    parameters = fixed_boundary_parameters(
+        boundary,
+        axial_flux_derivative=0.1,
+        current_derivative=current,
+        pressure_closure=closure,
+    )
+
+    def quantity(state, _energy):
+        return state.radius_scale[1, 0, grid.nxi // 2]
+
+    adjoint = fixed_boundary_adjoint(
+        result, parameters, grid, quantity, solve_lambda=True, rtol=1.0e-10
+    )
+    direction = 100.0 * (1.0 - s_nodes[:, None]) * jnp.ones_like(values)
+    predicted = float(
+        jnp.vdot(adjoint.gradient.pressure_closure.parallel_values, direction)
+    )
+    epsilon = 1.0e-4
+    quantities = []
+    for sign in (-1.0, 1.0):
+        varied_closure = TabulatedPressureClosure(
+            s_nodes, b_nodes, values + sign * epsilon * direction
+        )
+        varied = solve_anisotropic_fixed_boundary_cli(
+            project_fixed_boundary_state(result.state, boundary, grid),
+            boundary,
+            grid,
+            config,
+            varied_closure,
+            axial_flux_derivative=0.1,
+            current_derivative=current,
+            solve_lambda=True,
+            require_convergence=True,
+        )
+        quantities.append(float(quantity(varied.state, varied.energy)))
+    finite_difference = (quantities[1] - quantities[0]) / (2.0 * epsilon)
+
+    assert adjoint.converged
+    assert adjoint.relative_residual < 1.0e-10
+    np.testing.assert_allclose(predicted, finite_difference, rtol=2.0e-7)
 
 
 @pytest.mark.full
