@@ -105,7 +105,11 @@ def resolve_wout_path(*, input_path: Path, outdir: Path | None) -> Path:
 
 def _is_wout_path(path: Path) -> bool:
     lower = path.name.lower()
-    return path.suffix.lower() == ".nc" and not lower.startswith("boozmn_")
+    return path.suffix.lower() == ".nc" and not lower.startswith(("boozmn_", "mout_"))
+
+
+def _is_mout_path(path: Path) -> bool:
+    return path.name.lower().startswith("mout_") and path.suffix.lower() == ".nc"
 
 
 def _is_boozmn_path(path: Path) -> bool:
@@ -125,6 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
             "vmec_jax equilibrium solver (fixed- and free-boundary core).\n\n"
             "  vmec input.X           — solve (INDATA or VMEC++ JSON), write wout_X.nc\n"
             "  vmec --plot wout_*.nc  — diagnostic plots from a WOUT file\n"
+            "  vmec --plot mout_*.nc  — straight-axis mirror diagnostics\n"
             "  vmec --booz wout_*.nc  — run booz_xform_jax, write boozmn_*.nc\n"
             "  vmec --plot boozmn_*.nc— Boozer contour/spectrum plots\n"
             "  vmec --doctor          — installation and JAX backend diagnostics\n"
@@ -139,7 +144,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "VMEC input file (input.* namelist or VMEC++ .json) to solve, or a "
-            "wout_*.nc/boozmn_*.nc file for --plot/--booz."
+            "wout_*.nc/mout_*.nc/boozmn_*.nc file for --plot/--booz."
         ),
     )
     p.add_argument(
@@ -151,6 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Generate plots. With a wout_*.nc file, plot WOUT diagnostics; with a "
+            "mout_*.nc file, plot straight-axis mirror diagnostics; with a "
             "boozmn_*.nc file, plot Boozer diagnostics; with an input file, solve "
             "first and plot the resulting WOUT. If PATH is omitted, the positional "
             "input path is used."
@@ -602,6 +608,16 @@ def _plot_wout_file(wout_path: Path, outdir: Path, *, emit, quiet: bool) -> None
             emit(f"   Saved {key}: {path}")
 
 
+def _plot_mout_file(mout_path: Path, outdir: Path, *, emit, quiet: bool) -> None:
+    from .plotting import plot_mout
+
+    if not quiet:
+        emit(f" Plotting mirror output {mout_path.name} -> {outdir}/")
+    for key, path in plot_mout(mout_path, outdir=outdir).items():
+        if not quiet:
+            emit(f"   Saved {key}: {path}")
+
+
 def _plot_boozmn_file(boozmn_path: Path, outdir: Path, *, emit, quiet: bool) -> None:
     from .plotting import plot_boozmn
 
@@ -730,7 +746,7 @@ def _dispatch(args, parser: argparse.ArgumentParser, *, emit) -> int:
     if args.plot == _PLOT_AUTO and target_arg is None:
         parser.error("--plot requires a PATH or a positional input")
     if target_arg is None:
-        parser.error("provide a VMEC input file, a wout_*.nc/boozmn_*.nc file, or --test/--doctor")
+        parser.error("provide a VMEC input file, a wout_*.nc/mout_*.nc/boozmn_*.nc file, or --test/--doctor")
 
     input_path = Path(target_arg).expanduser().resolve()
     if not input_path.exists():
@@ -747,6 +763,14 @@ def _dispatch(args, parser: argparse.ArgumentParser, *, emit) -> int:
         if not plot_requested:
             parser.error("boozmn_*.nc inputs are plot-only; use --plot boozmn_*.nc")
         _plot_boozmn_file(input_path, plot_outdir, emit=emit, quiet=quiet)
+        return 0
+
+    if _is_mout_path(input_path):
+        if not plot_requested:
+            parser.error("mout_*.nc inputs are plot-only; use --plot mout_*.nc")
+        if bool(args.booz):
+            parser.error("Boozer transforms require toroidal wout_*.nc inputs")
+        _plot_mout_file(input_path, plot_outdir, emit=emit, quiet=quiet)
         return 0
 
     if _is_wout_path(input_path):

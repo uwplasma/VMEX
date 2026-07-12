@@ -1746,6 +1746,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        scaling, and CLI versus JAX lanes; add mirror-native `mout` output, restart, `--plot`, docs,
        and short root examples. Remove obsolete archived implementations only after parity data are
        recorded. Mark the feature supported only when every gate below passes.
+       **STATUS (2026-07-11): output/plot integration landed.** A compact NetCDF `mout/1` schema
+       stores the physical mirror grid, geometry, stream function, Cartesian field, both pressure
+       moments, interface metrics, convergence history, closure metadata, and optional coils.
+       `vmec --plot mout_*.nc` renders the horizontal 3D LCFS/coils/cap-to-cap field lines, `|B|`,
+       cross-sections, pressure, and `ftol` history. The 0--50% straight-mirror example writes one
+       file per accepted equilibrium and renders its endpoint through this disk-backed path.
        Coverage instrumentation is an explicit promotion gate: the dedicated mirror shard passes,
        but coverage.py currently aborts when tracing nested JAX/BIE solves. The release-core 95%
        report transparently omits `vmec_jax/mirror/*` until that crash is fixed; no mirror coverage

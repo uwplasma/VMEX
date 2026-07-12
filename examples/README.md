@@ -27,6 +27,8 @@ All runnable examples live under this single `examples/` tree.
   - `mirror_free_boundary_beta_scan.py` — solve the straight-axis two-coil
     free-boundary mirror through 50% beta and render horizontal 3D coils,
     cap-to-cap field lines, solved LCFS, `|B|`, pressure, and residual plots.
+    Each accepted point is also written as mirror-native `mout_*.nc`; rerun
+    its four endpoint figures with `vmec --plot mout_*.nc`.
   - `toroidal_stellarator_mirror_hybrid.py` — trace the 16-coil vacuum axis,
     build a flux-conserving square-torus seed, continue rotating corner
     ellipses, solve the finite-current equilibrium, and write WOUT plus 3D

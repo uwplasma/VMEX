@@ -37,10 +37,13 @@ from vmec_jax.mirror import (  # noqa: E402
     TabulatedPressureClosure,
     build_vacuum_grid,
     load_free_boundary_restart,
+    mout_from_result,
+    write_mout,
     save_free_boundary_restart,
     solve_axisymmetric_beta_scan_cli,
     summarize_axisymmetric_beta_scan,
 )
+from vmec_jax.core.plotting import plot_mout  # noqa: E402
 
 # Inputs: edit these values, then run the file directly.
 BETAS = np.asarray([0.0, 0.01, 0.03, 0.10, 0.25, 0.50])
@@ -150,10 +153,32 @@ results = solve_axisymmetric_beta_scan_cli(
     exterior_curved_side_geometry=EXTERIOR_CURVED_SIDE_GEOMETRY,
     exterior_jacobian_chunk_size=EXTERIOR_JACOBIAN_CHUNK_SIZE,
 )
+gamma = np.asarray(coil_geometry(coils)[0])
 if SAVE_RESTARTS:
     for beta, result in zip(BETAS, results, strict=True):
         label = f"beta_{100 * beta:05.1f}pct".replace(".", "p")
         save_free_boundary_restart(OUTPUT_DIR / label, FreeBoundaryRestart.from_result(result))
+for beta, result in zip(BETAS, results, strict=True):
+    label = f"beta_{100 * beta:05.1f}pct".replace(".", "p")
+    if pressure_closure is None:
+        parallel_pressure = result.perpendicular_pressure
+    else:
+        field_strength = jnp.sqrt(result.plasma_b_squared)
+        parallel_pressure = result.mass_scale * pressure_closure.moments(
+            jnp.asarray(grid.s)[:, None, None], field_strength
+        ).parallel
+    write_mout(
+        OUTPUT_DIR / f"mout_mirror_{label}.nc",
+        mout_from_result(
+            result,
+            grid,
+            config,
+            axial_flux_derivative=axial_flux_derivative,
+            parallel_pressure=parallel_pressure,
+            coil_xyz=gamma,
+            closure=PRESSURE_MODEL,
+        ),
+    )
 diagnostics = summarize_axisymmetric_beta_scan(
     results,
     jnp.asarray(BETAS),
@@ -284,7 +309,6 @@ fig.savefig(OUTPUT_DIR / "beta_scan_pressure.png", dpi=180)
 plt.close(fig)
 
 theta = np.linspace(0.0, 2.0 * np.pi, 73)
-gamma = np.asarray(coil_geometry(coils)[0])
 surface_fields = [
     display_matrix @ np.sqrt(np.asarray(results[index].plasma_b_squared[-1, 0])) for index in display_indices
 ]
@@ -342,6 +366,12 @@ colorbar = fig.colorbar(plt.cm.ScalarMappable(norm=field_norm, cmap="viridis"), 
 colorbar.set_label("LCFS |B| [T]")
 fig.savefig(OUTPUT_DIR / "beta_scan_3d.png", dpi=180)
 plt.close(fig)
+endpoint_label = f"beta_{100 * BETAS[-1]:05.1f}pct".replace(".", "p")
+plot_mout(
+    OUTPUT_DIR / f"mout_mirror_{endpoint_label}.nc",
+    OUTPUT_DIR,
+    name="mirror_endpoint",
+)
 
 np.set_printoptions(precision=6, suppress=False)
 print(header)

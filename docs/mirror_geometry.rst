@@ -238,11 +238,13 @@ Toroidal hybrids use ordinary WOUT files, so ``vmec --plot wout_*.nc`` emits
 surface, ``|B|``, profile, force-history, and 3D figures. The hybrid example
 adds coils, solved LCFS field lines, and beta-continuation cross-sections.
 
-Straight-axis mirror examples currently render the required horizontal 3D,
-coil, field-line, ``|B|``, pressure, cross-section, and residual figures
-directly from the solved in-memory result. Mirror-native ``mout_*.nc`` output
-and ``vmec --plot mout_*.nc`` dispatch are the remaining M10 integration gate;
-straight-axis mirror data must not be encoded as a toroidal WOUT file.
+Straight-axis mirror examples write mirror-native ``mout_*.nc`` files and
+render horizontal 3D, coil, cap-to-cap field-line, ``|B|``, pressure,
+cross-section, and residual figures. The same figures can be regenerated with
+``vmec --plot mout_*.nc``. The data include geometry, the stream function,
+Cartesian magnetic field, both pressure moments, interface residuals, solver
+history, closure metadata, and optional coil curves. Straight-axis mirror data
+are never encoded as a toroidal WOUT file.
 
 Fixed-boundary 3D solver
 ------------------------

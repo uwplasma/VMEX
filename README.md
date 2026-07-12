@@ -295,6 +295,7 @@ objective library.
 ```text
 vmec input.X             solve (INDATA or VMEC++ JSON), write wout_X.nc
 vmec --plot wout_*.nc    diagnostic plots from a WOUT file
+vmec --plot mout_*.nc    straight-axis mirror diagnostics
 vmec --booz wout_*.nc    run booz_xform_jax, write boozmn_*.nc
 vmec --plot boozmn_*.nc  Boozer contour/spectrum plots
 vmec --test              run and plot the bundled quick-start case

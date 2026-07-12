@@ -5,8 +5,7 @@ mesh, a periodic poloidal angle, and a nonperiodic axial coordinate.  It is a
 separate topology from toroidal VMEC, but shares JAX kernels, coil fields,
 solver controls, and diagnostics with :mod:`vmec_jax.core`.
 
-Only implemented, tested contracts are exported here.  Solver, vacuum, and
-output APIs will be added as their corresponding M2-M6 plan gates land.
+Only implemented, tested contracts are exported here.
 """
 
 from .basis import ChebyshevBasis, MirrorGrid, ThetaBasis, build_mirror_grid
@@ -100,6 +99,7 @@ from .restart import (
     load_free_boundary_restart,
     save_free_boundary_restart,
 )
+from .output import MoutData, mout_from_result, read_mout, write_mout
 from .free_boundary import (
     FreeBoundaryMirrorResult,
     solve_axisymmetric_free_boundary_cli,
@@ -156,6 +156,7 @@ __all__ = [
     "MirrorResolution",
     "MirrorSolveResult",
     "MirrorState",
+    "MoutData",
     "PressureClosure",
     "PressureMoments",
     "ThetaBasis",
@@ -192,6 +193,7 @@ __all__ = [
     "magnetic_field_squared",
     "magnetic_field_xyz",
     "mass_profile_from_pressure",
+    "mout_from_result",
     "load_free_boundary_restart",
     "laplace_double_layer_off_surface",
     "laplace_green_boundary_residual",
@@ -218,8 +220,10 @@ __all__ = [
     "solve_axisymmetric_beta_scan_cli",
     "solve_beta_scan_cli",
     "save_free_boundary_restart",
+    "read_mout",
     "summarize_axisymmetric_beta_scan",
     "summarize_nonaxisymmetric_beta_scan",
     "vacuum_energy_functional",
     "vacuum_laplacian",
+    "write_mout",
 ]
