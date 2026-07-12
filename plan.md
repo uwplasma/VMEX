@@ -136,10 +136,11 @@ Landreman-Paul QA + tokamak beta=0..5% showcase with mgrid/direct-Biot-Savart ag
 compressed README panel.
 
 _R2 status (2026-07-12):_ the direct ESSOS Landreman-Paul scan is repeatably converged at actual
-beta 0, 1, 2% (`fsq <=2.4e-10`, ns=51) with full-state hot restarts. Attempts to promote 3--5%
-expose a trajectory-sensitive continuation barrier: direct 2→3% and midpoint schedules stall or
-change Jacobian sign under the strict convergence check. The example therefore stops honestly at
-2%; 3--5% remains part of the coupled-globalization gate, not a plotted extrapolation. The forward
+beta 0, 1, 2, 3% (`fsq <=2.1e-10`, ns=51) with full-state hot restarts. The former 2→3% barrier
+was a continuation-driver bug: each point reset pressure from a crude global slope, producing a
+13% pressure jump for a nominal 0.1% beta step. A local predictor and 0.1% internal steps reach
+actual beta 3.059%, though critical slowing reaches 15,675 iterations near beta 2.927%. The example
+therefore stops honestly at 3%; 4--5% remains part of the coupled-globalization gate. The forward
 result now retains its final NESTOR cache/potential and CLI/library WOUT files populate
 `potsin`/`potcos` plus `xmpot`/`xnpot`; the `*_sur` tables and coupled adjoint remain open. The
 coupled NESTOR-MHD fixed-point residual now reconstructs the retained final constraint state,

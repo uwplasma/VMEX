@@ -30,19 +30,27 @@
     },
     {
       "target_beta_percent": 2.0,
-      "actual_beta_percent": 1.978,
-      "iterations": 512,
-      "force_residual_sum": 1.7e-10,
-      "aspect": 6.172,
-      "axis_r_m": 1.2638
+      "actual_beta_percent": 2.131,
+      "iterations": 1244,
+      "force_residual_sum": 1.5e-10,
+      "aspect": 6.186,
+      "axis_r_m": 1.2683
+    },
+    {
+      "target_beta_percent": 3.0,
+      "actual_beta_percent": 3.059,
+      "iterations": 8784,
+      "force_residual_sum": 1.2e-10,
+      "aspect": 6.378,
+      "axis_r_m": 1.362
     }
   ],
-  "maximum_beta_error_percent": 0.022,
-  "axis_shift_cm": 5.04,
+  "maximum_beta_error_percent": 0.131,
+  "axis_shift_cm": 14.87,
   "promotion_attempt": {
-    "requested_beta_percent": [3.0, 4.0, 5.0],
+    "requested_beta_percent": [4.0, 5.0],
     "passed": false,
-    "assessment": "Direct 2->3%, full-state hot restart, cold-interior fallback, and midpoint schedules either stalled above the strict force gate or changed Jacobian sign. No 3-5% equilibrium is plotted or claimed."
+    "assessment": "A local pressure predictor plus 0.1% beta continuation crosses the old 2->3% barrier. Critical slowing is strong (15675 iterations near actual beta 2.927%); 4-5% remains unvalidated and is not plotted."
   },
   "figure": "docs/_static/figures/readme_essos_beta_scan.png"
 }

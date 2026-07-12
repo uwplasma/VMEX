@@ -14,7 +14,7 @@ The coils are the Landreman & Paul (2021) precise-QA set as optimized in
 ESSOS (github.com/uwplasma/ESSOS), bundled here as a 3 KB JSON.  Holding
 their currents fixed, we ramp a parabolic pressure ``p(s) = PRES_SCALE(1-s)``
 and *calibrate* PRES_SCALE at each step so the converged equilibrium's actual
-volume-average beta (wout ``betatotal``) lands on 0, 1, 2 % -- a nominal
+volume-average beta (wout ``betatotal``) lands on 0, 1, 2, 3 % -- a nominal
 pressure is not enough, because at fixed coil currents the plasma dilates and
 shifts as beta rises, feeding back on <B^2>.  Each pressure step warm-starts
 from the previous accepted boundary (how experiments ramp, and much more
@@ -39,7 +39,9 @@ DATA = Path(__file__).resolve().parent / "data"
 COILS_JSON = DATA / "ESSOS_biot_savart_LandremanPaulQA.json"  # ESSOS coil DOFs
 INPUT_FILE = DATA / "input.LandremanPaul2021_QA_lowres"       # plasma seed deck
 OUT_DIR = Path("output_free_boundary_essos_coils")
-TARGET_BETAS = [0.0, 1.0, 2.0]  # repeatably converged actual beta targets [%]
+REPORT_BETAS = [0.0, 1.0, 2.0, 3.0]  # review/plot targets [%]
+# The local pressure response steepens above 2%, so retain 0.1% branch steps.
+TARGET_BETAS = [0.0, 1.0, 2.0] + [round(x, 1) for x in np.arange(2.1, 3.01, 0.1)]
 BETA_TOL = 0.15                       # accept |betatotal - target| below this [%]
 SLOPE = 1.45e-3                       # first-guess beta[%] per unit PRES_SCALE
 NS, MPOL, NTOR = 51, 5, 5
@@ -47,7 +49,8 @@ NITER, FTOL = 20000, 1e-10
 PHIEDGE = -0.025                      # toroidal flux matching the coil field [Wb]
 CI = os.environ.get("VMEC_JAX_EXAMPLES_CI") == "1"
 if CI:  # smoke budget: one finite-beta point on a coarse grid
-    TARGET_BETAS, NS, NITER, FTOL = [1.0], 16, 4000, 1e-8
+    REPORT_BETAS = TARGET_BETAS = [1.0]
+    NS, NITER, FTOL = 16, 4000, 1e-8
 
 # --------------------------- coils -> external field ------------------------
 from essos.coils import Coils_from_json  # noqa: E402 (optional heavy import)
@@ -91,7 +94,13 @@ print(f"\n{'nominal':>8s} {'PRES_SCALE':>11s} {'actual beta':>12s} {'iters':>6s}
       f"{'fsq':>9s} {'aspect':>7s} {'axis R':>8s}")
 rows, current, state = [], base, None
 for target in TARGET_BETAS:
-    ps = target / SLOPE
+    # Local secant predictor. Resetting every point from the global SLOPE
+    # made a nominal 0.1% beta step jump pressure by 13% near beta=2.6%.
+    ps = (
+        rows[-1][1] * target / max(rows[-1][2], 1e-6)
+        if rows and target > 0.0 and rows[-1][2] > 0.0
+        else target / SLOPE
+    )
     for attempt in range(3):  # solve, read actual beta, rescale (~linear)
         inp_i = dataclasses.replace(current, pres_scale=ps)
         res = vj.solve_free_boundary(

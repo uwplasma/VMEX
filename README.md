@@ -181,8 +181,9 @@ The "free boundary directly from coils" row is a workflow, not a checkbox:
 pass a `CoilSet` as `external_field=` and the NESTOR vacuum solve evaluates a
 JAX Biot-Savart at exactly the boundary points it needs, every iteration — no
 mgrid file and no grid-interpolation error. The field evaluation is
-JAX-differentiable; propagating those derivatives through the solved NESTOR
-boundary remains the explicit R2 coupled-adjoint task.
+JAX-differentiable. Solved-LCFS mgrid-current sensitivities are now available
+through forward implicit differentiation; the many-parameter direct-coil
+shape adjoint remains the explicit R2 task.
 
 ![Free-boundary Landreman-Paul QA pressure scan directly from ESSOS coils](docs/_static/figures/readme_essos_beta_scan.png)
 
@@ -192,10 +193,11 @@ by its 16 modular coils as optimized in
 `examples/data/`). Pressure is ramped at fixed coil currents with each point
 warm-started from the previous boundary, and `PRES_SCALE` is calibrated per
 point so the **actual** volume-average beta of the converged wout
-(`betatotal`) — not a nominal input value — lands on 0, 1, 2 % (all within
-0.03 %, force residual below 2.4e-10 at ns = 51). The plasma dilates and the magnetic
-axis Shafranov-shifts 5 cm outboard at the φ = 0 section (right panel) while
-the coils never move. Reproduce with
+(`betatotal`) — not a nominal input value — lands on 0, 1, 2, 3 % (within
+0.14 %, force residual below 2.1e-10 at ns = 51). Above 2%, local 0.1% branch
+steps avoid pressure-predictor jumps and expose the strongly nonlinear
+response. The plasma dilates and the magnetic axis Shafranov-shifts 14.9 cm
+outboard at the φ = 0 section (right panel) while the coils never move. Reproduce with
 `python examples/free_boundary_essos_coils.py`.*
 
 ## Code size
