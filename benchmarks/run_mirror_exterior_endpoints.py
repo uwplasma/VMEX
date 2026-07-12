@@ -17,6 +17,7 @@ from vmec_jax.mirror import (
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
+    boundary_fourier_amplitudes,
     build_vacuum_grid,
     solve_beta_scan_cli,
     summarize_axisymmetric_beta_scan,
@@ -121,9 +122,14 @@ def run(
                 m1_radius_m=float(diagnostic.center_boundary_modes[1]),
                 m1_axial_l2_m=float(diagnostic.boundary_mode_l2[1]),
                 m1_axial_max_m=float(diagnostic.boundary_mode_max[1]),
+                m1_interior_l2_m=float(diagnostic.boundary_mode_interior_l2[1]),
+                m1_interior_max_m=float(diagnostic.boundary_mode_interior_max[1]),
                 m1_midplane_leakage_fraction=float(
                     diagnostic.center_boundary_modes[1] / diagnostic.boundary_mode_max[1]
                 ),
+                m1_axial_profile_m=np.asarray(
+                    boundary_fourier_amplitudes(result.boundary)[1]
+                ).tolist(),
                 volume_m3=float(diagnostic.plasma_volume),
                 energy_J=float(diagnostic.plasma_energy),
             )

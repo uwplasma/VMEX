@@ -38,7 +38,10 @@ def boundary_fourier_amplitudes(boundary: "MirrorBoundary") -> Array:
 
 
 def boundary_fourier_norms(
-    boundary: "MirrorBoundary", grid: "MirrorGrid"
+    boundary: "MirrorBoundary",
+    grid: "MirrorGrid",
+    *,
+    exclude_end_cuts: bool = False,
 ) -> tuple[Array, Array]:
     """Return weighted axial L2 and maximum amplitude of each theta mode.
 
@@ -50,6 +53,9 @@ def boundary_fourier_norms(
     if amplitudes.shape[1] != grid.nxi:
         raise ValueError("boundary axial size does not match mirror grid")
     weights = jnp.asarray(grid.axial_basis.weights)
+    if exclude_end_cuts:
+        amplitudes = amplitudes[:, 1:-1]
+        weights = weights[1:-1]
     l2 = jnp.sqrt(jnp.sum(amplitudes**2 * weights[None, :], axis=1) / jnp.sum(weights))
     return l2, jnp.max(amplitudes, axis=1)
 
@@ -82,6 +88,8 @@ class NonaxisymmetricBetaDiagnostics:
     center_boundary_modes: Array
     boundary_mode_l2: Array
     boundary_mode_max: Array
+    boundary_mode_interior_l2: Array
+    boundary_mode_interior_max: Array
     plasma_volume: Array
     plasma_energy: Array
 
@@ -188,6 +196,9 @@ def summarize_nonaxisymmetric_beta_scan(
         center_field = jnp.sqrt(result.plasma_b_squared[0, :, center])
         boundary_modes = boundary_fourier_amplitudes(result.boundary)
         mode_l2, mode_max = boundary_fourier_norms(result.boundary, grid)
+        interior_l2, interior_max = boundary_fourier_norms(
+            result.boundary, grid, exclude_end_cuts=True
+        )
         summaries.append(
             NonaxisymmetricBetaDiagnostics(
                 requested_beta=requested_beta,
@@ -205,6 +216,8 @@ def summarize_nonaxisymmetric_beta_scan(
                 center_boundary_modes=boundary_modes[:, center],
                 boundary_mode_l2=mode_l2,
                 boundary_mode_max=mode_max,
+                boundary_mode_interior_l2=interior_l2,
+                boundary_mode_interior_max=interior_max,
                 plasma_volume=_plasma_volume(result, grid),
                 plasma_energy=result.plasma_energy.total,
             )
