@@ -44,6 +44,9 @@ Solver
 .. automodule:: vmec_jax.core.preconditioner
    :members:
 
+.. automodule:: vmec_jax.core.preconditioner_2d
+   :members:
+
 .. automodule:: vmec_jax.core.step
    :members:
 
@@ -63,6 +66,9 @@ Free boundary
    :members:
 
 .. automodule:: vmec_jax.core.freeboundary
+   :members:
+
+.. automodule:: vmec_jax.core.freeboundary_diff
    :members:
 
 .. automodule:: vmec_jax.core.mgrid
