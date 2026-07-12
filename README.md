@@ -175,6 +175,28 @@ CPU, single thread; `benchmarks/baseline.json`; reproduce with
 | 2D block preconditioner (stiff-case speedup) | ✅ | ❌ | ❌ |
 | Near-axis (pyQSC / pyQIC) optimization seed | ✅ | ❌ | ❌ |
 
+### Free boundary straight from coils
+
+The "free boundary directly from coils" row is a workflow, not a checkbox:
+pass a `CoilSet` as `external_field=` and the NESTOR vacuum solve evaluates a
+JAX Biot-Savart at exactly the boundary points it needs, every iteration — no
+mgrid file, no grid-interpolation error, and the coil degrees of freedom stay
+differentiable end-to-end.
+
+![Free-boundary Landreman-Paul QA pressure scan directly from ESSOS coils](docs/_static/figures/readme_essos_beta_scan.png)
+
+*Free-boundary equilibria of the Landreman–Paul precise-QA configuration held
+by its 16 modular coils as optimized in
+[ESSOS](https://github.com/uwplasma/ESSOS) (3 KB coil JSON bundled in
+`examples/data/`). Pressure is ramped at fixed coil currents with each point
+warm-started from the previous boundary, and `PRES_SCALE` is calibrated per
+point so the **actual** volume-average beta of the converged wout
+(`betatotal`) — not a nominal input value — lands on 0, 1, 2, 3 % (all within
+0.08 %, force residual ~2e-10 at ns = 51). The plasma dilates and the magnetic
+axis Shafranov-shifts 14 cm outboard at the φ = 0 section (right panel) while
+the coils never move. Reproduce with
+`python examples/free_boundary_essos_coils.py`.*
+
 ## Code size
 
 vmec-jax delivers that superset of capabilities in roughly **half the code**,
@@ -241,8 +263,7 @@ is shaped into a quasi-symmetric stellarator (blue) by the least-squares driver
 coloured by `|B|`, and the bottom row is `|B|` in Boozer coordinates on the LCFS
 (jet line contours), whose contour geometry reads off the symmetry family —
 horizontal for QA, diagonal for QH, vertical for QP. `QS` is the quasisymmetry
-residual on the plotted equilibrium: QA and QH reach deep quasisymmetry
-(1.6e-4 and **5.8e-5** — note QH's near-straight diagonal contours), while
+residual on the plotted equilibrium: (**1.1e-6** and **5.8e-5** — note QH's near-straight diagonal contours), while
 quasi-poloidal QP is the hardest class and plateaus near 1e-1. Reproduce with
 `python benchmarks/make_readme_figures.py --only optimization` from the decks
 in `benchmarks/opt_decks/`.*

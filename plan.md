@@ -670,8 +670,10 @@ Jacobian, redundant final solve_equilibrium):
      upgrades.
   Runner-up Broyden secant (only option that weakens the per-iterate exactness); long-term: one-shot/
   SAND (~4x one solve for a whole optimization, needs replacing the scipy driver).
-  Gate: a QA/QH-class max_mode-5 campaign (same schedule as R1) completes in <1 h on the office CPU
-  box; gradient accuracy still FD-validated (rel <=1e-4); CI gradient shard green.
+  **GATE PASSED (2026-07-12): the full max_mode 1->5 QA campaign on the office CPU box completes in
+  1532 s (25.5 min, target <3600 s) with memo + block-tridiagonal Jacobian + CPU pin, reaching QS
+  3.73e-7 (440x deeper than the prior README deck; iota 0.42, aspect 6.000). QP (the stall-prone
+  class) still running at its own pace. Gradient FD validation and CI gradient shard green throughout.**
 
 **R22. README/showcase refinement round 2 (user 2026-07-11; DO these before R21/R9; VMEX rename deferred
 as a longer refactor).**
