@@ -155,6 +155,19 @@ def test_toroidal_hybrid_free_boundary_example(tmp_path):
     assert (outdir / "hybrid_free_endpoint_modB.png").exists()
 
 
+def test_mirror_fixed_boundary_gradients_example(tmp_path):
+    out = _run_example(
+        EXAMPLES / "mirror_fixed_boundary_gradients.py", tmp_path, timeout=900
+    )
+    summary = re.search(r'"relative_error": ([0-9.eE+-]+)', out)
+    assert summary is not None and float(summary.group(1)) < 1.0e-4
+    outdir = tmp_path / "results" / "mirror_fixed_boundary_gradients"
+    assert (outdir / "mout_mirror_fixed_gradient.nc").exists()
+    assert (outdir / "mirror_fixed_gradient_3d.png").exists()
+    assert (outdir / "mirror_fixed_gradient_modB.png").exists()
+    assert (outdir / "mirror_fixed_gradient_sensitivity.png").exists()
+
+
 def test_finite_beta_scan(tmp_path):
     out = _run_example(EXAMPLES / "finite_beta_scan.py", tmp_path, timeout=900)
     # rows: pres_scale  beta_tot  R_axis  Shafranov  minDMerc
