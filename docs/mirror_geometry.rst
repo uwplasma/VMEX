@@ -246,6 +246,13 @@ Cartesian magnetic field, both pressure moments, interface residuals, solver
 history, closure metadata, and optional coil curves. Straight-axis mirror data
 are never encoded as a toroidal WOUT file.
 
+The compact six-point isotropic reference data are recorded in
+``benchmarks/mirror_free_boundary_axisymmetric.json``. At 50% requested and
+achieved central beta, the solve reaches a variational residual of
+``5.67e-15`` in 10 iterations. The center radius increases by 7.64% and the
+on-axis field decreases by 24.91%; the solved field ratio is 0.7509 versus
+the paraxial ``sqrt(1-beta)=0.7071`` reference.
+
 Fixed-boundary 3D solver
 ------------------------
 
