@@ -142,7 +142,10 @@ was a continuation-driver bug: each point reset pressure from a crude global slo
 actual beta 3.059%, though critical slowing reaches 15,675 iterations near beta 2.927%. The example
 therefore stops honestly at 3%; 4--5% remains part of the coupled-globalization gate. The forward
 result now retains its final NESTOR cache/potential and CLI/library WOUT files populate
-`potsin`/`potcos` plus `xmpot`/`xnpot`; the `*_sur` tables and coupled adjoint remain open. The
+``potsin``/``potcos`` plus ``xmpot``/``xnpot`` and all covariant/contravariant ``*_sur`` tables.
+The surface tables reconstruct the retained real-space fields to transform roundoff and match a
+fresh VMEC2000 CTH WOUT within 1.2e-3 scale-relative; evidence is in
+``benchmarks/free_boundary_surface_fields.json``. The coupled adjoint remains open. The
 coupled NESTOR-MHD fixed-point residual now reconstructs the retained final constraint state,
 keeps the LCFS edge active, and passes a converged CTH residual gate plus ``extcur`` JVP vs central
 finite difference (2026-07-12). Next is the structural-dof projection and adjoint Krylov solve.

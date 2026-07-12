@@ -377,6 +377,10 @@ class FreeBoundaryState:
     potvac: np.ndarray | None = None
     xmpot: np.ndarray | None = None
     xnpot: np.ndarray | None = None
+    bsubu_sur: Any = None
+    bsubv_sur: Any = None
+    bsupu_sur: Any = None
+    bsupv_sur: Any = None
     rcon0: Any = None
     zcon0: Any = None
     ctor: float = 0.0
@@ -627,7 +631,7 @@ def _make_fused_vacuum(basis: VacuumBasis, *, modes: ModeTable, signgs: int,
         potvac, mode_matrix, bvec_nonsing, _rhs, _gsrc, _grp = solver_vac.full(
             boundary, ext["bexni"]
         )
-        bsqvac, bsubu_s, bsubv_s, _bu, _bv = vacuum_channels(
+        bsqvac, bsubu_s, bsubv_s, bsupu_s, bsupv_s = vacuum_channels(
             basis=basis, potvac=potvac, bexu=ext["bexu"], bexv=ext["bexv"],
             guu=ext["guu"], guv=ext["guv"], gvv=ext["gvv"],
         )
@@ -637,6 +641,8 @@ def _make_fused_vacuum(basis: VacuumBasis, *, modes: ModeTable, signgs: int,
         return {
             "bsqvac": bsqvac, "ctor": ctor, "rbtor": rbtor, "potvac": potvac,
             "mode_matrix": mode_matrix, "bvec_nonsing": bvec_nonsing,
+            "bsubu_sur": bsubu_s, "bsubv_sur": bsubv_s,
+            "bsupu_sur": bsupu_s, "bsupv_sur": bsupv_s,
             "delbsq_num": delbsq_num, "delbsq_den": delbsq_den,
             "bsubuvac": bsubuvac, "bsubvvac": bsubvvac,
         }
@@ -652,7 +658,7 @@ def _make_fused_vacuum(basis: VacuumBasis, *, modes: ModeTable, signgs: int,
         potvac, _rhs = solver_vac.skip(
             boundary, ext["bexni"], bvec_nonsing, mode_matrix
         )
-        bsqvac, bsubu_s, bsubv_s, _bu, _bv = vacuum_channels(
+        bsqvac, bsubu_s, bsubv_s, bsupu_s, bsupv_s = vacuum_channels(
             basis=basis, potvac=potvac, bexu=ext["bexu"], bexv=ext["bexv"],
             guu=ext["guu"], guv=ext["guv"], gvv=ext["gvv"],
         )
@@ -661,6 +667,8 @@ def _make_fused_vacuum(basis: VacuumBasis, *, modes: ModeTable, signgs: int,
         )
         return {
             "bsqvac": bsqvac, "ctor": ctor, "rbtor": rbtor, "potvac": potvac,
+            "bsubu_sur": bsubu_s, "bsubv_sur": bsubv_s,
+            "bsupu_sur": bsupu_s, "bsupv_sur": bsupv_s,
             "delbsq_num": delbsq_num, "delbsq_den": delbsq_den,
             "bsubuvac": bsubuvac, "bsubvvac": bsubvvac,
         }
@@ -774,6 +782,10 @@ def _vacuum_step(
         out = fused_vac.skip(carry.state, rt, field, fb.bvec_nonsing, fb.mode_matrix)
     bsqvac = out["bsqvac"]
     fb.potvac = out["potvac"]
+    fb.bsubu_sur = out["bsubu_sur"]
+    fb.bsubv_sur = out["bsubv_sur"]
+    fb.bsupu_sur = out["bsupu_sur"]
+    fb.bsupv_sur = out["bsupv_sur"]
     fb.ctor = float(out["ctor"])
     fb.rbtor = float(out["rbtor"])
     fb.vacuum_calls += 1

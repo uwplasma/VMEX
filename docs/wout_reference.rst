@@ -68,11 +68,10 @@ Free-boundary extras
 --------------------
 
 When ``lfreeb = T``: ``nextcur``, ``extcur``, ``curlabel``, ``mgrid_mode``
-carry the coil-group metadata from the mgrid file. The NESTOR vacuum
-potential (``potsin``/``xmpot``/``xnpot``) and the ``*_sur`` surface arrays
-are declared for schema compatibility but currently written as netCDF fill —
-the free-boundary solver does not yet return the vacuum potential (see
-:doc:`cli`).
+carry the coil-group metadata from the mgrid file. Passing the retained
+free-boundary state writes the NESTOR vacuum potential
+(``potsin``/``potcos``/``xmpot``/``xnpot``) and the covariant and
+contravariant ``*_sur`` surface arrays in VMEC2000's Nyquist convention.
 
 Parity with VMEC2000
 --------------------

@@ -88,9 +88,9 @@ For ``LFREEB = T`` decks:
   :class:`vmec_jax.core.coils.CoilSet` Biot-Savart.
 
 Known divergences of the current free-boundary lane: it is single-grid (only
-the final ``NS_ARRAY`` stage runs; multi-stage decks print a note), and the
-NESTOR surface-field ``*_sur`` tables remain netCDF fill. The retained vacuum
-state now populates ``potsin``/``potcos`` and ``xmpot``/``xnpot``. An NITER-exhausted
+the final ``NS_ARRAY`` stage runs; multi-stage decks print a note). The retained
+vacuum state populates ``potsin``/``potcos``, ``xmpot``/``xnpot``, and all
+covariant/contravariant ``*_sur`` surface-field tables. An NITER-exhausted
 free-boundary run still writes the wout (VMEC2000 behavior) and exits with
 ``ier_flag = 2``.
 

@@ -391,10 +391,33 @@ def test_converged_result_retains_vacuum_state(tmp_path):
     )
     assert wout.potsin is not None and wout.xmpot is not None and wout.xnpot is not None
     assert len(wout.potsin) == len(wout.xmpot) == len(wout.xnpot)
+    for name in ("bsubumnc_sur", "bsubvmnc_sur", "bsupumnc_sur", "bsupvmnc_sur"):
+        values = getattr(wout, name)
+        assert values is not None and values.shape == wout.xm_nyq.shape
+        assert np.all(np.isfinite(values))
+    from vmec_jax.core.postprocess import fourier_synthesis, internal_angle_grid
+    surface_shape = np.asarray(vacuum.bsubu_sur).shape
+    ntheta = surface_shape[0] if inp.lasym else 2 * (surface_shape[0] - 1)
+    theta, zeta, _weights = internal_angle_grid(
+        ntheta=ntheta, nzeta=surface_shape[1], nfp=inp.nfp, lasym=inp.lasym)
+    for real_name, coeff_name in (
+        ("bsubu_sur", "bsubumnc_sur"),
+        ("bsubv_sur", "bsubvmnc_sur"),
+        ("bsupu_sur", "bsupumnc_sur"),
+        ("bsupv_sur", "bsupvmnc_sur"),
+    ):
+        reconstructed = fourier_synthesis(
+            getattr(wout, coeff_name)[None, :], None,
+            wout.xm_nyq, wout.xn_nyq, theta, zeta)[0]
+        np.testing.assert_allclose(
+            reconstructed, np.asarray(getattr(vacuum, real_name)),
+            rtol=2e-11, atol=2e-12)
     reread = read_wout(write_wout(tmp_path / "wout_freeb.nc", wout))
     np.testing.assert_array_equal(reread.potsin, wout.potsin)
     np.testing.assert_array_equal(reread.xmpot, wout.xmpot)
     np.testing.assert_array_equal(reread.xnpot, wout.xnpot)
+    for name in ("bsubumnc_sur", "bsubvmnc_sur", "bsupumnc_sur", "bsupvmnc_sur"):
+        np.testing.assert_array_equal(getattr(reread, name), getattr(wout, name))
 
 
 @pytest.mark.full
