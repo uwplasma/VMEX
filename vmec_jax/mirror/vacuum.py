@@ -37,30 +37,37 @@ class VacuumGrid:
 
     @property
     def nrho(self) -> int:
+        """Return the number of radial vacuum nodes."""
         return self.radial_basis.size
 
     @property
     def ntheta(self) -> int:
+        """Return the number of poloidal vacuum nodes."""
         return self.theta_basis.size
 
     @property
     def nxi(self) -> int:
+        """Return the number of axial vacuum nodes."""
         return self.axial_basis.size
 
     @property
     def rho(self) -> np.ndarray:
+        """Return radial nodes mapped to the unit interval."""
         return 0.5 * (self.radial_basis.nodes + 1.0)
 
     @property
     def radial_weights(self) -> np.ndarray:
+        """Return radial quadrature weights on the unit interval."""
         return 0.5 * self.radial_basis.weights
 
     @property
     def theta(self) -> np.ndarray:
+        """Return the periodic poloidal nodes."""
         return self.theta_basis.nodes
 
     @property
     def shape(self) -> tuple[int, int, int]:
+        """Return the ``(radial, poloidal, axial)`` vacuum-grid shape."""
         return (self.nrho, self.ntheta, self.nxi)
 
     def radial_derivative(self, values: Array) -> Array:

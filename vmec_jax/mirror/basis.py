@@ -231,26 +231,32 @@ class MirrorGrid:
 
     @property
     def ns(self) -> int:
+        """Return the number of full radial surfaces."""
         return int(self.s.size)
 
     @property
     def ntheta(self) -> int:
+        """Return the number of poloidal collocation nodes."""
         return self.theta_basis.size
 
     @property
     def nxi(self) -> int:
+        """Return the number of axial collocation nodes."""
         return self.axial_basis.size
 
     @property
     def theta(self) -> np.ndarray:
+        """Return the periodic poloidal nodes."""
         return self.theta_basis.nodes
 
     @property
     def xi(self) -> np.ndarray:
+        """Return the normalized Chebyshev axial nodes."""
         return self.axial_basis.nodes
 
     @property
     def shape(self) -> tuple[int, int, int]:
+        """Return the ``(radial, poloidal, axial)`` grid shape."""
         return (self.ns, self.ntheta, self.nxi)
 
 

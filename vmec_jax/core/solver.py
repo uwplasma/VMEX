@@ -373,32 +373,39 @@ class SolverRuntime:
     # -- trace-time-static tables, derived from the meta resolution ---------
     @property
     def modes(self) -> ModeTable:
+        """Return the cached Fourier mode table for this resolution."""
         return _static_tables(self.resolution)[0]
 
     @property
     def trig(self) -> TrigTables:
+        """Return the cached trigonometric transform tables."""
         return _static_tables(self.resolution)[1]
 
     @property
     def weights(self) -> np.ndarray:    # angular integration weights (wint)
+        """Return the angular quadrature weights (VMEC ``wint``)."""
         return _static_tables(self.resolution)[2]
 
     # force-block gather tables (static, from _force_gather_tables):
     # cos_w weights the (cc, ss) blocks; sin_w the (sc, cs) blocks.
     @property
     def gather_m(self) -> np.ndarray:
+        """Return poloidal indices for gathering signed force modes."""
         return _static_tables(self.resolution)[3]
 
     @property
     def gather_n(self) -> np.ndarray:
+        """Return toroidal indices for gathering signed force modes."""
         return _static_tables(self.resolution)[4]
 
     @property
     def cos_w(self) -> np.ndarray:
+        """Return weights for gathering cosine-family force blocks."""
         return _static_tables(self.resolution)[5]
 
     @property
     def sin_w(self) -> np.ndarray:
+        """Return weights for gathering sine-family force blocks."""
         return _static_tables(self.resolution)[6]
 
 

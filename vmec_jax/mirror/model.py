@@ -291,9 +291,11 @@ class IsotropicPressureClosure:
             raise ValueError("pressure closure gamma must be greater than one")
 
     def parallel_pressure(self, s: Array, magnetic_field_strength: Array) -> Array:
+        """Evaluate the isotropic pressure profile."""
         return _power_series(self.coefficients, s) + jnp.zeros_like(magnetic_field_strength)
 
     def moments(self, s: Array, magnetic_field_strength: Array) -> PressureMoments:
+        """Return equal parallel and perpendicular pressure moments."""
         pressure = self.parallel_pressure(s, magnetic_field_strength)
         return PressureMoments(pressure, pressure, pressure / (self.gamma - 1.0))
 
@@ -340,11 +342,13 @@ class BiMaxwellianPressureClosure:
         return jnp.where(b >= 1.0, above, below)
 
     def parallel_pressure(self, s: Array, magnetic_field_strength: Array) -> Array:
+        """Evaluate the bi-Maxwellian parallel pressure."""
         thermal = _power_series(self.mass_coefficients, s)
         hot_fraction = _power_series(self.hot_fraction_coefficients, s)
         return thermal * (1.0 + hot_fraction * self.form_factor(magnetic_field_strength))
 
     def moments(self, s: Array, magnetic_field_strength: Array) -> PressureMoments:
+        """Derive thermodynamically consistent anisotropic moments."""
         return _consistent_moments(self, s, magnetic_field_strength, self.gamma)
 
 
@@ -380,6 +384,7 @@ class TabulatedPressureClosure:
             raise ValueError("pressure closure gamma cannot equal one")
 
     def parallel_pressure(self, s: Array, magnetic_field_strength: Array) -> Array:
+        """Interpolate the tabulated parallel pressure in ``(s, |B|)``."""
         s_nodes = jnp.asarray(self.s_nodes)
         b_nodes = jnp.asarray(self.b_nodes)
         values = jnp.asarray(self.parallel_values)
@@ -402,6 +407,7 @@ class TabulatedPressureClosure:
         )
 
     def moments(self, s: Array, magnetic_field_strength: Array) -> PressureMoments:
+        """Derive consistent moments from the interpolated parallel pressure."""
         return _consistent_moments(self, s, magnetic_field_strength, self.gamma)
 
 

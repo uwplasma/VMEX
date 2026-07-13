@@ -68,6 +68,7 @@ class StepControl:
 
     @staticmethod
     def initial(time_step: float) -> "StepControl":
+        """Create the VMEC time-step controller's initial state."""
         dt = jnp.asarray(float(time_step))
         return StepControl(
             time_step=dt,

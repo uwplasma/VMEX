@@ -49,9 +49,11 @@ class _ScaledPressureClosure:
     scale: Array
 
     def parallel_pressure(self, s: Array, magnetic_field_strength: Array) -> Array:
+        """Evaluate the pressure closure with the solved amplitude."""
         return self.scale * self.closure.parallel_pressure(s, magnetic_field_strength)
 
     def moments(self, s: Array, magnetic_field_strength: Array) -> PressureMoments:
+        """Evaluate consistently scaled parallel, perpendicular, and energy moments."""
         moments = self.closure.moments(s, magnetic_field_strength)
         return PressureMoments(
             parallel=self.scale * moments.parallel,

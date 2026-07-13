@@ -129,6 +129,7 @@ class _MirrorStateVectorizer:
         axial_flux_derivative: Array,
         solve_lambda: bool,
     ) -> "_MirrorStateVectorizer":
+        """Build the constrained state-to-solver-vector mapping."""
         base = project_fixed_boundary_state(state, boundary, grid)
         radius_scale = float(np.mean(np.asarray(boundary.radius_scale)))
         if not np.isfinite(radius_scale) or radius_scale <= 0.0:
@@ -166,19 +167,23 @@ class _MirrorStateVectorizer:
 
     @property
     def radius_size(self) -> int:
+        """Return the number of independently solved radius values."""
         return int(self.radius_indices[0].size)
 
     @property
     def lambda_size(self) -> int:
+        """Return the number of gauge-free stream-function values."""
         if not self.solve_lambda:
             return 0
         return int((self.base.radius_scale.shape[0] - 1) * self.lambda_free_indices.size)
 
     @property
     def size(self) -> int:
+        """Return the total solver-vector length."""
         return self.radius_size + self.lambda_size
 
     def pack(self) -> np.ndarray:
+        """Pack the constrained mirror state into normalized solver variables."""
         radius = np.asarray(self.base.radius_scale)[self.radius_indices] / self.radius_scale
         if not self.solve_lambda:
             return radius
@@ -189,6 +194,7 @@ class _MirrorStateVectorizer:
         return np.concatenate([radius, lam])
 
     def unpack(self, vector: Array) -> MirrorState:
+        """Reconstruct a constrained mirror state from solver variables."""
         vector = jnp.asarray(vector)
         radius = self.base.radius_scale.at[self.radius_indices].set(
             vector[: self.radius_size] * self.radius_scale
@@ -217,6 +223,7 @@ class _MirrorStateVectorizer:
         return MirrorState(radius, lam)
 
     def bounds(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return conservative bounds for normalized solver variables."""
         lower = np.concatenate(
             [np.full(self.radius_size, 0.2), np.full(self.lambda_size, -np.inf)]
         )
