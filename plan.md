@@ -596,9 +596,13 @@ R9 release and the VMEX rename R21).** Ten items (+k added 2026-07-12):
   b. **Port more functionality to SOLVAX** — anything generic-solver-shaped still in vmec_jax
      (candidates: the R25.2 block-tridiagonal Jacobian machinery, chunk_map, adjoint GMRES wrappers)
      moves to SOLVAX with a release + import back.
-  c. **Performance:** (i) COLD STARTS — cut first-call JIT wall (compile-cache persistence across
-     processes, smaller graphs, jit-factoring); (ii) FREE BOUNDARY with and without mgrid, with and
-     without NESTOR (direct-coil lane) — profile + tune both.
+  c. **Performance:** (i) COLD STARTS — **(DONE 2026-07-12.)** The persistent XLA compile cache was
+     enabled but had NO default directory on CPU (accelerator-only gate), so CPU CLI/API runs
+     recompiled every process. Made it default-on for every backend (_compat._default_compilation_cache_dir);
+     the machine fingerprint already hashes CPU model+flags (AVX2/AVX512; +macOS sysctl brand added) so
+     heterogeneous shared-FS machines never collide. Measured: li383 CLI 4.48 s -> 1.34 s on the 2nd run
+     (3.3x), zero user config; opt out with VMEC_JAX_COMPILATION_CACHE=disabled. (ii) FREE BOUNDARY
+     mgrid/no-mgrid + NESTOR/direct-coil profiling — still TODO.
   d. **Faster optimizations/gradients** — continue past the R25 gate (block-tridiag amortization,
      recycling, perturbation warm starts all landed and measured together).
   e. **Memory reduction with DEFAULT controls** — good defaults, no advanced user knobs required.
