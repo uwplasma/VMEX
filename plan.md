@@ -2144,6 +2144,15 @@ and becomes non-finite within 6,000 iterations. This is the expected uniform-tri
 for tightly fitting modular coils, not a file-layout defect. Evidence is in
 `benchmarks/free_boundary_essos_mgrid_parity.json`. Do not spend a multi-GB grid on this case;
 positive equilibrium-level mgrid/direct parity moves to the well-separated tokamak coil example.
+That positive lane is now complete. `tokamak_coils` builds circular TF coils and arbitrary
+`(radius,z,current)` PF loops without example-level Fourier assembly. The root example reconstructs
+the bundled DIII-D field with 128 TF and 23 PF coils, generates a `145x225x1` raw single-group
+mgrid, and solves both providers at actual beta 0, 1.496%, and 3.009%. All six equilibria converge
+at `ftol=1e-8`; direct/generated LCFS coefficient differences are `2.25e-4--6.31e-4`. From beta
+zero to 3.009%, direct-coil volume rises 43.4%, the axis moves outward 34.0 cm, and mean iota rises
+0.494 -> 0.621. The example writes both WOUT sets, CSV parity data, a reviewed LCFS overlay, and
+the standard 3D field-line, `|B|`, surface, profile, and Mercier figures. Evidence is in
+`benchmarks/free_boundary_tokamak_coil_parity.json`.
 
 ---
 

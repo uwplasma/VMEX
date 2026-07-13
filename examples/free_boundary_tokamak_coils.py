@@ -6,6 +6,10 @@ poloidal-field loops reconstructed from the bundled DIII-D mgrid field. Each
 equilibrium is solved twice from the same predictor: direct JAX Biot-Savart and
 a VMEC2000-compatible mgrid generated from those exact coils. No boundary is
 prescribed after the free-boundary release.
+
+At ``ns=16`` the direct/generated-mgrid LCFS coefficient difference is
+``2.25e-4--6.31e-4`` for actual beta 0, 1.496%, and 3.009%. The direct-coil
+volume increases 15.876 -> 22.763 m^3 and its magnetic axis shifts 34.0 cm.
 """
 
 import csv
@@ -165,9 +169,10 @@ if not CI:
         ax.plot(rm[:, 0], zm[:, 0], "--", lw=1.7, label="generated mgrid")
         ax.set(title=f"actual beta {row[1]:.2f}%", xlabel="R [m]", ylabel="Z [m]")
         ax.set_aspect("equal"); ax.grid(alpha=0.25)
-    axes[0].legend(frameon=False)
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=2, frameon=False)
     fig.suptitle("Solved tokamak LCFS: direct Biot-Savart vs generated mgrid")
-    fig.tight_layout()
+    fig.tight_layout(rect=(0.0, 0.07, 1.0, 1.0))
     fig.savefig(OUT_DIR / "tokamak_beta_parity.png", facecolor="white")
     for target, (wd, _wm) in zip(TARGET_BETAS, solutions):
         vj.plot_wout(wd, OUT_DIR / f"direct_beta_{str(target).replace('.', 'p')}")
