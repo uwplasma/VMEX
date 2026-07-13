@@ -71,8 +71,8 @@ phase specs (still authoritative for detail); this roadmap supersedes the scatte
 folds in every requirement from the user prompts and the two independent reviews.
 
 ### Done and verified on the current merged branch (2026-07-12)
-- Legacy tree deleted; after merging main at ``2f75914f`` the package is **64 Python files / 33,473
-  lines**, including the focused 20-file / 8,071-line open-mirror backend and the traceable
+- Legacy tree deleted; after merging main at ``2f75914f`` the package is **64 Python files / 33,474
+  lines**, including the focused 20-file / 8,072-line open-mirror backend and the traceable
   omnigenity module. The tracked checkout is 7.3 MiB;
   no generated mirror results are tracked.
 - Fixed-boundary equilibrium at **VMEC2000 machine-precision parity** across the 9 golden fixtures
@@ -221,7 +221,8 @@ and ``nyquist`` 1,026 lines. Mirror plotting moved intact to its owning package,
 ``plotting`` from 1,039 to 888 lines. Split the rest only along existing ownership boundaries;
 do not create forwarding modules or disturb validated numerical kernels solely to meet a line target.
 Gate: no core file >~1000 lines; 0 public definitions without docstrings; ruff+mypy clean without
-blanket ignores.
+blanket ignores. Ruff and mypy are clean across all 64 source files as of ``e8b788f1``; coherent
+splits for the five remaining large numerical modules remain release cleanup.
 
 **R7. Docs completion.** Per-example tutorial pages with rendered figures; theory-with-equations pass
 (every equation linked to its implementing function); `docs/glossary.rst` (VMEC2000↔vmec_jax names).
@@ -2005,8 +2006,8 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        cross-sections, pressure, and `ftol` history. The 0--50% straight-mirror example writes one
        file per accepted equilibrium and renders its endpoint through this disk-backed path.
        Before the latest main integration the complete package was 59 Python files / 31,044 lines.
-       The post-refactor recount is 64 files / 33,473 lines, while the mirror backend is 20 files /
-       8,071 lines and its largest module is 862 lines. Tests total 14,052 Python lines.
+       The post-refactor recount is 64 files / 33,474 lines, while the mirror backend is 20 files /
+       8,072 lines and its largest module is 862 lines. Tests total 14,052 Python lines.
        Generated outputs remain ignored and the tracked tree is 7.3 MiB. The mirror structure meets
        its bound and aggregate source is inside the revised evidence-based budget; tests are 4,052
        lines above target. Keep evidence-preserving test simplification as a release cleanup lane;
