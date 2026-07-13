@@ -193,6 +193,17 @@ installed.
 .. literalinclude:: ../examples/single_stage_free_boundary_opt.py
    :language: python
 
+Simultaneous plasma-boundary and coil optimization
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Optimize low-order plasma-boundary modes and external-current amplitudes in one
+objective. The exact joint gradient combines the fixed-boundary implicit adjoint
+with the moving-surface virtual-casing derivative, while a frozen precision plan
+keeps adaptive quadrature outside the traced calculation.
+
+.. literalinclude:: ../examples/single_stage_simultaneous_opt.py
+   :language: python
+
 
 Straight mirrors and toroidal hybrids
 -------------------------------------

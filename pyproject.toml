@@ -52,7 +52,7 @@ Changelog = "https://github.com/uwplasma/vmec_jax/releases"
 # API required by this optional lane currently lives on
 # uwplasma/virtual_casing_jax's
 # ``feature/jax-vmec-extender`` branch, not in the PyPI 0.0.2 release. Install
-# a checkout of that branch editable alongside vmec_jax before using this lane:
+# commit 195c425 from that branch editable alongside vmec_jax before using this lane:
 #   pip install -e /path/to/virtual_casing_jax
 # The ``vmec_jax.core.freeboundary_diff`` module and its tests are gated behind an
 # API check so normal installs stay independent of this experimental dependency.

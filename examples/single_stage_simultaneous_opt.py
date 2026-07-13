@@ -106,7 +106,9 @@ def main() -> None:
         params, extcur = unpack(x)
         sol = im.run(inp, params, **SOLVE)
         sd = FBD.surface_field_data_from_state(inp, sol.state, nphi=NPHI, ntheta=NTHETA)
-        prob = FBD.FreeBoundaryDiffProblem.from_surface_data(sd, digits=4, precision=plan)
+        prob = FBD.FreeBoundaryDiffProblem.from_surface_data(
+            sd, digits=4, precision=plan, remat=True
+        )
         mf = MgridField(br=base.br, bp=base.bp, bz=base.bz, extcur=extcur,
                         rmin=base.rmin, rmax=base.rmax, zmin=base.zmin,
                         zmax=base.zmax, nfp=base.nfp)
@@ -132,7 +134,9 @@ def main() -> None:
         params, extcur = unpack(x)
         sol = im.run(inp, params, **SOLVE)
         sd = FBD.surface_field_data_from_state(inp, sol.state, nphi=NPHI, ntheta=NTHETA)
-        prob = FBD.FreeBoundaryDiffProblem.from_surface_data(sd, digits=4, precision=plan)
+        prob = FBD.FreeBoundaryDiffProblem.from_surface_data(
+            sd, digits=4, precision=plan, remat=True
+        )
         mf = MgridField(br=base.br, bp=base.bp, bz=base.bz, extcur=extcur,
                         rmin=base.rmin, rmax=base.rmax, zmin=base.zmin,
                         zmax=base.zmax, nfp=base.nfp)

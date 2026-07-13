@@ -25,9 +25,10 @@ ordered core roadmap without reopening rejected solver variants.
 
 Turn `vmec_jax` into the reference JAX implementation of the VMEC ideal-MHD equilibrium solver:
 
-1. **End-to-end differentiable** library API (fixed and free boundary), fast on CPU and GPU, using
-   implicit differentiation of the converged equilibrium — not unrolled iteration tapes and not the
-   current "fingerprint-gated branch-local" machinery.
+1. **End-to-end differentiable fixed-boundary** library API using implicit differentiation of the
+   converged equilibrium, plus scoped free-boundary derivatives: forward implicit sensitivities for
+   a few solved-LCFS parameters and an exact virtual-casing design objective for many parameters.
+   The VMEC2000-parity NESTOR forward solver is not required to carry a production reverse graph.
 2. **A non-differentiable CLI fast path** that may use Python-side control flow, host callbacks,
    early exits, and donated buffers to beat the differentiable path in wall time.
 3. **VMEC2000 parity**: iteration prints, `wout_*.nc` contents, threed1-style summaries, and
@@ -71,9 +72,9 @@ phase specs (still authoritative for detail); this roadmap supersedes the scatte
 folds in every requirement from the user prompts and the two independent reviews.
 
 ### Done and verified on the current merged branch (2026-07-12)
-- Legacy tree deleted; after merging main at ``2f75914f`` the package is **64 Python files / 33,474
+- Legacy tree deleted; after merging main through ``9f3ccb31`` the package is **72 Python files / 33,956
   lines**, including the focused 20-file / 8,072-line open-mirror backend and the traceable
-  omnigenity module. The tracked checkout is 7.3 MiB;
+  omnigenity module. The tracked checkout is about 8.0 MiB;
   no generated mirror results are tracked.
 - Fixed-boundary equilibrium at **VMEC2000 machine-precision parity** across the 9 golden fixtures
   (exact iteration counts incl. lasym after the fixaray dnorm fix; wb ~1e-16, geometry ~1e-12).
@@ -128,59 +129,28 @@ _R1 status (2026-07-12, office 36-core CPU):_
   converged axis coefficients. The compact restart is the supported reproduction path until the
   generic interior guess is improved. Evidence is in `benchmarks/qi_compact.json`.
 
-**R2. Free boundary to production.** Forward parity/performance are complete: the CTH golden
-converges with per-variable VMEC2000 gates, the fused NESTOR path is bit-equivalent, and the ns=201
-benchmark measures vmec-jax warm `24.86 s` versus VMEC2000 `26.74 s` (the former 3x target is
-passed). The remaining gate is a memory-bounded many-parameter coupled solved-boundary adjoint;
-small-parameter forward implicit sensitivities and the scoped coil showcases are complete.
+**R2. Free boundary to production. COMPLETE WITH SCOPED DERIVATIVES.** The CTH golden converges with
+per-variable VMEC2000 gates, the fused NESTOR path is bit-equivalent, and the ns=201 benchmark
+measures vmec-jax warm `24.86 s` versus VMEC2000 `26.74 s`. Direct/generated-field parity is accepted
+for the reconstructed DIII-D tokamak at actual beta 0, 1.496%, and 3.009%; the LP-QA same-coil mgrid
+comparison and continuation above actual beta 3.350% are explicitly rejected by their refinement
+gates. NESTOR potentials and surface fields are retained in WOUT and reconstruct the real-space
+fields to transform roundoff, with 1.2e-3 scale-relative VMEC2000 CTH parity.
 
-_R2 status (2026-07-12):_ the direct ESSOS Landreman-Paul scan reaches actual beta 3.350% at
-``ftol=1e-10``; 3.3625% fails at the documented minimum continuation step, so 4--5% is not claimed.
-Generated-mgrid equilibrium parity for those same LP-QA coils is rejected after grid refinement,
-even though off-grid interpolation converges. Positive same-coil parity is instead established for
-the reconstructed DIII-D tokamak at actual beta 0, 1.496%, and 3.009%, with direct/generated LCFS
-coefficient differences ``2.25e-4--6.31e-4`` and reviewed figures. Evidence is in
-``benchmarks/free_boundary_essos_beta.json``, ``free_boundary_essos_mgrid_parity.json``, and
-``free_boundary_tokamak_coil_parity.json``. The forward
-result now retains its final NESTOR cache/potential and CLI/library WOUT files populate
-``potsin``/``potcos`` plus ``xmpot``/``xnpot`` and all covariant/contravariant ``*_sur`` tables.
-The surface tables reconstruct the retained real-space fields to transform roundoff and match a
-fresh VMEC2000 CTH WOUT within 1.2e-3 scale-relative; evidence is in
-``benchmarks/free_boundary_surface_fields.json``. The coupled adjoint remains open. The
-coupled NESTOR-MHD fixed-point residual now reconstructs the retained final constraint state,
-keeps the LCFS edge active, and passes a converged CTH residual gate plus ``extcur`` JVP vs central
-finite difference (2026-07-12). Next is the structural-dof projection and adjoint Krylov solve.
-An initial generic reverse-mode trace through the full CTH NESTOR rebuild was rejected after
-reaching 10.8 GiB RSS while still compilation-bound after three minutes. The production adjoint
-must use an implicit/custom VJP for the NESTOR linear solve and reuse its factorization; enforce a
-small-resolution peak-memory gate before repeating the production CTH run.
-Transposing the accepted forward-linearization closure was also rejected on the production CTH
-case (2026-07-12): the 3,690-dof closure itself built in 3.89 s at 2.80 GiB RSS, but XLA then spent
-4 min 17 s compiling the fused ``NESTOR full`` transpose, and process RSS reached 7.75 GiB before
-the controlled stop. This is not the compact custom NESTOR transpose required by the gate; do not
-wrap that closure in another Krylov implementation or retry it on GPU.
-The accepted small-parameter method is forward implicit sensitivity: JVP-only Krylov avoids that
-reverse graph and passes solved-LCFS central differences on 3D CTH (0.33%) and axisymmetric DIII-D
-(0.42%). Measured peaks are 4.7 and 3.3 GiB; records and reproduction live in
-``benchmarks/free_boundary_sensitivity.json`` and ``profile_production.py``. Remaining R2 derivative
-work is the many-parameter coil-shape adjoint and coupled-Krylov memory/preconditioning reduction.
-A radial block-tridiagonal warm start was measured and rejected on axisymmetric DIII-D: it reduced
-Krylov iterations 2,270→1,312 but increased sensitivity wall time to 159.7 s and peak RSS
-3.3→7.27 GiB. NESTOR edge pressure carries global plasma-current/axis coupling, so the radial block
-is not an exact inverse (direct residual 1.33%). The implementation was removed; evidence remains in
-``benchmarks/free_boundary_sensitivity.json``. The next preconditioner must represent that global
-coupling without assembling the full reverse graph.
-The production 2D Newton preconditioner was also rejected for this scan: with
-``precon_type="GMRES"`` and ``prec2d_threshold=1e-5`` it did not complete the first reported
-equilibrium within the default 1D path's practical run budget. It remains opt-in and is not used by
-the showcase.
-An attempted direct-``CoilSet`` extension of the coupled forward sensitivity
-was likewise removed after its real LP-QA gate failed. At ``ns=8``, ``ftol=1e-10``, the Krylov
-derivative converged to residual ``1.30e-10``, but reconverged finite differences were not
-step-stable, two positive perturbations stalled, and the surviving derivatives disagreed with the
-implicit value. Evidence is retained in ``benchmarks/free_boundary_sensitivity.json``. Do not expose
-coil-shape solved-LCFS derivatives until a strict-tolerance continuation yields a smooth independent
-finite-difference gate.
+The production derivative scope is finite and evidence-based. JVP-only forward implicit sensitivity
+passes solved-LCFS central differences on 3D CTH (0.33%) and axisymmetric DIII-D (0.42%) when the
+number of current groups is small. For many design parameters, the moving-surface virtual-casing
+objective merged from main differentiates plasma-boundary and coil variables simultaneously and
+passes its state-vs-WOUT and finite-gradient gates. On the 16x16 CTH case, however, its accepted
+rematerialized reverse pass takes 346.78 s and 6.08 GB maximum RSS; it is a research option, not a
+lightweight production adjoint. Evidence is in ``benchmarks/free_boundary_single_stage.json``.
+
+A many-parameter reverse derivative of the *NESTOR solved-LCFS fixed point* is deferred. Generic
+reverse mode reached 10.8 GiB; transposing the accepted 3,690-dof forward closure reached 7.75 GiB
+and compiled for 4m17s before the controlled stop; a radial block warm start increased peak RSS to
+7.27 GiB; and direct-CoilSet finite differences were not step-stable. These rejected methods remain
+in ``benchmarks/free_boundary_sensitivity.json``. Do not retry them or expose coil-shape solved-LCFS
+derivatives without a compact operator-level transpose and a new independent finite-difference gate.
 
 **R3. Default memory and cache controls COMPLETE; residual cold cost OPEN.** R26e established that
 ``jac_chunk_size="auto"`` bounds Jacobian columns, the converged-state memo reduced the measured
@@ -216,7 +186,7 @@ optimization requires it. This does not block equilibrium or mirror promotion.
 
 **R6. Refactor + docstring hygiene. COMPLETE.** Public API-like docstrings are complete: the
 original audit fixed all omissions in ``daadbf47``; the current AST audit finds 0 missing across
-567 top-level definitions and public class members. Mirror plotting
+569 top-level definitions and public class members. Mirror plotting
 moved intact to its owning package, reducing core ``plotting`` from 1,039 to 888 lines. The NumPy
 NESTOR parity path now lives in ``freeboundary_reference`` (232 lines), leaving the production
 free-boundary driver at 832 lines with nine net source lines added. Differentiable observables now
@@ -232,7 +202,7 @@ import paths. Every core module is now at or below 999 lines. Gate: no core file
 are clean across all 72 source files; solver, multigrid, free-boundary, CLI, package, and
 golden-digest regression gates pass.
 
-**R7. Docs completion COMPLETE.** The VMEC2000↔vmec-jax glossary is complete, all 26 executable
+**R7. Docs completion COMPLETE.** The VMEC2000↔vmec-jax glossary is complete, all 27 executable
 examples are referenced from the tutorials, and the final equation-to-source audit links the
 documented spectral, energy/force, preconditioning, stepping, multigrid, free-boundary,
 diagnostic, bootstrap, and implicit-differentiation equations to their implementations. Three
@@ -246,8 +216,9 @@ free boundary remains research-only after failing its local-mode refinement gate
 Fourier hybrid is reproducible through achieved beta 0.8333%; higher beta and a native spline state
 are deferred. Gates and evidence are consolidated in §8 Phase 5.5 and ``benchmarks/mirror_*.json``.
 
-**R9. Release v0.1.0.** After R1-R5: regenerate benchmarks/README, refresh the release asset bundle,
-tag, publish PyPI + conda-forge, verify `pip install vmec-jax && vmec --test` on a clean machine.
+**R9. Release handoff.** After R3 closes: regenerate the benchmark summary, verify wheel/sdist and a
+clean install, refresh the draft PR, and hand it to review. Tagging, PyPI, and conda-forge publication
+happen from merged main, not from this feature branch; main already carries the ``0.1.0`` version.
 
 ### Standing constraints (apply to all remaining work)
 - CI wall ≤10 min, coverage ≥95%, no brittle absolute wall-clock asserts (use ratios / compile counts).
@@ -336,24 +307,12 @@ every CI path in `.github/workflows/ci.yml` (parity shard file lists, ignores, p
 golden-fetch import path, `pyproject.toml` pytest config, and any `tests/core_new` string in docs.
 Gate: CI green with the flat `tests/` layout; no `core_new` anywhere.
 
-**R13. Many more pedagogic examples (study STELLOPT / VMEC2000 / hiddenSymmetries simsopt / DESC /
-VMEC++ example layouts).**
-  **(R13 IN PROGRESS 2026-07-11.)** Shipped so far (each simsopt-style, params-at-top, CI-smoke-tested,
-  indexed in examples/README.md): `plot_and_boozer.py` (every plot_wout figure + Boozer on the LCFS),
-  `profiles_power_and_spline.py` (power-series vs cubic-spline profiles → identical equilibrium; NCURR
-  0 vs 1), `take_gradients.py` (implicit-adjoint d(aspect)/d(RBC) and d(wb)/d(phiedge) vs central FD,
-  rel ~1e-9), `run_from_json.py` (VMEC++ JSON ↔ &INDATA round-trip → one equilibrium),
-  `hot_restart_scan.py` (seed each scan point from the previous state → warm converges in ~1 iter vs
-  ~309 cold, no recompile). Light ones run in the PR examples shard; take_gradients is nightly (`full`).
-  `finite_beta_scan.py` (pressure ramp → beta, Shafranov axis shift, Mercier DMerc; hot-restarted).
-  `free_boundary_mgrid.py` (NESTOR free boundary from coil EXTCUR + mgrid; LCFS solved for, nightly),
-  `free_boundary_beta_scan.py` (free-bdy pressure ramp → beta 0→2.6%, LCFS re-solved each point, nightly).
-  8 examples shipped this session. DEFERRED (need real coil data / advanced, follow-up):
-  free_boundary_essos_coils (direct-coil free bdy — no bundled CTH coils that reproduce mgrid_cth_like
-  and converge; needs a purpose-built coil set), single_stage_free_boundary_opt (gated on R15 free-bdy
-  IFT wrap). These two are the remaining R13 items; the rest of R13 is done. Each is one simsopt-style file (params at top, no `main()`, prints
-initial→progress→final, teaches one feature) and is CI-smoke-tested (reduced budget) + doubles as the
-docs tutorial (R14.3). Target set:
+**R13. Pedagogic examples. COMPLETE.** All 27 executable scripts are indexed in
+``examples/README.md`` and included literally from ``docs/tutorials.rst``. They cover fixed and free
+boundary, mgrid/direct coils, beta scans, profiles, JSON, plotting/Boozer, hot restart, fixed and free
+derivatives, simultaneous plasma/coil optimization, straight mirrors, toroidal hybrids, and
+QA/QH/QP/QI optimization. Fast scripts have CI smoke tests; expensive solves and derivative checks
+are marked ``full``. The original target set is retained below for provenance:
   - `run_fixed_boundary.py` (exists), `run_from_json.py` (VMEC++ JSON in/out + convert),
   - `free_boundary_mgrid.py` (mgrid path), `free_boundary_essos_coils.py` (direct Biot-Savart, no
     mgrid; needs ESSOS), `free_boundary_beta_scan.py` (β=0..5% hot-restarted; the README β-scan),
@@ -396,7 +355,7 @@ docs tutorial (R14.3). Target set:
   Gate: docs `-W` green; a reader can follow B-field→forces→preconditioner→solve→differentiate→optimize
   entirely from the docs; every example has a tutorial page.
 
-**R15. Free boundary to production parity + performance + differentiability (make it excellent AND
+**R15. Free boundary production parity, performance, and scoped differentiability. COMPLETE.**
 *(R15.1 DONE 2026-07-11, c83bb2a1: free boundary now CONVERGES to VMEC2000 parity — fixed a
 double-nfp vacuum phase bug (boundary synthesis used xn=n·nfp against per-period zeta; the
 geometric angle is phi=zeta·onp). input.cth_like_free_bdy: was stalling at NITER; now 574
@@ -406,11 +365,10 @@ round-trips/iter → ~0, warm 9.43→3.48 s (2.7×, now 4.5× VMEC2000), converg
 R15.3 PROTOTYPE (4dcbbb54): a fixed-boundary virtual-casing objective gives coil/extcur
 gradients without a NESTOR adjoint and matches central FD to `2.2e-13..1.2e-10`. The required
 `VmecSurfaceFieldData`/exterior-field API currently exists only on `virtual_casing_jax`'s
-`feature/jax-vmec-extender` branch, not its PyPI 0.0.2 release. Production differentiation remains
-open until that API is released and an IFT/adjoint propagates coil changes through the solved
-free-boundary state; add the cth golden and mgrid path to CI only after those gates.)*
-show it).** Forward solve and performance steps 1--2 are complete; coupled solved-boundary coil
-derivatives and the final showcase remain. Steps:
+`feature/jax-vmec-extender` branch, not its PyPI 0.0.2 release. Commit ``195c425`` now supplies the
+moving-surface precision plan and NaN-safe kernel needed by the validated simultaneous design path.)*
+Forward parity, performance, scoped derivatives, and showcases are complete under R2. The original
+steps remain as provenance; the many-parameter NESTOR fixed-point adjoint is explicitly deferred:
   1. **Converge as well as VMEC2000.** Diagnose why the free-bdy solve stalls (nvacskip cadence, ivac
      activation threshold, edge-force/preconditioner interaction at js=ns, delt policy) vs VMEC2000 on
      the same deck; raise NITER and match VMEC2000's converged fsq. Produce a **converged

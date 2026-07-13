@@ -53,6 +53,8 @@ All runnable examples live under this single `examples/` tree.
     conditioning barrier; no prescribed high-beta surfaces are plotted.
   - `single_stage_free_boundary_opt.py` — optimize coil currents to confine a
     target plasma by minimizing <(B.n)^2> with the exact virtual-casing gradient.
+  - `single_stage_simultaneous_opt.py` — optimize plasma-boundary modes and coil
+    currents together with one exact implicit-adjoint plus virtual-casing gradient.
 - `optimization/`: precise QA/QH/QP/QI from a circular torus — one file each,
   plus `QA_bootstrap_selfconsistent.py` / `QH_bootstrap_selfconsistent.py`,
   which reproduce the self-consistent Redl bootstrap-current workflow of

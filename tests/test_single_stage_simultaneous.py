@@ -24,7 +24,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-pytest.importorskip("virtual_casing_jax")
+vcj = pytest.importorskip("virtual_casing_jax")
+if not hasattr(vcj, "ExteriorFieldConfig"):
+    pytest.skip(
+        "installed virtual_casing_jax lacks the moving-surface extender API",
+        allow_module_level=True,
+    )
 
 import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
@@ -40,6 +45,11 @@ INPUT = DATA / "input.cth_like_free_bdy"
 MGRID = DATA / "mgrid_cth_like.nc"
 NP = NT = 16
 SOLVE = dict(ftol=1e-10, max_iterations=1500)
+
+
+def test_moving_surface_api_is_exported():
+    """The precision planner is part of the supported moving-surface API."""
+    assert "plan_vc_precision" in FBD.__all__
 
 
 @pytest.fixture(scope="module")
@@ -77,7 +87,9 @@ def _joint(inp, base, plan, target):
     def objective(params, extcur):
         sol = im.run(inp, params, **SOLVE)
         sd = FBD.surface_field_data_from_state(inp, sol.state, nphi=NP, ntheta=NT)
-        prob = FBD.FreeBoundaryDiffProblem.from_surface_data(sd, digits=4, precision=plan)
+        prob = FBD.FreeBoundaryDiffProblem.from_surface_data(
+            sd, digits=4, precision=plan, remat=True
+        )
         return prob.bnormal_objective(_mf(base, extcur)) + (sol.iota_edge - target) ** 2
     return objective
 

@@ -36,13 +36,14 @@ the external-field dofs alone — a ``CoilSet``'s Fourier dofs / currents or an
 ``MgridField``'s ``extcur`` — and FD-validates to ~1e-9 (see
 ``tests/test_freeboundary_diff.py``).
 
-The remaining single-stage piece (letting the boundary *shape* dofs vary, which
-makes the plasma field itself depend on them through a re-solve) is discussed in
-the module ``README``/plan notes; it is an implicit-function-theorem wrap around
-this residual and is intentionally out of scope here.
+For simultaneous plasma-boundary and coil optimization,
+:func:`surface_field_data_from_state` keeps the moving-boundary virtual-casing
+field traceable through the fixed-boundary implicit solve. Freeze adaptive
+quadrature with :func:`plan_vc_precision` before entering ``jax.grad``; the
+single-stage example and regression tests exercise both derivative blocks.
 
 ``virtual_casing_jax`` is an optional dependency. Until the extender API is
-released, install the ``feature/jax-vmec-extender`` branch editable with
+released, install commit ``195c425`` from the ``feature/jax-vmec-extender`` branch with
 ``pip install -e /path/to/virtual_casing_jax``. Importing this module raises a
 clear error when that API is missing.
 """
@@ -80,6 +81,7 @@ __all__ = [
     "MU0",
     "surface_field_data_from_wout",
     "surface_field_data_from_state",
+    "plan_vc_precision",
     "plasma_field_on_boundary",
     "FreeBoundaryDiffProblem",
     "external_B_cartesian",
@@ -426,6 +428,7 @@ def plan_vc_precision(
     *,
     digits: int = 4,
     chunk_size: int = 1024,
+    target_chunk_size: int | str | None = "auto",
     quad_nt: int | None = None,
     quad_np: int | None = None,
 ):
@@ -443,7 +446,7 @@ def plan_vc_precision(
         digits=int(digits),
         levels=_default_levels(int(surface_data.gamma.shape[1]), int(surface_data.gamma.shape[2])),
         chunk_size=chunk_size,
-        target_chunk_size=8,
+        target_chunk_size=target_chunk_size,
         dtype="float64",
     )
     field = VirtualCasingExteriorField(surface_data, cfg)
@@ -455,9 +458,11 @@ def plasma_field_on_boundary(
     *,
     digits: int = 4,
     chunk_size: int = 1024,
+    target_chunk_size: int | str | None = "auto",
     quad_nt: int | None = None,
     quad_np: int | None = None,
     precision=None,
+    remat: bool | None = None,
 ) -> jax.Array:
     """Plasma's own Cartesian field on its boundary via on-surface virtual casing.
 
@@ -470,6 +475,9 @@ def plasma_field_on_boundary(
     This is the ``internal`` virtual-casing branch (currents inside the LCFS =
     the plasma current), i.e. the SIMSOPT ``VirtualCasing.B_external_normal``
     convention: the coils must supply ``-B_plasma . n`` for ``B_out . n = 0``.
+
+    Set ``remat=True`` for moving-surface reverse mode to recompute singular
+    quadrature blocks in the backward pass instead of retaining their full tape.
     """
 
     _require_vcj()
@@ -477,17 +485,23 @@ def plasma_field_on_boundary(
         digits=int(digits),
         levels=_default_levels(int(surface_data.gamma.shape[1]), int(surface_data.gamma.shape[2])),
         chunk_size=chunk_size,
-        target_chunk_size=8,
+        target_chunk_size=target_chunk_size,
         dtype="float64",
     )
     field = VirtualCasingExteriorField(surface_data, cfg)
-    kwargs: dict[str, Any] = dict(digits=int(digits), chunk_size=int(chunk_size))
+    kwargs: dict[str, Any] = dict(
+        digits=int(digits),
+        chunk_size=int(chunk_size),
+        target_chunk_size=target_chunk_size,
+    )
     if quad_nt is not None:
         kwargs["quad_nt"] = int(quad_nt)
     if quad_np is not None:
         kwargs["quad_np"] = int(quad_np)
     if precision is not None:
         kwargs["precision"] = precision
+    if remat is not None:
+        kwargs["remat"] = bool(remat)
     return field._vc.compute_internal_B(field.B_total, **kwargs)
 
 
@@ -593,9 +607,11 @@ class FreeBoundaryDiffProblem:
         p_edge: float = 0.0,
         digits: int = 4,
         chunk_size: int = 1024,
+        target_chunk_size: int | str | None = "auto",
         quad_nt: int | None = None,
         quad_np: int | None = None,
         precision=None,
+        remat: bool | None = None,
     ) -> "FreeBoundaryDiffProblem":
         """Precompute the constants (virtual-casing plasma field) from surface data.
 
@@ -603,6 +619,7 @@ class FreeBoundaryDiffProblem:
         concrete surface) when this runs inside a ``jax.grad`` over the boundary
         geometry, so the virtual-casing plasma field is differentiable in the
         surface rather than tripping the precision auto-selection's concretization.
+        ``remat=True`` trades backward recomputation for lower peak memory.
         """
 
         _require_vcj()
@@ -614,7 +631,8 @@ class FreeBoundaryDiffProblem:
 
         B_plasma = plasma_field_on_boundary(
             surface_data, digits=digits, chunk_size=chunk_size,
-            quad_nt=quad_nt, quad_np=quad_np, precision=precision,
+            target_chunk_size=target_chunk_size, quad_nt=quad_nt, quad_np=quad_np,
+            precision=precision, remat=remat,
         )
         Bn_plasma = jnp.sum(B_plasma * normal, axis=0)
         Bin_mag2 = jnp.sum(jnp.asarray(surface_data.B_total) ** 2, axis=0)
