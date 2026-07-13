@@ -380,7 +380,6 @@ def test_least_squares_implicit_smoke(solovev_eq):
     assert abs(aspect1 - 4.0) < abs(aspect0 - 4.0)
 
 
-@pytest.mark.full
 def test_least_squares_implicit_jac_chunking(solovev_eq):
     """The R17.1 chunked implicit Jacobian matches the unchunked one.
 
@@ -409,7 +408,6 @@ def test_least_squares_implicit_jac_chunking(solovev_eq):
                                    err_msg=f"chunk={chunk!r}")
 
 
-@pytest.mark.full
 def test_least_squares_implicit_jac_solver_block(solovev_eq):
     """The R25.2 block-tridiagonal Jacobian matches the per-dof GMRES one.
 
@@ -434,7 +432,6 @@ def test_least_squares_implicit_jac_solver_block(solovev_eq):
                           jac_solver="svd", max_nfev=1)
 
 
-@pytest.mark.full
 def test_least_squares_implicit_warm_start_modes(solovev_eq):
     """R25.4 perturbation warm start reaches the same optimum as plain hot restart.
 
