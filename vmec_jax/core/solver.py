@@ -1200,7 +1200,7 @@ def _make_body(rt: SolverRuntime) -> Callable[[_LoopCarry], _LoopCarry]:
         first = it == carry.iter1
         fsq_prev = carry.fsq
         res0_f = jnp.where(first, fsq_prev, carry.res0)
-        res1_f = jnp.where(first, fsq0, carry.res1)
+        res1_f = _select(first, fsq0, carry.res1)
         record_low = (fsq_prev <= res0_f) & (fsq0 <= res1_f)
         res0_n = jnp.minimum(res0_f, fsq_prev)
         res1_n = jnp.minimum(res1_f, fsq0)
@@ -1235,9 +1235,9 @@ def _make_body(rt: SolverRuntime) -> Callable[[_LoopCarry], _LoopCarry]:
         )
         reeval_bad = restart & e2.jacobian_sign_changed
 
-        fsqr_f = jnp.where(restart, e2.residuals.fsqr, fsqr_c)
-        fsqz_f = jnp.where(restart, e2.residuals.fsqz, fsqz_c)
-        fsql_f = jnp.where(restart, e2.residuals.fsql, fsql_c)
+        fsqr_f = _select(restart, e2.residuals.fsqr, fsqr_c)
+        fsqz_f = _select(restart, e2.residuals.fsqz, fsqz_c)
+        fsql_f = _select(restart, e2.residuals.fsql, fsql_c)
         fsqr1_f = jnp.where(restart, e2.pre.fsqr1, e1.pre.fsqr1)
         fsqz1_f = jnp.where(restart, e2.pre.fsqz1, e1.pre.fsqz1)
         fsql1_f = jnp.where(restart, e2.pre.fsql1, e1.pre.fsql1)
@@ -1268,7 +1268,7 @@ def _make_body(rt: SolverRuntime) -> Callable[[_LoopCarry], _LoopCarry]:
         newton_linear_residual = jnp.asarray(jnp.nan, dtype=fsqr_f.dtype)
         newton_lambda_scale = jnp.asarray(jnp.nan, dtype=fsqr_f.dtype)
         if rt.prec2d is not None:
-            fsqz_prev_used = jnp.where(restart, fsqz_c, carry.fsqz)
+            fsqz_prev_used = _select(restart, fsqz_c, carry.fsqz)
             (newton_dir, prec2d_active, newton_step,
              newton_linear_residual, newton_lambda_scale) = _newton_step(
                 rt, state_r, gc_f, cache_f, it, fsqz_prev_used,
@@ -1290,7 +1290,7 @@ def _make_body(rt: SolverRuntime) -> Callable[[_LoopCarry], _LoopCarry]:
         )
         delt_n = delt_r * jnp.where(eq_reset, JACOBIAN_RESET_FACTOR, 1.0)
         ijacob_n = ijacob_r + eq_reset.astype(ijacob_r.dtype)
-        iter1_n = jnp.where(eq_reset, it, iter1_r)
+        iter1_n = _select(eq_reset, it, iter1_r)
 
         jac75 = stepping & (ijacob_n >= 75)
         maxed = stepping & (~eq_reset) & (~jac75) & (it >= max_iter)

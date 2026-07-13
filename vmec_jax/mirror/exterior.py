@@ -358,7 +358,8 @@ def build_closed_mirror_surface(
             for index in np.unique(collocation_to_reduced, return_index=True)[1]
         ),
         triangle_connectivity=tuple(
-            tuple(int(index) for index in triangle) for triangle in triangle_array
+            (int(triangle[0]), int(triangle[1]), int(triangle[2]))
+            for triangle in triangle_array
         ),
     )
 
