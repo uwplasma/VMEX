@@ -78,6 +78,7 @@ MU0 = 4.0e-7 * np.pi
 __all__ = [
     "MU0",
     "surface_field_data_from_wout",
+    "surface_field_data_from_state",
     "plasma_field_on_boundary",
     "FreeBoundaryDiffProblem",
     "external_B_cartesian",
@@ -200,6 +201,28 @@ def surface_field_data_from_wout(
     bsupu_s = _get(wout, "bsupumns") if lasym else None
     bsupv_s = _get(wout, "bsupvmns") if lasym else None
 
+    return _assemble_surface_field_data(
+        nfp=nfp, ns=ns, j=j, xm=xm, xn=xn, xmn=xmn, xnn=xnn,
+        rmnc=rmnc, zmns=zmns, rmns=rmns, zmnc=zmnc,
+        bsupu=bsupu, bsupv=bsupv, bsupu_s=bsupu_s, bsupv_s=bsupv_s,
+        lasym=lasym, use_stellsym=use_stellsym,
+        signgs=int(getattr(wout, "signgs", -1)),
+        nphi=nphi, ntheta=ntheta, source_convention="vmec_jax_wout",
+    )
+
+
+def _assemble_surface_field_data(
+    *, nfp, ns, j, xm, xn, xmn, xnn, rmnc, zmns, rmns, zmnc,
+    bsupu, bsupv, bsupu_s, bsupv_s, lasym, use_stellsym, signgs,
+    nphi, ntheta, source_convention,
+) -> "VmecSurfaceFieldData":
+    """Assemble a :class:`VmecSurfaceFieldData` from boundary Fourier spectra.
+
+    Pure-``jnp`` body shared by :func:`surface_field_data_from_wout` (numpy
+    spectra off a wout) and :func:`surface_field_data_from_state` (traceable
+    spectra straight off a live equilibrium state).  All array inputs may be
+    jax tracers, so the whole construction differentiates in the boundary.
+    """
     theta = jnp.linspace(0.0, 2.0 * jnp.pi, int(ntheta), endpoint=False)
     phi = jnp.linspace(0.0, 2.0 * jnp.pi / nfp, int(nphi), endpoint=False)
 
@@ -261,9 +284,130 @@ def surface_field_data_from_wout(
         phi=phi,
         nfp=nfp,
         stellsym=(not lasym) and bool(use_stellsym),
-        signgs=int(getattr(wout, "signgs", -1)),
-        source_convention="vmec_jax_wout",
+        signgs=int(signgs),
+        source_convention=source_convention,
     )
+
+
+def _wrout_cos_coeffs_jax(f, modes, trig):
+    """Traceable clone of :func:`nyquist.wrout_cos_coeffs`.
+
+    Identical wrout.f Nyquist cosine analysis (``(ns, mnmax)`` coefficients),
+    but with ``jnp`` einsums so the field ``f`` may be a jax tracer; the trig
+    weight tables depend only on ``trig``/``modes`` and stay static numpy.
+    """
+    from .nyquist import _wrout_dmult, _wrout_theta_tables, _wrout_zeta_tables
+
+    m = np.asarray(modes.m, dtype=int)
+    n = np.asarray(modes.n, dtype=int)
+    cosmui, sinmui = _wrout_theta_tables(trig)
+    cosnv, sinnv = _wrout_zeta_tables(trig)
+    fj = jnp.asarray(f)[:, : int(trig.ntheta2), :]
+    f_theta_cos = jnp.einsum("sik,im->smk", fj, jnp.asarray(cosmui))
+    f_theta_sin = jnp.einsum("sik,im->smk", fj, jnp.asarray(sinmui))
+    cos_zeta = jnp.einsum("smk,kn->smn", f_theta_cos, jnp.asarray(cosnv))
+    sin_zeta = jnp.einsum("smk,kn->smn", f_theta_sin, jnp.asarray(sinnv))
+    sgn = np.where(n < 0, -1.0, 1.0)
+    coeff = cos_zeta[:, m, np.abs(n)] + sgn[None, :] * sin_zeta[:, m, np.abs(n)]
+    return coeff * jnp.asarray(_wrout_dmult(modes, trig))[None, :]
+
+
+def surface_field_data_from_state(
+    inp,
+    state,
+    *,
+    nphi: int = 32,
+    ntheta: int = 32,
+    s_index: int = -1,
+    use_stellsym: bool = True,
+) -> "VmecSurfaceFieldData":
+    """Traceable :class:`VmecSurfaceFieldData` straight from a ``SpectralState``.
+
+    Unlike :func:`surface_field_data_from_wout` — which reads a materialised
+    (numpy) wout and so cannot be differentiated in the boundary — this rebuilds
+    the boundary geometry and contravariant-``B`` spectra with the *same*
+    ``jnp`` recipe the wout writer uses (:func:`m1_constrained_to_physical`,
+    :func:`real_space_geometry`, :func:`~vmec_jax.core.nyquist.wout_field_tables`),
+    never leaving the device.  The result differentiates in ``state`` (hence in
+    the boundary DOFs through the implicit adjoint), which is what makes a
+    *simultaneous* plasma-boundary + coil single-stage objective possible:
+    ``jax.grad`` threads through both this surface field and the coil field.
+
+    ``inp`` supplies the static resolution / profile metadata; ``state`` the
+    (possibly traced) spectral geometry.  Stellarator-symmetric only for now
+    (``lasym`` uses the same path but is untested here).
+    """
+    _require_vcj()
+    from .fields import magnetic_fields, metric_elements
+    from .fourier import Resolution, mode_table, trig_tables
+    from .geometry import (
+        apply_lambda_axis_closure,
+        half_mesh_jacobian,
+        real_space_geometry,
+    )
+    from .nyquist import nyquist_limits
+    from .residuals import m1_constrained_to_physical
+    from .setup import boundary_from_input, flux_profiles, radial_grids
+    from .solver import resolution_from_input
+    from .transforms import physical_to_internal_scale
+
+    ns = int(np.shape(state.R_cos)[0])
+    res = resolution_from_input(inp, ns=ns)
+    mpol, ntor, nfp, lasym = int(res.mpol), int(res.ntor), int(res.nfp), bool(res.lasym)
+    nzeta = int(res.nzeta)
+    modes = mode_table(mpol, ntor)
+    mnyq_grid = max(res.ntheta1 // 2, mpol - 1)
+    nnyq_grid = max(nzeta // 2, ntor)
+    trig = trig_tables(Resolution(mpol=mnyq_grid + 1, ntor=nnyq_grid,
+                                  ntheta=int(res.ntheta), nzeta=nzeta,
+                                  nfp=nfp, lasym=lasym, ns=ns))
+    grids = radial_grids(ns)
+    ncurr = int(inp.ncurr)
+
+    boundary = boundary_from_input(inp, modes=modes, trig=trig, lconm1=True)
+    signgs = int(boundary.signgs)
+    prof = flux_profiles(inp, grids, r00=boundary.r00, signgs=signgs, lflip=boundary.lflip)
+
+    R_cos_p, Z_sin_p, R_sin_p, Z_cos_p = m1_constrained_to_physical(
+        state.R_cos, state.Z_sin, state.R_sin, state.Z_cos,
+        modes=modes, lthreed=bool(res.lthreed), lasym=lasym, lconm1=True)
+    lambda_sin = apply_lambda_axis_closure(state.L_sin, modes=modes, ntor=ntor)
+    geometry = real_space_geometry(
+        R_cos=R_cos_p, R_sin=R_sin_p, Z_cos=Z_cos_p, Z_sin=Z_sin_p,
+        lambda_cos=state.L_cos, lambda_sin=lambda_sin,
+        modes=modes, trig=trig, s=grids.s_full)
+    jacobian = half_mesh_jacobian(geometry, s=grids.s_full)
+    metrics = metric_elements(geometry, s=grids.s_full)
+    fields = magnetic_fields(
+        geometry=geometry, jacobian=jacobian, metrics=metrics, trig=trig,
+        s=grids.s_full, phips=prof["phips"], phipf=prof["phipf"],
+        chips=prof["chips"], signgs=signgs, gamma=float(inp.gamma),
+        mass=prof["mass"], ncurr=ncurr, enclosed_current=prof["icurv"])
+    # Contravariant-B Nyquist cosine spectra (wrout.f analysis), computed
+    # traceably in the field state.  nyquist.wout_field_tables materialises
+    # everything to numpy; only the two B^u/B^v transforms are needed here, so
+    # a jnp clone of wrout_cos_coeffs keeps the whole path differentiable.
+    mnyq, nnyq = nyquist_limits(trig)
+    nyq_modes = mode_table(max(mnyq, max(mpol - 1, 0)) + 1, max(nnyq, ntor))
+    xm_nyq = jnp.asarray(nyq_modes.m, dtype=float)
+    xn_nyq = jnp.asarray(nyq_modes.n, dtype=float) * float(nfp)
+    bsupumnc = _wrout_cos_coeffs_jax(fields.bsupu, nyq_modes, trig)
+    bsupvmnc = _wrout_cos_coeffs_jax(fields.bsupv, nyq_modes, trig)
+
+    mode_scale = 1.0 / physical_to_internal_scale(modes, trig)
+    rmnc = R_cos_p * mode_scale[None, :]
+    zmns = Z_sin_p * mode_scale[None, :]
+    rmns = R_sin_p * mode_scale[None, :] if lasym else None
+    zmnc = Z_cos_p * mode_scale[None, :] if lasym else None
+    xm = jnp.asarray(modes.m, dtype=float)
+    xn = jnp.asarray(modes.n, dtype=float) * float(nfp)
+
+    return _assemble_surface_field_data(
+        nfp=nfp, ns=ns, j=int(s_index % ns), xm=xm, xn=xn,
+        xmn=xm_nyq, xnn=xn_nyq, rmnc=rmnc, zmns=zmns, rmns=rmns, zmnc=zmnc,
+        bsupu=bsupumnc, bsupv=bsupvmnc, bsupu_s=None, bsupv_s=None,
+        lasym=lasym, use_stellsym=use_stellsym, signgs=signgs,
+        nphi=nphi, ntheta=ntheta, source_convention="vmec_jax_state")
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +420,35 @@ def _default_levels(nphi: int, ntheta: int) -> tuple[tuple[int, int], ...]:
     return ((base, base), (2 * base, 2 * base))
 
 
+def plan_vc_precision(
+    surface_data: "VmecSurfaceFieldData",
+    *,
+    digits: int = 4,
+    chunk_size: int = 1024,
+    quad_nt: int | None = None,
+    quad_np: int | None = None,
+):
+    """Select virtual-casing precision from a *concrete* surface, once.
+
+    Returns a :class:`virtual_casing_jax.PrecisionPlan` (quadrature grid sizes +
+    singular-patch indices).  Pass it to :func:`plasma_field_on_boundary` or
+    :meth:`FreeBoundaryDiffProblem.from_surface_data` via ``precision=`` so the
+    plasma field stays differentiable in the boundary geometry — the adaptive
+    precision selection (which concretizes surface-derived values) then runs
+    here, outside the traced region, on the current concrete boundary.
+    """
+    _require_vcj()
+    cfg = ExteriorFieldConfig(
+        digits=int(digits),
+        levels=_default_levels(int(surface_data.gamma.shape[1]), int(surface_data.gamma.shape[2])),
+        chunk_size=chunk_size,
+        target_chunk_size=8,
+        dtype="float64",
+    )
+    field = VirtualCasingExteriorField(surface_data, cfg)
+    return field._vc.plan_precision(digits=int(digits), quad_nt=quad_nt, quad_np=quad_np)
+
+
 def plasma_field_on_boundary(
     surface_data: "VmecSurfaceFieldData",
     *,
@@ -283,6 +456,7 @@ def plasma_field_on_boundary(
     chunk_size: int = 1024,
     quad_nt: int | None = None,
     quad_np: int | None = None,
+    precision=None,
 ) -> jax.Array:
     """Plasma's own Cartesian field on its boundary via on-surface virtual casing.
 
@@ -311,6 +485,8 @@ def plasma_field_on_boundary(
         kwargs["quad_nt"] = int(quad_nt)
     if quad_np is not None:
         kwargs["quad_np"] = int(quad_np)
+    if precision is not None:
+        kwargs["precision"] = precision
     return field._vc.compute_internal_B(field.B_total, **kwargs)
 
 
@@ -418,8 +594,15 @@ class FreeBoundaryDiffProblem:
         chunk_size: int = 1024,
         quad_nt: int | None = None,
         quad_np: int | None = None,
+        precision=None,
     ) -> "FreeBoundaryDiffProblem":
-        """Precompute the constants (virtual-casing plasma field) from surface data."""
+        """Precompute the constants (virtual-casing plasma field) from surface data.
+
+        Pass ``precision`` (from :func:`plan_vc_precision`, selected once from a
+        concrete surface) when this runs inside a ``jax.grad`` over the boundary
+        geometry, so the virtual-casing plasma field is differentiable in the
+        surface rather than tripping the precision auto-selection's concretization.
+        """
 
         _require_vcj()
         gamma = jnp.asarray(surface_data.gamma)
@@ -429,7 +612,8 @@ class FreeBoundaryDiffProblem:
         phi_grid = jnp.asarray(surface_data.phi)
 
         B_plasma = plasma_field_on_boundary(
-            surface_data, digits=digits, chunk_size=chunk_size, quad_nt=quad_nt, quad_np=quad_np
+            surface_data, digits=digits, chunk_size=chunk_size,
+            quad_nt=quad_nt, quad_np=quad_np, precision=precision,
         )
         Bn_plasma = jnp.sum(B_plasma * normal, axis=0)
         Bin_mag2 = jnp.sum(jnp.asarray(surface_data.B_total) ** 2, axis=0)

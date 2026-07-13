@@ -236,6 +236,36 @@ fixed-boundary implicit adjoint is validated to ~1e-6 relative; the
 free-boundary virtual-casing path is FD-validated.)  See the
 *Differentiable free boundary* section of :doc:`algorithms`.
 
+True single-stage (plasma boundary **and** coils at once)
+---------------------------------------------------------
+
+The virtual-casing residual is differentiable not only in the coils but also
+in the *plasma boundary*: :func:`~vmec_jax.core.freeboundary_diff.surface_field_data_from_state`
+rebuilds the virtual-casing surface field traceably straight from a live
+equilibrium state (bit-exact against the wout path), so a single
+``jax.value_and_grad`` of a combined objective
+
+.. code-block:: text
+
+    J(boundary, extcur) = w_bn * <(B_ext . n)^2>        # coil<->plasma consistency
+                        + w_phys * physics(boundary)     # e.g. QS / iota / well
+
+threads through the **implicit adjoint** (boundary dofs) *and* **virtual
+casing** (coil dofs) simultaneously — the coil residual is evaluated on the
+boundary the plasma solve just produced, and that coupling is differentiated
+too.  Both blocks are finite-difference validated (coil dofs to ~1e-10;
+boundary dofs to the FD floor of the re-solved equilibrium).
+
+Making virtual casing differentiable in the boundary needs its adaptive
+quadrature/patch precision frozen to static values:
+:func:`~vmec_jax.core.freeboundary_diff.plan_vc_precision` selects it once from
+the starting (concrete) boundary and returns a ``PrecisionPlan`` to pass back
+via ``precision=`` (the auto-selection otherwise concretizes traced surface
+values).  ``examples/single_stage_simultaneous_opt.py`` runs the full loop:
+from the bundled CTH-like free-boundary equilibrium it reshapes the boundary to
+move the edge rotational transform while re-tuning the coils to keep
+``<(B.n)^2>`` small — one exact gradient over both dof families.
+
 Worked results
 --------------
 
