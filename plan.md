@@ -152,7 +152,7 @@ and compiled for 4m17s before the controlled stop; a radial block warm start inc
 in ``benchmarks/free_boundary_sensitivity.json``. Do not retry them or expose coil-shape solved-LCFS
 derivatives without a compact operator-level transpose and a new independent finite-difference gate.
 
-**R3. Default memory and cache controls COMPLETE; residual cold cost OPEN.** R26e established that
+**R3. Default memory, cache, and cached dispatch controls COMPLETE.** R26e established that
 ``jac_chunk_size="auto"`` bounds Jacobian columns, the converged-state memo reduced the measured
 optimization peak from 6.0 to 3.5 GB, and the faster block-Jacobian default peaks at 4.9 GB because
 of transient XLA compilation rather than retained solver data. ``jac_solver="gmres"`` remains the
@@ -160,10 +160,12 @@ documented lower-memory fallback. No additional runtime-memory knob is justified
 the machine-fingerprinted persistent XLA cache by default on CPU and measures li383 at 4.48 s first
 process / 1.34 s second process, so cache setup is closed. The circular-tokamak measurement remains
 9.51 s with a fresh cache and 3.37 s in a second process using that cache (0.42 s import-only).
-The remaining gate is therefore case-specific cached dispatch/solve cost: profile graph execution,
-reduce structural variants where evidence supports it, or provide a non-JAX CLI lane. Retain the
-small-deck target below roughly 2.5 s rather than treating one faster deck as universal. Evidence is
-in ``benchmarks/cold_start.json``.
+The CLI block grew from 10 to 50 exact-freezing iterations, reducing the controlled circular-tokamak
+fresh process from 10.31 to 8.78 s and cached process from 3.13 to 2.74 s; cached computational time
+is 2.13 s and solver time 1.95 s. The whole-device ``jit`` lane is also 2.74 s, so further block growth
+or a separate non-JAX solver lane is not justified. The reproducible profiler records normal-load
+variance separately. Evidence is in ``benchmarks/cold_start.json`` and
+``benchmarks/profile_cold_start.py``.
 
 **R4. GPU production evidence COMPLETE.** The existing small-to-large matrix is now joined by a
 fresh office A4000 production run at the merged main tip: fixed ``ns=201`` warm 6.91 s, multigrid

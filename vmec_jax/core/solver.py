@@ -28,7 +28,7 @@ Execution lanes (plan.md §5.3)
 Both lanes share one traced single-iteration body:
 
 - ``mode="cli"``: Python ``while`` over a jitted ``lax.scan`` block of
-  ``block_size = 10`` iterations, with host residual checks and VMEC2000
+  ``block_size = 50`` iterations, with host residual checks and VMEC2000
   screen printing (``printout.f`` cadence) between blocks;
 - ``mode="jit"``: a single ``lax.while_loop`` over the same body (fully
   traced iteration; the setup and error raising remain host code).
@@ -161,7 +161,7 @@ Array = Any
 NS4 = 25
 
 #: Number of iterations per jitted CLI-lane scan block (plan.md §5.3).
-BLOCK_SIZE = 10
+BLOCK_SIZE = 50
 
 #: Trajectory buffer columns:
 #: iter, fsqr, fsqz, fsql, fsqr1, fsqz1, fsql1, r00, z00, wmhd, delt.

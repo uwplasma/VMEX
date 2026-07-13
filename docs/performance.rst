@@ -394,9 +394,14 @@ only:
 Persistent compilation cache
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``vmec-jax`` enables JAX's persistent XLA compilation cache on accelerators,
-so the multi-second compile cost is paid once per machine, not once per
-process.
+``vmec-jax`` enables a machine-fingerprinted persistent XLA compilation cache
+on CPU and accelerators, so the multi-second compile cost is paid once per
+machine, not once per process. The CLI advances in 50-iteration compiled blocks:
+the converged body freezes exactly at the accepted iteration, while fewer host
+round trips reduce cached circular-tokamak solver time from 2.26 to 1.95 s.
+Its current cached computational time is 2.13 s and complete process wall is
+2.74 s; the whole-device ``jit`` lane has the same process wall, establishing
+that the remaining 0.61 s is import/process overhead rather than block dispatch.
 
 .. warning::
 
@@ -423,6 +428,7 @@ Reproducing the numbers
    python benchmarks/run_baseline.py         # CPU suite -> benchmarks/baseline.json
    python benchmarks/run_gpu_matrix.py       # GPU matrix -> benchmarks/gpu_baseline.json
    python benchmarks/profile_production.py   # the five production workflows
+   python benchmarks/profile_cold_start.py   # isolated cache, first + second process
    pytest tests/test_parity_breadth.py     # end-to-end parity suite
 
 The parity suite needs the golden VMEC2000 fixtures (fetched release assets);

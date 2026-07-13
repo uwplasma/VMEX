@@ -315,7 +315,7 @@ def solve(
     resolution defaults to the first ``ns_array`` stage (``read_indata.f``
     grid rules).  Convergence requires ``fsqr, fsqz, fsql <= ftol``
     *simultaneously* (``evolve.f``).  ``mode="cli"`` runs a Python loop over
-    jitted 10-iteration blocks with host residual checks and VMEC2000-format
+    jitted 50-iteration blocks with host residual checks and VMEC2000-format
     printing (``verbose=True``); ``mode="jit"`` runs one ``lax.while_loop``
     over the same traced body.
 

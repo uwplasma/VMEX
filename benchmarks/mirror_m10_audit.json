@@ -7,10 +7,10 @@
     "mirror_python_lines": 8072,
     "largest_mirror_module_lines": 862,
     "test_python_lines": 14054,
-    "tracked_tree_kib": 8235,
-    "plan_bytes": 195249,
+    "tracked_tree_kib": 8238,
+    "plan_bytes": 195423,
     "largest_core_module_lines": 999,
-    "count_context": "Recounted after merging main through 9f3ccb31, completing public helper docstrings, moving mirror plotting to its owning package, separating the NumPy NESTOR reference path from the production driver, separating differentiable quantities from implicit-solver orchestration, separating Nyquist grid conventions from output physics, splitting optimization by objective/parameterization/implicit-backend ownership, splitting fixed-boundary solver kernels from runtime setup and host orchestration, integrating the simultaneous plasma-boundary/coil derivative, and promoting three reviewed documentation figures on 2026-07-13"
+    "count_context": "Recounted after merging main through 9f3ccb31, completing public helper docstrings, moving mirror plotting to its owning package, separating the NumPy NESTOR reference path from the production driver, separating differentiable quantities from implicit-solver orchestration, separating Nyquist grid conventions from output physics, splitting optimization by objective/parameterization/implicit-backend ownership, splitting fixed-boundary solver kernels from runtime setup and host orchestration, integrating the simultaneous plasma-boundary/coil derivative, reducing cached CLI dispatch with 50-iteration exact-freezing blocks, and promoting three reviewed documentation figures on 2026-07-13"
   },
   "coverage": {
     "statements": 3269,
@@ -29,7 +29,7 @@
     "tutorial_coverage": "27/27 executable example scripts referenced; three reviewed mirror/hybrid result figures promoted to documentation",
     "mypy": "passed across 72 source files",
     "package_build": "wheel and sdist passed; all ownership-split modules, including core/solver_runtime.py and core/solver_driver.py, are included in both",
-    "refactor_tests": "47 passed, 3 skipped across solver, step-control, and exterior; NumPy NESTOR reference split 8 passed, 3 skipped; differentiable quantity/API split 21 passed; Nyquist/WOUT parity split 30 passed, 3 skipped; optimization ownership/package/QI split 30 passed, 4 skipped plus an explicit implicit-Jacobian smoke; solver runtime/driver split 33 passed, 3 skipped, 2 xfailed plus 43 CLI/package tests; moving-surface virtual-casing integration 3 passed, 1 skipped, 2 deselected plus its public-API guard; plotting/package API 29 passed; CLI/output/package API 35 passed; fixed-gradient example passed",
+    "refactor_tests": "47 passed, 3 skipped across solver, step-control, and exterior; NumPy NESTOR reference split 8 passed, 3 skipped; differentiable quantity/API split 21 passed; Nyquist/WOUT parity split 30 passed, 3 skipped; optimization ownership/package/QI split 30 passed, 4 skipped plus an explicit implicit-Jacobian smoke; solver runtime/driver split 33 passed, 3 skipped, 2 xfailed plus 43 CLI/package tests; moving-surface virtual-casing integration 3 passed, 1 skipped, 2 deselected plus its public-API guard; 50-iteration CLI block 46 passed, 3 skipped, 2 xfailed across exact solver/step/multigrid/printing/CLI gates; plotting/package API 29 passed; CLI/output/package API 35 passed; fixed-gradient example passed",
     "aggregate_collection": "719 tests collected after packaging tests/ and tests/mirror/ to avoid duplicate test_geometry_fields module names",
     "aggregate_default_run": "638 passed, 79 skipped, 2 xfailed, 1 path failure in 1212.15 s; the root-test parents[2] bug and its two nightly siblings were corrected, then the validation file passed 20 tests with 2 skips and --lf passed",
     "ruff": "passed",
