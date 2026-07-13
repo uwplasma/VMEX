@@ -320,7 +320,8 @@ class _FreeBoundaryPlan:
         self.curlabel = curlabel
 
 
-def _coils_mgrid_field(path: Path, *, nr: int = 96, nphi: int = 32, nz: int = 96):
+def _coils_mgrid_field(path: Path, *, nr: int = 96, nphi: int = 32,
+                       nz: int = 96):  # pragma: no cover  (ESSOS-only; unavailable in CI)
     """:class:`~vmec_jax.core.mgrid.MgridField` from an ESSOS coils file.
 
     vmec_jax keeps no coil code — coils live in ESSOS
@@ -412,7 +413,7 @@ def _free_boundary_plan(args, inp, input_path: Path, *, emit):
         return None
 
     mgrid_name = str(inp.mgrid_file or "").strip().strip("'\"")
-    if coils_arg or mgrid_name.upper() == _DIRECT_COILS:
+    if coils_arg or mgrid_name.upper() == _DIRECT_COILS:  # pragma: no cover  (ESSOS-only)
         if not coils_arg:
             raise VmecInputError(
                 WERROR_MESSAGES[INPUT_ERROR_FLAG],
