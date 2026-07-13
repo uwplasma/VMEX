@@ -1984,10 +1984,13 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        `vmec --plot mout_*.nc` renders the horizontal 3D LCFS/coils/cap-to-cap field lines, `|B|`,
        cross-sections, pressure, and `ftol` history. The 0--50% straight-mirror example writes one
        file per accepted equilibrium and renders its endpoint through this disk-backed path.
-       The complete package is now 59 Python files / 31,044 lines; the mirror backend is 19 files /
-       7,846 lines, its largest module is 855 lines, and generated outputs remain ignored. This meets
-       the revised 50--60 file / 30--31k line budget without merging distinct operators into oversized
-       modules.
+       Before the latest main integration the complete package was 59 Python files / 31,044 lines.
+       The post-merge recount is 63 files / 33,321 lines, while the mirror backend remains 19 files /
+       7,846 lines and its largest module remains 855 lines. Tests total 13,937 Python lines. Generated
+       outputs remain ignored and the tracked tree is 6.87 MiB. The mirror-specific structure still
+       meets its bound, but aggregate source is 3 files / 1,321 lines above the plan ceiling and tests
+       are 3,937 lines above target. Keep this as a release cleanup lane; do not collapse distinct
+       physics operators merely to satisfy a line count.
        The office-CPU CLI/custom-VJP fixed-forward comparison is
        `16.28/18.65 s` cold and `3.75/4.04 s` warm, with 1.06x RSS; the CLI remains the fastest
        forward path. The launch-bound `(15,5,15)` fixed case remains faster on CPU than A4000
