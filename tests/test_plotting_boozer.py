@@ -31,7 +31,7 @@ from vmec_jax.core.plotting import (  # noqa: E402
     plot_wout,
 )
 
-from conftest import resolve_golden_dir
+from .conftest import resolve_golden_dir
 
 GOLDEN_DIR = resolve_golden_dir()
 pytestmark = pytest.mark.skipif(

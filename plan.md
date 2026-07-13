@@ -2007,9 +2007,9 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        file per accepted equilibrium and renders its endpoint through this disk-backed path.
        Before the latest main integration the complete package was 59 Python files / 31,044 lines.
        The post-refactor recount is 64 files / 33,474 lines, while the mirror backend is 20 files /
-       8,072 lines and its largest module is 862 lines. Tests total 14,052 Python lines.
+       8,072 lines and its largest module is 862 lines. Tests total 14,054 Python lines.
        Generated outputs remain ignored and the tracked tree is 7.3 MiB. The mirror structure meets
-       its bound and aggregate source is inside the revised evidence-based budget; tests are 4,052
+       its bound and aggregate source is inside the revised evidence-based budget; tests are 4,054
        lines above target. Keep evidence-preserving test simplification as a release cleanup lane;
        do not collapse distinct physics operators merely to satisfy a line count.
        The office-CPU CLI/custom-VJP fixed-forward comparison is

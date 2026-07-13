@@ -59,7 +59,7 @@ def test_parse_scalar_fortran_conventions():
 
 def test_boundary_from_initial_state_requires_state():
     inp = VmecInput.from_file(str(
-        Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
+        Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
     ))
     with pytest.raises(ValueError, match="requires initial_state"):
         solve(inp, boundary_from_initial_state=True)
@@ -68,7 +68,7 @@ def test_boundary_from_initial_state_requires_state():
 @pytest.mark.full
 def test_fixed_solve_can_return_unconverged_checkpoint():
     inp = VmecInput.from_file(str(
-        Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
+        Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
     ))
     result = solve(inp, max_iterations=1, error_on_no_convergence=False)
     assert not result.converged
@@ -79,7 +79,7 @@ def test_fixed_solve_can_return_unconverged_checkpoint():
 @pytest.mark.full
 def test_boundary_from_initial_state_holds_supplied_edge():
     inp = VmecInput.from_file(str(
-        Path(__file__).resolve().parents[2] / "examples/data/input.circular_tokamak"
+        Path(__file__).resolve().parents[1] / "examples/data/input.circular_tokamak"
     ))
     base = solve(inp, ftol=1e-9, max_iterations=3000)
     runtime = prepare_runtime(inp)
