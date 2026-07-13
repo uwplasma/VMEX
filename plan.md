@@ -181,16 +181,18 @@ implicit value. Evidence is retained in ``benchmarks/free_boundary_sensitivity.j
 coil-shape solved-LCFS derivatives until a strict-tolerance continuation yields a smooth independent
 finite-difference gate.
 
-**R3. Default memory controls COMPLETE; cold start OPEN.** R26e established that
+**R3. Default memory and cache controls COMPLETE; residual cold cost OPEN.** R26e established that
 ``jac_chunk_size="auto"`` bounds Jacobian columns, the converged-state memo reduced the measured
 optimization peak from 6.0 to 3.5 GB, and the faster block-Jacobian default peaks at 4.9 GB because
 of transient XLA compilation rather than retained solver data. ``jac_solver="gmres"`` remains the
-documented lower-memory fallback. No additional runtime-memory knob is justified. The remaining
-gate is cold-start graph/cache work: profile graph construction, reduce structural JIT variants,
-and document persistent-cache setup; target a small-deck CLI cold start below roughly 2.5 s. The
-current circular-tokamak measurement is 9.51 s with a fresh cache and 3.37 s in a second process
-using that cache (0.42 s import-only), so import trimming is not the main remaining lever. Evidence
-is in ``benchmarks/cold_start.json``.
+documented lower-memory fallback. No additional runtime-memory knob is justified. R26c now enables
+the machine-fingerprinted persistent XLA cache by default on CPU and measures li383 at 4.48 s first
+process / 1.34 s second process, so cache setup is closed. The circular-tokamak measurement remains
+9.51 s with a fresh cache and 3.37 s in a second process using that cache (0.42 s import-only).
+The remaining gate is therefore case-specific cached dispatch/solve cost: profile graph execution,
+reduce structural variants where evidence supports it, or provide a non-JAX CLI lane. Retain the
+small-deck target below roughly 2.5 s rather than treating one faster deck as universal. Evidence is
+in ``benchmarks/cold_start.json``.
 
 **R4. GPU production evidence COMPLETE.** The existing small-to-large matrix is now joined by a
 fresh office A4000 production run at the merged main tip: fixed ``ns=201`` warm 6.91 s, multigrid

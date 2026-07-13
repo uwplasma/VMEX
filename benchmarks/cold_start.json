@@ -13,6 +13,8 @@
     "reported_solver_and_io_s": 2.60,
     "peak_rss_gb": 0.85
   },
+  "cache_default_after_main_merge": true,
+  "main_reference_measurement": "li383 CLI 4.48 s first process, 1.34 s second process (3.3x); machine-fingerprinted cache, zero user configuration",
   "import_only_wall_s": 0.42,
-  "assessment": "The persistent cache removes 6.14 s (65%) but the second-process wall remains above the approximate 2.5 s target. Further work must reduce cached executable dispatch/solve cost or provide a non-JAX CLI lane; import time is not the dominant remainder."
+  "assessment": "Default cache configuration is complete. The persistent cache removes 6.14 s (65%) for the circular case, but its second-process wall remains above the approximate 2.5 s target even though li383 reaches 1.34 s. Remaining work is case-specific cached dispatch/solve cost or a non-JAX CLI lane; import time is not the dominant remainder."
 }

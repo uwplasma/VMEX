@@ -114,7 +114,8 @@ Reading the table:
   fire-and-forget run is slower than Fortran — except on the biggest deck
   (NuhrenbergZille at ns=201), where even the cold run, compile included,
   beats VMEC2000. The persistent compilation cache removes most of the
-  compile cost on subsequent processes.
+  compile cost on subsequent processes. vmec_jax enables a machine-fingerprinted
+  CPU/GPU cache by default; set ``VMEC_JAX_COMPILATION_CACHE=disabled`` to opt out.
 - **VMEC++** is genuinely faster on some converged large decks (free
   boundary, LandremanPaul QA) but *failed* rows aborted during the first
   iterations; ``vmec_jax`` converges on the full suite (zero-crash policy).
