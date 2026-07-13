@@ -218,9 +218,11 @@ free boundary remains research-only after failing its local-mode refinement gate
 Fourier hybrid is reproducible through achieved beta 0.8333%; higher beta and a native spline state
 are deferred. Gates and evidence are consolidated in §8 Phase 5.5 and ``benchmarks/mirror_*.json``.
 
-**R9. Release handoff.** After R3 closes: regenerate the benchmark summary, verify wheel/sdist and a
-clean install, refresh the draft PR, and hand it to review. Tagging, PyPI, and conda-forge publication
-happen from merged main, not from this feature branch; main already carries the ``0.1.0`` version.
+**R9. Release handoff. COMPLETE.** The final ``0.1.0`` wheel and sdist build, a clean-venv wheel
+install, ``vmec --version``, ``vmec --doctor``, and the packaged ``vmec --test`` equilibrium all
+pass. The clean test writes a converged WOUT and five reviewed diagnostic figures. PR #22 carries
+the complete benchmark summary for review. Tagging, PyPI, and conda-forge publication happen from
+merged main, not from this feature branch.
 
 ### Standing constraints (apply to all remaining work)
 - CI wall ≤10 min, coverage ≥95%, no brittle absolute wall-clock asserts (use ratios / compile counts).
