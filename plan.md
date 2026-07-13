@@ -219,9 +219,9 @@ Gate: no core file >~1000 lines; 0 public definitions without docstrings; ruff+m
 blanket ignores. Ruff and mypy are clean across all 64 source files as of ``e8b788f1``; coherent
 splits for the five remaining large numerical modules remain release cleanup.
 
-**R7. Docs completion.** Per-example tutorial pages with rendered figures; theory-with-equations pass
-(every equation linked to its implementing function); `docs/glossary.rst` (VMEC2000↔vmec_jax names).
-Gate: docs `-W` green; each example has a tutorial; glossary present.
+**R7. Docs completion.** The VMEC2000↔vmec-jax glossary is complete and strict Sphinx is green.
+Remaining: per-example tutorial coverage and the final theory equation-to-source link audit.
+Gate: docs `-W` green; each public example has a tutorial; glossary present.
 
 **R8. Mirror geometry COMPLETE WITH DOCUMENTED RESEARCH LIMITS.** PR #22 is integrated with current main
 and provides axisymmetric fixed/free straight mirrors through beta 50%, anisotropic closures,

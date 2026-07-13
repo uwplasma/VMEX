@@ -100,6 +100,7 @@ Documentation
       cli
       input_reference
       wout_reference
+      glossary
 
    .. toctree::
       :maxdepth: 1
