@@ -215,14 +215,16 @@ and a full traceable rewrite of derivative-amplified diagnostics is deferred unt
 optimization requires it. This does not block equilibrium or mirror promotion.
 
 **R6. Refactor + docstring hygiene.** Public API-like docstrings are complete: an AST audit finds
-0 missing across 565 top-level definitions and public class members (``daadbf47``). Oversized core
-modules remain ``optimize`` 1,960, ``solver`` 1,706, ``freeboundary`` 1,055, ``implicit`` 1,042,
-and ``nyquist`` 1,026 lines. Mirror plotting moved intact to its owning package, reducing core
-``plotting`` from 1,039 to 888 lines. Split the rest only along existing ownership boundaries;
-do not create forwarding modules or disturb validated numerical kernels solely to meet a line target.
+0 missing across 565 top-level definitions and public class members (``daadbf47``). Mirror plotting
+moved intact to its owning package, reducing core ``plotting`` from 1,039 to 888 lines. The NumPy
+NESTOR parity path now lives in ``freeboundary_reference`` (232 lines), leaving the production
+free-boundary driver at 832 lines with nine net source lines added. Oversized core modules remain
+``optimize`` 1,960, ``solver`` 1,706, ``implicit`` 1,042, and ``nyquist`` 1,026 lines. Split the rest
+only along existing ownership boundaries; do not create forwarding modules or disturb validated
+numerical kernels solely to meet a line target.
 Gate: no core file >~1000 lines; 0 public definitions without docstrings; ruff+mypy clean without
-blanket ignores. Ruff and mypy are clean across all 64 source files as of ``e8b788f1``; coherent
-splits for the five remaining large numerical modules remain release cleanup.
+blanket ignores. Ruff and mypy are clean across all 65 source files; coherent splits for the four
+remaining large numerical modules remain release cleanup.
 
 **R7. Docs completion COMPLETE.** The VMEC2000↔vmec-jax glossary is complete, all 26 executable
 examples are referenced from the tutorials, and the final equation-to-source audit links the
