@@ -175,4 +175,16 @@ if not CI:
     fig.tight_layout(rect=(0.0, 0.07, 1.0, 1.0))
     fig.savefig(OUT_DIR / "tokamak_beta_parity.png", facecolor="white")
     for target, (wd, _wm) in zip(TARGET_BETAS, solutions):
-        vj.plot_wout(wd, OUT_DIR / f"direct_beta_{str(target).replace('.', 'p')}")
+        target_dir = OUT_DIR / f"direct_beta_{str(target).replace('.', 'p')}"
+        vj.plot_wout(wd, target_dir)
+        if target == TARGET_BETAS[-1]:
+            from vmec_jax.core.plotting import plot_boundary_3d
+
+            tf_subset = np.arange(0, N_TF_COILS, 8)
+            pf_indices = np.arange(N_TF_COILS, coils.n_base_coils)
+            plot_boundary_3d(
+                wd,
+                target_dir / "wout_coils_boundary3d.png",
+                coils=coils,
+                coil_indices=np.r_[tf_subset, pf_indices],
+            )

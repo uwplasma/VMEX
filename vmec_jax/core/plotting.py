@@ -419,8 +419,10 @@ def plot_boundary_3d(
     *,
     ntheta: int = 60,
     nzeta: int | None = None,
+    coils=None,
+    coil_indices: Sequence[int] | None = None,
 ) -> Path:
-    """3-D plasma boundary colored by ``|B|`` with LCFS field lines."""
+    """3-D ``|B|`` boundary and field lines, optionally with coil centerlines."""
     plt = _import_matplotlib()
     from matplotlib import cm
     from matplotlib.colors import Normalize
@@ -454,7 +456,27 @@ def plot_boundary_3d(
         line_x, line_y = line_r * np.cos(line_phi), line_r * np.sin(line_phi)
         ax.plot(line_x, line_y, line_z, color="white", lw=1.8, alpha=0.8, zorder=2)
         ax.plot(line_x, line_y, line_z, color="#111111", lw=0.65, zorder=3)
-    scale = 0.7 * max(np.abs(X).max(), np.abs(Y).max())
+    coil_extent = 0.0
+    if coils is not None:
+        from .coils import coil_geometry
+
+        gamma = np.asarray(coil_geometry(coils)[0], dtype=float)
+        indices = (
+            np.arange(len(gamma))
+            if coil_indices is None
+            else np.asarray(coil_indices, dtype=int)
+        )
+        if np.any((indices < 0) | (indices >= len(gamma))):
+            raise ValueError("coil_indices contains an index outside the CoilSet")
+        for index in indices:
+            curve = np.concatenate([gamma[index], gamma[index, :1]], axis=0)
+            ax.plot(
+                curve[:, 0], curve[:, 1], curve[:, 2],
+                color="#D55E00", lw=0.75, alpha=0.72, zorder=4,
+            )
+        coil_extent = float(np.max(np.abs(gamma[indices]))) if indices.size else 0.0
+    surface_scale = 0.7 * max(np.abs(X).max(), np.abs(Y).max())
+    scale = max(surface_scale, 1.05 * coil_extent)
     ax.auto_scale_xyz([-scale, scale], [-scale, scale], [-scale, scale])
     ax.set_box_aspect([1, 1, 1])
     ax.set_axis_off()
