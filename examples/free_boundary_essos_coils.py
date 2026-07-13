@@ -23,8 +23,9 @@ robust than re-solving from the vacuum guess).
 Physics: nfp=2 precise-QA plasma held by 16 modular coils; watch the
 Shafranov shift (axis moves outboard) and the LCFS response as beta rises.
 The 0.1% continuation points above 2% are solver waypoints. The six requested
-equilibria are plotted when reached; a branch-limited run also plots its last
-accepted equilibrium. The CI budget solves a single beta point coarsely.
+equilibria are written and plotted when reached; a branch-limited run also
+preserves its last accepted equilibrium. The CI budget solves a single beta
+point coarsely without writing output.
 """
 
 import dataclasses
@@ -202,6 +203,9 @@ if not CI:
     report_targets = {row[0] for row in report_rows}
     if branch_limit is not None and rows[-1][0] not in report_targets:
         report_rows.append(rows[-1])
+    for target, _ps, _beta, _axis_r, wout in report_rows:
+        label = f"{target:.4f}".rstrip("0").rstrip(".").replace(".", "p")
+        vj.write_wout(OUT_DIR / f"wout_essos_beta_{label}.nc", wout)
     shades = plt.cm.Blues(np.linspace(0.35, 0.95, len(report_rows)))
     for (_target, _ps, beta, axis_r, wout), color in zip(report_rows, shades):
         R, Z = surface_rz(wout, s_index=-1, theta=theta, phi=np.array([0.0]))
