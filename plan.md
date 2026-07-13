@@ -34,12 +34,12 @@ Turn `vmec_jax` into the reference JAX implementation of the VMEC ideal-MHD equi
    converged physics quantities match VMEC2000 within per-quantity validation tolerances.
 4. **Performance parity or better** than VMEC2000 single-thread CPU on the benchmark suite,
    including multigrid (`NS_ARRAY` ladders), which is currently slower than VMEC2000 — a named bug.
-5. **A small, readable codebase**: 50–60 Python files in `vmec_jax/`, ~30–32k library lines
+5. **A small, readable codebase**: about 60 Python files in `vmec_jax/`, ~30–34k library lines
    (revised 2026-07-12 after main added bootstrap/stability numerics and the open-field topology
    landed as focused modules; still
    a >4x reduction from **229 files / ~123k lines**), physically
    meaningful names, docstrings everywhere, ≥95% coverage without repo bloat (tests currently
-   ~140k lines with coverage-padding files; target ≤ ~10k test lines).
+   ~14k lines; target ≤ ~10k test lines without deleting distinct scientific gates).
 6. **A ~10 MB repository** after a `git filter-repo` history rewrite (currently 57.4 MiB packed);
    large assets move to GitHub Releases; no Claude in the contributors panel.
 7. **User-friendly docs** with full derivations (energy functional → forces → spectral condensation
@@ -71,8 +71,9 @@ phase specs (still authoritative for detail); this roadmap supersedes the scatte
 folds in every requirement from the user prompts and the two independent reviews.
 
 ### Done and verified on the current merged branch (2026-07-12)
-- Legacy tree deleted; the package is **60 Python files / 31,768 lines**, including the focused
-  19-file open-mirror backend and the traceable omnigenity module. The tracked checkout is 6.4 MiB;
+- Legacy tree deleted; after merging main at ``2f75914f`` the package is **63 Python files / 33,427
+  lines**, including the focused 19-file / 7,874-line open-mirror backend and the traceable
+  omnigenity module. The tracked checkout is 7.3 MiB;
   no generated mirror results are tracked.
 - Fixed-boundary equilibrium at **VMEC2000 machine-precision parity** across the 9 golden fixtures
   (exact iteration counts incl. lasym after the fixaray dnorm fix; wb ~1e-16, geometry ~1e-12).
@@ -213,9 +214,13 @@ profile gradients remain finite-difference-only: their parity engine is intentio
 and a full traceable rewrite of derivative-amplified diagnostics is deferred until a concrete
 optimization requires it. This does not block equilibrium or mirror promotion.
 
-**R6. Refactor + docstring hygiene.** Split the 4 files >1000 lines when next touched (optimize 1482,
-solver 1308, nyquist 1046, setup 1005); close the **71/355 public-def docstring gap**. Gate: no core
-file >~1000 lines; 0 public defs without docstrings; ruff+mypy clean without blanket ignores.
+**R6. Refactor + docstring hygiene.** Public API-like docstrings are complete: an AST audit finds
+0 missing across 564 top-level definitions and public class members (``daadbf47``). Oversized core
+modules remain ``optimize`` 1,960, ``solver`` 1,699, ``freeboundary`` 1,055, ``implicit`` 1,042,
+``plotting`` 1,039, and ``nyquist`` 1,026 lines. Split them only along existing ownership boundaries;
+do not create forwarding modules or disturb validated numerical kernels solely to meet a line target.
+Gate: no core file >~1000 lines; 0 public definitions without docstrings; ruff+mypy clean without
+blanket ignores.
 
 **R7. Docs completion.** Per-example tutorial pages with rendered figures; theory-with-equations pass
 (every equation linked to its implementing function); `docs/glossary.rst` (VMEC2000↔vmec_jax names).
@@ -1080,8 +1085,8 @@ mirror design doc.
    Profile buffers, donate in the CLI lane, audit temporaries; targets in §7.7.
 5. **Optimization convergence budgets**: examples run as many iterations as needed (thousands)
    for genuine convergence; CI smoke uses reduced budgets via VMEC_JAX_EXAMPLES_CI.
-6. Line/docstring hygiene: 4 files >1000 lines to split when touched; ~142 functions lack
-   docstrings — close during Phase-9 doc pass.
+6. Line/docstring hygiene: public API-like docstrings are complete as of ``daadbf47``. Six core
+   files remain above ~1000 lines; split only where a coherent existing subsystem can move intact.
 
 *(superseded status of 2026-07-09:)* core landed, integration/perf hardening next. `vmec_jax/core/` has 20
 modules (~10k lines), each A/B-proven vs the legacy kernels (420+ tests) — including the solve
@@ -1999,12 +2004,12 @@ symptom: vmec_jax is sometimes SLOWER on GPU than CPU — cause unknown. Plan:
        cross-sections, pressure, and `ftol` history. The 0--50% straight-mirror example writes one
        file per accepted equilibrium and renders its endpoint through this disk-backed path.
        Before the latest main integration the complete package was 59 Python files / 31,044 lines.
-       The post-merge recount is 63 files / 33,321 lines, while the mirror backend remains 19 files /
-       7,846 lines and its largest module remains 855 lines. Tests total 13,937 Python lines. Generated
-       outputs remain ignored and the tracked tree is 6.87 MiB. The mirror-specific structure still
-       meets its bound, but aggregate source is 3 files / 1,321 lines above the plan ceiling and tests
-       are 3,937 lines above target. Keep this as a release cleanup lane; do not collapse distinct
-       physics operators merely to satisfy a line count.
+       The post-merge/docstring recount is 63 files / 33,427 lines, while the mirror backend remains
+       19 files / 7,874 lines and its largest module is 862 lines. Tests total 14,052 Python lines.
+       Generated outputs remain ignored and the tracked tree is 7.3 MiB. The mirror structure meets
+       its bound and aggregate source is inside the revised evidence-based budget; tests are 4,052
+       lines above target. Keep evidence-preserving test simplification as a release cleanup lane;
+       do not collapse distinct physics operators merely to satisfy a line count.
        The office-CPU CLI/custom-VJP fixed-forward comparison is
        `16.28/18.65 s` cold and `3.75/4.04 s` warm, with 1.06x RSS; the CLI remains the fastest
        forward path. The launch-bound `(15,5,15)` fixed case remains faster on CPU than A4000
