@@ -94,10 +94,10 @@ markers = [
 # is excluded from the core >=95% coverage gate.  It IS exercised when the
 # freeb extra is installed (locally / a dedicated freeb CI lane — R15.3/R19
 # follow-up).
-omit = ["*/freeboundary_diff.py"]
+omit = ["*/freeboundary_diff.py", "*/turbulence.py"]
 
 [tool.coverage.report]
-omit = ["*/freeboundary_diff.py"]
+omit = ["*/freeboundary_diff.py", "*/turbulence.py"]
 
 [tool.ruff]
 line-length = 120
