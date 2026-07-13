@@ -75,7 +75,8 @@ rows, solutions = [], []
 for target in TARGET_BETAS:
     pressure_scale = 0.0 if target == 0.0 else target / 1.5
     state = predictor.state
-    for _attempt in range(3):
+    calibration = [(rows[-1][2], rows[-1][1])] if rows else []
+    for _attempt in range(5):
         direct_inp = dataclasses.replace(
             base, mgrid_file="explicit_tokamak_coils", extcur=[],
             pres_scale=pressure_scale,
@@ -96,7 +97,18 @@ for target in TARGET_BETAS:
         actual = 100.0 * float(wd.betatotal)
         if target == 0.0 or abs(actual - target) <= 0.03:
             break
-        pressure_scale *= target / actual
+        calibration.append((pressure_scale, actual))
+        if len(calibration) >= 2 and abs(calibration[-1][1] - calibration[-2][1]) > 1e-10:
+            ps0, beta0 = calibration[-2]
+            ps1, beta1 = calibration[-1]
+            candidate = ps1 + (target - beta1) * (ps1 - ps0) / (beta1 - beta0)
+            pressure_scale = candidate if np.isfinite(candidate) and candidate > 0.0 else ps1 * target / actual
+        else:
+            pressure_scale *= target / actual
+    else:
+        raise RuntimeError(
+            f"target beta {target:.2f}% calibrated only to {actual:.3f}%"
+        )
 
     mgrid_inp = dataclasses.replace(
         direct_inp, mgrid_file=str(mgrid_path), extcur=[1.0])
