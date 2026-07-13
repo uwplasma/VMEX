@@ -2113,6 +2113,16 @@ from the previous), once via generated mgrid and once via direct Biot–Savart; 
 cross-sections evolving with β for both machines, overlay mgrid vs direct, report the difference
 (direct = interpolation-free reference). Output: one compressed panel figure for the README.
 
+**Measured direct-coil status (2026-07-12):** the LP-QA example now calibrates pressure with a
+local secant, scales beta acceptance to the continuation step, and bisects failed steps down to
+0.0125%. On the office A4000 at `ns=51,mpol=5,ntor=5`, component-wise `ftol=1e-10`, it advances
+the old 3.120% endpoint to target/actual beta 3.350% in 149 minutes. The final accepted solve takes
+18,161 iterations with residual sum `1.3e-10`; target 3.3625% exhausts 20,000 iterations at
+`1.491e-10`. Axis shift is +16.20 cm and every plotted surface is a solved LCFS. The example writes
+WOUT for requested equilibria and the measured endpoint. Targets 4% and 5%, the mgrid/direct parity
+overlay, and the second tokamak machine remain open; do not substitute prescribed high-beta
+surfaces. Compact accepted and rejected histories are in `benchmarks/free_boundary_essos_beta.json`.
+
 ---
 
 ## 11. Phase 8 — Tests and coverage (≥95%, no bloat)

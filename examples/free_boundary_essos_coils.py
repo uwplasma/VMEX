@@ -225,5 +225,5 @@ if not CI:
     fig.suptitle("Free-boundary LP-QA from ESSOS coils (direct JAX Biot-Savart, no mgrid)")
     fig.tight_layout()
     fig_path = OUT_DIR / "essos_beta_scan.png"
-    fig.savefig(fig_path)
+    fig.savefig(fig_path, facecolor="white", transparent=False)
     print(f"wrote {fig_path}")
