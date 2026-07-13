@@ -180,7 +180,7 @@ if not CI:
         if target == TARGET_BETAS[-1]:
             from vmec_jax.core.plotting import plot_boundary_3d
 
-            tf_subset = np.arange(0, N_TF_COILS, 8)
+            tf_subset = np.arange(0, N_TF_COILS, 16)
             pf_indices = np.arange(N_TF_COILS, coils.n_base_coils)
             plot_boundary_3d(
                 wd,

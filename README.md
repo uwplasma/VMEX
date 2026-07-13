@@ -193,12 +193,17 @@ by its 16 modular coils as optimized in
 `examples/data/`). Pressure is ramped at fixed coil currents with each point
 warm-started from the previous boundary, and `PRES_SCALE` is calibrated per
 point so the **actual** volume-average beta of the converged wout
-(`betatotal`) — not a nominal input value — lands on 0, 1, 2, 3 % (within
-0.14 %, force residual below 2.1e-10 at ns = 51). Above 2%, local 0.1% branch
-steps avoid pressure-predictor jumps and expose the strongly nonlinear
-response. The plasma dilates and the magnetic axis Shafranov-shifts 14.9 cm
-outboard at the φ = 0 section (right panel) while the coils never move. Reproduce with
-`python examples/free_boundary_essos_coils.py`.*
+(`betatotal`) — not a nominal input value — follows a calibrated continuation
+to 3.350% (force-residual sum below 2.2e-10 at ns = 51). The plasma dilates and
+the magnetic axis Shafranov-shifts 16.2 cm outboard at the φ = 0 section while
+the coils never move. The minimum 0.0125% step fails at 3.3625%, so 4–5% is not
+claimed. Reproduce with `python examples/free_boundary_essos_coils.py`.*
+
+The same physical tokamak coil set converges through direct Biot–Savart and a
+generated mgrid at actual beta 0–3%; solved LCFS differences remain below
+``6.31e-4``:
+
+![Direct-coil versus generated-mgrid tokamak beta scan](docs/_static/figures/readme_tokamak_coil_parity.png)
 
 ## Code size
 

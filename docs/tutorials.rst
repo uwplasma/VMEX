@@ -132,6 +132,26 @@ surface is an output, not an input.
 .. literalinclude:: ../examples/free_boundary_mgrid.py
    :language: python
 
+Direct coils and their generated mgrid
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``free_boundary_tokamak_coils.py`` constructs circular TF/PF coils, generates
+a VMEC2000-compatible mgrid from those exact filaments, and solves both
+free-boundary providers at actual beta 0, 1.496%, and 3.009%. The maximum LCFS
+coefficient difference is ``6.31e-4``. Both WOUT sets and the parity CSV are
+written alongside the standard 3D, ``|B|``, surface, profile, and Mercier plots.
+
+.. image:: _static/figures/readme_tokamak_coil_parity.png
+   :alt: Direct-coil and generated-mgrid solved tokamak boundaries
+   :width: 95%
+
+.. image:: _static/figures/tokamak_coil_3d.png
+   :alt: Tokamak coils, solved LCFS, field lines, and boundary field strength
+   :width: 62%
+
+.. literalinclude:: ../examples/free_boundary_tokamak_coils.py
+   :language: python
+
 Free-boundary beta scan
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -472,7 +472,7 @@ def plot_boundary_3d(
             curve = np.concatenate([gamma[index], gamma[index, :1]], axis=0)
             ax.plot(
                 curve[:, 0], curve[:, 1], curve[:, 2],
-                color="#D55E00", lw=0.75, alpha=0.72, zorder=4,
+                color="#D55E00", lw=0.6, alpha=0.58, zorder=4,
             )
         coil_extent = float(np.max(np.abs(gamma[indices]))) if indices.size else 0.0
     surface_scale = 0.7 * max(np.abs(X).max(), np.abs(Y).max())
