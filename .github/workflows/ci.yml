@@ -111,11 +111,13 @@ jobs:
           print("golden dir:", mod.resolve_golden_dir())
           EOF
 
-      # Four shards keep each under the 10-min budget: the R26 physics-objective
-      # modules each trigger distinct, memory-heavy XLA compiles, and running
-      # too many in one shard thrashes the 4-vCPU / 16 GB runner under xdist
-      # (measured: 6 objective files = 10:16 on CI vs 2:39 locally).  So they
-      # are split across two shards:
+      # Four shards keep each under the 10-min budget.  --dist loadscope is
+      # essential: it groups a whole test module onto ONE xdist worker, so
+      # module-scoped equilibrium fixtures (omnigenity's qi_eq/tok_eq, etc.)
+      # are solved once instead of once PER WORKER under the default `load`
+      # distribution (measured: omnigenity 29 s -> 14 s locally).  The R26
+      # physics-objective modules each trigger distinct memory-heavy XLA
+      # compiles, so they are also split across two shards:
       #   a = heaviest solver-golden modules;
       #   b = omnigenity + turbulence + golden_digests;
       #   d = optimize + bootstrap + stability;
@@ -138,14 +140,14 @@ jobs:
                    tests/test_bootstrap.py \
                    tests/test_stability.py"
           if [ "${{ matrix.shard }}" = "a" ]; then
-            pytest -q -n 4 $A_FILES --durations=15 --cov=vmec_jax --cov-report=term
+            pytest -q -n 4 --dist loadscope $A_FILES --durations=15 --cov=vmec_jax --cov-report=term
           elif [ "${{ matrix.shard }}" = "b" ]; then
-            pytest -q -n 4 $B_FILES --durations=15 --cov=vmec_jax --cov-report=term
+            pytest -q -n 4 --dist loadscope $B_FILES --durations=15 --cov=vmec_jax --cov-report=term
           elif [ "${{ matrix.shard }}" = "d" ]; then
-            pytest -q -n 4 $D_FILES --durations=15 --cov=vmec_jax --cov-report=term
+            pytest -q -n 4 --dist loadscope $D_FILES --durations=15 --cov=vmec_jax --cov-report=term
           else
             IGNORES=$(for f in $A_FILES $B_FILES $D_FILES; do echo "--ignore=$f"; done)
-            pytest -q -n 4 tests \
+            pytest -q -n 4 --dist loadscope tests \
               --ignore=tests/test_implicit_grad.py \
               --ignore=tests/test_examples.py \
               $IGNORES \
