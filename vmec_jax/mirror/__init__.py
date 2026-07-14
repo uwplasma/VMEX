@@ -1,259 +1,130 @@
-"""Open-field-line magnetic-mirror equilibrium support.
+"""Public API for straight-axis magnetic-mirror equilibria.
 
-The mirror backend uses ``(s, theta, xi)`` coordinates: a VMEC-like radial
-mesh, a periodic poloidal angle, and a nonperiodic axial coordinate.  It is a
-separate topology from toroidal VMEC, but shares JAX kernels, external fields,
-solver controls, and diagnostics with :mod:`vmec_jax.core`.
-
-Only implemented, tested contracts are exported here.
+The mirror backend uses a nonperiodic axial coordinate and is separate from
+toroidal VMEC.  Its public surface is intentionally small: inputs and state,
+fixed/free-boundary solves, continuation, implicit derivatives, MOUT I/O, and
+plotting.  Numerical kernels remain available from their owning submodules.
 """
 
-from .basis import ChebyshevBasis, MirrorGrid, ThetaBasis, build_mirror_grid
-from .diagnostics import (
-    AxisymmetricBetaDiagnostics,
-    NonaxisymmetricBetaDiagnostics,
-    boundary_fourier_amplitudes,
-    boundary_fourier_norms,
-    summarize_axisymmetric_beta_scan,
-    summarize_nonaxisymmetric_beta_scan,
-)
-from .geometry import (
-    ContravariantField,
-    MirrorGeometry,
-    contravariant_field,
-    divergence_b,
-    evaluate_geometry,
-    magnetic_field_squared,
-    magnetic_field_xyz,
-)
-from .exterior import (
-    ClosedMirrorSurface,
-    build_closed_mirror_surface,
-)
-from .exterior_bie import (
-    AxisymmetricExteriorVacuum,
-    NonaxisymmetricExteriorVacuum,
-    LaplaceNeumannResult,
-    axisymmetric_plasma_external_neumann,
-    plasma_external_neumann,
-    axisymmetric_exterior_lateral_field,
-    laplace_double_layer_off_surface,
-    laplace_green_boundary_residual,
-    laplace_green_gradient_off_surface,
-    laplace_green_representation_off_surface,
-    laplace_reduced_green_boundary_residual,
-    laplace_reduced_exterior_boundary_residual,
-    laplace_reduced_exterior_gradient_off_surface,
-    laplace_reduced_green_gradient_off_surface,
-    laplace_single_layer_off_surface,
-    laplace_single_layer_gradient_off_surface,
-    nonaxisymmetric_exterior_lateral_field,
-    solve_reduced_exterior_laplace_neumann,
-    solve_reduced_interior_laplace_neumann,
-    solve_axisymmetric_exterior_vacuum,
-    solve_nonaxisymmetric_exterior_vacuum,
-)
-from .forces import (
-    AnisotropicMirrorEnergy,
-    AnisotropicForceResidual,
-    IsotropicForceResidual,
-    InterfaceResidual,
-    MirrorEnergy,
-    VariationalResidual,
-    anisotropic_fixed_boundary_energy_gradient,
-    anisotropic_fixed_boundary_variational_residual,
-    anisotropic_force_residual,
-    anisotropic_mirror_energy,
-    fixed_boundary_energy_gradient,
-    fixed_boundary_variational_residual,
-    isotropic_force_residual,
-    interface_residual,
-    mass_profile_from_pressure,
-    mirror_energy,
-)
-from .model import (
-    MIRROR_INPUT_SCHEMA,
-    MIRROR_OUTPUT_SCHEMA,
-    AnisotropyIndicators,
-    BiMaxwellianPressureClosure,
-    EndCondition,
-    MirrorBoundary,
-    MirrorConfig,
-    MirrorResolution,
-    MirrorState,
-    IsotropicPressureClosure,
-    PressureClosure,
-    PressureMoments,
-    TabulatedPressureClosure,
-    anisotropy_indicators,
-    project_fixed_boundary_state,
-)
-from .solver import (
-    MirrorConvergenceError,
-    MirrorSolveResult,
-    SeparableMirrorPreconditioner,
-    solve_anisotropic_fixed_boundary_cli,
-    solve_fixed_boundary_cli,
-)
-from .restart import (
-    FreeBoundaryRestart,
-    load_free_boundary_restart,
-    save_free_boundary_restart,
-)
-from .output import MoutData, mout_from_result, read_mout, write_mout
-from .plotting import plot_mout
-from .implicit import (
-    FixedBoundaryImplicitConfig,
-    FixedBoundaryParameters,
-    MirrorAdjointResult,
-    fixed_boundary_adjoint,
-    fixed_boundary_parameters,
-    make_fixed_boundary_implicit_config,
-    solve_fixed_boundary_implicit,
-)
-from .free_boundary import (
-    FreeBoundaryMirrorResult,
-    solve_axisymmetric_free_boundary_cli,
-    solve_free_boundary_cli,
-)
-from .free_boundary_implicit import (
-    FreeBoundaryAdjointConfig,
-    FreeBoundaryAdjointResult,
-    FreeBoundaryParameters,
-    free_boundary_adjoint,
-    free_boundary_parameters,
-)
-from .vacuum import (
-    VacuumField,
-    VacuumGeometry,
-    VacuumGrid,
-    VacuumSolveResult,
-    build_vacuum_grid,
-    evaluate_vacuum_field,
-    evaluate_vacuum_geometry,
-    external_field_from_source,
-    solve_vacuum_potential,
-    vacuum_energy_functional,
-    vacuum_laplacian,
-)
-from .continuation import (
-    interpolate_fixed_boundary_state,
-    solve_axisymmetric_beta_scan_cli,
-    solve_beta_scan_cli,
-)
+from importlib import import_module as _import_module
 
-__all__ = [
-    "MIRROR_INPUT_SCHEMA",
-    "MIRROR_OUTPUT_SCHEMA",
-    "ChebyshevBasis",
-    "ClosedMirrorSurface",
-    "LaplaceNeumannResult",
-    "AxisymmetricExteriorVacuum",
-    "NonaxisymmetricExteriorVacuum",
-    "axisymmetric_plasma_external_neumann",
-    "plasma_external_neumann",
-    "axisymmetric_exterior_lateral_field",
-    "ContravariantField",
-    "EndCondition",
-    "AnisotropyIndicators",
-    "AnisotropicMirrorEnergy",
-    "AnisotropicForceResidual",
-    "AxisymmetricBetaDiagnostics",
-    "NonaxisymmetricBetaDiagnostics",
-    "BiMaxwellianPressureClosure",
-    "IsotropicForceResidual",
-    "InterfaceResidual",
-    "IsotropicPressureClosure",
-    "MirrorBoundary",
-    "MirrorConfig",
-    "MirrorConvergenceError",
-    "MirrorGeometry",
-    "MirrorGrid",
-    "MirrorEnergy",
-    "MirrorResolution",
-    "MirrorSolveResult",
-    "MirrorState",
-    "MoutData",
-    "PressureClosure",
-    "PressureMoments",
-    "ThetaBasis",
-    "TabulatedPressureClosure",
-    "VariationalResidual",
-    "VacuumField",
-    "FreeBoundaryMirrorResult",
-    "FreeBoundaryAdjointConfig",
-    "FreeBoundaryAdjointResult",
-    "FreeBoundaryParameters",
-    "FreeBoundaryRestart",
-    "FixedBoundaryParameters",
-    "FixedBoundaryImplicitConfig",
-    "MirrorAdjointResult",
-    "VacuumGeometry",
-    "VacuumGrid",
-    "VacuumSolveResult",
-    "SeparableMirrorPreconditioner",
-    "build_mirror_grid",
-    "build_closed_mirror_surface",
-    "plot_mout",
-    "build_vacuum_grid",
-    "boundary_fourier_amplitudes",
-    "boundary_fourier_norms",
-    "anisotropy_indicators",
-    "anisotropic_fixed_boundary_energy_gradient",
-    "anisotropic_fixed_boundary_variational_residual",
-    "anisotropic_force_residual",
-    "anisotropic_mirror_energy",
-    "contravariant_field",
-    "divergence_b",
-    "evaluate_geometry",
-    "evaluate_vacuum_field",
-    "evaluate_vacuum_geometry",
-    "external_field_from_source",
-    "fixed_boundary_energy_gradient",
-    "fixed_boundary_adjoint",
-    "fixed_boundary_parameters",
-    "make_fixed_boundary_implicit_config",
-    "fixed_boundary_variational_residual",
-    "free_boundary_adjoint",
-    "free_boundary_parameters",
-    "isotropic_force_residual",
-    "interface_residual",
-    "interpolate_fixed_boundary_state",
-    "magnetic_field_squared",
-    "magnetic_field_xyz",
-    "mass_profile_from_pressure",
-    "mout_from_result",
-    "load_free_boundary_restart",
-    "laplace_double_layer_off_surface",
-    "laplace_green_boundary_residual",
-    "laplace_green_gradient_off_surface",
-    "laplace_green_representation_off_surface",
-    "laplace_reduced_green_boundary_residual",
-    "laplace_reduced_exterior_boundary_residual",
-    "laplace_reduced_exterior_gradient_off_surface",
-    "laplace_reduced_green_gradient_off_surface",
-    "laplace_single_layer_off_surface",
-    "laplace_single_layer_gradient_off_surface",
-    "nonaxisymmetric_exterior_lateral_field",
-    "solve_reduced_exterior_laplace_neumann",
-    "solve_reduced_interior_laplace_neumann",
-    "solve_axisymmetric_exterior_vacuum",
-    "solve_nonaxisymmetric_exterior_vacuum",
-    "mirror_energy",
-    "project_fixed_boundary_state",
-    "solve_anisotropic_fixed_boundary_cli",
-    "solve_fixed_boundary_cli",
-    "solve_fixed_boundary_implicit",
-    "solve_vacuum_potential",
-    "solve_axisymmetric_free_boundary_cli",
-    "solve_free_boundary_cli",
-    "solve_axisymmetric_beta_scan_cli",
-    "solve_beta_scan_cli",
-    "save_free_boundary_restart",
-    "read_mout",
-    "summarize_axisymmetric_beta_scan",
-    "summarize_nonaxisymmetric_beta_scan",
-    "vacuum_energy_functional",
-    "vacuum_laplacian",
-    "write_mout",
-]
+
+# Public names are lazy so importing ``vmec_jax.mirror`` does not initialize
+# every exterior-vacuum and solver dependency.
+_LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
+    # Model and configuration.
+    "MIRROR_INPUT_SCHEMA": (".model", "MIRROR_INPUT_SCHEMA"),
+    "MIRROR_OUTPUT_SCHEMA": (".model", "MIRROR_OUTPUT_SCHEMA"),
+    "EndCondition": (".model", "EndCondition"),
+    "MirrorBoundary": (".model", "MirrorBoundary"),
+    "MirrorConfig": (".model", "MirrorConfig"),
+    "MirrorResolution": (".model", "MirrorResolution"),
+    "MirrorState": (".model", "MirrorState"),
+    "PressureClosure": (".model", "PressureClosure"),
+    "IsotropicPressureClosure": (".model", "IsotropicPressureClosure"),
+    "BiMaxwellianPressureClosure": (".model", "BiMaxwellianPressureClosure"),
+    "TabulatedPressureClosure": (".model", "TabulatedPressureClosure"),
+    "project_fixed_boundary_state": (".model", "project_fixed_boundary_state"),
+    # Fixed and free-boundary solves.
+    "MirrorConvergenceError": (".solver", "MirrorConvergenceError"),
+    "MirrorSolveResult": (".solver", "MirrorSolveResult"),
+    "solve_fixed_boundary_cli": (".solver", "solve_fixed_boundary_cli"),
+    "solve_anisotropic_fixed_boundary_cli": (
+        ".solver",
+        "solve_anisotropic_fixed_boundary_cli",
+    ),
+    "FreeBoundaryMirrorResult": (".free_boundary", "FreeBoundaryMirrorResult"),
+    "solve_axisymmetric_free_boundary_cli": (
+        ".free_boundary",
+        "solve_axisymmetric_free_boundary_cli",
+    ),
+    "solve_free_boundary_cli": (".free_boundary", "solve_free_boundary_cli"),
+    "build_vacuum_grid": (".vacuum", "build_vacuum_grid"),
+    # Continuation and compact restarts.
+    "interpolate_fixed_boundary_state": (
+        ".continuation",
+        "interpolate_fixed_boundary_state",
+    ),
+    "solve_axisymmetric_beta_scan_cli": (
+        ".continuation",
+        "solve_axisymmetric_beta_scan_cli",
+    ),
+    "solve_beta_scan_cli": (".continuation", "solve_beta_scan_cli"),
+    "FreeBoundaryRestart": (".restart", "FreeBoundaryRestart"),
+    "load_free_boundary_restart": (".restart", "load_free_boundary_restart"),
+    "save_free_boundary_restart": (".restart", "save_free_boundary_restart"),
+    # Supported diagnostics.
+    "boundary_fourier_amplitudes": (
+        ".diagnostics",
+        "boundary_fourier_amplitudes",
+    ),
+    "boundary_fourier_norms": (".diagnostics", "boundary_fourier_norms"),
+    "summarize_axisymmetric_beta_scan": (
+        ".diagnostics",
+        "summarize_axisymmetric_beta_scan",
+    ),
+    "summarize_nonaxisymmetric_beta_scan": (
+        ".diagnostics",
+        "summarize_nonaxisymmetric_beta_scan",
+    ),
+    # Implicit differentiation.
+    "FixedBoundaryImplicitConfig": (
+        ".implicit",
+        "FixedBoundaryImplicitConfig",
+    ),
+    "FixedBoundaryParameters": (".implicit", "FixedBoundaryParameters"),
+    "MirrorAdjointResult": (".implicit", "MirrorAdjointResult"),
+    "fixed_boundary_adjoint": (".implicit", "fixed_boundary_adjoint"),
+    "fixed_boundary_parameters": (".implicit", "fixed_boundary_parameters"),
+    "make_fixed_boundary_implicit_config": (
+        ".implicit",
+        "make_fixed_boundary_implicit_config",
+    ),
+    "solve_fixed_boundary_implicit": (
+        ".implicit",
+        "solve_fixed_boundary_implicit",
+    ),
+    "FreeBoundaryAdjointConfig": (
+        ".free_boundary_implicit",
+        "FreeBoundaryAdjointConfig",
+    ),
+    "FreeBoundaryAdjointResult": (
+        ".free_boundary_implicit",
+        "FreeBoundaryAdjointResult",
+    ),
+    "FreeBoundaryParameters": (
+        ".free_boundary_implicit",
+        "FreeBoundaryParameters",
+    ),
+    "free_boundary_adjoint": (
+        ".free_boundary_implicit",
+        "free_boundary_adjoint",
+    ),
+    "free_boundary_parameters": (
+        ".free_boundary_implicit",
+        "free_boundary_parameters",
+    ),
+    # MOUT and plots.
+    "MoutData": (".output", "MoutData"),
+    "mout_from_result": (".output", "mout_from_result"),
+    "read_mout": (".output", "read_mout"),
+    "write_mout": (".output", "write_mout"),
+    "plot_mout": (".plotting", "plot_mout"),
+}
+
+__all__ = sorted(_LAZY_ATTRS)
+
+
+def __getattr__(name: str):
+    entry = _LAZY_ATTRS.get(name)
+    if entry is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    module_name, attribute = entry
+    module = _import_module(module_name, __name__)
+    value = module if attribute is None else getattr(module, attribute)
+    globals()[name] = value
+    return value
+
+
+def __dir__():
+    return sorted(set(globals()) | set(_LAZY_ATTRS))

@@ -27,11 +27,11 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
+)
+from vmec_jax.mirror.exterior import build_closed_mirror_surface  # noqa: E402
+from vmec_jax.mirror.exterior_bie import (  # noqa: E402
     axisymmetric_plasma_external_neumann,
     axisymmetric_exterior_lateral_field,
-    build_closed_mirror_surface,
-    contravariant_field,
-    evaluate_geometry,
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
     laplace_green_gradient_off_surface,
@@ -40,13 +40,17 @@ from vmec_jax.mirror import (  # noqa: E402
     laplace_reduced_exterior_gradient_off_surface,
     laplace_reduced_green_gradient_off_surface,
     laplace_single_layer_gradient_off_surface,
-    magnetic_field_squared,
-    magnetic_field_xyz,
     plasma_external_neumann,
     solve_reduced_exterior_laplace_neumann,
     solve_reduced_interior_laplace_neumann,
     solve_axisymmetric_exterior_vacuum,
     solve_nonaxisymmetric_exterior_vacuum,
+)
+from vmec_jax.mirror.geometry import (  # noqa: E402
+    contravariant_field,
+    evaluate_geometry,
+    magnetic_field_squared,
+    magnetic_field_xyz,
 )
 
 

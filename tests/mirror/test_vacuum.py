@@ -20,25 +20,25 @@ from vmec_jax.mirror import (  # noqa: E402
     build_vacuum_grid,
     boundary_fourier_amplitudes,
     boundary_fourier_norms,
-    evaluate_vacuum_field,
-    evaluate_vacuum_geometry,
-    external_field_from_source,
-    mass_profile_from_pressure,
-    magnetic_field_squared,
-    mirror_energy,
     load_free_boundary_restart,
     save_free_boundary_restart,
     solve_axisymmetric_free_boundary_cli,
-    solve_vacuum_potential,
     solve_axisymmetric_beta_scan_cli,
     solve_beta_scan_cli,
     summarize_axisymmetric_beta_scan,
     summarize_nonaxisymmetric_beta_scan,
+)
+from vmec_jax.mirror.forces import MU0, mass_profile_from_pressure, mirror_energy  # noqa: E402
+from vmec_jax.mirror.geometry import magnetic_field_squared  # noqa: E402
+from vmec_jax.mirror.vacuum import (  # noqa: E402
+    evaluate_vacuum_field,
+    evaluate_vacuum_geometry,
+    external_field_from_source,
+    solve_vacuum_potential,
     vacuum_energy_functional,
     vacuum_laplacian,
 )
 from vmec_jax.core.mgrid import MgridData, MgridField  # noqa: E402
-from vmec_jax.mirror.forces import MU0  # noqa: E402
 
 
 @pytest.fixture(scope="module", autouse=True)

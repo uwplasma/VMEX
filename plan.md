@@ -110,21 +110,18 @@ The following do not block completion:
 
 ### 3.1 Branch size and ownership debt
 
-Relative to main, the branch changes 149 files, adds 23,587 lines, deletes
-4,253 lines, and has a net addition of 19,334 lines. The mirror package contains
-8,172 Python lines in 20 modules. The largest files are `solver.py` (878),
-`forces.py` (826), `exterior_bie.py` (809), and `exterior_mesh.py` (737).
+Relative to main after the Milestone 2 deletions, the branch changes 130 files,
+adds 20,953 lines, deletes 4,255 lines, and has a net addition of 16,698 lines.
+The mirror package contains about 8,430 Python lines in 20 modules. The largest
+files are `forces.py` (1,085), `solver.py` (935), `exterior_bie.py` (809), and
+`exterior_mesh.py` (737).
 
-Code that must be deleted or moved out of the supported path:
-
-- `vmec_jax/core/coils.py` and `tests/test_coils.py`, now contrary to the ESSOS
-  ownership established on main;
-- `vmec_jax/core/hybrid.py` and `core/hybrid_free_boundary.py`, which construct
-  and Fourier-project prescribed square/superellipse targets rather than solve
-  a native B-spline hybrid equilibrium;
-- the two current hybrid examples and their showcase figures once their useful
-  plotting requirements have been transferred to the native example;
-- excess research-internal exports from `vmec_jax/mirror/__init__.py`.
+Milestone 2 removed the duplicated coil implementation, prescribed Fourier
+hybrid, their tests/examples, and obsolete figures. It also reduced the eager
+top-level mirror namespace to 47 lazy user contracts. Remaining size debt is
+concentrated in force assembly, nonlinear solves, and exterior BIE assembly;
+those files are simplified only alongside their Milestone 8 solver work so
+validated numerical paths are not mixed speculatively.
 
 ### 3.2 Physics worth retaining
 
@@ -363,11 +360,12 @@ manufactured refinement tests.
 
 ### Milestone 2: remove known false and misowned lanes
 
-Status: Fourier hybrid implementation, examples, tests, benchmarks, and
-figures are removed and pushed. Mirror source now accepts only MGRID or
-vectorized ``xyz -> B`` fields; duplicated coil/Biot-Savart source, tests, and
-showcases are removed. The replacement contract passes focused tests and a live
-ESSOS ``BiotSavart`` evaluation on a VMEC-JAX vacuum grid.
+Status: implementation complete locally. Fourier hybrid and duplicated coil
+ownership are removed. Mirror source accepts MGRID or vectorized ``xyz -> B``
+fields. The top-level namespace is lazy and reduced from 113 flattened symbols
+to 47 user contracts; numerical kernels remain in their owning submodules.
+The replacement field contract passes focused tests and a live ESSOS
+``BiotSavart`` evaluation on a VMEC-JAX vacuum grid.
 
 1. Change current hybrid docs/examples to explicit historical/experimental
    status, transfer any reusable plotting requirements, then delete the Fourier

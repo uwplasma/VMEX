@@ -281,11 +281,10 @@ The exact numerical contracts and failed promotion gates are in
 Code and validation footprint
 -----------------------------
 
-The 2026-07-13 release candidate contains 72 Python files and 33,960
-physical lines, including a 20-file, 8,072-line mirror backend. Every core
-module is at most 999 lines and the public-definition audit reports 0 missing
-docstrings across 569 definitions. The 60 tracked test modules contain 14,197
-physical lines and collect 719 tests. This is an evidence-preserving test
-budget, not production source bloat: the tracked checkout is about 9 MB and
-generated results are ignored. Reproducible counts and validation commands
-are recorded in ``benchmarks/mirror_m10_audit.json``.
+The current branch contains 69 Python source files and about 32,900 physical
+lines, including a 20-file, roughly 8,430-line mirror backend. Its lazy mirror
+API exposes 47 user contracts; force, geometry, basis, exterior-BIE, and
+preconditioner kernels stay in their owning modules. The 56 tracked test
+modules contain about 13,730 physical lines. Generated MOUT, mgrid, trace, and
+plot output is ignored. Reproducible validation commands are recorded in
+``plan.md`` and the compact benchmark JSON files.

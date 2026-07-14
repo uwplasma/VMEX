@@ -17,22 +17,22 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorConvergenceError,
     MirrorResolution,
-    SeparableMirrorPreconditioner,
     MirrorState,
-    fixed_boundary_energy_gradient,
-    fixed_boundary_variational_residual,
-    isotropic_force_residual,
-    mass_profile_from_pressure,
-    mirror_energy,
     project_fixed_boundary_state,
     solve_fixed_boundary_cli,
 )
 from vmec_jax.mirror.forces import (  # noqa: E402
     MU0,
+    fixed_boundary_energy_gradient,
+    fixed_boundary_variational_residual,
+    isotropic_force_residual,
     isotropic_staggered_energy_gradient,
     isotropic_staggered_fixed_boundary_gradient,
     isotropic_staggered_weak_residual,
+    mass_profile_from_pressure,
+    mirror_energy,
 )
+from vmec_jax.mirror.solver import SeparableMirrorPreconditioner  # noqa: E402
 
 
 @pytest.fixture(scope="module", autouse=True)

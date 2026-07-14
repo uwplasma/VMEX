@@ -14,10 +14,10 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
-    SeparableMirrorPreconditioner,
-    contravariant_field,
     solve_fixed_boundary_cli,
 )
+from vmec_jax.mirror.geometry import contravariant_field  # noqa: E402
+from vmec_jax.mirror.solver import SeparableMirrorPreconditioner  # noqa: E402
 
 
 @pytest.fixture(scope="module", autouse=True)

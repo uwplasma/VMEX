@@ -16,14 +16,15 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
+)
+from vmec_jax.mirror.forces import isotropic_force_residual, mirror_energy  # noqa: E402
+from vmec_jax.mirror.geometry import (  # noqa: E402
     contravariant_field,
     divergence_b,
     evaluate_geometry,
-    isotropic_force_residual,
     magnetic_field_squared,
-    mirror_energy,
+    normalized_divergence_rms,
 )
-from vmec_jax.mirror.geometry import normalized_divergence_rms  # noqa: E402
 
 
 def _two_loop_axis_field(z, *, radius: float, separation: float, current: float):

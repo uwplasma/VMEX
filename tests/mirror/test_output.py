@@ -19,11 +19,11 @@ from vmec_jax.mirror import (
     MirrorConfig,
     MirrorResolution,
     MirrorState,
-    mirror_energy,
     mout_from_result,
     read_mout,
     write_mout,
 )
+from vmec_jax.mirror.forces import mirror_energy
 
 
 def _sample_mout() -> MoutData:

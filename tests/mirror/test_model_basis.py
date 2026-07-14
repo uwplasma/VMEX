@@ -8,18 +8,40 @@ import pytest
 jax = pytest.importorskip("jax")
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
+import vmec_jax.mirror as mirror_api  # noqa: E402
 
 from vmec_jax.mirror import (  # noqa: E402
     MIRROR_INPUT_SCHEMA,
     MIRROR_OUTPUT_SCHEMA,
-    ChebyshevBasis,
     EndCondition,
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
     MirrorState,
-    ThetaBasis,
 )
+from vmec_jax.mirror.basis import ChebyshevBasis, ThetaBasis  # noqa: E402
+
+
+def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
+    required = {
+        "MirrorConfig",
+        "MirrorState",
+        "solve_fixed_boundary_cli",
+        "solve_free_boundary_cli",
+        "solve_beta_scan_cli",
+        "solve_fixed_boundary_implicit",
+        "write_mout",
+        "plot_mout",
+    }
+    internal = {
+        "ChebyshevBasis",
+        "SeparableMirrorPreconditioner",
+        "isotropic_force_residual",
+        "laplace_green_gradient_off_surface",
+    }
+    assert required <= set(mirror_api.__all__)
+    assert internal.isdisjoint(mirror_api.__all__)
+    assert len(mirror_api.__all__) == 47
 
 
 def test_mirror_config_freezes_supported_end_and_convergence_contract() -> None:
