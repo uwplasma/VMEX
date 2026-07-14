@@ -464,6 +464,20 @@ Gates:
   quadrupole phase, energy, volume, pitch, and weak residual converge;
 - all promoted residual and geometry contracts in Section 1 pass.
 
+Execution note (2026-07-14): the first native free-boundary spline attempt
+reused the fixed coefficient vectorizer and the existing exterior solve. Both
+a weighted Galerkin projection of total-pressure jump and Greville-point
+collocation drove their coefficient residuals and the independent plasma weak
+residual below `2.3e-15`. They failed the independent interface gate: with
+spectral side density, pointwise stress RMS changed `1.38e-7 -> 2.79e-5 ->
+1.25e-4` for 2, 4, and 8 axial elements. That adapter was deleted rather than
+retained as a scaffold. Do not retry projected stress. The second and final
+bounded attempt must derive the discrete exterior magnetic-energy shape
+gradient from the solved Green problem and compare it directly with Maxwell
+stress before coupling it to spline coefficients. If those two routes do not
+agree and refine, coefficient-native free boundary is deferred and the
+promoted nodal free solve remains the public path.
+
 ### Phase 3: structured solver and preconditioner
 
 1. Define one packed residual/vectorizer contract for nodal and spline open or
