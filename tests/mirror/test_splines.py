@@ -11,7 +11,13 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
 
 from vmec_jax.mirror.splines import CubicBSplineBasis  # noqa: E402
-from vmec_jax.mirror import MirrorBoundary, MirrorConfig, MirrorResolution, MirrorState  # noqa: E402
+from vmec_jax.mirror import (  # noqa: E402
+    MirrorBoundary,
+    MirrorConfig,
+    MirrorResolution,
+    MirrorState,
+    solve_fixed_boundary_cli,
+)
 from vmec_jax.mirror.forces import mirror_energy  # noqa: E402
 from vmec_jax.mirror.geometry import evaluate_geometry  # noqa: E402
 from vmec_jax.mirror.solver import SeparableMirrorPreconditioner  # noqa: E402
@@ -290,3 +296,46 @@ def test_large_spline_solve_uses_matrix_free_coefficient_preconditioner() -> Non
     assert float(result.variational.maximum) <= config.ftol
     assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
     np.testing.assert_allclose(result.state.radius_scale, 0.3, atol=7.0e-15)
+
+
+@pytest.mark.full
+def test_finite_beta_spline_knot_refinement_converges_to_chebyshev() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=17),
+        ftol=1.0e-12,
+        max_iterations=1000,
+    )
+    source_grid = config.build_grid()
+    s = jnp.asarray(source_grid.s)
+    xi = jnp.asarray(source_grid.xi)
+    boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.12 * (1.0 - xi**2)), source_grid)
+    initial = MirrorState.from_boundary(boundary, source_grid)
+    solve_kwargs = {
+        "axial_flux_derivative": 0.1,
+        "mass_profile": 2.0e3 * (1.0 - s),
+        "current_derivative": 3.0e-2 * s,
+        "solve_lambda": True,
+        "gradient_tolerance": 1.0e-12,
+        "require_convergence": True,
+    }
+    reference = solve_fixed_boundary_cli(initial, boundary, source_grid, config, **solve_kwargs)
+    energy_errors = []
+    volume_errors = []
+    for elements in (2, 4, 8):
+        discretization = SplineMirrorDiscretization.build(config, elements=elements)
+        result = solve_spline_fixed_boundary_cli(
+            discretization.fit_state(initial, source_grid),
+            discretization.fit_boundary(boundary, source_grid),
+            discretization,
+            config,
+            **solve_kwargs,
+        ).evaluated
+        energy_errors.append(abs(float(result.energy.total / reference.energy.total) - 1.0))
+        volume_errors.append(abs(float(result.energy.geometry.volume / reference.energy.geometry.volume) - 1.0))
+        assert float(result.variational.maximum) < 1.0e-14
+        assert float(result.staggered_weak_force.maximum) < 1.0e-14
+
+    assert np.all(np.diff(energy_errors) < 0.0)
+    assert np.all(np.diff(volume_errors) < 0.0)
+    assert energy_errors[-1] < 1.0e-7
+    assert volume_errors[-1] < 3.0e-6

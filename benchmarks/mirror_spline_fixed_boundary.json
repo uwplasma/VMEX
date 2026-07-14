@@ -55,5 +55,22 @@
     "staggered_weak_max": 1.2327e-15,
     "maximum_radius_error": 5.6066e-15
   },
+  "knot_refinement": {
+    "chebyshev_reference": {
+      "nxi": 17,
+      "active_dofs": 101,
+      "energy": 960915.7158010177,
+      "volume": 0.6604133374981643,
+      "variational_max": 5.4541e-16,
+      "staggered_weak_max": 5.7595e-16
+    },
+    "spline_runs": [
+      {"elements": 2, "coefficients": 5, "active_dofs": 17, "energy_relative_error": 1.0944e-6, "volume_relative_error": 1.1861e-5, "variational_max": 5.8263e-16, "staggered_weak_max": 5.4565e-16},
+      {"elements": 3, "coefficients": 6, "active_dofs": 24, "energy_relative_error": 8.2885e-7, "volume_relative_error": 1.0544e-5, "variational_max": 7.2892e-16, "staggered_weak_max": 8.3737e-16},
+      {"elements": 4, "coefficients": 7, "active_dofs": 31, "energy_relative_error": 3.5184e-7, "volume_relative_error": 6.7387e-6, "variational_max": 8.3695e-15, "staggered_weak_max": 8.3707e-15},
+      {"elements": 6, "coefficients": 9, "active_dofs": 45, "energy_relative_error": 1.2184e-7, "volume_relative_error": 3.7789e-6, "variational_max": 2.3178e-15, "staggered_weak_max": 2.3141e-15},
+      {"elements": 8, "coefficients": 11, "active_dofs": 59, "energy_relative_error": 5.1387e-8, "volume_relative_error": 2.1794e-6, "variational_max": 5.4311e-16, "staggered_weak_max": 5.7782e-16}
+    ]
+  },
   "note": "Sequential local cold timings include representation-specific JAX compilation and are evidence, not a steady-state speed claim."
 }

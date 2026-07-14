@@ -180,6 +180,12 @@ stiffness. It converges both variational and staggered residuals to
 GMRES iterations expose conditioning work still assigned to Milestone 8; this
 result establishes a working matrix-free path, not a final scaling claim.
 
+On the flared finite-beta case, knot refinement from 5 to 11 coefficients
+reduces relative energy error against an ``nxi=17`` Chebyshev oracle from
+``1.09e-6`` to ``5.14e-8`` and volume error from ``1.19e-5`` to ``2.18e-6``.
+Both errors decrease at every refinement and all coefficient solves retain
+variational and staggered residuals below ``9e-15``.
+
 Fixed-boundary implicit gradients
 ---------------------------------
 

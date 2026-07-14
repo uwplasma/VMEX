@@ -423,6 +423,13 @@ tensor inverse with a spline Galerkin axial stiffness. A 585-variable
 inner GMRES iterations make this a correctness gate only; bounded Krylov
 scaling remains Milestone 8 work.
 
+A five-level knot study on the finite-pressure/current flared case is monotone:
+from 5 to 11 coefficients, relative energy error against ``nxi=17`` Chebyshev
+drops from ``1.09e-6`` to ``5.14e-8`` and volume error from ``1.19e-5`` to
+``2.18e-6``. All residuals remain below ``9e-15``. Fixed-boundary spline parity
+therefore passes at bounded resolution; coefficient-native free-boundary
+coupling remains open before any default switch.
+
 Add only `mirror/splines.py`; keep the basis protocol in `basis.py` small.
 
 1. Implement clamped and periodic cubic basis values, first derivatives,
