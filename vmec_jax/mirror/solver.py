@@ -51,6 +51,7 @@ from .model import (
 
 Array = Any
 _DEVICE_ACTIVE = object()
+_HOST_REFERENCE_MAX_SIZE = 1024
 
 
 def _valid_energy_objective(energy: MirrorEnergy | AnisotropicMirrorEnergy, energy_scale: float) -> Array:
@@ -560,7 +561,8 @@ def _optimize_fixed_boundary(
     """Run the common host L-BFGS and residual-Newton solve policy."""
 
     callback_iterations = 0
-    history_stride = 10 if x0.size > 512 else 1
+    use_matrix_free = x0.size > _HOST_REFERENCE_MAX_SIZE
+    history_stride = 10 if use_matrix_free else 1
 
     def callback(x: np.ndarray) -> None:
         nonlocal callback_iterations
@@ -571,11 +573,11 @@ def _optimize_fixed_boundary(
     # Reserve iterations for Newton: L-BFGS can stall on relative energy while
     # physical forces are still large.
     polish_cap = 100 if x0.size > 2048 else 50
-    if x0.size <= 512:
+    if not use_matrix_free:
         polish_cap = 200
     polish_reserve = min(polish_cap, max(1, int(config.max_iterations) // 4))
     available = int(config.max_iterations) - polish_reserve
-    lbfgs_budget = max(10, available // 2) if x0.size > 512 else max(1, available)
+    lbfgs_budget = max(10, available // 2) if use_matrix_free else max(1, available)
     optimization = minimize(
         fun=lambda x: evaluate(x)[0],
         x0=x0,
@@ -601,13 +603,22 @@ def _optimize_fixed_boundary(
 
     candidate_variational = packed_variational(final_x, unpack(jnp.asarray(final_x)))
     gradient_function = jax.jit(jax.grad(objective))
-    if float(candidate_variational.maximum) > config.ftol and final_x.size > 512 and matrix_free_context is not None:
-        remaining = max(1, int(config.max_iterations) - int(optimization.nit))
+
+    def run_matrix_free_polish() -> None:
+        nonlocal final_x, optimizer_success, optimizer_message
+        nonlocal newton_steps, linear_iterations, final_linear_residual
+        remaining = max(
+            1,
+            int(config.max_iterations)
+            - int(optimization.nit)
+            - polish_evaluations
+            - newton_steps,
+        )
 
         def record_newton(x: np.ndarray) -> None:
             nonlocal newton_steps
             newton_steps += 1
-            record(callback_iterations + newton_steps, x)
+            record(callback_iterations + polish_evaluations + newton_steps, x)
 
         vectorizer, preconditioner = matrix_free_context
         (
@@ -631,6 +642,9 @@ def _optimize_fixed_boundary(
         )
         optimizer_success = bool(newton_success)
         optimizer_message += f"; {newton_message}"
+
+    if float(candidate_variational.maximum) > config.ftol and use_matrix_free and matrix_free_context is not None:
+        run_matrix_free_polish()
         candidate_variational = packed_variational(final_x, unpack(jnp.asarray(final_x)))
 
     # A bounded dense fallback is the robust reference lane up to 2048 dofs.
@@ -653,6 +667,17 @@ def _optimize_fixed_boundary(
         polish_evaluations = int(polish.nfev)
         optimizer_success = bool(polish.success)
         optimizer_message += f"; residual-Newton: {polish.message}"
+        candidate_variational = packed_variational(final_x, unpack(jnp.asarray(final_x)))
+
+    # Medium systems normally finish on the fast host reference. If that
+    # polish stalls just above physical ftol, use the scalable Newton path as
+    # a rescue rather than accepting a tolerance-dependent size cliff.
+    if (
+        float(candidate_variational.maximum) > config.ftol
+        and not use_matrix_free
+        and matrix_free_context is not None
+    ):
+        run_matrix_free_polish()
 
     return _OptimizationOutcome(
         vector=final_x,

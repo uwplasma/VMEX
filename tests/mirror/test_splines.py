@@ -289,7 +289,7 @@ def test_spline_coefficient_preconditioner_inverts_tensor_model() -> None:
 @pytest.mark.full
 def test_large_spline_solve_uses_matrix_free_coefficient_preconditioner() -> None:
     config = MirrorConfig(
-        resolution=MirrorResolution(ns=17, mpol=1, ntheta=3, nxi=25),
+        resolution=MirrorResolution(ns=29, mpol=1, ntheta=3, nxi=25),
         z_min=-1.2,
         z_max=1.2,
         ftol=1.0e-12,
@@ -305,7 +305,7 @@ def test_large_spline_solve_uses_matrix_free_coefficient_preconditioner() -> Non
         base.lambda_stream,
     )
     discretization = SplineMirrorDiscretization.build(config, elements=12)
-    assert (source_grid.ns - 2) * source_grid.ntheta * (discretization.coefficient_count - 2) > 512
+    assert (source_grid.ns - 2) * source_grid.ntheta * (discretization.coefficient_count - 2) > 1024
 
     result = solve_spline_fixed_boundary_cli(
         discretization.fit_state(initial, source_grid),
@@ -323,6 +323,56 @@ def test_large_spline_solve_uses_matrix_free_coefficient_preconditioner() -> Non
     assert float(result.variational.maximum) <= config.ftol
     assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
     np.testing.assert_allclose(result.state.radius_scale, 0.3, atol=7.0e-15)
+
+
+@pytest.mark.full
+def test_knot_refined_rotating_ellipse_uses_matrix_free_rescue() -> None:
+    from vmec_jax.mirror.analytic import RotatingEllipseParaxial
+
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=2, ntheta=12, nxi=17),
+        ftol=1.0e-12,
+        max_iterations=2000,
+    )
+    source_grid = config.build_grid()
+    theta = jnp.asarray(source_grid.theta)[:, None]
+    z = jnp.asarray(source_grid.z)[None, :]
+    discretization = SplineMirrorDiscretization.build(config, elements=6)
+
+    def boundary(stage):
+        fixture = RotatingEllipseParaxial(
+            mirror_strength=0.2 * stage,
+            elongation=1.0 + 0.5 * stage,
+            rotation=0.5 * jnp.pi * stage,
+        )
+        return MirrorBoundary.from_radius(
+            fixture.boundary_radius(0.05, theta, z), source_grid
+        )
+
+    source = discretization.fit_boundary(boundary(0.0), source_grid)
+    state = discretization.fit_state(
+        MirrorState.from_boundary(boundary(0.0), source_grid), source_grid
+    )
+    result = None
+    for stage in (0.0, 0.25, 0.5):
+        target = discretization.fit_boundary(boundary(stage), source_grid)
+        state = discretization.transfer_boundary(state, source, target)
+        result = solve_spline_fixed_boundary_cli(
+            state,
+            target,
+            discretization,
+            config,
+            axial_flux_derivative=0.01,
+            solve_lambda=True,
+            gradient_tolerance=1.0e-12,
+            require_convergence=True,
+        )
+        state, source = result.coefficient_state, target
+
+    assert result is not None
+    assert result.evaluated.linear_iterations > 0
+    assert float(result.evaluated.variational.maximum) <= config.ftol
+    assert float(result.evaluated.staggered_weak_force.maximum) <= config.ftol
 
 
 @pytest.mark.full

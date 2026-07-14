@@ -196,7 +196,7 @@ equilibrium criterion.
 |---|---:|---|---|
 | Axisymmetric fixed mirror | 90% | real solve, `ftol=1e-12`, MMS, weak force, gradients, spline parity | spline implicit derivatives and final release evidence |
 | Axisymmetric free mirror | 80% | coupled solve, beta 0--50%, `B.n`, stress, weak force, three-grid paraxial trend | dense-Jacobian scaling and spline coupling |
-| Nonaxisymmetric fixed mirror | 72% | native-spline rotating ellipse and SFLM below `ftol`, symmetry/direction oracles, plotted example | amplitude/refinement, finite beta, derivatives |
+| Nonaxisymmetric fixed mirror | 78% | spline rotating ellipse/SFLM, finite-beta and path-order checks, radial/poloidal refinement, plotted example | finest-knot amplitude and derivatives |
 | Nonaxisymmetric free mirror | 30% | theta-dependent BIE and residual exist | no converged analytic fixture or panel study |
 | ANIMEC model | 55% | functional, moments, isotropic limit, indicators | source-equation audit and independent finite-beta case |
 | Implicit derivatives | 65% | fixed and axisymmetric-free FD checks | duplicated Krylov path and missing spline/nonaxisymmetric scaling |
@@ -471,6 +471,14 @@ after invalid-Jacobian states receive infinite optimizer merit; it reaches
 existence and symmetry pass, while paraxial amplitude and preconditioner gates
 remain open. MOUT ``|B|`` now uses the compatible radial-Gauss reconstruction,
 while Cartesian full-mesh samples are retained for field-line direction.
+
+At achieved beta ``0.0969``, radial and poloidal refinements change the center
+field ratio by at most ``0.049%`` and pressure-first versus shape-first states
+agree to ``3.4e-14`` relative RMS. Axial knot refinement is monotone but slower:
+the staggered midplane ``m=2`` amplitude falls from ``0.0567`` to ``0.00795 T``
+over 7 to 13 coefficients and remains about 48% above the direct paraxial
+estimate. This bounded negative result moves further amplitude work behind the
+Milestone 8 preconditioner rather than allowing an unbounded refinement loop.
 
 1. Solve the 90-degree rotating ellipse with the common scalar-pressure
    residual and B-spline axial state.

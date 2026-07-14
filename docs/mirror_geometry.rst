@@ -218,6 +218,21 @@ field magnitude does not converge under the same study, so magnitude promotion
 awaits a staggered comparison. Compact positive and negative evidence is in
 ``benchmarks/mirror_spline_nonaxisymmetric.json``.
 
+A fixed-boundary pressure continuation calibrates conserved mass from the
+vacuum geometry and reaches achieved reference beta ``0.0969``. The center
+field falls by 2.26%. Refining ``ns=5`` to 7 changes that field ratio by
+0.049%; increasing theta nodes from 12 to 16 changes it by 0.0006%.
+Pressure-first and shape-first continuations agree in state to ``3.4e-14``
+relative RMS, excluding continuation order as the source of the response.
+
+The local quadrupole converges more slowly than these global observables.
+Increasing axial spline coefficients through 7, 9, 11, and 13 decreases the
+compatible midplane ``m=2`` amplitude monotonically from ``0.0567`` to
+``0.00795 T``. The finest value remains about 48% above the direct paraxial
+estimate. Further knot escalation is deferred to the structured-preconditioner
+milestone; the amplitude is not promoted early merely because the equilibrium
+residual is small.
+
 The parser-free root example runs both fixtures through five coefficient-space
 continuation stages and writes MOUT plus horizontal 3-D, cross-section,
 ``|B|``, residual, symmetry, and analytic-direction figures::

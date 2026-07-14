@@ -1,5 +1,5 @@
 {
-  "schema": "vmec_jax.benchmark.mirror_spline_nonaxisymmetric/1",
+  "schema": "vmec_jax.benchmark.mirror_spline_nonaxisymmetric/2",
   "rotating_ellipse": {
     "case": {
       "rotation_degrees": 90.0,
@@ -55,5 +55,53 @@
       "full_mesh_vector_relative_rms": 0.06224
     },
     "status": "field direction has paraxial convergence; full-mesh magnitude is non-gating pending a staggered comparison"
+  },
+  "finite_beta_rotating_ellipse": {
+    "case": {
+      "target_reference_beta": 0.1,
+      "mass_continuation": [0.25, 0.5, 0.75, 1.0],
+      "ftol": 1e-12,
+      "max_iterations": 2000
+    },
+    "base_ns5_ntheta12_coeff7": {
+      "achieved_beta": 0.09691044,
+      "axis_field_ratio_to_vacuum": 0.97744619,
+      "half_radius_center_m": 0.03520451,
+      "variational_max": 5.023e-16,
+      "staggered_weak_max": 5.132e-16,
+      "normalized_divb": 7.330e-15
+    },
+    "radial_ns7_ntheta12_coeff7": {
+      "achieved_beta": 0.09682454,
+      "axis_field_ratio_to_vacuum": 0.97696654,
+      "half_radius_center_m": 0.03521025,
+      "variational_max": 1.821e-16,
+      "staggered_weak_max": 1.788e-16,
+      "normalized_divb": 7.399e-15
+    },
+    "poloidal_ns5_ntheta16_coeff7": {
+      "achieved_beta": 0.09691246,
+      "axis_field_ratio_to_vacuum": 0.97744041,
+      "half_radius_center_m": 0.03520250,
+      "variational_max": 5.664e-17,
+      "staggered_weak_max": 8.809e-17,
+      "normalized_divb": 7.387e-15
+    },
+    "shape_first_vs_pressure_first": {
+      "state_relative_rms": 3.433e-14,
+      "energy_relative_difference": 1.110e-16
+    },
+    "status": "finite-beta equilibrium and continuation-order independence pass; radial and poloidal global observables are stable below 0.1%"
+  },
+  "axial_knot_amplitude_study": {
+    "coefficient_counts": [7, 9, 11, 13],
+    "staggered_midplane_m2_T": [0.05667, 0.02598, 0.01397, 0.007953],
+    "finest": {
+      "variational_max": 2.189e-14,
+      "staggered_weak_max": 2.189e-14,
+      "volume_m3": 0.01477064,
+      "wall_s": 81.57
+    },
+    "status": "m2 amplitude decreases monotonically but remains about 48% above the direct paraxial estimate at the bounded 13-coefficient level; defer further knots until preconditioning improves"
   }
 }
