@@ -445,16 +445,16 @@ def plot_boundary_3d(
         ax.plot(line_x, line_y, line_z, color="#111111", lw=0.65, zorder=3)
     coil_extent = 0.0
     if coils is not None:
-        from .coils import coil_geometry
-
-        gamma = np.asarray(coil_geometry(coils)[0], dtype=float)
+        gamma = np.asarray(getattr(coils, "gamma", coils), dtype=float)
+        if gamma.ndim != 3 or gamma.shape[-1] != 3:
+            raise ValueError("coils must provide centerlines with shape (ncoil, npoint, 3)")
         indices = (
             np.arange(len(gamma))
             if coil_indices is None
             else np.asarray(coil_indices, dtype=int)
         )
         if np.any((indices < 0) | (indices >= len(gamma))):
-            raise ValueError("coil_indices contains an index outside the CoilSet")
+            raise ValueError("coil_indices contains an index outside the coil array")
         for index in indices:
             curve = np.concatenate([gamma[index], gamma[index, :1]], axis=0)
             ax.plot(

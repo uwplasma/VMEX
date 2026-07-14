@@ -26,10 +26,10 @@ except ModuleNotFoundError as _vcj_error:  # optional research acceleration
     laplace_fx_u = _missing_virtual_casing
     laplace_fxd_u_eval = _missing_virtual_casing
 
-from ..core.coils import biot_savart
 from .exterior import ClosedMirrorSurface, build_closed_mirror_surface
 from .exterior_mesh import panel_green_boundary_residual, panel_green_gradient_off_surface
 from .geometry import magnetic_field_xyz
+from .vacuum import _external_field_xyz
 
 Array = Any
 
@@ -84,14 +84,14 @@ jax.tree_util.register_dataclass(
 )
 
 
-def plasma_coil_neumann(
+def plasma_external_neumann(
     surface: ClosedMirrorSurface,
     plasma_field: "ContravariantField",
     plasma_geometry: "MirrorGeometry",
     plasma_grid: "MirrorGrid",
-    coilset: Any,
+    external_field: Any,
 ) -> Array:
-    """Build ``(B_plasma-B_coil) dot n`` on the closed mirror boundary.
+    """Build ``(B_plasma-B_external) dot n`` on the closed mirror boundary.
 
     The lateral plasma trace is sampled directly. End-cut ``Bz`` is
     interpolated in ``s=r^2/a_end^2`` onto the graded cap rings.
@@ -99,11 +99,11 @@ def plasma_coil_neumann(
 
     ntheta, nxi = surface.lateral_xyz.shape[:2]
     if plasma_grid.ntheta == 1:
-        raise ValueError("use axisymmetric_plasma_coil_neumann for ntheta=1")
+        raise ValueError("use axisymmetric_plasma_external_neumann for ntheta=1")
     if ntheta != plasma_grid.ntheta or nxi != plasma_grid.nxi:
         raise ValueError("surface and plasma grid have incompatible lateral nodes")
-    coil_normal = jnp.sum(
-        biot_savart(coilset, surface.collocation_xyz)
+    external_normal = jnp.sum(
+        _external_field_xyz(external_field, surface.collocation_xyz)
         * surface.collocation_normals,
         axis=1,
     )
@@ -137,14 +137,14 @@ def plasma_coil_neumann(
             cap_normal(surface.upper_cap_xyz, -1, 1.0),
         ]
     )
-    return surface.reduce_collocation_values(plasma_normal - coil_normal)
+    return surface.reduce_collocation_values(plasma_normal - external_normal)
 
 
-def axisymmetric_plasma_coil_neumann(
+def axisymmetric_plasma_external_neumann(
     surface: ClosedMirrorSurface,
     plasma_field: "ContravariantField",
     plasma_grid: "MirrorGrid",
-    coilset: Any,
+    external_field: Any,
 ) -> Array:
     """Build axisymmetric closed-surface Neumann data without redundant theta."""
 
@@ -155,12 +155,12 @@ def axisymmetric_plasma_coil_neumann(
         raise ValueError(
             f"surface reduced size {surface.reduced_size} must be {expected_size}"
         )
-    coil_normal = jnp.sum(
-        biot_savart(coilset, surface.collocation_xyz)
+    external_normal = jnp.sum(
+        _external_field_xyz(external_field, surface.collocation_xyz)
         * surface.collocation_normals,
         axis=1,
     )
-    neumann = -surface.reduce_collocation_values(coil_normal)
+    neumann = -surface.reduce_collocation_values(external_normal)
     points = surface.collocation_xyz[jnp.asarray(surface.reduced_representatives)]
 
     nxi = plasma_grid.nxi
@@ -305,7 +305,7 @@ def solve_axisymmetric_exterior_vacuum(
     boundary: "MirrorBoundary",
     plasma_field: "ContravariantField",
     plasma_grid: "MirrorGrid",
-    coilset: Any,
+    external_field: Any,
     *,
     axisymmetric_ntheta: int = 40,
     cap_rim_grade: float = 3.5,
@@ -318,7 +318,7 @@ def solve_axisymmetric_exterior_vacuum(
 
     The two end cuts are closed by graded disks. Their Neumann data continue
     the plasma axial field into free space, while the lateral data cancel the
-    direct coil normal field. The returned trace is sampled at theta zero on
+    supplied external normal field. The returned trace is sampled at theta zero on
     the plasma grid's axial nodes.
     """
 
@@ -328,8 +328,8 @@ def solve_axisymmetric_exterior_vacuum(
         axisymmetric_ntheta=axisymmetric_ntheta,
         cap_rim_grade=cap_rim_grade,
     )
-    neumann = axisymmetric_plasma_coil_neumann(
-        surface, plasma_field, plasma_grid, coilset
+    neumann = axisymmetric_plasma_external_neumann(
+        surface, plasma_field, plasma_grid, external_field
     )
     result = solve_reduced_exterior_laplace_neumann(
         surface,
@@ -339,7 +339,7 @@ def solve_axisymmetric_exterior_vacuum(
         spectral_cap_density=spectral_cap_density,
         curved_side_geometry=curved_side_geometry,
     )
-    external = biot_savart(coilset, surface.lateral_xyz[0])
+    external = _external_field_xyz(external_field, surface.lateral_xyz[0])
     lateral = axisymmetric_exterior_lateral_field(
         surface,
         result.boundary_potential,
@@ -372,7 +372,7 @@ def solve_nonaxisymmetric_exterior_vacuum(
     plasma_field: "ContravariantField",
     plasma_geometry: "MirrorGeometry",
     plasma_grid: "MirrorGrid",
-    coilset: Any,
+    external_field: Any,
     *,
     cap_rim_grade: float = 3.5,
     order: int = 8,
@@ -389,8 +389,8 @@ def solve_nonaxisymmetric_exterior_vacuum(
         plasma_grid,
         cap_rim_grade=cap_rim_grade,
     )
-    neumann = plasma_coil_neumann(
-        surface, plasma_field, plasma_geometry, plasma_grid, coilset
+    neumann = plasma_external_neumann(
+        surface, plasma_field, plasma_geometry, plasma_grid, external_field
     )
     result = solve_reduced_exterior_laplace_neumann(
         surface,
@@ -400,7 +400,7 @@ def solve_nonaxisymmetric_exterior_vacuum(
         spectral_cap_density=spectral_cap_density,
         curved_side_geometry=curved_side_geometry,
     )
-    external = biot_savart(coilset, surface.lateral_xyz)
+    external = _external_field_xyz(external_field, surface.lateral_xyz)
     lateral = nonaxisymmetric_exterior_lateral_field(
         surface,
         result.boundary_potential,

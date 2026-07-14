@@ -282,11 +282,11 @@ def evaluate_vacuum_field(
     )
 
 
-def external_field_from_source(source: Any, geometry: VacuumGeometry) -> Array:
-    """Evaluate a direct-coil or cylindrical mgrid field on the annulus."""
+def _external_field_xyz(source: Any, points_xyz: Array) -> Array:
+    """Evaluate an MGRID field or vectorized ``xyz -> B`` callable."""
 
     if hasattr(source, "b_cyl"):
-        x, y, z = jnp.moveaxis(geometry.xyz, -1, 0)
+        x, y, z = jnp.moveaxis(points_xyz, -1, 0)
         radius = jnp.sqrt(x**2 + y**2)
         phi = jnp.arctan2(y, x)
         b_r, b_phi, b_z = source.b_cyl(radius, phi, z)
@@ -295,16 +295,22 @@ def external_field_from_source(source: Any, geometry: VacuumGeometry) -> Array:
             (b_r * cosine - b_phi * sine, b_r * sine + b_phi * cosine, b_z),
             axis=-1,
         )
+    if callable(source):
+        field = jnp.asarray(source(points_xyz))
+        if field.shape != points_xyz.shape:
+            raise ValueError(
+                f"external field returned shape {field.shape}; expected {points_xyz.shape}"
+            )
+        return field
+    raise TypeError(
+        "external field must provide b_cyl or be a vectorized xyz -> B callable"
+    )
 
-    from vmec_jax.core.coils import biot_savart
 
-    return biot_savart(source, geometry.xyz)
+def external_field_from_source(source: Any, geometry: VacuumGeometry) -> Array:
+    """Evaluate an MGRID field or vectorized ``xyz -> B`` callable on an annulus."""
 
-
-def external_field_from_coils(coilset: Any, geometry: VacuumGeometry) -> Array:
-    """Backward-compatible direct-coil external-field adapter."""
-
-    return external_field_from_source(coilset, geometry)
+    return _external_field_xyz(source, geometry.xyz)
 
 
 def _external_flux_boundary_functional(

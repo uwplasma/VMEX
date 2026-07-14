@@ -2,7 +2,7 @@
 
 The mirror backend uses ``(s, theta, xi)`` coordinates: a VMEC-like radial
 mesh, a periodic poloidal angle, and a nonperiodic axial coordinate.  It is a
-separate topology from toroidal VMEC, but shares JAX kernels, coil fields,
+separate topology from toroidal VMEC, but shares JAX kernels, external fields,
 solver controls, and diagnostics with :mod:`vmec_jax.core`.
 
 Only implemented, tested contracts are exported here.
@@ -34,8 +34,8 @@ from .exterior_bie import (
     AxisymmetricExteriorVacuum,
     NonaxisymmetricExteriorVacuum,
     LaplaceNeumannResult,
-    axisymmetric_plasma_coil_neumann,
-    plasma_coil_neumann,
+    axisymmetric_plasma_external_neumann,
+    plasma_external_neumann,
     axisymmetric_exterior_lateral_field,
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
@@ -131,7 +131,6 @@ from .vacuum import (
     build_vacuum_grid,
     evaluate_vacuum_field,
     evaluate_vacuum_geometry,
-    external_field_from_coils,
     external_field_from_source,
     solve_vacuum_potential,
     vacuum_energy_functional,
@@ -151,8 +150,8 @@ __all__ = [
     "LaplaceNeumannResult",
     "AxisymmetricExteriorVacuum",
     "NonaxisymmetricExteriorVacuum",
-    "axisymmetric_plasma_coil_neumann",
-    "plasma_coil_neumann",
+    "axisymmetric_plasma_external_neumann",
+    "plasma_external_neumann",
     "axisymmetric_exterior_lateral_field",
     "ContravariantField",
     "EndCondition",
@@ -209,7 +208,6 @@ __all__ = [
     "evaluate_geometry",
     "evaluate_vacuum_field",
     "evaluate_vacuum_geometry",
-    "external_field_from_coils",
     "external_field_from_source",
     "fixed_boundary_energy_gradient",
     "fixed_boundary_adjoint",

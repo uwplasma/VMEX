@@ -12,7 +12,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from vmec_jax.core.coils import CoilSet, two_coil_on_axis_bz
 from vmec_jax.mirror import (
     MirrorBoundary,
     MirrorConfig,
@@ -57,12 +56,25 @@ def run(
     dofs[:, 1, 1] = 0.9
     dofs[:, 2, 0] = [-1.0, 1.0]
     dofs[:, 0, 0] = [0.04, -0.04]
-    coils = CoilSet(
-        base_curve_dofs=jnp.asarray(dofs),
-        base_currents=jnp.asarray([2.0e5, 2.0e5]),
-        n_segments=128,
+    from essos.coils import Coils, Curves
+    from essos.fields import BiotSavart
+
+    coils = Coils(
+        Curves(jnp.asarray(dofs), n_segments=128, nfp=1, stellsym=False),
+        jnp.asarray([2.0e5, 2.0e5]),
     )
-    on_axis = two_coil_on_axis_bz(jnp.asarray(grid.z), coil_radius=0.9, separation=2.0, current=2.0e5)
+    biot_savart = BiotSavart(coils)
+
+    def external_field(points):
+        points = jnp.asarray(points)
+        return jax.vmap(biot_savart.B)(points.reshape(-1, 3)).reshape(points.shape)
+
+    z = jnp.asarray(grid.z)
+    on_axis = sum(
+        4.0e-7 * jnp.pi * 2.0e5 * 0.9**2
+        / (2.0 * (0.9**2 + (z - position) ** 2) ** 1.5)
+        for position in (-1.0, 1.0)
+    )
     center = grid.nxi // 2
     flux = 0.5 * on_axis[center] * 0.2**2
     base = MirrorBoundary.from_axis_field(flux, on_axis, grid)
@@ -78,7 +90,7 @@ def run(
         grid,
         vacuum_grid,
         config,
-        coils,
+        external_field,
         betas,
         outer_radius=0.1,
         axial_flux_derivative=flux,

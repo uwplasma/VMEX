@@ -24,7 +24,6 @@ netCDF4 = pytest.importorskip("netCDF4")
 pytest.importorskip("matplotlib")
 
 from vmec_jax.core.boozer import run_booz_xform  # noqa: E402
-from vmec_jax.core.coils import planar_ellipse_coils  # noqa: E402
 from vmec_jax.core.plotting import (  # noqa: E402
     plot_boozmn,
     plot_boundary_3d,
@@ -84,14 +83,9 @@ def test_plot_wout_accepts_woutdata_and_subset(tmp_path: Path) -> None:
 
 
 def test_plot_boundary_3d_accepts_coil_overlay(tmp_path: Path) -> None:
-    coils = planar_ellipse_coils(
-        [[0.0, 0.0, 0.0]],
-        [[0.0, 0.0, 1.0]],
-        [[1.0, 0.0, 0.0]],
-        semi_major=6.0,
-        semi_minor=6.0,
-        currents=1.0e5,
-        n_segments=24,
+    angle = np.linspace(0.0, 2.0 * np.pi, 24, endpoint=False)
+    coils = np.stack(
+        [np.stack([6.0 * np.cos(angle), 6.0 * np.sin(angle), np.zeros_like(angle)], axis=-1)]
     )
     path = plot_boundary_3d(
         _golden_wout("solovev"), tmp_path / "coils_3d.png", coils=coils

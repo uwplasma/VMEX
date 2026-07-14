@@ -9,7 +9,6 @@ jax = pytest.importorskip("jax")
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
 
-from vmec_jax.core.coils import CoilSet, biot_savart, two_coil_on_axis_bz  # noqa: E402
 from vmec_jax.mirror.exterior_mesh import (  # noqa: E402
     _spectral_side_density_samples,
     _unit_gauss_legendre,
@@ -28,7 +27,7 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
-    axisymmetric_plasma_coil_neumann,
+    axisymmetric_plasma_external_neumann,
     axisymmetric_exterior_lateral_field,
     build_closed_mirror_surface,
     contravariant_field,
@@ -43,7 +42,7 @@ from vmec_jax.mirror import (  # noqa: E402
     laplace_single_layer_gradient_off_surface,
     magnetic_field_squared,
     magnetic_field_xyz,
-    plasma_coil_neumann,
+    plasma_external_neumann,
     solve_reduced_exterior_laplace_neumann,
     solve_reduced_interior_laplace_neumann,
     solve_axisymmetric_exterior_vacuum,
@@ -57,6 +56,25 @@ def _grid(*, ns: int = 17, mpol: int = 0, ntheta: int = 1, nxi: int = 25):
         z_min=-1.4,
         z_max=1.4,
     ).build_grid()
+
+
+def _paraxial_field(points, *, center_field: float = 0.08, curvature: float = 0.02):
+    """Curl-free, divergence-free external mirror field."""
+
+    points = jnp.asarray(points)
+    x, y, z = jnp.moveaxis(points, -1, 0)
+    return jnp.stack(
+        (
+            -curvature * x * z,
+            -curvature * y * z,
+            center_field + curvature * (z**2 - 0.5 * (x**2 + y**2)),
+        ),
+        axis=-1,
+    )
+
+
+def _zero_field(points):
+    return jnp.zeros_like(points)
 
 
 def test_closed_cylinder_has_exact_area_volume_and_orientation() -> None:
@@ -585,17 +603,8 @@ def test_panel_green_gradient_recovers_linear_harmonic_near_cap() -> None:
     np.testing.assert_allclose(gradient, [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], rtol=2.0e-4, atol=2.0e-4)
 
 
-def test_two_coil_neumann_reconstruction_converges_near_caps() -> None:
-    dofs = np.zeros((2, 3, 3))
-    dofs[:, 0, 2] = 0.9
-    dofs[:, 1, 1] = 0.9
-    dofs[:, 2, 0] = [-1.0, 1.0]
-    coils = CoilSet(
-        base_curve_dofs=jnp.asarray(dofs),
-        base_currents=jnp.asarray([2.0e5, 2.0e5]),
-        n_segments=128,
-    )
-    target_bz = two_coil_on_axis_bz(jnp.asarray(0.0), coil_radius=0.9, separation=2.0, current=2.0e5)
+def test_external_field_neumann_reconstruction_converges_near_caps() -> None:
+    target_bz = jnp.asarray(0.08)
     targets = jnp.asarray([[0.0, 0.0, -0.4], [0.0, 0.0, 0.0], [0.0, 0.0, 0.4]])
     errors = []
     for ns, nxi, ntheta in ((9, 13, 16), (13, 21, 24)):
@@ -610,13 +619,13 @@ def test_two_coil_neumann_reconstruction_converges_near_caps() -> None:
             axisymmetric_ntheta=ntheta,
             cap_rim_grade=3.5,
         )
-        coil_field = biot_savart(coils, surface.collocation_xyz)
+        external = _paraxial_field(surface.collocation_xyz)
         target_field = jnp.asarray([0.0, 0.0, target_bz])
         neumann = surface.reduce_collocation_values(
-            jnp.sum((target_field - coil_field) * surface.collocation_normals, axis=1)
+            jnp.sum((target_field - external) * surface.collocation_normals, axis=1)
         )
         result = solve_reduced_interior_laplace_neumann(surface, neumann)
-        total_field = biot_savart(coils, targets) + (
+        total_field = _paraxial_field(targets) + (
             laplace_reduced_green_gradient_off_surface(surface, result.boundary_potential, neumann, targets)
         )
         errors.append(float(jnp.max(jnp.abs(total_field[:, 2] - target_bz)) / target_bz))
@@ -628,7 +637,7 @@ def test_two_coil_neumann_reconstruction_converges_near_caps() -> None:
     assert errors[1] < 6.0e-3
 
 
-def test_plasma_coil_neumann_adapter_matches_uniform_field_data() -> None:
+def test_plasma_external_neumann_adapter_matches_uniform_field_data() -> None:
     grid = MirrorConfig(
         resolution=MirrorResolution(ns=13, mpol=0, ntheta=1, nxi=21),
         z_min=-0.6,
@@ -645,23 +654,16 @@ def test_plasma_coil_neumann_adapter_matches_uniform_field_data() -> None:
         grid,
         axial_flux_derivative=0.5 * target_bz * radius**2,
     )
-    dofs = np.zeros((2, 3, 3))
-    dofs[:, 0, 2] = 0.9
-    dofs[:, 1, 1] = 0.9
-    dofs[:, 2, 0] = [-1.0, 1.0]
-    coils = CoilSet(
-        base_curve_dofs=jnp.asarray(dofs),
-        base_currents=jnp.asarray([2.0e5, 2.0e5]),
-        n_segments=128,
-    )
     surface = build_closed_mirror_surface(boundary, grid, axisymmetric_ntheta=24, cap_rim_grade=3.5)
-    adapted = axisymmetric_plasma_coil_neumann(surface, plasma_field, grid, coils)
+    adapted = axisymmetric_plasma_external_neumann(
+        surface, plasma_field, grid, _paraxial_field
+    )
     mapping = np.asarray(surface.collocation_to_reduced)
     _, representatives = np.unique(mapping, return_index=True)
     points = surface.collocation_xyz[jnp.asarray(representatives)]
     normals = surface.collocation_normals[jnp.asarray(representatives)]
     expected = jnp.sum(
-        (jnp.asarray([0.0, 0.0, target_bz]) - biot_savart(coils, points)) * normals,
+        (jnp.asarray([0.0, 0.0, target_bz]) - _paraxial_field(points)) * normals,
         axis=1,
     )
 
@@ -671,7 +673,7 @@ def test_plasma_coil_neumann_adapter_matches_uniform_field_data() -> None:
         boundary,
         plasma_field,
         grid,
-        coils,
+        _paraxial_field,
         axisymmetric_ntheta=24,
     )
     np.testing.assert_allclose(vacuum.neumann, adapted, rtol=3.0e-13, atol=3.0e-14)
@@ -712,13 +714,8 @@ def test_nonaxisymmetric_plasma_neumann_data_preserves_closed_flux() -> None:
         atol=5.0e-15,
     )
 
-    zero_coil = CoilSet(
-        base_curve_dofs=jnp.zeros((1, 3, 3)),
-        base_currents=jnp.zeros(1),
-        n_segments=16,
-    )
     surface = build_closed_mirror_surface(boundary, grid, cap_rim_grade=2.5)
-    neumann = plasma_coil_neumann(surface, field, geometry, grid, zero_coil)
+    neumann = plasma_external_neumann(surface, field, geometry, grid, _zero_field)
     assert neumann.shape == (surface.reduced_size,)
     lateral_size = grid.ntheta * grid.nxi
     np.testing.assert_allclose(neumann[:lateral_size], 0.0, atol=2.0e-15)
@@ -732,7 +729,7 @@ def test_nonaxisymmetric_plasma_neumann_data_preserves_closed_flux() -> None:
         field,
         geometry,
         grid,
-        zero_coil,
+        _zero_field,
         cap_rim_grade=2.5,
         order=6,
     )
@@ -748,16 +745,6 @@ def test_axisymmetric_exterior_vacuum_is_shape_differentiable() -> None:
         z_min=-0.6,
         z_max=0.6,
     ).build_grid()
-    dofs = np.zeros((2, 3, 3))
-    dofs[:, 0, 2] = 0.9
-    dofs[:, 1, 1] = 0.9
-    dofs[:, 2, 0] = [-1.0, 1.0]
-    coils = CoilSet(
-        base_curve_dofs=jnp.asarray(dofs),
-        base_currents=jnp.asarray([2.0e5, 2.0e5]),
-        n_segments=64,
-    )
-
     def lateral_field(radius):
         boundary = MirrorBoundary.from_radius(radius, grid)
         state = MirrorState.from_boundary(boundary, grid)
@@ -772,7 +759,7 @@ def test_axisymmetric_exterior_vacuum_is_shape_differentiable() -> None:
             boundary,
             plasma_field,
             grid,
-            coils,
+            _paraxial_field,
             axisymmetric_ntheta=8,
             cap_rim_grade=3.0,
             order=6,
@@ -798,12 +785,6 @@ def test_nonaxisymmetric_exterior_vacuum_is_shape_differentiable() -> None:
     ).build_grid()
     theta = jnp.asarray(grid.theta)[:, None]
     xi = jnp.asarray(grid.xi)[None, :]
-    zero_coil = CoilSet(
-        base_curve_dofs=jnp.zeros((1, 3, 3)),
-        base_currents=jnp.zeros(1),
-        n_segments=16,
-    )
-
     def lateral_field(amplitude):
         boundary = MirrorBoundary.from_radius(
             0.3 * (1.0 + amplitude * jnp.cos(theta) * (1.0 - xi**2)),
@@ -823,7 +804,7 @@ def test_nonaxisymmetric_exterior_vacuum_is_shape_differentiable() -> None:
             field,
             geometry,
             grid,
-            zero_coil,
+            _zero_field,
             cap_rim_grade=2.5,
             order=4,
             spectral_side_density=True,

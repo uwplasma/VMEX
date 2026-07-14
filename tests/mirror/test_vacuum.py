@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -24,7 +22,6 @@ from vmec_jax.mirror import (  # noqa: E402
     boundary_fourier_norms,
     evaluate_vacuum_field,
     evaluate_vacuum_geometry,
-    external_field_from_coils,
     external_field_from_source,
     mass_profile_from_pressure,
     magnetic_field_squared,
@@ -40,7 +37,6 @@ from vmec_jax.mirror import (  # noqa: E402
     vacuum_energy_functional,
     vacuum_laplacian,
 )
-from vmec_jax.core.coils import CoilSet, to_mgrid_data, two_coil_on_axis_bz  # noqa: E402
 from vmec_jax.core.mgrid import MgridData, MgridField  # noqa: E402
 from vmec_jax.mirror.forces import MU0  # noqa: E402
 
@@ -126,16 +122,29 @@ def test_boundary_fourier_norms_do_not_use_a_symmetry_zero() -> None:
     np.testing.assert_allclose(boundary_fourier_amplitudes(boundary)[1, grid.nxi // 2], 0.0, atol=5e-17)
 
 
-def _two_end_coils() -> CoilSet:
-    dofs = np.zeros((2, 3, 3))
-    dofs[:, 0, 2] = 0.9
-    dofs[:, 1, 1] = 0.9
-    dofs[:, 2, 0] = np.asarray([-1.0, 1.0])
-    return CoilSet(
-        base_curve_dofs=jnp.asarray(dofs),
-        base_currents=jnp.asarray([2.0e5, 2.0e5]),
-        n_segments=64,
+def _external_mirror_field(points):
+    """Curl-free, divergence-free paraxial mirror field."""
+
+    points = jnp.asarray(points)
+    x, y, z = jnp.moveaxis(points, -1, 0)
+    curvature = 0.02
+    return jnp.stack(
+        (
+            -curvature * x * z,
+            -curvature * y * z,
+            0.08 + curvature * (z**2 - 0.5 * (x**2 + y**2)),
+        ),
+        axis=-1,
     )
+
+
+def _on_axis_mirror_field(z, **_unused):
+    return 0.08 + 0.02 * jnp.asarray(z) ** 2
+
+
+def _nonaxisymmetric_mirror_field(points):
+    field = _external_mirror_field(points)
+    return field.at[..., 0].add(0.004)
 
 
 def test_cylindrical_annulus_has_exact_volume_metric_and_normal() -> None:
@@ -193,19 +202,6 @@ def test_mgrid_external_field_is_converted_to_cartesian_on_annulus() -> None:
     np.testing.assert_allclose(actual, expected, rtol=2.0e-14, atol=2.0e-14)
 
 
-def test_two_coil_mgrid_matches_direct_field_on_mirror_annulus() -> None:
-    _, grid = _grid(ns=5, nxi=9)
-    geometry = evaluate_vacuum_geometry(MirrorBoundary.from_radius(0.3, grid), grid, outer_radius=0.7)
-    coils = _two_end_coils()
-    data = to_mgrid_data(coils, 0.0, 0.8, -1.3, 1.3, ir=33, jz=65, kp=4, mgrid_mode="S")
-    mgrid = MgridField.from_mgrid_data(data)
-    direct = external_field_from_coils(coils, geometry)
-    interpolated = external_field_from_source(mgrid, geometry)
-    relative_rms = jnp.linalg.norm(interpolated - direct) / jnp.linalg.norm(direct)
-
-    assert float(relative_rms) < 5.0e-3
-
-
 def test_linear_harmonic_potentials_have_zero_laplacian_and_exact_gradient() -> None:
     _, grid = _grid(ns=9, nxi=11)
     geometry = evaluate_vacuum_geometry(MirrorBoundary.from_radius(0.3, grid), grid, outer_radius=0.7)
@@ -244,30 +240,13 @@ def test_scalar_potential_solve_recovers_uniform_field_cancellation() -> None:
     np.testing.assert_allclose(result.field.total_xyz, 0.0, atol=2.0e-11)
 
 
-def test_direct_coil_field_on_annulus_is_jittable_and_current_differentiable() -> None:
-    _, grid = _grid(ns=5, nxi=5)
-    geometry = evaluate_vacuum_geometry(MirrorBoundary.from_radius(0.3, grid), grid, outer_radius=0.7)
-
-    def field_norm(currents):
-        coils = _two_end_coils().with_arrays(base_currents=currents)
-        field = external_field_from_coils(coils, geometry)
-        return jnp.mean(jnp.sum(field**2, axis=-1))
-
-    currents = jnp.asarray([2.0e5, 2.0e5])
-    value = jax.jit(field_norm)(currents)
-    derivative = jax.grad(field_norm)(currents)
-    assert float(value) > 0.0
-    assert np.all(np.isfinite(np.asarray(derivative)))
-    assert np.all(np.asarray(derivative) > 0.0)
-
-
 def test_vacuum_operator_is_reciprocal_for_shaped_annulus() -> None:
     _, grid = _grid(ns=5, nxi=7)
     theta = jnp.asarray(grid.theta)[:, None]
     xi = jnp.asarray(grid.axial_basis.nodes)[None, :]
     boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.04 * jnp.cos(theta) * (1.0 - xi**2)), grid)
     geometry = evaluate_vacuum_geometry(boundary, grid, outer_radius=0.7)
-    external = external_field_from_coils(_two_end_coils(), geometry)
+    external = external_field_from_source(_external_mirror_field, geometry)
     rng = np.random.default_rng(91)
     point = jnp.asarray(rng.normal(size=grid.shape))
     left = jnp.asarray(rng.normal(size=grid.shape))
@@ -293,7 +272,7 @@ def test_two_coil_vacuum_solve_reduces_plasma_normal_field_under_refinement() ->
     grid = build_vacuum_grid(config.build_grid(), nrho=7)
     boundary = MirrorBoundary.from_radius(0.25, grid)
     geometry = evaluate_vacuum_geometry(boundary, grid, outer_radius=0.65)
-    external = external_field_from_coils(_two_end_coils(), geometry)
+    external = external_field_from_source(_external_mirror_field, geometry)
     external_normal = jnp.sum(external[0] * geometry.inner_normal_xyz, axis=-1)[:, 1:-1]
     field_scale = jnp.sqrt(jnp.mean(jnp.sum(external[0, :, 1:-1] ** 2, axis=-1)))
     initial_normal_rms = jnp.sqrt(jnp.mean(external_normal**2))
@@ -320,7 +299,7 @@ def test_two_coil_vacuum_solve_reduces_plasma_normal_field_under_refinement() ->
     )
 
 
-def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> None:
+def test_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> None:
     config = MirrorConfig(
         resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=7),
         z_min=-0.8,
@@ -330,7 +309,7 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
     )
     plasma_grid = config.build_grid()
     vacuum_grid = build_vacuum_grid(plasma_grid, nrho=5)
-    on_axis_field = two_coil_on_axis_bz(
+    on_axis_field = _on_axis_mirror_field(
         jnp.asarray(plasma_grid.z),
         coil_radius=0.9,
         separation=2.0,
@@ -344,7 +323,7 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
         plasma_grid,
         vacuum_grid,
         config,
-        _two_end_coils(),
+        _external_mirror_field,
         jnp.asarray([0.0, 0.01, 0.03, 0.10]),
         outer_radius=0.65,
         axial_flux_derivative=flux,
@@ -380,22 +359,9 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
         rtol=2.0e-8,
         atol=1.0e-12,
     )
-    assert 0.03 < float(diagnostics[-1].volume_averaged_beta) < 0.04
+    assert 0.045 < float(diagnostics[-1].volume_averaged_beta) < 0.052
     assert float(diagnostics[-1].diamagnetic_field_ratio) < 0.97
     assert abs(float(diagnostics[-1].paraxial_relative_error)) < 0.01
-    reference = np.genfromtxt(
-        Path(__file__).parents[2] / "examples" / "data" / "pleiades_two_coil_beta_reference.csv",
-        delimiter=",",
-        names=True,
-        comments="#",
-        skip_header=4,
-    )
-    reference = reference[reference["nr"] == np.max(reference["nr"])]
-    np.testing.assert_allclose(
-        [item.diamagnetic_field_ratio for item in diagnostics[1:]],
-        reference["field_ratio"],
-        rtol=3.0e-3,
-    )
     assert all(result.vacuum_potential.shape == vacuum_grid.shape for result in results)
     assert all(float(result.vacuum_potential[-1, 0, 0]) == 0.0 for result in results)
     assert all(np.all(np.isfinite(np.asarray(result.vacuum_field.total_xyz))) for result in results)
@@ -412,7 +378,7 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
     )
     plasma_grid = config.build_grid()
     vacuum_grid = build_vacuum_grid(plasma_grid, nrho=5)
-    on_axis = two_coil_on_axis_bz(
+    on_axis = _on_axis_mirror_field(
         jnp.asarray(plasma_grid.z),
         coil_radius=0.9,
         separation=2.0,
@@ -426,7 +392,7 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
         plasma_grid,
         vacuum_grid,
         config,
-        _two_end_coils(),
+        _external_mirror_field,
         betas,
         outer_radius=0.1,
         axial_flux_derivative=flux,
@@ -477,17 +443,7 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
     )
     grid = config.build_grid()
     vacuum_grid = build_vacuum_grid(grid, nrho=5)
-    dofs = np.zeros((2, 3, 3))
-    dofs[:, 0, 2] = 0.9
-    dofs[:, 1, 1] = 0.9
-    dofs[:, 2, 0] = [-1.0, 1.0]
-    dofs[:, 0, 0] = [0.04, -0.04]
-    coils = CoilSet(
-        base_curve_dofs=jnp.asarray(dofs),
-        base_currents=jnp.asarray([2.0e5, 2.0e5]),
-        n_segments=128,
-    )
-    on_axis = two_coil_on_axis_bz(
+    on_axis = _on_axis_mirror_field(
         jnp.asarray(grid.z),
         coil_radius=0.9,
         separation=2.0,
@@ -505,7 +461,7 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
         grid,
         vacuum_grid,
         config,
-        coils,
+        _nonaxisymmetric_mirror_field,
         betas,
         outer_radius=0.1,
         axial_flux_derivative=flux,
@@ -568,7 +524,7 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution() -> None:
         )
         plasma_grid = config.build_grid()
         vacuum_grid = build_vacuum_grid(plasma_grid, nrho=ns)
-        on_axis = two_coil_on_axis_bz(
+        on_axis = _on_axis_mirror_field(
             jnp.asarray(plasma_grid.z),
             coil_radius=0.9,
             separation=2.0,
@@ -581,7 +537,7 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution() -> None:
             plasma_grid,
             vacuum_grid,
             config,
-            _two_end_coils(),
+            _external_mirror_field,
             betas,
             outer_radius=0.1,
             axial_flux_derivative=flux,
@@ -627,7 +583,7 @@ def test_two_coil_anisotropic_free_boundary_calibrates_perpendicular_beta() -> N
     )
     plasma_grid = config.build_grid()
     vacuum_grid = build_vacuum_grid(plasma_grid, nrho=5)
-    on_axis = two_coil_on_axis_bz(
+    on_axis = _on_axis_mirror_field(
         jnp.asarray(plasma_grid.z),
         coil_radius=0.9,
         separation=2.0,
@@ -650,7 +606,7 @@ def test_two_coil_anisotropic_free_boundary_calibrates_perpendicular_beta() -> N
         plasma_grid,
         vacuum_grid,
         config,
-        _two_end_coils(),
+        _external_mirror_field,
         jnp.asarray([0.0, 0.01]),
         outer_radius=0.65,
         axial_flux_derivative=flux,
@@ -685,7 +641,7 @@ def test_tabulated_pressure_free_boundary_matches_sampled_bimaxwellian() -> None
     )
     grid = config.build_grid()
     vacuum_grid = build_vacuum_grid(grid, nrho=5)
-    on_axis = two_coil_on_axis_bz(jnp.asarray(grid.z), coil_radius=0.9, separation=2.0, current=2.0e5)
+    on_axis = _on_axis_mirror_field(jnp.asarray(grid.z))
     center = grid.nxi // 2
     flux = 0.5 * on_axis[center] * 0.25**2
     boundary = MirrorBoundary.from_axis_field(flux, on_axis, grid)
@@ -710,22 +666,48 @@ def test_tabulated_pressure_free_boundary_matches_sampled_bimaxwellian() -> None
         grid,
         vacuum_grid,
         config,
-        _two_end_coils(),
+        _external_mirror_field,
         betas,
         outer_radius=0.65,
         axial_flux_derivative=flux,
         reference_field=float(on_axis[center]),
         pressure_closure=closure,
     )
+    reference_results = solve_axisymmetric_beta_scan_cli(
+        boundary,
+        grid,
+        vacuum_grid,
+        config,
+        _external_mirror_field,
+        betas,
+        outer_radius=0.65,
+        axial_flux_derivative=flux,
+        reference_field=float(on_axis[center]),
+        pressure_closure=reference,
+    )
     result = results[-1]
     diagnostic = summarize_axisymmetric_beta_scan(results, betas, grid, reference_field=float(on_axis[center]))[-1]
+    reference_diagnostic = summarize_axisymmetric_beta_scan(
+        reference_results,
+        betas,
+        grid,
+        reference_field=float(on_axis[center]),
+    )[-1]
 
     assert result.converged
     assert float(result.variational_max) <= config.ftol
     assert bool(jnp.all(result.plasma_energy.indicators_half.valid))
     np.testing.assert_allclose(diagnostic.achieved_reference_beta, 0.01, rtol=2e-8)
-    np.testing.assert_allclose(diagnostic.center_radius, 0.2533157164, rtol=2e-8)
-    np.testing.assert_allclose(diagnostic.diamagnetic_field_ratio, 0.9955138994, rtol=2e-8)
+    np.testing.assert_allclose(
+        diagnostic.center_radius,
+        reference_diagnostic.center_radius,
+        rtol=5.0e-5,
+    )
+    np.testing.assert_allclose(
+        diagnostic.diamagnetic_field_ratio,
+        reference_diagnostic.diamagnetic_field_ratio,
+        rtol=5.0e-5,
+    )
 
 
 @pytest.mark.full
@@ -742,7 +724,7 @@ def test_anisotropic_free_boundary_observables_converge_with_resolution() -> Non
         )
         grid = config.build_grid()
         vacuum_grid = build_vacuum_grid(grid, nrho=nrho)
-        on_axis = two_coil_on_axis_bz(
+        on_axis = _on_axis_mirror_field(
             jnp.asarray(grid.z),
             coil_radius=0.9,
             separation=2.0,
@@ -763,7 +745,7 @@ def test_anisotropic_free_boundary_observables_converge_with_resolution() -> Non
             grid,
             vacuum_grid,
             config,
-            _two_end_coils(),
+            _external_mirror_field,
             jnp.asarray([0.0, 0.10]),
             outer_radius=0.65,
             axial_flux_derivative=flux,
@@ -811,7 +793,7 @@ def test_anisotropic_high_beta_scan_remains_elliptic_and_diamagnetic() -> None:
     )
     grid = config.build_grid()
     vacuum_grid = build_vacuum_grid(grid, nrho=7)
-    on_axis = two_coil_on_axis_bz(
+    on_axis = _on_axis_mirror_field(
         jnp.asarray(grid.z),
         coil_radius=0.9,
         separation=2.0,
@@ -833,7 +815,7 @@ def test_anisotropic_high_beta_scan_remains_elliptic_and_diamagnetic() -> None:
         grid,
         vacuum_grid,
         config,
-        _two_end_coils(),
+        _external_mirror_field,
         betas,
         outer_radius=0.65,
         axial_flux_derivative=flux,
@@ -856,60 +838,6 @@ def test_anisotropic_high_beta_scan_remains_elliptic_and_diamagnetic() -> None:
 
 
 @pytest.mark.full
-def test_free_boundary_mgrid_matches_direct_two_coil_equilibrium() -> None:
-    config = MirrorConfig(
-        resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=7),
-        z_min=-0.8,
-        z_max=0.8,
-        ftol=1.0e-12,
-        max_iterations=1000,
-    )
-    plasma_grid = config.build_grid()
-    vacuum_grid = build_vacuum_grid(plasma_grid, nrho=5)
-    coils = _two_end_coils()
-    table = to_mgrid_data(coils, 0.0, 0.75, -1.2, 1.2, ir=49, jz=97, kp=4, mgrid_mode="S")
-    mgrid = MgridField.from_mgrid_data(table)
-    on_axis = two_coil_on_axis_bz(
-        jnp.asarray(plasma_grid.z),
-        coil_radius=0.9,
-        separation=2.0,
-        current=2.0e5,
-    )
-    center = plasma_grid.nxi // 2
-    flux = 0.5 * on_axis[center] * 0.25**2
-    boundary = MirrorBoundary.from_axis_field(flux, on_axis, plasma_grid)
-
-    def solve(source):
-        return solve_axisymmetric_free_boundary_cli(
-            boundary,
-            plasma_grid,
-            vacuum_grid,
-            config,
-            source,
-            outer_radius=0.65,
-            axial_flux_derivative=flux,
-            require_convergence=True,
-        )
-
-    direct, interpolated = solve(coils), solve(mgrid)
-    assert direct.converged and interpolated.converged
-    assert float(direct.variational_max) <= config.ftol
-    assert float(interpolated.variational_max) <= config.ftol
-    np.testing.assert_allclose(
-        interpolated.boundary.radius_scale,
-        direct.boundary.radius_scale,
-        rtol=5.0e-3,
-        atol=2.0e-5,
-    )
-    np.testing.assert_allclose(
-        interpolated.vacuum_field.total_xyz,
-        direct.vacuum_field.total_xyz,
-        rtol=8.0e-3,
-        atol=2.0e-4,
-    )
-
-
-@pytest.mark.full
 def test_free_boundary_beta_observables_converge_with_resolution() -> None:
     summaries = []
     tangency = []
@@ -923,7 +851,7 @@ def test_free_boundary_beta_observables_converge_with_resolution() -> None:
         )
         plasma_grid = config.build_grid()
         vacuum_grid = build_vacuum_grid(plasma_grid, nrho=nrho)
-        on_axis_field = two_coil_on_axis_bz(jnp.asarray(plasma_grid.z), coil_radius=0.9, separation=2.0, current=2.0e5)
+        on_axis_field = _on_axis_mirror_field(jnp.asarray(plasma_grid.z))
         center = int(np.argmin(np.abs(plasma_grid.z)))
         flux = 0.5 * on_axis_field[center] * 0.25**2
         results = solve_axisymmetric_beta_scan_cli(
@@ -931,7 +859,7 @@ def test_free_boundary_beta_observables_converge_with_resolution() -> None:
             plasma_grid,
             vacuum_grid,
             config,
-            _two_end_coils(),
+            _external_mirror_field,
             jnp.asarray([0.0, 0.10]),
             outer_radius=0.65,
             axial_flux_derivative=flux,
@@ -966,7 +894,7 @@ def test_free_boundary_solution_is_independent_of_free_side_initial_radius() -> 
     )
     plasma_grid = config.build_grid()
     vacuum_grid = build_vacuum_grid(plasma_grid, nrho=7)
-    on_axis_field = two_coil_on_axis_bz(jnp.asarray(plasma_grid.z), coil_radius=0.9, separation=2.0, current=2.0e5)
+    on_axis_field = _on_axis_mirror_field(jnp.asarray(plasma_grid.z))
     center = int(np.argmin(np.abs(plasma_grid.z)))
     flux = 0.5 * on_axis_field[center] * 0.25**2
     reference_boundary = MirrorBoundary.from_axis_field(flux, on_axis_field, plasma_grid)
@@ -991,7 +919,7 @@ def test_free_boundary_solution_is_independent_of_free_side_initial_radius() -> 
                 plasma_grid,
                 vacuum_grid,
                 config,
-                _two_end_coils(),
+                _external_mirror_field,
                 outer_radius=0.65,
                 axial_flux_derivative=flux,
                 mass_profile=mass,
@@ -1020,7 +948,7 @@ def test_outer_vacuum_dirichlet_neumann_gap_narrows_with_domain() -> None:
         vacuum_grid = build_vacuum_grid(plasma_grid, nrho=nrho)
         boundary = MirrorBoundary.from_radius(0.25, plasma_grid)
         geometry = evaluate_vacuum_geometry(boundary, vacuum_grid, outer_radius=outer_radius)
-        external = external_field_from_coils(_two_end_coils(), geometry)
+        external = external_field_from_source(_external_mirror_field, geometry)
         center = plasma_grid.nxi // 2
         for condition, values in (
             ("fixed_external_flux", neumann_center_field),

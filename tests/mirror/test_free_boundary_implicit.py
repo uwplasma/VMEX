@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pytest
 
@@ -9,7 +11,6 @@ jax = pytest.importorskip("jax")
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
 
-from vmec_jax.core.coils import CoilSet, two_coil_on_axis_bz  # noqa: E402
 from vmec_jax.mirror import (  # noqa: E402
     FreeBoundaryAdjointConfig,
     MirrorBoundary,
@@ -19,6 +20,33 @@ from vmec_jax.mirror import (  # noqa: E402
     free_boundary_adjoint,
     free_boundary_parameters,
     solve_free_boundary_cli,
+)
+
+
+@dataclass(frozen=True)
+class ParaxialMirrorField:
+    """Differentiable divergence-free field with mirror-like axial strength."""
+
+    center_field: jax.Array
+    curvature: jax.Array
+
+    def __call__(self, points):
+        points = jnp.asarray(points)
+        x, y, z = jnp.moveaxis(points, -1, 0)
+        return jnp.stack(
+            (
+                -self.curvature * x * z,
+                -self.curvature * y * z,
+                self.center_field + self.curvature * z**2,
+            ),
+            axis=-1,
+        )
+
+
+jax.tree_util.register_dataclass(
+    ParaxialMirrorField,
+    data_fields=["center_field", "curvature"],
+    meta_fields=[],
 )
 
 
@@ -58,7 +86,7 @@ def test_free_boundary_adjoint_rejects_unconverged_and_3d_results() -> None:
 
 
 @pytest.mark.full
-def test_free_boundary_coil_adjoint_matches_central_difference() -> None:
+def test_free_boundary_field_adjoint_matches_central_difference() -> None:
     config = MirrorConfig(
         resolution=MirrorResolution(ns=5, nxi=7),
         z_min=-0.8,
@@ -68,16 +96,8 @@ def test_free_boundary_coil_adjoint_matches_central_difference() -> None:
     )
     grid = config.build_grid()
     vacuum_grid = build_vacuum_grid(grid, nrho=5)
-    dofs = np.zeros((2, 3, 3))
-    dofs[:, 0, 2] = 0.9
-    dofs[:, 1, 1] = 0.9
-    dofs[:, 2, 0] = [-1.0, 1.0]
-    coils = CoilSet(
-        jnp.asarray(dofs), jnp.asarray([2.0e5, 2.0e5]), n_segments=64
-    )
-    on_axis = two_coil_on_axis_bz(
-        jnp.asarray(grid.z), coil_radius=0.9, separation=2.0, current=2.0e5
-    )
+    field = ParaxialMirrorField(jnp.asarray(0.08), jnp.asarray(0.02))
+    on_axis = field.center_field + field.curvature * jnp.asarray(grid.z) ** 2
     center = grid.nxi // 2
     flux = 0.5 * on_axis[center] * 0.25**2
     initial_boundary = MirrorBoundary.from_axis_field(flux, on_axis, grid)
@@ -93,9 +113,9 @@ def test_free_boundary_coil_adjoint_matches_central_difference() -> None:
         require_convergence=True,
     )
     result = solve_free_boundary_cli(
-        initial_boundary, grid, vacuum_grid, config, coils, **solve_options
+        initial_boundary, grid, vacuum_grid, config, field, **solve_options
     )
-    parameters = free_boundary_parameters(coils, axial_flux_derivative=flux)
+    parameters = free_boundary_parameters(field, axial_flux_derivative=flux)
 
     def quantity(boundary, _state, _energy, _vacuum):
         return boundary.radius_scale[0, center]
@@ -114,34 +134,25 @@ def test_free_boundary_coil_adjoint_matches_central_difference() -> None:
             rtol=1.0e-8,
         ),
     )
-    dofs_direction = np.zeros_like(dofs)
-    dofs_direction[:, 0, 2] = 0.01
-    dofs_direction[:, 1, 1] = 0.01
-    current_direction = jnp.asarray([1.0e4, -5.0e3])
+    direction = ParaxialMirrorField(jnp.asarray(0.01), jnp.asarray(-0.005))
     predicted = float(
-        jnp.vdot(
-            adjoint.gradient.coilset.base_curve_dofs, jnp.asarray(dofs_direction)
-        )
-        + jnp.vdot(
-            adjoint.gradient.coilset.base_currents, current_direction
-        )
+        adjoint.gradient.external_field.center_field * direction.center_field
+        + adjoint.gradient.external_field.curvature * direction.curvature
     )
 
     epsilon = 1.0e-4
     values = []
     for sign in (-1.0, 1.0):
-        varied_coils = coils.with_arrays(
-            base_curve_dofs=coils.base_curve_dofs
-            + sign * epsilon * jnp.asarray(dofs_direction),
-            base_currents=coils.base_currents
-            + sign * epsilon * current_direction,
+        varied_field = ParaxialMirrorField(
+            field.center_field + sign * epsilon * direction.center_field,
+            field.curvature + sign * epsilon * direction.curvature,
         )
         varied = solve_free_boundary_cli(
             result.boundary,
             grid,
             vacuum_grid,
             config,
-            varied_coils,
+            varied_field,
             initial_state=result.plasma_state,
             **solve_options,
         )

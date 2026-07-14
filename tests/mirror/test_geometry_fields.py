@@ -11,7 +11,6 @@ jax = pytest.importorskip("jax")
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
 
-from vmec_jax.core.coils import two_coil_on_axis_bz  # noqa: E402
 from vmec_jax.mirror import (  # noqa: E402
     MirrorBoundary,
     MirrorConfig,
@@ -25,6 +24,17 @@ from vmec_jax.mirror import (  # noqa: E402
     mirror_energy,
 )
 from vmec_jax.mirror.geometry import normalized_divergence_rms  # noqa: E402
+
+
+def _two_loop_axis_field(z, *, radius: float, separation: float, current: float):
+    """Analytic on-axis field of two equal circular loops."""
+
+    z = jnp.asarray(z)
+    return sum(
+        4.0e-7 * jnp.pi * current * radius**2
+        / (2.0 * (radius**2 + (z - position) ** 2) ** 1.5)
+        for position in (-0.5 * separation, 0.5 * separation)
+    )
 
 
 def _axisymmetric_grid(*, ns: int = 17, nxi: int = 33, half_length: float = 1.8):
@@ -166,9 +176,9 @@ def test_geometry_volume_is_jax_differentiable_with_analytic_cylinder_gradient()
 def test_two_coil_flux_tube_has_high_field_throats_and_correct_on_axis_field() -> None:
     grid = _axisymmetric_grid(ns=13, nxi=41, half_length=1.0)
     coil_radius, separation, current = 0.8, 2.0, 2.0e5
-    bz_reference = two_coil_on_axis_bz(
+    bz_reference = _two_loop_axis_field(
         jnp.asarray(grid.z),
-        coil_radius=coil_radius,
+        radius=coil_radius,
         separation=separation,
         current=current,
     )
@@ -195,9 +205,9 @@ def test_two_coil_flux_tube_has_high_field_throats_and_correct_on_axis_field() -
 
 def test_two_coil_paraxial_tensor_residual_decreases_with_tube_radius() -> None:
     grid = _axisymmetric_grid(ns=13, nxi=33, half_length=1.0)
-    bz = two_coil_on_axis_bz(
+    bz = _two_loop_axis_field(
         jnp.asarray(grid.z),
-        coil_radius=0.8,
+        radius=0.8,
         separation=2.0,
         current=2.0e5,
     )

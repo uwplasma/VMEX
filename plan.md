@@ -197,8 +197,8 @@ equilibrium criterion.
 
 | Lane | Completion | Evidence retained | Blocking evidence |
 |---|---:|---|---|
-| Axisymmetric fixed mirror | 75% | real solve, `ftol=1e-12`, MMS, gradients | staggered weak-force gate; B-spline parity |
-| Axisymmetric free mirror | 70% | coupled solve, beta 0--50%, `B.n`, stress, paraxial trend | force reconstruction and three-grid promotion table |
+| Axisymmetric fixed mirror | 85% | real solve, `ftol=1e-12`, MMS, independent weak force, gradients | B-spline parity |
+| Axisymmetric free mirror | 80% | coupled solve, beta 0--50%, `B.n`, stress, weak force, three-grid paraxial trend | dense-Jacobian scaling and B-spline parity |
 | Nonaxisymmetric fixed mirror | 45% | theta-dependent state and one refinement run | no rotating-ellipse/SFLM coefficient validation |
 | Nonaxisymmetric free mirror | 30% | theta-dependent BIE and residual exist | no converged analytic fixture or panel study |
 | ANIMEC model | 55% | functional, moments, isotropic limit, indicators | source-equation audit and independent finite-beta case |
@@ -206,8 +206,8 @@ equilibrium criterion.
 | Preconditioning | 45% | separable prototype and Newton-GMRES | no bounded-iteration basis/resolution study |
 | Native B-spline open mirror | 0% | design only | basis, coefficient state, transfer, parity |
 | Native B-spline closed hybrid | 0% | Fourier target is not reusable physics | centerline/frame/metric/residual implementation |
-| ESSOS ownership cleanup | 25% | main contract merged | legacy source and examples remain |
-| Source simplification | 25% | package boundaries identified | net branch remains too large |
+| ESSOS ownership cleanup | 100% | MGRID/callable contract and live ESSOS smoke | none |
+| Source simplification | 40% | Fourier-hybrid and coil ownership removed | public API and large mirror modules remain |
 
 Percentages measure promotion evidence, not implementation effort or line count.
 
@@ -364,7 +364,10 @@ manufactured refinement tests.
 ### Milestone 2: remove known false and misowned lanes
 
 Status: Fourier hybrid implementation, examples, tests, benchmarks, and
-figures removed locally. ESSOS/MGRID field-source migration is next.
+figures are removed and pushed. Mirror source now accepts only MGRID or
+vectorized ``xyz -> B`` fields; duplicated coil/Biot-Savart source, tests, and
+showcases are removed. The replacement contract passes focused tests and a live
+ESSOS ``BiotSavart`` evaluation on a VMEC-JAX vacuum grid.
 
 1. Change current hybrid docs/examples to explicit historical/experimental
    status, transfer any reusable plotting requirements, then delete the Fourier

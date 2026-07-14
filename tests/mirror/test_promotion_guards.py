@@ -189,7 +189,7 @@ def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
         plasma_grid=grid,
         vacuum_grid=vacuum_grid,
         config=config,
-        coilset=object(),
+        external_field=object(),
         outer_radius=0.4,
         axial_flux_derivative=0.1,
     )
@@ -240,7 +240,7 @@ def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
                     ns=3, mpol=1, ntheta=3, nxi=5
                 )
             ),
-            coilset=object(),
+            external_field=object(),
             outer_radius=0.4,
             axial_flux_derivative=0.1,
         )
@@ -256,7 +256,7 @@ def test_free_boundary_rejects_inconsistent_initial_guesses() -> None:
         plasma_grid=grid,
         vacuum_grid=vacuum_grid,
         config=config,
-        coilset=object(),
+        external_field=object(),
         outer_radius=0.4,
         axial_flux_derivative=0.1,
     )

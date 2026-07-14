@@ -112,7 +112,7 @@ def solve_free_boundary_cli(
     plasma_grid: "MirrorGrid",
     vacuum_grid: VacuumGrid,
     config: MirrorConfig,
-    coilset: Any,
+    external_field: Any,
     *,
     outer_radius: float,
     axial_flux_derivative: Array,
@@ -280,7 +280,7 @@ def solve_free_boundary_cli(
                     boundary,
                     plasma.field,
                     plasma_grid,
-                    coilset,
+                    external_field,
                     axisymmetric_ntheta=exterior_ntheta,
                     order=exterior_order,
                     spectral_side_density=exterior_spectral_side_density,
@@ -293,7 +293,7 @@ def solve_free_boundary_cli(
                     plasma.field,
                     plasma.geometry,
                     plasma_grid,
-                    coilset,
+                    external_field,
                     order=exterior_order,
                     spectral_side_density=exterior_spectral_side_density,
                     spectral_cap_density=exterior_high_order_cap_panels,
@@ -303,7 +303,7 @@ def solve_free_boundary_cli(
             vacuum_functional = jnp.asarray(0.0, dtype=state.radius_scale.dtype)
         else:
             vacuum_geometry = evaluate_vacuum_geometry(boundary, vacuum_grid, outer_radius=outer_radius)
-            external = external_field_from_source(coilset, vacuum_geometry)
+            external = external_field_from_source(external_field, vacuum_geometry)
             vacuum_functional = vacuum_energy_functional(
                 potential,
                 vacuum_geometry,

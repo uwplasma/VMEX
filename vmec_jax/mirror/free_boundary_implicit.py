@@ -36,7 +36,7 @@ FreeBoundaryQuantity = Callable[
 class FreeBoundaryParameters:
     """Differentiable controls for an exterior free-boundary equilibrium."""
 
-    coilset: Any
+    external_field: Any
     axial_flux_derivative: Array
     mass_profile: Array
     current_derivative: Array
@@ -71,7 +71,7 @@ class FreeBoundaryAdjointResult:
 jax.tree_util.register_dataclass(
     FreeBoundaryParameters,
     data_fields=[
-        "coilset",
+        "external_field",
         "axial_flux_derivative",
         "mass_profile",
         "current_derivative",
@@ -87,7 +87,7 @@ jax.tree_util.register_dataclass(
 
 
 def free_boundary_parameters(
-    coilset: Any,
+    external_field: Any,
     *,
     axial_flux_derivative: Array,
     mass_profile: Array = 0.0,
@@ -97,7 +97,7 @@ def free_boundary_parameters(
     """Collect free-boundary controls in a differentiable pytree."""
 
     return FreeBoundaryParameters(
-        coilset=coilset,
+        external_field=external_field,
         axial_flux_derivative=jnp.asarray(axial_flux_derivative),
         mass_profile=jnp.asarray(mass_profile),
         current_derivative=jnp.asarray(current_derivative),
@@ -118,7 +118,7 @@ def free_boundary_adjoint(
     End-cut radii and the pressure profile are held fixed. The active
     equilibrium variables are the lateral boundary and plasma-interior radii.
     The exterior Neumann solve eliminates vacuum degrees of freedom, so its
-    field and coil-shape derivatives enter the interface-stress rows directly.
+    field-parameter and shape derivatives enter the interface-stress rows directly.
     """
 
     if not bool(result.converged):
@@ -204,7 +204,7 @@ def free_boundary_adjoint(
             boundary,
             plasma.field,
             plasma_grid,
-            controls.coilset,
+            controls.external_field,
             axisymmetric_ntheta=config.axisymmetric_ntheta,
             order=config.exterior_order,
             spectral_side_density=config.spectral_side_density,

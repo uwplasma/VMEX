@@ -16,14 +16,14 @@ The branch currently includes:
 * isotropic and ANIMEC-style anisotropic pressure energies and independent
   tensor-force diagnostics,
 * a variational scalar-potential vacuum annulus with an ``xyz -> B`` field
-  callable or the shared ESSOS/MAKEGRID-compatible ``MgridField``; new public
-  coil workflows use ESSOS, while legacy mirror constructors are internal,
+  callable or the shared ESSOS/MAKEGRID-compatible ``MgridField``; coil
+  geometry and Biot-Savart evaluation remain in ESSOS,
 * coupled axisymmetric isotropic and anisotropic free-boundary beta
   continuation with compressed restart files,
 * a free-space boundary-integral vacuum backend on the lateral LCFS and both
   end disks, alongside the finite-annulus backend,
 * a genuine theta-dependent exterior free-boundary solve with finite axial
-  current and nonaxisymmetric coils, and
+  current and a nonaxisymmetric external field, and
 * component-wise nonlinear convergence checks at a requested ``ftol=1e-12``.
 
 The axisymmetric free-boundary path has completed annulus and
@@ -152,26 +152,24 @@ to JAX objectives. Its static context keeps the host solver out of the AD tape::
    )(parameters)
 
 The custom VJP matches the explicit adjoint for both isotropic and registered
-anisotropic controls. The supported free-boundary coil derivative follows.
+anisotropic controls. The supported free-boundary field derivative follows.
 
 Axisymmetric free-boundary implicit gradients
 ---------------------------------------------
 
 ``free_boundary_adjoint`` differentiates the supported axisymmetric exterior
-equilibrium with respect to direct-coil Fourier coefficients, coil currents,
-axial flux, pressure profile, and axial current. The physical fixed point
+equilibrium with respect to a differentiable external-field callable, axial
+flux, pressure profile, and axial current. The physical fixed point
 contains the lateral LCFS and plasma-interior radii. The exterior Neumann BIE
-eliminates vacuum unknowns, so its exact reverse-AD coil and shape responses
+eliminates vacuum unknowns, so its exact reverse-AD field and shape responses
 enter the interface-stress rows directly. The transpose solve reuses the
 separable primal plasma preconditioner and does not assemble a dense Jacobian
 or retain nonlinear iterations.
 
-The high-order ``ns=5, nxi=7`` validation reaches ``1.63e-15`` primal
-residual and ``1.07e-8`` exterior compatibility. Its coupled adjoint converges
-in 19 iterations to ``3.68e-10`` relative residual. A simultaneous change in
-both circular-coil radii and currents is checked against two fully
-reconverged equilibria to ``4.28e-10`` relative; compact values are stored in
-``benchmarks/mirror_free_boundary_implicit.json``.
+The validation uses a differentiable curl-free paraxial mirror field and
+checks its strength and axial-curvature controls against fully reconverged
+equilibria. Coil-design derivatives belong to the ESSOS integration layer;
+vmec_jax differentiates only the supplied field object.
 
 This derivative holds fixed the end-cut radii and physical pressure profile.
 The nonaxisymmetric free-boundary derivative is deliberately unavailable
@@ -301,12 +299,9 @@ numerical gate to 50% therefore probes a scientifically relevant nonlinear
 regime, but it is an equilibrium benchmark only: it does not establish flute,
 firehose, mirror-mode, or kinetic stability.
 
-The direct-coil and mgrid routes share one external-field adapter. A formal
-full-physics test samples the two end coils onto a 49 by 97 mgrid and solves
-the same beta-zero free-boundary equilibrium through both routes. Both reach
-``ftol=1e-12``; their LCFS agrees within 0.5% and the annulus field within
-0.8%. This validates interpolation and coupling parity, not yet the open-
-exterior truncation.
+MGRID and vectorized ``xyz -> B`` callables share one external-field adapter.
+MGRID interpolation tests remain in vmec_jax; filament sampling and
+Biot-Savart parity tests live with ESSOS.
 
 The mixed vacuum truncation fixes the correction potential on the outer
 cylinder, preserves zero correction flux through the axial cuts, and obtains
@@ -411,7 +406,7 @@ maps, ``exterior_mesh.py`` owns side-panel topology and Duffy assembly,
 ``vmec_jax.mirror``.
 ``solve_axisymmetric_exterior_vacuum`` now owns the complete M6 adapter:
 it closes the moving boundary, continues the plasma field through both end
-cuts, cancels direct-coil normal field on the side, solves the exterior
+cuts, cancels the supplied external normal field on the side, solves the exterior
 Neumann problem, and returns the lateral total-field trace. Tangency and a
 full shape JVP pass on the coupled adapter, so the remaining gate is nonlinear
 equilibrium behavior rather than a missing differentiation path.
@@ -482,7 +477,7 @@ cylinder can be removed as the default backend.
 
 The first M7 nonaxisymmetric seam is also explicit. ``magnetic_field_xyz``
 converts the full contravariant mirror field without an axisymmetry shortcut,
-and ``plasma_coil_neumann`` assembles lateral plus graded-cap data on a
+and ``plasma_external_neumann`` assembles lateral plus graded-cap data on a
 theta-dependent closed surface. A finite-current ``mpol=1`` manufactured case
 matches the metric ``|B|^2`` contraction to ``5e-13``, keeps lateral ``B.n``
 below ``2e-15``, and closes integrated flux within ``2e-3`` on a small grid.
