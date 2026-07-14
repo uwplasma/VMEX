@@ -186,6 +186,32 @@ reduces relative energy error against an ``nxi=17`` Chebyshev oracle from
 Both errors decrease at every refinement and all coefficient solves retain
 variational and staggered residuals below ``9e-15``.
 
+Nonaxisymmetric spline evidence
+-------------------------------
+
+Changing a prescribed spline boundary uses
+``SplineMirrorDiscretization.transfer_boundary``. It rescales every nested
+surface at spline collocation nodes before projection, instead of replacing
+only the LCFS and risking crossed surfaces. The optimizer also rejects any
+trial with a changed Jacobian sign, matching the regular VMEC-JAX merit policy.
+
+A five-stage shape continuation solves a thin ellipse rotating 90 degrees from
+cap to cap. With 12 theta nodes, half-turn symmetry is exact and the forbidden
+``m=1`` field-strength signal is below ``9e-16``. Odd or under-integrated theta
+grids alias even nonlinear products into ``m=1`` and are not valid for this
+gate. The compatible staggered field recovers the analytic ``m=2`` phase, but
+its amplitude is not yet converged. The full-mesh axis ``|B|`` reconstruction
+is explicitly non-gating, like the full-mesh pointwise force.
+
+The independent Straight Field Line Mirror gives a stronger current gate. For
+semi-axis scale 0.03 m, the solved Cartesian field has mean direction cosine
+``0.999956`` and minimum ``0.999316`` against the gradient of the analytic
+scalar potential. Halving the radius improves these to ``0.999988`` and
+``0.999810``, consistent with paraxial directional convergence. Full-mesh
+field magnitude does not converge under the same study, so magnitude promotion
+awaits a staggered comparison. Compact positive and negative evidence is in
+``benchmarks/mirror_spline_nonaxisymmetric.json``.
+
 Fixed-boundary implicit gradients
 ---------------------------------
 

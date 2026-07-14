@@ -458,7 +458,11 @@ below ``1.2e-16`` and ``div(B)<7.4e-15``. Even theta quadrature is mandatory:
 below ``9e-15``; 5 or 9 nodes alias even nonlinear products into odd modes.
 The full-mesh axis ``|B|`` reconstruction does not converge radially and is not
 a valid paraxial oracle. The compatible half-mesh field recovers the expected
-``m=2`` phase but not yet its amplitude. At ``ns=7`` the solve stays nested only
+``m=2`` phase but not yet its amplitude. The independent SFLM field-direction
+comparison passes: mean/minimum direction cosines improve from
+``0.999956/0.999316`` to ``0.999988/0.999810`` when tube radius is halved. Its
+full-mesh magnitude is nonconvergent and remains non-gating. At ``ns=7`` the
+solve stays nested only
 after invalid-Jacobian states receive infinite optimizer merit; it reaches
 ``ftol`` but requires 2,500--17,017 inner GMRES iterations. Thus equilibrium
 existence and symmetry pass, while paraxial amplitude and preconditioner gates

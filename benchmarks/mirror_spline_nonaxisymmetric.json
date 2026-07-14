@@ -1,0 +1,59 @@
+{
+  "schema": "vmec_jax.benchmark.mirror_spline_nonaxisymmetric/1",
+  "rotating_ellipse": {
+    "case": {
+      "rotation_degrees": 90.0,
+      "elongation": 1.5,
+      "mirror_strength": 0.2,
+      "radius": 0.05,
+      "spline_elements": 4,
+      "ntheta": 12
+    },
+    "ns5": {
+      "continuation_stages": 5,
+      "wall_s": 51.02,
+      "variational_max": 8.2968e-17,
+      "staggered_weak_max": 8.2893e-17,
+      "normalized_divb": 7.3343e-15,
+      "forbidden_m1_max": 8.3537e-16,
+      "staggered_m2_phase_error": 1.31e-12,
+      "staggered_m2_relative_amplitude_error": 1.653
+    },
+    "ns7": {
+      "continuation_stages": 11,
+      "wall_s": 62.54,
+      "variational_max": 2.2875e-13,
+      "staggered_weak_max": 2.2876e-13,
+      "normalized_divb": 7.3573e-15,
+      "linear_iterations_per_stage_range": [2500, 17017],
+      "status": "equilibrium and symmetry pass; quadrupole amplitude and preconditioner scaling remain open"
+    }
+  },
+  "straight_field_line_mirror": {
+    "case": {
+      "axial_scale": 2.5,
+      "z_range": [-1.0, 1.0],
+      "ns": 5,
+      "ntheta": 12,
+      "spline_elements": 4
+    },
+    "radius_0p03": {
+      "wall_s": 47.28,
+      "variational_max": 9.6783e-17,
+      "staggered_weak_max": 9.6852e-17,
+      "normalized_divb": 7.8584e-15,
+      "field_direction_cosine_mean": 0.99995583,
+      "field_direction_cosine_min": 0.99931629,
+      "full_mesh_vector_relative_rms": 0.06281
+    },
+    "radius_0p015": {
+      "wall_s": 50.59,
+      "variational_max": 2.8953e-16,
+      "staggered_weak_max": 2.9475e-16,
+      "field_direction_cosine_mean": 0.99998790,
+      "field_direction_cosine_min": 0.99980955,
+      "full_mesh_vector_relative_rms": 0.06224
+    },
+    "status": "field direction has paraxial convergence; full-mesh magnitude is non-gating pending a staggered comparison"
+  }
+}

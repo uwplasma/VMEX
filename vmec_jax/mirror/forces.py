@@ -95,17 +95,13 @@ def _half_mesh_samples(
     a_quadrature = (1.0 - fraction) * a_left + fraction * a_right
     da_ds = (a_right - a_left) / ds
     radius = jnp.sqrt(jnp.maximum(s_quadrature * a_quadrature**2, 0.0))
-    radius_radius_s = 0.5 * (
-        a_quadrature**2 + 2.0 * s_quadrature * a_quadrature * da_ds
-    )
+    radius_radius_s = 0.5 * (a_quadrature**2 + 2.0 * s_quadrature * a_quadrature * da_ds)
     jacobian = radius_radius_s * float(grid.dz_dxi)
     d_radius_dtheta = grid.theta_basis.differentiate(radius, axis=2)
     d_radius_dxi = grid.axial_basis.differentiate(radius, axis=3)
 
     lam = jnp.asarray(state.lambda_stream)
-    lambda_quadrature = (
-        (1.0 - fraction) * lam[:-1][None] + fraction * lam[1:][None]
-    )
+    lambda_quadrature = (1.0 - fraction) * lam[:-1][None] + fraction * lam[1:][None]
     psi = _profile(
         axial_flux_derivative,
         grid.ns,
@@ -118,14 +114,10 @@ def _half_mesh_samples(
         a.dtype,
         name="current_derivative",
     )
-    psi_quadrature = (
-        (1.0 - gauss[:, None]) * psi[:-1][None]
-        + gauss[:, None] * psi[1:][None]
-    )[:, :, None, None]
-    current_quadrature = (
-        (1.0 - gauss[:, None]) * current[:-1][None]
-        + gauss[:, None] * current[1:][None]
-    )[:, :, None, None]
+    psi_quadrature = ((1.0 - gauss[:, None]) * psi[:-1][None] + gauss[:, None] * psi[1:][None])[:, :, None, None]
+    current_quadrature = ((1.0 - gauss[:, None]) * current[:-1][None] + gauss[:, None] * current[1:][None])[
+        :, :, None, None
+    ]
     return _HalfMeshSamples(
         fraction=fraction,
         s=s_quadrature,
@@ -136,14 +128,12 @@ def _half_mesh_samples(
         jacobian=jacobian,
         d_radius_dtheta=d_radius_dtheta,
         d_radius_dxi=d_radius_dxi,
-        field_theta_numerator=current_quadrature
-        - grid.axial_basis.differentiate(lambda_quadrature, axis=3),
-        field_xi_numerator=psi_quadrature
-        + grid.theta_basis.differentiate(lambda_quadrature, axis=2),
+        field_theta_numerator=current_quadrature - grid.axial_basis.differentiate(lambda_quadrature, axis=3),
+        field_xi_numerator=psi_quadrature + grid.theta_basis.differentiate(lambda_quadrature, axis=2),
     )
 
 
-def _half_mesh_magnetic_terms(
+def staggered_magnetic_terms(
     state: MirrorState,
     grid: "MirrorGrid",
     axial_flux_derivative: Array,
@@ -212,11 +202,7 @@ def isotropic_staggered_energy_gradient(
     g_thetatheta = radius_theta**2 + radius**2
     g_thetaxi = radius_theta * radius_xi
     g_xixi = radius_xi**2 + float(grid.dz_dxi) ** 2
-    numerator = (
-        g_thetatheta * field_theta**2
-        + 2.0 * g_thetaxi * field_theta * field_xi
-        + g_xixi * field_xi**2
-    )
+    numerator = g_thetatheta * field_theta**2 + 2.0 * g_thetaxi * field_theta * field_xi + g_xixi * field_xi**2
 
     surface_weights = (
         jnp.asarray(grid.theta_basis.weights)[None, None, :, None]
@@ -232,61 +218,31 @@ def isotropic_staggered_energy_gradient(
         numerator.dtype,
         name="mass_profile",
     )
-    pressure_half = 0.5 * (mass[1:] + mass[:-1]) / (
-        volume_derivative_half**float(gamma)
-    )
+    pressure_half = 0.5 * (mass[1:] + mass[:-1]) / (volume_derivative_half ** float(gamma))
 
     numerator_bar = sample_weights / (2.0 * float(mu0) * jacobian)
-    jacobian_bar = sample_weights * (
-        -numerator / (2.0 * float(mu0) * jacobian**2)
-        - pressure_half[None, :, None, None]
-    )
+    jacobian_bar = sample_weights * (-numerator / (2.0 * float(mu0) * jacobian**2) - pressure_half[None, :, None, None])
     radius_bar = numerator_bar * (2.0 * radius * field_theta**2)
-    radius_theta_bar = numerator_bar * (
-        2.0 * radius_theta * field_theta**2
-        + 2.0 * radius_xi * field_theta * field_xi
-    )
-    radius_xi_bar = numerator_bar * (
-        2.0 * radius_theta * field_theta * field_xi
-        + 2.0 * radius_xi * field_xi**2
-    )
-    field_theta_bar = numerator_bar * (
-        2.0 * g_thetatheta * field_theta
-        + 2.0 * g_thetaxi * field_xi
-    )
-    field_xi_bar = numerator_bar * (
-        2.0 * g_thetaxi * field_theta + 2.0 * g_xixi * field_xi
-    )
+    radius_theta_bar = numerator_bar * (2.0 * radius_theta * field_theta**2 + 2.0 * radius_xi * field_theta * field_xi)
+    radius_xi_bar = numerator_bar * (2.0 * radius_theta * field_theta * field_xi + 2.0 * radius_xi * field_xi**2)
+    field_theta_bar = numerator_bar * (2.0 * g_thetatheta * field_theta + 2.0 * g_thetaxi * field_xi)
+    field_xi_bar = numerator_bar * (2.0 * g_thetaxi * field_theta + 2.0 * g_xixi * field_xi)
 
-    radius_bar += grid.theta_basis.differentiate_transpose(
-        radius_theta_bar, axis=2
-    )
+    radius_bar += grid.theta_basis.differentiate_transpose(radius_theta_bar, axis=2)
     radius_bar += grid.axial_basis.differentiate_transpose(radius_xi_bar, axis=3)
-    lambda_quadrature_bar = -grid.axial_basis.differentiate_transpose(
-        field_theta_bar, axis=3
-    )
-    lambda_quadrature_bar += grid.theta_basis.differentiate_transpose(
-        field_xi_bar, axis=2
-    )
+    lambda_quadrature_bar = -grid.axial_basis.differentiate_transpose(field_theta_bar, axis=3)
+    lambda_quadrature_bar += grid.theta_basis.differentiate_transpose(field_xi_bar, axis=2)
 
-    radius_scale_bar = radius_bar * (
-        samples.s * samples.radius_scale / radius
-    )
+    radius_scale_bar = radius_bar * (samples.s * samples.radius_scale / radius)
     radius_radius_s_bar = jacobian_bar * float(grid.dz_dxi)
-    radius_scale_bar += radius_radius_s_bar * (
-        samples.radius_scale
-        + samples.s * samples.d_radius_scale_ds
-    )
-    d_radius_scale_ds_bar = (
-        radius_radius_s_bar * samples.s * samples.radius_scale
-    )
+    radius_scale_bar += radius_radius_s_bar * (samples.radius_scale + samples.s * samples.d_radius_scale_ds)
+    d_radius_scale_ds_bar = radius_radius_s_bar * samples.s * samples.radius_scale
 
     fraction = samples.fraction
     radius_gradient = jnp.zeros_like(state.radius_scale)
     radius_gradient = radius_gradient.at[:-1].add(
         jnp.sum(
-            (1.0 - fraction) * radius_scale_bar
-            - d_radius_scale_ds_bar / ds,
+            (1.0 - fraction) * radius_scale_bar - d_radius_scale_ds_bar / ds,
             axis=0,
         )
     )
@@ -297,12 +253,8 @@ def isotropic_staggered_energy_gradient(
         )
     )
     lambda_gradient = jnp.zeros_like(state.lambda_stream)
-    lambda_gradient = lambda_gradient.at[:-1].add(
-        jnp.sum((1.0 - fraction) * lambda_quadrature_bar, axis=0)
-    )
-    lambda_gradient = lambda_gradient.at[1:].add(
-        jnp.sum(fraction * lambda_quadrature_bar, axis=0)
-    )
+    lambda_gradient = lambda_gradient.at[:-1].add(jnp.sum((1.0 - fraction) * lambda_quadrature_bar, axis=0))
+    lambda_gradient = lambda_gradient.at[1:].add(jnp.sum(fraction * lambda_quadrature_bar, axis=0))
     return MirrorState(radius_gradient, lambda_gradient)
 
 
@@ -412,7 +364,7 @@ def mass_profile_from_pressure(
 
     pressure = jnp.asarray(pressure)
     volume_derivative = jnp.asarray(volume_derivative, dtype=pressure.dtype)
-    return pressure * volume_derivative**float(gamma)
+    return pressure * volume_derivative ** float(gamma)
 
 
 def mirror_energy(
@@ -440,9 +392,9 @@ def mirror_energy(
     b_squared = magnetic_field_squared(field, geometry)
     volume_derivative = _surface_integral(geometry.sqrt_g, grid)
     mass = _profile(mass_profile, grid.ns, b_squared.dtype, name="mass_profile")
-    pressure = mass / volume_derivative**float(gamma)
+    pressure = mass / volume_derivative ** float(gamma)
 
-    b_squared_half, jacobian_half = _half_mesh_magnetic_terms(
+    b_squared_half, jacobian_half = staggered_magnetic_terms(
         state,
         grid,
         axial_flux_derivative,
@@ -450,7 +402,7 @@ def mirror_energy(
     )
     volume_derivative_half = _surface_integral(jacobian_half, grid)
     mass_half = 0.5 * (mass[1:] + mass[:-1])
-    pressure_half = mass_half / volume_derivative_half**float(gamma)
+    pressure_half = mass_half / volume_derivative_half ** float(gamma)
     magnetic_surface = _surface_integral(b_squared_half * jacobian_half, grid) / (2.0 * float(mu0))
     pressure_surface = pressure_half * volume_derivative_half / (float(gamma) - 1.0)
     ds = float(grid.s[1] - grid.s[0])
@@ -487,7 +439,7 @@ def anisotropic_mirror_energy(
         axial_flux_derivative=axial_flux_derivative,
         current_derivative=current_derivative,
     )
-    b_squared_half, jacobian_half = _half_mesh_magnetic_terms(
+    b_squared_half, jacobian_half = staggered_magnetic_terms(
         state,
         grid,
         axial_flux_derivative,
@@ -585,21 +537,10 @@ def _current_contravariant(
     inverse_mu0_jac = 1.0 / (float(mu0) * geometry.sqrt_g)
     return jnp.stack(
         [
-            (
-                grid.theta_basis.differentiate(b_cov_xi, axis=1)
-                - grid.axial_basis.differentiate(b_cov_theta, axis=2)
-            )
+            (grid.theta_basis.differentiate(b_cov_xi, axis=1) - grid.axial_basis.differentiate(b_cov_theta, axis=2))
             * inverse_mu0_jac,
-            (
-                grid.axial_basis.differentiate(b_cov_s, axis=2)
-                - radial_derivative(b_cov_xi, ds)
-            )
-            * inverse_mu0_jac,
-            (
-                radial_derivative(b_cov_theta, ds)
-                - grid.theta_basis.differentiate(b_cov_s, axis=1)
-            )
-            * inverse_mu0_jac,
+            (grid.axial_basis.differentiate(b_cov_s, axis=2) - radial_derivative(b_cov_xi, ds)) * inverse_mu0_jac,
+            (radial_derivative(b_cov_theta, ds) - grid.theta_basis.differentiate(b_cov_s, axis=1)) * inverse_mu0_jac,
         ],
         axis=-1,
     )
@@ -617,9 +558,7 @@ def anisotropic_force_residual(
 
     geometry, field = energy.geometry, energy.field
     basis = _coordinate_basis(geometry, grid)
-    b_contravariant = jnp.stack(
-        [field.b_sup_s, field.b_sup_theta, field.b_sup_xi], axis=-1
-    )
+    b_contravariant = jnp.stack([field.b_sup_s, field.b_sup_theta, field.b_sup_xi], axis=-1)
     b_xyz = jnp.einsum("...ai,...i->...a", basis, b_contravariant)
     b_magnitude = jnp.linalg.norm(b_xyz, axis=-1)
     unit_b = b_xyz / b_magnitude[..., None]
@@ -659,30 +598,20 @@ def anisotropic_force_residual(
     for j in range(3):
         for k in range(3):
             derivative_combination = (
-                metric_derivatives[..., j, :, k]
-                + metric_derivatives[..., k, :, j]
-                - metric_derivatives[..., :, j, k]
+                metric_derivatives[..., j, :, k] + metric_derivatives[..., k, :, j] - metric_derivatives[..., :, j, k]
             )
-            gamma_jk = 0.5 * jnp.einsum(
-                "...il,...l->...i", inverse_metric, derivative_combination
-            )
+            gamma_jk = 0.5 * jnp.einsum("...il,...l->...i", inverse_metric, derivative_combination)
             christoffel = christoffel.at[..., :, j, k].set(gamma_jk)
 
     pressure_flux = geometry.sqrt_g[..., None, None] * anisotropic_pressure_contravariant
     d_s_flux = radial_derivative(pressure_flux, ds)
     d_theta_flux = grid.theta_basis.differentiate(pressure_flux, axis=1)
     d_xi_flux = grid.axial_basis.differentiate(pressure_flux, axis=2)
-    coordinate_divergence = (
-        d_s_flux[..., :, 0]
-        + d_theta_flux[..., :, 1]
-        + d_xi_flux[..., :, 2]
-    ) / geometry.sqrt_g[..., None]
-    coordinate_divergence += jnp.einsum(
-        "...ijk,...jk->...i", christoffel, anisotropic_pressure_contravariant
-    )
-    divergence_anisotropic = jnp.einsum(
-        "...ai,...i->...a", basis[1:], coordinate_divergence[1:]
-    )
+    coordinate_divergence = (d_s_flux[..., :, 0] + d_theta_flux[..., :, 1] + d_xi_flux[..., :, 2]) / geometry.sqrt_g[
+        ..., None
+    ]
+    coordinate_divergence += jnp.einsum("...ijk,...jk->...i", christoffel, anisotropic_pressure_contravariant)
+    divergence_anisotropic = jnp.einsum("...ai,...i->...a", basis[1:], coordinate_divergence[1:])
     perpendicular_derivatives = jnp.stack(
         [
             radial_derivative(moments.perpendicular, ds),
@@ -694,20 +623,14 @@ def anisotropic_force_residual(
     perpendicular_gradient_contravariant = jnp.einsum(
         "...ij,...j->...i", inverse_metric[1:], perpendicular_derivatives[1:]
     )
-    perpendicular_gradient_xyz = jnp.einsum(
-        "...ai,...i->...a", basis[1:], perpendicular_gradient_contravariant
-    )
+    perpendicular_gradient_xyz = jnp.einsum("...ai,...i->...a", basis[1:], perpendicular_gradient_contravariant)
     divergence_pressure = perpendicular_gradient_xyz + divergence_anisotropic
     current_contravariant = _current_contravariant(geometry, field, grid, mu0)
-    current_xyz = jnp.einsum(
-        "...ai,...i->...a", basis[1:], current_contravariant[1:]
-    )
+    current_xyz = jnp.einsum("...ai,...i->...a", basis[1:], current_contravariant[1:])
     lorentz = jnp.cross(current_xyz, b_xyz[1:])
     force_xyz = lorentz - divergence_pressure
     theta = jnp.asarray(grid.theta)[None, :, None]
-    radial_unit = jnp.stack(
-        [jnp.cos(theta), jnp.sin(theta), jnp.zeros_like(theta)], axis=-1
-    )
+    radial_unit = jnp.stack([jnp.cos(theta), jnp.sin(theta), jnp.zeros_like(theta)], axis=-1)
     radial_force = jnp.sum(force_xyz * radial_unit, axis=-1)
     variation_weights = (
         jnp.asarray(grid.radial_weights[1:])[:, None, None]
@@ -716,9 +639,7 @@ def anisotropic_force_residual(
         * geometry.sqrt_g[1:]
         * jnp.sqrt(jnp.asarray(grid.s[1:]))[:, None, None]
     )
-    radius_projection = jnp.zeros_like(geometry.radius).at[1:].set(
-        -variation_weights * radial_force
-    )
+    radius_projection = jnp.zeros_like(geometry.radius).at[1:].set(-variation_weights * radial_force)
 
     # The side boundary and axial cuts are prescribed data, not active
     # Euler-Lagrange equations.  Keep their pointwise forces in ``force_xyz``
@@ -733,32 +654,20 @@ def anisotropic_force_residual(
     )
     force_squared = jnp.sum(force_active**2, axis=-1)
     physical_rms = jnp.sqrt(jnp.sum(weights * force_squared) / jnp.sum(weights))
-    component_rms = jnp.sqrt(
-        jnp.sum(weights[..., None] * force_active**2, axis=(0, 1, 2)) / jnp.sum(weights)
-    )
+    component_rms = jnp.sqrt(jnp.sum(weights[..., None] * force_active**2, axis=(0, 1, 2)) / jnp.sum(weights))
     length = float(grid.z[-1] - grid.z[0])
-    pressure_scale = (
-        jnp.abs(moments.parallel[1:-1, :, 1:-1])
-        + 2.0 * jnp.abs(moments.perpendicular[1:-1, :, 1:-1])
-    )
-    reference = (
-        energy.b_squared_half[:-1, :, 1:-1] / float(mu0) + pressure_scale
-    ) / length
+    pressure_scale = jnp.abs(moments.parallel[1:-1, :, 1:-1]) + 2.0 * jnp.abs(moments.perpendicular[1:-1, :, 1:-1])
+    reference = (energy.b_squared_half[:-1, :, 1:-1] / float(mu0) + pressure_scale) / length
     reference_rms = jnp.sqrt(jnp.sum(weights * reference**2) / jnp.sum(weights))
-    parallel_pressure = jnp.sum(
-        divergence_pressure[:-1, :, 1:-1] * unit_b[1:-1, :, 1:-1], axis=-1
-    )
-    parallel_pressure_rms = jnp.sqrt(
-        jnp.sum(weights * parallel_pressure**2) / jnp.sum(weights)
-    )
+    parallel_pressure = jnp.sum(divergence_pressure[:-1, :, 1:-1] * unit_b[1:-1, :, 1:-1], axis=-1)
+    parallel_pressure_rms = jnp.sqrt(jnp.sum(weights * parallel_pressure**2) / jnp.sum(weights))
     return AnisotropicForceResidual(
         force_xyz=force_xyz,
         radius_variation_projection=radius_projection,
         divergence_pressure_xyz=divergence_pressure,
         current_xyz=current_xyz,
         physical_rms=physical_rms,
-        normalized_rms=physical_rms
-        / jnp.maximum(reference_rms, jnp.finfo(physical_rms.dtype).tiny),
+        normalized_rms=physical_rms / jnp.maximum(reference_rms, jnp.finfo(physical_rms.dtype).tiny),
         component_rms=component_rms,
         parallel_pressure_rms=parallel_pressure_rms,
     )
@@ -792,20 +701,15 @@ def interface_residual(
     weights = jnp.asarray(theta_weights)[:, None] * jnp.asarray(axial_weights)[None, :]
     denominator = jnp.sum(weights)
     plasma_b_normal_rms = jnp.sqrt(
-        jnp.sum(weights * bnp**2 / jnp.maximum(bp2, jnp.finfo(bp2.dtype).tiny))
-        / denominator
+        jnp.sum(weights * bnp**2 / jnp.maximum(bp2, jnp.finfo(bp2.dtype).tiny)) / denominator
     )
     vacuum_b_normal_rms = jnp.sqrt(
-        jnp.sum(weights * bnv**2 / jnp.maximum(bv2, jnp.finfo(bv2.dtype).tiny))
-        / denominator
+        jnp.sum(weights * bnv**2 / jnp.maximum(bv2, jnp.finfo(bv2.dtype).tiny)) / denominator
     )
     jump = p_perp + bp2 / (2.0 * float(mu0)) - bv2 / (2.0 * float(mu0))
-    stress_scale = (
-        jnp.abs(p_perp) + bp2 / (2.0 * float(mu0)) + bv2 / (2.0 * float(mu0))
-    )
+    stress_scale = jnp.abs(p_perp) + bp2 / (2.0 * float(mu0)) + bv2 / (2.0 * float(mu0))
     normal_stress_rms = jnp.sqrt(
-        jnp.sum(weights * (jump / jnp.maximum(stress_scale, jnp.finfo(bp2.dtype).tiny)) ** 2)
-        / denominator
+        jnp.sum(weights * (jump / jnp.maximum(stress_scale, jnp.finfo(bp2.dtype).tiny)) ** 2) / denominator
     )
     return InterfaceResidual(
         plasma_b_normal_rms=plasma_b_normal_rms,
@@ -933,9 +837,7 @@ def anisotropic_fixed_boundary_variational_residual(
 
     projected = project_fixed_boundary_state(state, boundary, grid)
     energy = anisotropic_mirror_energy(projected, grid, closure, **energy_kwargs)
-    gradient = anisotropic_fixed_boundary_energy_gradient(
-        projected, boundary, grid, closure, **energy_kwargs
-    )
+    gradient = anisotropic_fixed_boundary_energy_gradient(projected, boundary, grid, closure, **energy_kwargs)
     return _normalized_variational_residual(
         gradient,
         energy.total,
@@ -955,9 +857,7 @@ def _normalized_variational_residual(
 ) -> VariationalResidual:
     """Scale an energy gradient into component-wise mirror force norms."""
 
-    energy_scale = jnp.maximum(
-        jnp.abs(energy_total), jnp.finfo(jnp.asarray(energy_total).dtype).tiny
-    )
+    energy_scale = jnp.maximum(jnp.abs(energy_total), jnp.finfo(jnp.asarray(energy_total).dtype).tiny)
     radius_scale = jnp.mean(jnp.asarray(boundary.radius_scale))
     radius_gradient = gradient.radius_scale * radius_scale / energy_scale
 
@@ -1040,9 +940,7 @@ def isotropic_force_residual(
         * geometry.sqrt_g[1:-1, :, 1:-1]
     )
     physical_rms = jnp.sqrt(jnp.sum(weights * force_squared) / jnp.sum(weights))
-    component_rms = jnp.sqrt(
-        jnp.sum(weights[..., None] * force_active**2, axis=(0, 1, 2)) / jnp.sum(weights)
-    )
+    component_rms = jnp.sqrt(jnp.sum(weights[..., None] * force_active**2, axis=(0, 1, 2)) / jnp.sum(weights))
     length = float(grid.z[-1] - grid.z[0])
     magnetic_force_scale = energy.b_squared[1:-1, :, 1:-1] / (float(mu0) * length)
     reference_rms = jnp.sqrt(jnp.sum(weights * magnetic_force_scale**2) / jnp.sum(weights))
@@ -1051,16 +949,10 @@ def isotropic_force_residual(
 
     def regional_normalized_rms(mask: Array) -> Array:
         regional_weights = weights * jnp.asarray(mask)[:, None, None]
-        denominator = jnp.maximum(
-            jnp.sum(regional_weights), jnp.finfo(physical_rms.dtype).tiny
-        )
+        denominator = jnp.maximum(jnp.sum(regional_weights), jnp.finfo(physical_rms.dtype).tiny)
         regional_force = jnp.sqrt(jnp.sum(regional_weights * force_squared) / denominator)
-        regional_reference = jnp.sqrt(
-            jnp.sum(regional_weights * magnetic_force_scale**2) / denominator
-        )
-        return regional_force / jnp.maximum(
-            regional_reference, jnp.finfo(physical_rms.dtype).tiny
-        )
+        regional_reference = jnp.sqrt(jnp.sum(regional_weights * magnetic_force_scale**2) / denominator)
+        return regional_force / jnp.maximum(regional_reference, jnp.finfo(physical_rms.dtype).tiny)
 
     bulk_normalized_rms = regional_normalized_rms(active_s >= 0.2)
     axis_normalized_rms = regional_normalized_rms(active_s < 0.2)

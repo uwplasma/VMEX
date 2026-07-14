@@ -136,6 +136,33 @@ def test_coefficient_native_state_matches_chebyshev_polynomial_geometry_and_ener
     assert evaluated.radius_scale.shape[-1] > projected.radius_coefficients.shape[-1]
 
 
+def test_boundary_transfer_preserves_nested_self_similarity() -> None:
+    config = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=1, ntheta=4, nxi=9))
+    source_grid = config.build_grid()
+    theta = jnp.asarray(source_grid.theta)[:, None]
+    xi = jnp.asarray(source_grid.xi)[None, :]
+    source_boundary = MirrorBoundary.from_radius(0.3, source_grid)
+    target_boundary = MirrorBoundary.from_radius(
+        0.24 * (1.0 + 0.08 * jnp.cos(2.0 * theta) * (1.0 - xi**2)),
+        source_grid,
+    )
+    discretization = SplineMirrorDiscretization.build(config, elements=4)
+    source = discretization.fit_boundary(source_boundary, source_grid)
+    target = discretization.fit_boundary(target_boundary, source_grid)
+    state = discretization.fit_state(MirrorState.from_boundary(source_boundary, source_grid), source_grid)
+    transferred = discretization.transfer_boundary(state, source, target)
+    evaluated = discretization.evaluate_state(transferred)
+    evaluated_target = discretization.evaluate_boundary(target).radius_scale
+
+    np.testing.assert_allclose(
+        evaluated.radius_scale,
+        jnp.broadcast_to(evaluated_target, evaluated.radius_scale.shape),
+        rtol=3.0e-14,
+        atol=3.0e-14,
+    )
+    assert not bool(evaluate_geometry(evaluated, discretization.grid).jacobian_sign_changed)
+
+
 def test_coefficient_native_energy_gradient_matches_central_difference() -> None:
     _, _, _, _, discretization, spline_boundary, spline_state = _spline_polynomial_state()
     projected = discretization.project_fixed_boundary(spline_state, spline_boundary)

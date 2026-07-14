@@ -406,6 +406,23 @@ class SplineMirrorDiscretization:
         mean /= jnp.sum(theta_weights) * jnp.sum(axial_weights)
         return SplineMirrorState(radius, lam - mean[:, None, None])
 
+    def transfer_boundary(
+        self,
+        state: SplineMirrorState,
+        source: SplineMirrorBoundary,
+        target: SplineMirrorBoundary,
+    ) -> SplineMirrorState:
+        """Rescale a nested restart from ``source`` to ``target`` boundary."""
+
+        nodes = jnp.asarray(self.spline.collocation_nodes)
+        source_radius = self.spline.evaluate(source.radius_coefficients, nodes)
+        target_radius = self.spline.evaluate(target.radius_coefficients, nodes)
+        if bool(jnp.any(source_radius <= 0.0)) or bool(jnp.any(target_radius <= 0.0)):
+            raise ValueError("boundary transfer requires positive source and target radii")
+        radius = self.spline.evaluate(state.radius_coefficients, nodes)
+        transferred = self.spline.fit(radius * target_radius[None] / source_radius[None])
+        return self.project_fixed_boundary(SplineMirrorState(transferred, state.lambda_coefficients), target)
+
 
 @dataclass(frozen=True)
 class SplineMirrorSolveResult:
