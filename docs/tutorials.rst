@@ -207,8 +207,8 @@ keeps adaptive quadrature outside the traced calculation.
    :language: python
 
 
-Straight mirrors and toroidal hybrids
--------------------------------------
+Straight mirrors
+----------------
 
 Fixed-boundary mirror gradients
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -239,30 +239,6 @@ history. The default exterior solve is intentionally a full/nightly workflow.
    :width: 95%
 
 .. literalinclude:: ../examples/mirror_free_boundary_beta_scan.py
-   :language: python
-
-Toroidal stellarator--mirror hybrid
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Four straight mirror-like sides and four rotating-ellipse stellarator corners
-remain a closed torus. The fixed-boundary script traces the 16-coil vacuum
-axis, continues corner shaping, and solves the finite-current equilibrium.
-The free-boundary script uses the same coils and publishes only accepted NESTOR
-surfaces; its Fourier corrector currently stops at the documented 0.8333%
-achieved-beta limit.
-
-.. image:: _static/figures/hybrid_fixed_coils_fieldlines.png
-   :alt: Sixteen coils, fixed-boundary hybrid LCFS, and field lines
-   :width: 82%
-
-.. literalinclude:: ../examples/toroidal_stellarator_mirror_hybrid.py
-   :language: python
-
-.. image:: _static/figures/hybrid_free_coils_fieldlines.png
-   :alt: Sixteen coils and solved free-boundary hybrid LCFS with field lines
-   :width: 82%
-
-.. literalinclude:: ../examples/toroidal_stellarator_mirror_hybrid_free_boundary.py
    :language: python
 
 Independent Pleiades reference

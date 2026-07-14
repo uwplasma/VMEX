@@ -41,16 +41,6 @@ All runnable examples live under this single `examples/` tree.
     preconditioned implicit adjoint, validate boundary/flux/pressure/current
     gradients against reconverged central differences, and write MOUT plus
     3D, `|B|`, cross-section, residual, and sensitivity figures.
-  - `toroidal_stellarator_mirror_hybrid.py` — trace the 16-coil vacuum axis,
-    build a flux-conserving square-torus seed, continue rotating corner
-    ellipses, solve the finite-current equilibrium, and write WOUT plus 3D
-    coils/LCFS/pitched-field-line, `|B|`, cross-section, profile, and residual
-    plots.
-  - `toroidal_stellarator_mirror_hybrid_free_boundary.py` — construct the same
-    16 coils, solve the coil-matched LCFS with NESTOR, and pressure-continue
-    only accepted equilibria. The requested schedule extends through 50%, but
-    the present Fourier corrector stops honestly at its documented sub-1%
-    conditioning barrier; no prescribed high-beta surfaces are plotted.
   - `single_stage_free_boundary_opt.py` — optimize coil currents to confine a
     target plasma by minimizing <(B.n)^2> with the exact virtual-casing gradient.
   - `single_stage_simultaneous_opt.py` — optimize plasma-boundary modes and coil

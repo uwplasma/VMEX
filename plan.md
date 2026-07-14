@@ -363,6 +363,9 @@ manufactured refinement tests.
 
 ### Milestone 2: remove known false and misowned lanes
 
+Status: Fourier hybrid implementation, examples, tests, benchmarks, and
+figures removed locally. ESSOS/MGRID field-source migration is next.
+
 1. Change current hybrid docs/examples to explicit historical/experimental
    status, transfer any reusable plotting requirements, then delete the Fourier
    target implementation, tests, examples, and showcase figures.

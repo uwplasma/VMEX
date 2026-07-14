@@ -222,12 +222,10 @@ coil-agnostic. Reproduce with
 
 ## Code size
 
-The current package is 72 Python modules / 34,197 physical lines, including
-the 20-module, 8,087-line open-mirror research backend. The tracked checkout
-is 8.29 MiB; generated WOUT, mgrid, and raw plotting output are ignored. This
-is intentionally an honest snapshot rather than a cross-language SLOC claim:
-the planned ESSOS migration removes the remaining private mirror/hybrid coil
-compatibility layer, while the public VMEC API remains coil-agnostic.
+The open-mirror backend is being reduced toward the supported fixed/free
+straight-axis model. Generated WOUT, mgrid, and raw plotting output are
+ignored. Coil geometry and Biot-Savart evaluation belong to ESSOS; vmec_jax
+consumes only MGRID data or a magnetic-field callable.
 
 ## Python API
 

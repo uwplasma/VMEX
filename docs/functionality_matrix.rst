@@ -271,13 +271,12 @@ The exact numerical contracts and failed promotion gates are in
      - Research
      - Local Fourier-mode refinement did not pass; no production claim
    * - Toroidal Fourier stellarator-mirror hybrid
-     - Supported within measured envelope
-     - Ordinary VMEC backend; free-boundary continuation through achieved
-       beta 0.8333%
+     - Deferred
+     - The experimental Fourier target was removed; the planned model uses a
+       native spline axis and surface state
    * - Native spline-state toroidal hybrid
      - Deferred
-     - Geometry initialization exists; no independent spline equilibrium
-       state is claimed
+     - No independent spline equilibrium state is claimed
 
 Code and validation footprint
 -----------------------------

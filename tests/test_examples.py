@@ -142,22 +142,6 @@ def test_free_boundary_beta_scan(tmp_path):
     assert len(betas) == 3 and betas[-1] > 1e-2, f"beta should reach finite values: {betas}"
 
 
-@pytest.mark.full  # genuine square-coil NESTOR solve plus the complete plot set
-def test_toroidal_hybrid_free_boundary_example(tmp_path):
-    out = _run_example(
-        EXAMPLES / "toroidal_stellarator_mirror_hybrid_free_boundary.py",
-        tmp_path,
-        timeout=1200,
-    )
-    assert "Wrote 1 converged equilibria" in out
-    outdir = tmp_path / "results" / "toroidal_stellarator_mirror_hybrid_free_boundary"
-    assert (outdir / "hybrid_free_boundary_scan.json").exists()
-    assert (outdir / "hybrid_free_coils_fieldlines.png").exists()
-    assert (outdir / "hybrid_free_cross_sections.png").exists()
-    assert (outdir / "hybrid_free_beta_convergence.png").exists()
-    assert (outdir / "hybrid_free_endpoint_modB.png").exists()
-
-
 def test_mirror_fixed_boundary_gradients_example(tmp_path):
     pytest.importorskip("virtual_casing_jax")
     out = _run_example(
