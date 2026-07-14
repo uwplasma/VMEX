@@ -60,6 +60,14 @@ def _assert_cost_decreased(stdout: str, name: str) -> None:
         f"best {min(costs):.6e}")
 
 
+def _require_virtual_casing_extender() -> None:
+    """Skip examples needing the unreleased virtual-casing extender API."""
+    from vmec_jax.core import freeboundary_diff
+
+    if not freeboundary_diff.have_virtual_casing_jax():
+        pytest.skip("requires the virtual_casing_jax extender API")
+
+
 def test_fixed_boundary_run(tmp_path):
     out = _run_example(EXAMPLES / "fixed_boundary_run.py", tmp_path, timeout=900)
     assert "converged = True" in out
@@ -119,9 +127,7 @@ def test_free_boundary_mgrid(tmp_path):
 
 
 def test_take_free_boundary_gradients(tmp_path):
-    # skips where the optional virtual_casing_jax dep is absent (core CI);
-    # validates the FD-checked coil/extcur gradients where it is installed.
-    pytest.importorskip("virtual_casing_jax")
+    _require_virtual_casing_extender()
     out = _run_example(EXAMPLES / "take_free_boundary_gradients.py", tmp_path, timeout=900)
     # each gradient row ends with its AD-vs-FD relative error in scientific notation
     rels = [float(m) for m in re.findall(r"\s([0-9.]+e[+-]\d+)\s*$", out, re.M)]
@@ -137,7 +143,6 @@ def test_free_boundary_beta_scan(tmp_path):
 
 
 def test_mirror_fixed_boundary_gradients_example(tmp_path):
-    pytest.importorskip("virtual_casing_jax")
     out = _run_example(
         EXAMPLES / "mirror_fixed_boundary_gradients.py", tmp_path, timeout=900
     )
@@ -290,7 +295,7 @@ def test_bootstrap_selfconsistent_examples(case, tmp_path):
 
 @pytest.mark.full
 def test_single_stage_free_boundary_opt(tmp_path):
-    pytest.importorskip("virtual_casing_jax")
+    _require_virtual_casing_extender()
     wout = EXAMPLES / "data" / "single_grid" / "wout_cth_like_free_bdy.nc"
     if not wout.exists() or not (EXAMPLES / "data" / "mgrid_cth_like.nc").exists():
         pytest.skip("fetched free-boundary assets absent (tools/fetch_assets.py)")
@@ -303,7 +308,7 @@ def test_single_stage_free_boundary_opt(tmp_path):
 def test_single_stage_essos_coils_opt(tmp_path):
     # coil-agnostic single-stage: needs both the ESSOS coils and virtual_casing_jax
     pytest.importorskip("essos")
-    pytest.importorskip("virtual_casing_jax")
+    _require_virtual_casing_extender()
     out = _run_example(EXAMPLES / "single_stage_essos_coils_opt.py", tmp_path, timeout=1800)
     # one machine-parseable "J <initial> -> <final>" line per case; each must drop
     rows = re.findall(r"\[single_stage\] (\S+): J ([0-9.eE+-]+) -> ([0-9.eE+-]+)", out)

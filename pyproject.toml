@@ -88,12 +88,10 @@ markers = [
 ]
 
 [tool.coverage.run]
-# freeboundary_diff.py is optional (vmec-jax[freeb]) and requires
-# virtual_casing_jax, a uwplasma package not on PyPI; its FD-validated
-# gradient tests are importorskip-gated and skip in the core CI, so the module
-# is excluded from the core >=95% coverage gate.  It IS exercised when the
-# freeb extra is installed (locally / a dedicated freeb CI lane — R15.3/R19
-# follow-up).
+# freeboundary_diff.py requires the unreleased virtual-casing extender API.
+# Its FD-validated gradient tests use a capability gate and skip in core CI,
+# so the module is excluded from the core >=95% coverage gate. It is exercised
+# in an editable checkout of the extender branch (R15.3/R19 follow-up).
 omit = ["*/freeboundary_diff.py", "*/turbulence.py"]
 
 [tool.coverage.report]
