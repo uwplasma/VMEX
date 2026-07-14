@@ -1,0 +1,43 @@
+{
+  "schema": "vmec_jax.benchmark.mirror_spline_fixed_boundary/1",
+  "case": {
+    "ns": 5,
+    "mpol": 0,
+    "chebyshev_nxi": 9,
+    "spline_elements": 4,
+    "spline_coefficients": 7,
+    "spline_quadrature_nodes": 18,
+    "ftol": 1e-12,
+    "max_iterations": 1000,
+    "boundary": "0.3 * (1 + 0.12 * (1-xi^2))",
+    "mass_profile": "2000 * (1-s)",
+    "current_derivative": "0.03 * s",
+    "axial_flux_derivative": 0.1
+  },
+  "chebyshev": {
+    "active_dofs": 45,
+    "iterations": 59,
+    "cold_wall_s": 9.4500,
+    "variational_max": 7.0166e-16,
+    "staggered_weak_max": 7.2737e-16,
+    "energy": 960915.5614921426,
+    "volume": 0.6604127926262385,
+    "center_radius": 0.33505551122648347
+  },
+  "spline": {
+    "active_dofs": 31,
+    "iterations": 59,
+    "cold_wall_s": 3.9551,
+    "variational_max": 5.1196e-16,
+    "staggered_weak_max": 5.0161e-16,
+    "energy": 960916.0538900206,
+    "volume": 0.6604088871894871,
+    "center_radius": 0.33494962473697865
+  },
+  "relative_difference": {
+    "energy": 5.1243e-7,
+    "volume": 5.9136e-6,
+    "center_radius": 3.1603e-4
+  },
+  "note": "Sequential local cold timings include representation-specific JAX compilation and are evidence, not a steady-state speed claim."
+}

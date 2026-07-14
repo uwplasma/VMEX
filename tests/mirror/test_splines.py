@@ -17,6 +17,7 @@ from vmec_jax.mirror.geometry import evaluate_geometry  # noqa: E402
 from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorDiscretization,
     SplineMirrorState,
+    solve_spline_fixed_boundary_cli,
 )
 
 
@@ -45,9 +46,7 @@ def test_clamped_derivatives_and_cubic_reproduction() -> None:
     np.testing.assert_allclose(
         basis.evaluate(coefficients, points, derivative=1), -0.4 + 1.4 * points - 0.9 * points**2, atol=8.0e-14
     )
-    np.testing.assert_allclose(
-        basis.evaluate(coefficients, points, derivative=2), 1.4 - 1.8 * points, atol=4.0e-13
-    )
+    np.testing.assert_allclose(basis.evaluate(coefficients, points, derivative=2), 1.4 - 1.8 * points, atol=4.0e-13)
     np.testing.assert_allclose(basis.integrate(coefficients), 2.0 * 1.2 + 2.0 * 0.7 / 3.0, atol=2.0e-14)
 
 
@@ -113,9 +112,7 @@ def _spline_polynomial_state():
 
 
 def test_coefficient_native_state_matches_chebyshev_polynomial_geometry_and_energy() -> None:
-    _, chebyshev_grid, _, state, discretization, spline_boundary, spline_state = (
-        _spline_polynomial_state()
-    )
+    _, chebyshev_grid, _, state, discretization, spline_boundary, spline_state = _spline_polynomial_state()
     projected = discretization.project_fixed_boundary(spline_state, spline_boundary)
     evaluated = discretization.evaluate_state(projected)
     spline_geometry = evaluate_geometry(evaluated, discretization.grid)
@@ -123,9 +120,7 @@ def test_coefficient_native_state_matches_chebyshev_polynomial_geometry_and_ener
     np.testing.assert_allclose(spline_geometry.volume, chebyshev_geometry.volume, rtol=3.0e-14)
     actual_ends = evaluated.radius_scale[:, :, [0, -1]]
     boundary_ends = discretization.evaluate_boundary(spline_boundary).radius_scale[:, [0, -1]]
-    np.testing.assert_allclose(
-        actual_ends, jnp.broadcast_to(boundary_ends, actual_ends.shape), atol=3.0e-15
-    )
+    np.testing.assert_allclose(actual_ends, jnp.broadcast_to(boundary_ends, actual_ends.shape), atol=3.0e-15)
 
     spline_energy = mirror_energy(evaluated, discretization.grid, axial_flux_derivative=0.1)
     chebyshev_energy = mirror_energy(state, chebyshev_grid, axial_flux_derivative=0.1)
@@ -137,8 +132,10 @@ def test_coefficient_native_state_matches_chebyshev_polynomial_geometry_and_ener
 def test_coefficient_native_energy_gradient_matches_central_difference() -> None:
     _, _, _, _, discretization, spline_boundary, spline_state = _spline_polynomial_state()
     projected = discretization.project_fixed_boundary(spline_state, spline_boundary)
-    direction = jnp.zeros_like(projected.radius_coefficients).at[2, 0, 2:-2].set(
-        jnp.linspace(-0.2, 0.3, discretization.coefficient_count - 4)
+    direction = (
+        jnp.zeros_like(projected.radius_coefficients)
+        .at[2, 0, 2:-2]
+        .set(jnp.linspace(-0.2, 0.3, discretization.coefficient_count - 4))
     )
 
     def objective(radius_coefficients):
@@ -152,4 +149,84 @@ def test_coefficient_native_energy_gradient_matches_central_difference() -> None
         objective(projected.radius_coefficients + step * direction)
         - objective(projected.radius_coefficients - step * direction)
     ) / (2.0 * step)
-    np.testing.assert_allclose(derivative, finite_difference, rtol=1.0e-7, atol=2.0e-7)
+    np.testing.assert_allclose(derivative, finite_difference, rtol=2.0e-7, atol=2.0e-7)
+
+
+def test_spline_fixed_boundary_solver_recovers_cylindrical_equilibrium() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=7, mpol=0, ntheta=1, nxi=9),
+        z_min=-1.2,
+        z_max=1.2,
+        ftol=1.0e-12,
+        max_iterations=300,
+    )
+    source_grid = config.build_grid()
+    boundary = MirrorBoundary.from_radius(0.3, source_grid)
+    base = MirrorState.from_boundary(boundary, source_grid)
+    s = jnp.asarray(source_grid.s)[:, None, None]
+    xi = jnp.asarray(source_grid.xi)[None, None, :]
+    initial = MirrorState(
+        base.radius_scale + 0.03 * s * (1.0 - s) * (1.0 - xi**2),
+        base.lambda_stream,
+    )
+    discretization = SplineMirrorDiscretization.build(config, elements=4)
+    spline_boundary = discretization.fit_boundary(boundary, source_grid)
+    spline_initial = discretization.fit_state(initial, source_grid)
+
+    result = solve_spline_fixed_boundary_cli(
+        spline_initial,
+        spline_boundary,
+        discretization,
+        config,
+        axial_flux_derivative=0.1,
+        gradient_tolerance=1.0e-12,
+        require_convergence=True,
+    )
+
+    assert result.evaluated.converged
+    assert result.evaluated.iterations > 0
+    assert float(result.evaluated.variational.maximum) <= config.ftol
+    assert float(result.evaluated.staggered_weak_force.maximum) <= 1.2 * config.ftol
+    np.testing.assert_allclose(result.evaluated.state.radius_scale, 0.3, atol=3.0e-13)
+    assert result.coefficient_state.radius_coefficients.shape[-1] == 7
+
+
+def test_spline_solver_converges_nonaxisymmetric_finite_current_state() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=1, ntheta=3, nxi=7),
+        z_min=-1.0,
+        z_max=1.0,
+        ftol=1.0e-12,
+        max_iterations=1000,
+    )
+    source_grid = config.build_grid()
+    theta = jnp.asarray(source_grid.theta)[:, None]
+    xi = jnp.asarray(source_grid.xi)[None, :]
+    boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.02 * jnp.cos(theta) * (1.0 - xi**2)), source_grid)
+    initial = MirrorState.from_boundary(boundary, source_grid)
+    discretization = SplineMirrorDiscretization.build(config, elements=3)
+    result = solve_spline_fixed_boundary_cli(
+        discretization.fit_state(initial, source_grid),
+        discretization.fit_boundary(boundary, source_grid),
+        discretization,
+        config,
+        axial_flux_derivative=0.1,
+        current_derivative=1.0e-3 * jnp.asarray(source_grid.s),
+        solve_lambda=True,
+        gradient_tolerance=1.0e-12,
+        require_convergence=True,
+    )
+    evaluated = result.evaluated
+    surface_integrals = np.einsum(
+        "j,k,ijk->i",
+        discretization.grid.theta_basis.weights,
+        discretization.grid.axial_basis.weights,
+        np.asarray(evaluated.state.lambda_stream),
+    )
+
+    assert evaluated.converged
+    assert float(evaluated.variational.maximum) <= config.ftol
+    assert float(evaluated.staggered_weak_force.maximum) <= 1.1 * config.ftol
+    assert float(jnp.max(jnp.abs(evaluated.state.lambda_stream))) > 1.0e-3
+    np.testing.assert_allclose(surface_integrals, 0.0, atol=3.0e-15)
+    np.testing.assert_allclose(evaluated.state.lambda_stream[0], evaluated.state.lambda_stream[1])

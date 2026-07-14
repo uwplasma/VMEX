@@ -35,13 +35,8 @@ def _basis_levels(knots: Array, points: Array, degree: int) -> list[Array]:
 
     knots = jnp.asarray(knots)
     points = jnp.asarray(points).reshape(-1)
-    evaluation_points = jnp.where(
-        points == knots[-1], jnp.nextafter(knots[-1], -jnp.inf), points
-    )
-    level = (
-        (evaluation_points[:, None] >= knots[:-1])
-        & (evaluation_points[:, None] < knots[1:])
-    ).astype(points.dtype)
+    evaluation_points = jnp.where(points == knots[-1], jnp.nextafter(knots[-1], -jnp.inf), points)
+    level = ((evaluation_points[:, None] >= knots[:-1]) & (evaluation_points[:, None] < knots[1:])).astype(points.dtype)
     levels = [level]
     for order in range(1, degree + 1):
         count = knots.size - order - 1
@@ -49,8 +44,7 @@ def _basis_levels(knots: Array, points: Array, degree: int) -> list[Array]:
         right_denominator = knots[order + 1 : order + count + 1] - knots[1 : count + 1]
         left = jnp.where(
             left_denominator > 0.0,
-            (evaluation_points[:, None] - knots[:count])
-            / jnp.where(left_denominator > 0.0, left_denominator, 1.0),
+            (evaluation_points[:, None] - knots[:count]) / jnp.where(left_denominator > 0.0, left_denominator, 1.0),
             0.0,
         )
         right = jnp.where(
@@ -64,9 +58,7 @@ def _basis_levels(knots: Array, points: Array, degree: int) -> list[Array]:
     if degree > 0:
         endpoint = points == knots[-1]
         levels[-1] = levels[-1].at[:, -1].set(jnp.where(endpoint, 1.0, levels[-1][:, -1]))
-        levels[-1] = levels[-1].at[:, :-1].set(
-            jnp.where(endpoint[:, None], 0.0, levels[-1][:, :-1])
-        )
+        levels[-1] = levels[-1].at[:, :-1].set(jnp.where(endpoint[:, None], 0.0, levels[-1][:, :-1]))
     return levels
 
 
@@ -94,8 +86,7 @@ def _basis_matrix(knots: Array, points: Array, degree: int, derivative: int = 0)
         knots[degree_minus_one + 1 : degree_minus_one + lower_count + 1] - knots[1 : lower_count + 1]
     )
     lower_first = (
-        jnp.where(lower_left_denominator > 0.0, degree_minus_one / lower_left_denominator, 0.0)
-        * base[:, :lower_count]
+        jnp.where(lower_left_denominator > 0.0, degree_minus_one / lower_left_denominator, 0.0) * base[:, :lower_count]
         - jnp.where(lower_right_denominator > 0.0, degree_minus_one / lower_right_denominator, 0.0)
         * base[:, 1 : lower_count + 1]
     )
@@ -239,7 +230,9 @@ class CubicBSplineBasis:
             alpha = (knot - self.knots[index]) / (self.knots[index + _DEGREE] - self.knots[index])
             updated = updated.at[index].set(alpha * values[index] + (1.0 - alpha) * values[index - 1])
         new_breakpoints = np.sort(np.append(self.breakpoints, knot))
-        refined = CubicBSplineBasis.clamped(new_breakpoints, quadrature_order=self.quadrature_weights.size // (self.breakpoints.size - 1))
+        refined = CubicBSplineBasis.clamped(
+            new_breakpoints, quadrature_order=self.quadrature_weights.size // (self.breakpoints.size - 1)
+        )
         return refined, jnp.moveaxis(updated, 0, axis)
 
 
@@ -331,9 +324,7 @@ class SplineMirrorDiscretization:
         elements = int(elements)
         if elements < 1:
             raise ValueError("spline discretization requires elements >= 1")
-        spline = CubicBSplineBasis.clamped(
-            np.linspace(-1.0, 1.0, elements + 1), quadrature_order=quadrature_order
-        )
+        spline = CubicBSplineBasis.clamped(np.linspace(-1.0, 1.0, elements + 1), quadrature_order=quadrature_order)
         axial = _SplineEvaluationBasis.build(spline)
         resolution = config.resolution
         s = np.linspace(0.0, 1.0, resolution.ns)
@@ -384,23 +375,15 @@ class SplineMirrorDiscretization:
     def fit_boundary(self, boundary: MirrorBoundary, source_grid: MirrorGrid) -> SplineMirrorBoundary:
         """Fit a nodal boundary once to initialize coefficient-native solves."""
 
-        samples = source_grid.axial_basis.interpolate(
-            boundary.radius_scale, self.spline.collocation_nodes, axis=-1
-        )
+        samples = source_grid.axial_basis.interpolate(boundary.radius_scale, self.spline.collocation_nodes, axis=-1)
         return SplineMirrorBoundary(self.spline.fit(samples, axis=-1))
 
     def fit_state(self, state: MirrorState, source_grid: MirrorGrid) -> SplineMirrorState:
         """Fit a nodal state once to initialize coefficient-native solves."""
 
-        radius = source_grid.axial_basis.interpolate(
-            state.radius_scale, self.spline.collocation_nodes, axis=-1
-        )
-        lam = source_grid.axial_basis.interpolate(
-            state.lambda_stream, self.spline.collocation_nodes, axis=-1
-        )
-        return SplineMirrorState(
-            self.spline.fit(radius, axis=-1), self.spline.fit(lam, axis=-1)
-        )
+        radius = source_grid.axial_basis.interpolate(state.radius_scale, self.spline.collocation_nodes, axis=-1)
+        lam = source_grid.axial_basis.interpolate(state.lambda_stream, self.spline.collocation_nodes, axis=-1)
+        return SplineMirrorState(self.spline.fit(radius, axis=-1), self.spline.fit(lam, axis=-1))
 
     def project_fixed_boundary(
         self,
@@ -424,12 +407,356 @@ class SplineMirrorDiscretization:
         return SplineMirrorState(radius, lam - mean[:, None, None])
 
 
-jax.tree_util.register_dataclass(
-    SplineMirrorBoundary, data_fields=["radius_coefficients"], meta_fields=[]
-)
+@dataclass(frozen=True)
+class SplineMirrorSolveResult:
+    """Converged coefficient state and its evaluated mirror result."""
+
+    coefficient_state: SplineMirrorState
+    evaluated: Any
+
+
+@dataclass(frozen=True)
+class _SplineStateVectorizer:
+    """Pack constrained spline coefficients into normalized solve variables."""
+
+    base: SplineMirrorState
+    evaluation_matrix: np.ndarray
+    radius_indices: tuple[np.ndarray, np.ndarray, np.ndarray]
+    radius_scale: float
+    flux_scale: float
+    lambda_free_indices: np.ndarray
+    lambda_pivot: int
+    lambda_weights: np.ndarray
+    lambda_fixed_weighted_sum: np.ndarray
+    solve_lambda: bool
+
+    @classmethod
+    def build(
+        cls,
+        state: SplineMirrorState,
+        boundary: SplineMirrorBoundary,
+        discretization: SplineMirrorDiscretization,
+        *,
+        axial_flux_derivative: Array,
+        solve_lambda: bool,
+    ) -> "_SplineStateVectorizer":
+        base = discretization.project_fixed_boundary(state, boundary)
+        boundary_values = discretization.evaluate_boundary(boundary).radius_scale
+        radius_scale = float(np.mean(np.asarray(boundary_values)))
+        if not np.isfinite(radius_scale) or radius_scale <= 0.0:
+            raise ValueError("mean boundary radius must be positive and finite")
+        flux = np.asarray(axial_flux_derivative, dtype=float)
+        flux_scale = max(float(np.max(np.abs(flux))), np.finfo(float).tiny)
+
+        shape = np.asarray(base.radius_coefficients).shape
+        radius_mask = np.zeros(shape, dtype=bool)
+        radius_mask[1:-1, :, 1:-1] = True
+        radius_indices = tuple(np.asarray(index) for index in np.nonzero(radius_mask))
+
+        coefficient_weights = np.asarray(discretization.evaluation_matrix).T @ np.asarray(
+            discretization.grid.axial_basis.weights
+        )
+        interior_weights = (
+            np.asarray(discretization.grid.theta_basis.weights)[:, None] * coefficient_weights[None, 1:-1]
+        ).reshape(-1)
+        if solve_lambda and interior_weights.size < 2:
+            raise ValueError("lambda solve requires at least two interior coefficients")
+        pivot = int(np.argmax(interior_weights)) if interior_weights.size else 0
+        free_indices = np.delete(np.arange(interior_weights.size), pivot)
+        endpoint_weights = np.zeros((shape[1], shape[2]))
+        endpoint_weights[:, [0, -1]] = (
+            np.asarray(discretization.grid.theta_basis.weights)[:, None] * coefficient_weights[None, [0, -1]]
+        )
+        fixed_sum = np.einsum("jk,ijk->i", endpoint_weights, np.asarray(base.lambda_coefficients)[1:])
+        return cls(
+            base=base,
+            evaluation_matrix=np.asarray(discretization.evaluation_matrix),
+            radius_indices=radius_indices,
+            radius_scale=radius_scale,
+            flux_scale=flux_scale,
+            lambda_free_indices=free_indices,
+            lambda_pivot=pivot,
+            lambda_weights=interior_weights,
+            lambda_fixed_weighted_sum=fixed_sum,
+            solve_lambda=bool(solve_lambda),
+        )
+
+    @property
+    def radius_size(self) -> int:
+        """Return the number of active geometry coefficients."""
+
+        return int(self.radius_indices[0].size)
+
+    @property
+    def lambda_size(self) -> int:
+        """Return the number of gauge-free stream-function coefficients."""
+
+        if not self.solve_lambda:
+            return 0
+        return int((self.base.radius_coefficients.shape[0] - 1) * self.lambda_free_indices.size)
+
+    def pack(self) -> np.ndarray:
+        """Pack the projected coefficient state."""
+
+        radius = np.asarray(self.base.radius_coefficients)[self.radius_indices] / self.radius_scale
+        if not self.solve_lambda:
+            return radius
+        interior = np.asarray(self.base.lambda_coefficients)[1:, :, 1:-1].reshape(
+            self.base.radius_coefficients.shape[0] - 1, -1
+        )
+        lam = interior[:, self.lambda_free_indices].reshape(-1) / self.flux_scale
+        return np.concatenate((radius, lam))
+
+    def unpack(self, vector: Array) -> SplineMirrorState:
+        """Reconstruct constrained coefficients from normalized variables."""
+
+        vector = jnp.asarray(vector)
+        radius = self.base.radius_coefficients.at[self.radius_indices].set(
+            vector[: self.radius_size] * self.radius_scale
+        )
+        radius = radius.at[0].set(radius[1])
+        if not self.solve_lambda:
+            return SplineMirrorState(radius, self.base.lambda_coefficients)
+
+        shape = self.base.lambda_coefficients.shape
+        free = vector[self.radius_size :].reshape(shape[0] - 1, self.lambda_free_indices.size) * self.flux_scale
+        interior = self.base.lambda_coefficients[1:, :, 1:-1].reshape(shape[0] - 1, -1)
+        interior = interior.at[:, jnp.asarray(self.lambda_free_indices)].set(free)
+        weighted_free = jnp.sum(
+            free * jnp.asarray(self.lambda_weights[self.lambda_free_indices])[None, :],
+            axis=1,
+        )
+        pivot_value = -(jnp.asarray(self.lambda_fixed_weighted_sum) + weighted_free) / float(
+            self.lambda_weights[self.lambda_pivot]
+        )
+        interior = interior.at[:, self.lambda_pivot].set(pivot_value)
+        lam = self.base.lambda_coefficients.at[1:, :, 1:-1].set(interior.reshape(shape[0] - 1, shape[1], shape[2] - 2))
+        return SplineMirrorState(radius, lam.at[0].set(lam[1]))
+
+    def bounds(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return conservative normalized coefficient bounds."""
+
+        lower = np.concatenate((np.full(self.radius_size, 0.2), np.full(self.lambda_size, -np.inf)))
+        upper = np.concatenate((np.full(self.radius_size, 5.0), np.full(self.lambda_size, np.inf)))
+        return lower, upper
+
+    def pullback_evaluated_gradient(self, gradient: MirrorState) -> np.ndarray:
+        """Pull an evaluated-state gradient to the active coefficients."""
+
+        matrix = np.asarray(self.evaluation_matrix)
+        radius_coefficients = np.tensordot(np.asarray(gradient.radius_scale), matrix, axes=((-1,), (0,)))
+        radius_coefficients[1] += radius_coefficients[0]
+        radius = radius_coefficients[self.radius_indices] * self.radius_scale
+        if not self.solve_lambda:
+            return radius
+
+        lambda_coefficients = np.tensordot(np.asarray(gradient.lambda_stream), matrix, axes=((-1,), (0,)))
+        lambda_coefficients[1] += lambda_coefficients[0]
+        interior = lambda_coefficients[1:, :, 1:-1].reshape(lambda_coefficients.shape[0] - 1, -1)
+        pivot_gradient = interior[:, self.lambda_pivot]
+        free = interior[:, self.lambda_free_indices] - (
+            pivot_gradient[:, None]
+            * self.lambda_weights[self.lambda_free_indices][None, :]
+            / self.lambda_weights[self.lambda_pivot]
+        )
+        return np.concatenate((radius, (free * self.flux_scale).reshape(-1)))
+
+
+def solve_spline_fixed_boundary_cli(
+    initial_state: SplineMirrorState,
+    boundary: SplineMirrorBoundary,
+    discretization: SplineMirrorDiscretization,
+    config: MirrorConfig,
+    *,
+    axial_flux_derivative: Array,
+    mass_profile: Array = 0.0,
+    current_derivative: Array = 0.0,
+    gamma: float = 5.0 / 3.0,
+    solve_lambda: bool = False,
+    gradient_tolerance: float = 1.0e-11,
+    require_convergence: bool = False,
+) -> SplineMirrorSolveResult:
+    """Solve a scalar-pressure fixed boundary in native spline coefficients."""
+
+    from .forces import (
+        VariationalResidual,
+        isotropic_force_residual,
+        isotropic_staggered_energy_gradient,
+        mirror_energy,
+    )
+    from .geometry import normalized_divergence_rms
+    from .solver import (
+        MirrorConvergenceError,
+        MirrorSolveResult,
+        _optimize_fixed_boundary,
+    )
+
+    grid = discretization.grid
+    if grid.ns != config.resolution.ns or grid.ntheta != config.resolution.ntheta:
+        raise ValueError("spline radial and poloidal resolution must match MirrorConfig")
+    if gradient_tolerance <= 0.0:
+        raise ValueError("gradient_tolerance must be positive")
+    vectorizer = _SplineStateVectorizer.build(
+        initial_state,
+        boundary,
+        discretization,
+        axial_flux_derivative=axial_flux_derivative,
+        solve_lambda=solve_lambda,
+    )
+    x0 = vectorizer.pack()
+    lower_bounds, upper_bounds = vectorizer.bounds()
+    energy_kwargs = {
+        "axial_flux_derivative": axial_flux_derivative,
+        "mass_profile": mass_profile,
+        "current_derivative": current_derivative,
+        "gamma": gamma,
+    }
+
+    def unpack_coefficients(vector: Array) -> SplineMirrorState:
+        return vectorizer.unpack(vector)
+
+    def unpack(vector: Array) -> MirrorState:
+        return discretization.evaluate_state(unpack_coefficients(vector))
+
+    def evaluate_energy(state: MirrorState):
+        return mirror_energy(state, grid, **energy_kwargs)
+
+    initial_evaluated = unpack(jnp.asarray(x0))
+    initial_energy = evaluate_energy(initial_evaluated)
+    energy_scale = max(abs(float(initial_energy.total)), np.finfo(float).tiny)
+
+    def objective(vector: Array) -> Array:
+        return evaluate_energy(unpack(vector)).total / energy_scale
+
+    value_and_gradient = jax.jit(jax.value_and_grad(objective))
+    cache_x: np.ndarray | None = None
+    cache_value = 0.0
+    cache_gradient = np.empty_like(x0)
+
+    def evaluate(vector: np.ndarray) -> tuple[float, np.ndarray]:
+        nonlocal cache_x, cache_value, cache_gradient
+        if cache_x is None or not np.array_equal(vector, cache_x):
+            value, gradient = value_and_gradient(jnp.asarray(vector))
+            cache_x = np.array(vector, copy=True)
+            cache_value = float(value)
+            cache_gradient = np.asarray(gradient, dtype=float)
+        return cache_value, cache_gradient
+
+    def packed_variational(vector: Array, state: MirrorState) -> VariationalResidual:
+        del state
+        packed = evaluate(np.asarray(vector, dtype=float))[1]
+        radius = packed[: vectorizer.radius_size]
+        lam = packed[vectorizer.radius_size :]
+        lambda_rms = np.sqrt(np.mean(lam**2)) if lam.size else 0.0
+        return VariationalResidual(
+            radius_gradient=jnp.asarray(radius),
+            lambda_gradient=jnp.asarray(lam),
+            radius_rms=jnp.asarray(np.sqrt(np.mean(radius**2))),
+            lambda_rms=jnp.asarray(lambda_rms),
+            maximum=jnp.asarray(np.max(np.abs(packed))),
+        )
+
+    def packed_weak(state: MirrorState) -> VariationalResidual:
+        gradient = isotropic_staggered_energy_gradient(state, grid, **energy_kwargs)
+        packed = vectorizer.pullback_evaluated_gradient(gradient) / energy_scale
+        radius = packed[: vectorizer.radius_size]
+        lam = packed[vectorizer.radius_size :]
+        return VariationalResidual(
+            radius_gradient=jnp.asarray(radius),
+            lambda_gradient=jnp.asarray(lam),
+            radius_rms=jnp.asarray(np.sqrt(np.mean(radius**2))),
+            lambda_rms=jnp.asarray(np.sqrt(np.mean(lam**2)) if lam.size else 0.0),
+            maximum=jnp.asarray(np.max(np.abs(packed))),
+        )
+
+    history: list[tuple[float, float, float, float, float, float]] = []
+
+    def record(iteration: int, vector: np.ndarray) -> None:
+        state = unpack(jnp.asarray(vector))
+        energy = evaluate_energy(state)
+        variational = packed_variational(vector, state)
+        force = isotropic_force_residual(energy, grid)
+        history.append(
+            (
+                float(iteration),
+                float(energy.total),
+                float(variational.radius_rms),
+                float(variational.lambda_rms),
+                float(variational.maximum),
+                float(force.normalized_rms),
+            )
+        )
+
+    record(0, x0)
+    if history[-1][4] <= config.ftol:
+        final_x = x0
+        iterations = 0
+        optimizer_success = True
+        linear_iterations = 0
+        final_linear_residual = 0.0
+        message = "initial spline state satisfies physical ftol"
+    else:
+        optimization = _optimize_fixed_boundary(
+            x0,
+            lower_bounds,
+            upper_bounds,
+            objective=objective,
+            evaluate=evaluate,
+            packed_variational=packed_variational,
+            unpack=unpack,
+            record=record,
+            config=config,
+            gradient_tolerance=gradient_tolerance,
+            matrix_free_context=None,
+        )
+        final_x = optimization.vector
+        iterations = optimization.iterations
+        optimizer_success = optimization.optimizer_success
+        linear_iterations = optimization.linear_iterations
+        final_linear_residual = optimization.final_linear_residual
+        message = optimization.message
+
+    coefficient_state = unpack_coefficients(jnp.asarray(final_x))
+    final_state = discretization.evaluate_state(coefficient_state)
+    final_energy = evaluate_energy(final_state)
+    final_variational = packed_variational(final_x, final_state)
+    final_force = isotropic_force_residual(final_energy, grid)
+    final_weak = packed_weak(final_state)
+    record(iterations, final_x)
+    converged = bool(
+        float(final_variational.maximum) <= config.ftol and not bool(final_energy.geometry.jacobian_sign_changed)
+    )
+    if not converged:
+        message += f"; variational force={float(final_variational.maximum):.3e}"
+    result = MirrorSolveResult(
+        state=final_state,
+        energy=final_energy,
+        variational=final_variational,
+        force=final_force,
+        staggered_weak_force=final_weak,
+        normalized_divergence_rms=normalized_divergence_rms(final_energy.field, final_energy.geometry, grid),
+        history=jnp.asarray(history),
+        iterations=iterations,
+        converged=converged,
+        optimizer_success=optimizer_success,
+        linear_iterations=linear_iterations,
+        final_linear_residual=final_linear_residual,
+        message=message,
+    )
+    if require_convergence and not converged:
+        raise MirrorConvergenceError(result)
+    return SplineMirrorSolveResult(coefficient_state, result)
+
+
+jax.tree_util.register_dataclass(SplineMirrorBoundary, data_fields=["radius_coefficients"], meta_fields=[])
 jax.tree_util.register_dataclass(
     SplineMirrorState,
     data_fields=["radius_coefficients", "lambda_coefficients"],
+    meta_fields=[],
+)
+jax.tree_util.register_dataclass(
+    SplineMirrorSolveResult,
+    data_fields=["coefficient_state", "evaluated"],
     meta_fields=[],
 )
 
@@ -438,5 +765,7 @@ __all__ = [
     "CubicBSplineBasis",
     "SplineMirrorBoundary",
     "SplineMirrorDiscretization",
+    "SplineMirrorSolveResult",
     "SplineMirrorState",
+    "solve_spline_fixed_boundary_cli",
 ]

@@ -158,9 +158,20 @@ evaluation nodes versus 41 Chebyshev nodes; volume agrees to roundoff, total
 energy agrees to ``5.0e-13`` relative, and an energy directional derivative
 agrees with finite differences to ``1.9e-8`` relative.
 
-The nonlinear solver is not yet coefficient-native. Until its active-variable
-packing, residual normalization, and preconditioner pass Chebyshev parity,
-``MirrorConfig`` keeps Chebyshev collocation as the supported solve path.
+``solve_spline_fixed_boundary_cli`` now minimizes the same scalar-pressure
+energy directly in the active spline coefficients. It fixes the side and end
+coefficients, eliminates the weighted stream-function gauge, and uses the same
+host L-BFGS plus residual-Newton policy as the Chebyshev solve. The independent
+staggered first variation is assembled on the quadrature grid and pulled back
+through the spline evaluation matrix rather than reused from autodiff.
+
+For an ``ns=5`` finite-pressure, finite-current flared tube, both paths converge
+in 59 iterations below ``ftol=1e-12``. Seven spline coefficients replace nine
+Chebyshev axial nodes and reduce active variables from 45 to 31. Relative
+differences are ``5.1e-7`` in energy, ``5.9e-6`` in volume, and ``3.2e-4`` in
+center radius. Larger knot studies and a coefficient-space preconditioner are
+still required before splines become the public default. Compact evidence is
+in ``benchmarks/mirror_spline_fixed_boundary.json``.
 
 Fixed-boundary implicit gradients
 ---------------------------------

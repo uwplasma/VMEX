@@ -151,22 +151,16 @@ class _MirrorStateVectorizer:
         flux = np.asarray(axial_flux_derivative, dtype=float)
         flux_scale = max(float(np.max(np.abs(flux))), np.finfo(float).tiny)
         interior_weights = (
-            np.asarray(grid.theta_basis.weights)[:, None]
-            * np.asarray(grid.axial_basis.weights)[None, 1:-1]
+            np.asarray(grid.theta_basis.weights)[:, None] * np.asarray(grid.axial_basis.weights)[None, 1:-1]
         ).reshape(-1)
         if solve_lambda and interior_weights.size < 2:
             raise ValueError("lambda solve requires at least two interior theta-xi nodes")
         pivot = int(np.argmax(interior_weights)) if interior_weights.size else 0
         free_indices = np.delete(np.arange(interior_weights.size), pivot)
-        full_weights = (
-            np.asarray(grid.theta_basis.weights)[:, None]
-            * np.asarray(grid.axial_basis.weights)[None, :]
-        )
+        full_weights = np.asarray(grid.theta_basis.weights)[:, None] * np.asarray(grid.axial_basis.weights)[None, :]
         endpoint_weights = np.zeros_like(full_weights)
         endpoint_weights[:, [0, -1]] = full_weights[:, [0, -1]]
-        fixed_sum = np.einsum(
-            "jk,ijk->i", endpoint_weights, np.asarray(base.lambda_stream)[1:]
-        )
+        fixed_sum = np.einsum("jk,ijk->i", endpoint_weights, np.asarray(base.lambda_stream)[1:])
         return cls(
             base=base,
             radius_indices=tuple(np.asarray(index) for index in np.nonzero(_free_radius_mask(grid))),
@@ -201,64 +195,47 @@ class _MirrorStateVectorizer:
         radius = np.asarray(self.base.radius_scale)[self.radius_indices] / self.radius_scale
         if not self.solve_lambda:
             return radius
-        interior = np.asarray(self.base.lambda_stream)[1:, :, 1:-1].reshape(
-            self.base.radius_scale.shape[0] - 1, -1
-        )
+        interior = np.asarray(self.base.lambda_stream)[1:, :, 1:-1].reshape(self.base.radius_scale.shape[0] - 1, -1)
         lam = interior[:, self.lambda_free_indices].reshape(-1) / self.flux_scale
         return np.concatenate([radius, lam])
 
     def unpack(self, vector: Array) -> MirrorState:
         """Reconstruct a constrained mirror state from solver variables."""
         vector = jnp.asarray(vector)
-        radius = self.base.radius_scale.at[self.radius_indices].set(
-            vector[: self.radius_size] * self.radius_scale
-        )
+        radius = self.base.radius_scale.at[self.radius_indices].set(vector[: self.radius_size] * self.radius_scale)
         radius = radius.at[0].set(radius[1])
         if not self.solve_lambda:
             return MirrorState(radius, self.base.lambda_stream)
         shape = self.base.radius_scale.shape
-        free = vector[self.radius_size :].reshape(
-            shape[0] - 1, self.lambda_free_indices.size
-        ) * self.flux_scale
+        free = vector[self.radius_size :].reshape(shape[0] - 1, self.lambda_free_indices.size) * self.flux_scale
         interior = self.base.lambda_stream[1:, :, 1:-1].reshape(shape[0] - 1, -1)
         interior = interior.at[:, jnp.asarray(self.lambda_free_indices)].set(free)
         weighted_free = jnp.sum(
             free * jnp.asarray(self.lambda_interior_weights[self.lambda_free_indices])[None, :],
             axis=1,
         )
-        pivot_value = -(
-            jnp.asarray(self.lambda_fixed_weighted_sum) + weighted_free
-        ) / float(self.lambda_interior_weights[self.lambda_pivot])
-        interior = interior.at[:, self.lambda_pivot].set(pivot_value)
-        lam = self.base.lambda_stream.at[1:, :, 1:-1].set(
-            interior.reshape(shape[0] - 1, shape[1], shape[2] - 2)
+        pivot_value = -(jnp.asarray(self.lambda_fixed_weighted_sum) + weighted_free) / float(
+            self.lambda_interior_weights[self.lambda_pivot]
         )
+        interior = interior.at[:, self.lambda_pivot].set(pivot_value)
+        lam = self.base.lambda_stream.at[1:, :, 1:-1].set(interior.reshape(shape[0] - 1, shape[1], shape[2] - 2))
         lam = lam.at[0].set(lam[1])
         return MirrorState(radius, lam)
 
     def bounds(self) -> tuple[np.ndarray, np.ndarray]:
         """Return conservative bounds for normalized solver variables."""
-        lower = np.concatenate(
-            [np.full(self.radius_size, 0.2), np.full(self.lambda_size, -np.inf)]
-        )
-        upper = np.concatenate(
-            [np.full(self.radius_size, 5.0), np.full(self.lambda_size, np.inf)]
-        )
+        lower = np.concatenate([np.full(self.radius_size, 0.2), np.full(self.lambda_size, -np.inf)])
+        upper = np.concatenate([np.full(self.radius_size, 5.0), np.full(self.lambda_size, np.inf)])
         return lower, upper
 
     def pullback_gradient(self, gradient: MirrorState) -> np.ndarray:
         """Map a physical state gradient to normalized solver variables."""
 
-        radius = (
-            np.asarray(gradient.radius_scale)[self.radius_indices]
-            * self.radius_scale
-        )
+        radius = np.asarray(gradient.radius_scale)[self.radius_indices] * self.radius_scale
         if not self.solve_lambda:
             return radius
         shape = self.base.radius_scale.shape
-        interior = np.asarray(gradient.lambda_stream)[1:, :, 1:-1].reshape(
-            shape[0] - 1, -1
-        )
+        interior = np.asarray(gradient.lambda_stream)[1:, :, 1:-1].reshape(shape[0] - 1, -1)
         pivot_gradient = interior[:, self.lambda_pivot]
         free = interior[:, self.lambda_free_indices] - (
             pivot_gradient[:, None]
@@ -387,9 +364,7 @@ class SeparableMirrorPreconditioner:
         return projected.reshape(np.asarray(vector).shape)
 
 
-def _packed_preconditioner(
-    grid: "MirrorGrid", vectorizer: _MirrorStateVectorizer
-) -> tuple[Any, np.ndarray]:
+def _packed_preconditioner(grid: "MirrorGrid", vectorizer: _MirrorStateVectorizer) -> tuple[Any, np.ndarray]:
     """Build the shared geometry/lambda inverse and mutable block scales."""
 
     geometry = SeparableMirrorPreconditioner.build(grid)
@@ -401,16 +376,17 @@ def _packed_preconditioner(
     def apply(vector: np.ndarray) -> np.ndarray:
         vector = np.asarray(vector, dtype=float)
         result = np.array(vector, copy=True)
-        result[: vectorizer.radius_size] = geometry.apply(
-            vector[: vectorizer.radius_size]
-        ) * scales[0]
+        result[: vectorizer.radius_size] = geometry.apply(vector[: vectorizer.radius_size]) * scales[0]
         if stream is not None:
-            result[vectorizer.radius_size :] = stream.apply_gauge_free(
-                vector[vectorizer.radius_size :],
-                free_indices=vectorizer.lambda_free_indices,
-                pivot=vectorizer.lambda_pivot,
-                weights=vectorizer.lambda_interior_weights,
-            ) * scales[1]
+            result[vectorizer.radius_size :] = (
+                stream.apply_gauge_free(
+                    vector[vectorizer.radius_size :],
+                    free_indices=vectorizer.lambda_free_indices,
+                    pivot=vectorizer.lambda_pivot,
+                    weights=vectorizer.lambda_interior_weights,
+                )
+                * scales[1]
+            )
         return result
 
     return apply, scales
@@ -434,11 +410,7 @@ def _matrix_free_newton_polish(
     x = np.asarray(x0, dtype=float)
     apply_preconditioner, block_scales = _packed_preconditioner(grid, vectorizer)
 
-    hessian_vector = jax.jit(
-        lambda point, direction: jax.jvp(
-            gradient_function, (point,), (direction,)
-        )[1]
-    )
+    hessian_vector = jax.jit(lambda point, direction: jax.jvp(gradient_function, (point,), (direction,))[1])
     linear_iterations = 0
     final_linear_residual = np.inf
     damping = 1.0e-8
@@ -450,9 +422,7 @@ def _matrix_free_newton_polish(
             return x, step_index, linear_iterations, final_linear_residual, True, "Newton-GMRES converged"
 
         def matrix_vector(direction: np.ndarray) -> np.ndarray:
-            product = np.asarray(
-                hessian_vector(jnp.asarray(x), jnp.asarray(direction)), dtype=float
-            )
+            product = np.asarray(hessian_vector(jnp.asarray(x), jnp.asarray(direction)), dtype=float)
             return product + damping * np.asarray(direction)
 
         # Match each model block to the exact local Hessian scale. This keeps
@@ -469,9 +439,7 @@ def _matrix_free_newton_polish(
                 block_scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
 
         operator = LinearOperator((x.size, x.size), matvec=matrix_vector, dtype=float)
-        inverse = LinearOperator(
-            (x.size, x.size), matvec=apply_preconditioner, dtype=float
-        )
+        inverse = LinearOperator((x.size, x.size), matvec=apply_preconditioner, dtype=float)
         iteration_counter = 0
 
         def count_iteration(_residual: float) -> None:
@@ -504,9 +472,7 @@ def _matrix_free_newton_polish(
         accepted = False
         step_length = 1.0
         for _ in range(24):
-            candidate = np.clip(
-                x + step_length * direction, lower_bounds, upper_bounds
-            )
+            candidate = np.clip(x + step_length * direction, lower_bounds, upper_bounds)
             candidate_value = float(objective_function(jnp.asarray(candidate)))
             if np.isfinite(candidate_value) and candidate_value <= value + 1.0e-4 * step_length * slope:
                 x = candidate
@@ -520,9 +486,7 @@ def _matrix_free_newton_polish(
             if damping > 1.0:
                 return x, step_index, linear_iterations, final_linear_residual, False, "Newton line search stalled"
 
-    gradient_max = float(
-        np.max(np.abs(np.asarray(gradient_function(jnp.asarray(x)), dtype=float)))
-    )
+    gradient_max = float(np.max(np.abs(np.asarray(gradient_function(jnp.asarray(x)), dtype=float))))
     converged = gradient_max <= float(ftol)
     return (
         x,
@@ -531,6 +495,139 @@ def _matrix_free_newton_polish(
         final_linear_residual,
         converged,
         "Newton-GMRES converged" if converged else "Newton-GMRES iteration limit",
+    )
+
+
+@dataclass(frozen=True)
+class _OptimizationOutcome:
+    """Representation-independent result from the host nonlinear driver."""
+
+    vector: np.ndarray
+    iterations: int
+    optimizer_success: bool
+    linear_iterations: int
+    final_linear_residual: float
+    message: str
+
+
+def _optimize_fixed_boundary(
+    x0: np.ndarray,
+    lower_bounds: np.ndarray,
+    upper_bounds: np.ndarray,
+    *,
+    objective: Any,
+    evaluate: Any,
+    packed_variational: Any,
+    unpack: Any,
+    record: Any,
+    config: MirrorConfig,
+    gradient_tolerance: float,
+    matrix_free_context: tuple["MirrorGrid", _MirrorStateVectorizer] | None,
+) -> _OptimizationOutcome:
+    """Run the common host L-BFGS and residual-Newton solve policy."""
+
+    callback_iterations = 0
+    history_stride = 10 if x0.size > 512 else 1
+
+    def callback(x: np.ndarray) -> None:
+        nonlocal callback_iterations
+        callback_iterations += 1
+        if callback_iterations == 1 or callback_iterations % history_stride == 0:
+            record(callback_iterations, x)
+
+    # Reserve iterations for Newton: L-BFGS can stall on relative energy while
+    # physical forces are still large.
+    polish_cap = 100 if x0.size > 2048 else 50
+    if x0.size <= 512:
+        polish_cap = 200
+    polish_reserve = min(polish_cap, max(1, int(config.max_iterations) // 4))
+    available = int(config.max_iterations) - polish_reserve
+    lbfgs_budget = max(10, available // 2) if x0.size > 512 else max(1, available)
+    optimization = minimize(
+        fun=lambda x: evaluate(x)[0],
+        x0=x0,
+        jac=lambda x: evaluate(x)[1],
+        method="L-BFGS-B",
+        bounds=list(zip(lower_bounds, upper_bounds, strict=True)),
+        callback=callback,
+        options={
+            "maxiter": lbfgs_budget,
+            "gtol": float(gradient_tolerance),
+            "ftol": np.finfo(float).eps,
+            "maxls": 50,
+            "maxcor": 20,
+        },
+    )
+    final_x = np.asarray(optimization.x)
+    optimizer_success = bool(optimization.success)
+    optimizer_message = str(optimization.message)
+    polish_evaluations = 0
+    newton_steps = 0
+    linear_iterations = 0
+    final_linear_residual = 0.0
+
+    candidate_variational = packed_variational(final_x, unpack(jnp.asarray(final_x)))
+    gradient_function = jax.jit(jax.grad(objective))
+    if float(candidate_variational.maximum) > config.ftol and final_x.size > 512 and matrix_free_context is not None:
+        remaining = max(1, int(config.max_iterations) - int(optimization.nit))
+
+        def record_newton(x: np.ndarray) -> None:
+            nonlocal newton_steps
+            newton_steps += 1
+            record(callback_iterations + newton_steps, x)
+
+        grid, vectorizer = matrix_free_context
+        (
+            final_x,
+            _attempted_newton_steps,
+            linear_iterations,
+            final_linear_residual,
+            newton_success,
+            newton_message,
+        ) = _matrix_free_newton_polish(
+            final_x,
+            gradient_function,
+            objective,
+            grid,
+            vectorizer,
+            ftol=config.ftol,
+            max_steps=min(polish_reserve, remaining),
+            record_step=record_newton,
+            lower_bounds=lower_bounds,
+            upper_bounds=upper_bounds,
+        )
+        optimizer_success = bool(newton_success)
+        optimizer_message += f"; {newton_message}"
+        candidate_variational = packed_variational(final_x, unpack(jnp.asarray(final_x)))
+
+    # A bounded dense fallback is the robust reference lane up to 2048 dofs.
+    if float(candidate_variational.maximum) > config.ftol and final_x.size <= 2048:
+        hessian_function = jax.jit(jax.jacfwd(jax.grad(objective)))
+        remaining = max(1, int(config.max_iterations) - int(optimization.nit) - newton_steps)
+        polish = least_squares(
+            fun=lambda x: np.asarray(gradient_function(jnp.asarray(x)), dtype=float),
+            x0=final_x,
+            jac=lambda x: np.asarray(hessian_function(jnp.asarray(x)), dtype=float),
+            bounds=(lower_bounds, upper_bounds),
+            method="trf",
+            ftol=1.0e-14,
+            xtol=1.0e-14,
+            gtol=1.0e-14,
+            x_scale="jac",
+            max_nfev=remaining,
+        )
+        final_x = np.asarray(polish.x)
+        polish_evaluations = int(polish.nfev)
+        optimizer_success = bool(polish.success)
+        optimizer_message += f"; residual-Newton: {polish.message}"
+
+    return _OptimizationOutcome(
+        vector=final_x,
+        iterations=int(optimization.nit) + newton_steps + polish_evaluations,
+        optimizer_success=optimizer_success,
+        linear_iterations=linear_iterations,
+        final_linear_residual=final_linear_residual,
+        message=optimizer_message,
     )
 
 
@@ -613,9 +710,7 @@ def solve_fixed_boundary_cli(
             return mirror_energy(state, grid, **energy_kwargs)
 
         def evaluate_variational(state: MirrorState) -> VariationalResidual:
-            return fixed_boundary_variational_residual(
-                state, boundary, grid, **energy_kwargs
-            )
+            return fixed_boundary_variational_residual(state, boundary, grid, **energy_kwargs)
 
         def evaluate_force(
             state: MirrorState, energy: MirrorEnergy | AnisotropicMirrorEnergy
@@ -630,9 +725,7 @@ def solve_fixed_boundary_cli(
         }
 
         def evaluate_energy(state: MirrorState) -> MirrorEnergy | AnisotropicMirrorEnergy:
-            return anisotropic_mirror_energy(
-                state, grid, pressure_closure, **energy_kwargs
-            )
+            return anisotropic_mirror_energy(state, grid, pressure_closure, **energy_kwargs)
 
         def evaluate_variational(state: MirrorState) -> VariationalResidual:
             return anisotropic_fixed_boundary_variational_residual(
@@ -642,9 +735,7 @@ def solve_fixed_boundary_cli(
         def evaluate_force(
             state: MirrorState, energy: MirrorEnergy | AnisotropicMirrorEnergy
         ) -> IsotropicForceResidual | AnisotropicForceResidual:
-            return anisotropic_force_residual(
-                state, energy, grid, pressure_closure
-            )
+            return anisotropic_force_residual(state, energy, grid, pressure_closure)
 
     initial_energy = evaluate_energy(projected_initial)
     energy_scale = max(abs(float(initial_energy.total)), np.finfo(float).tiny)
@@ -678,9 +769,7 @@ def solve_fixed_boundary_cli(
         lambda_values = gradient[vectorizer.radius_size :]
         radius_rms = float(np.sqrt(np.mean(radius_values**2)))
         lambda_rms = float(np.sqrt(np.mean(lambda_values**2)))
-        maximum = float(
-            max(np.max(np.abs(radius_values)), np.max(np.abs(lambda_values)))
-        )
+        maximum = float(max(np.max(np.abs(radius_values)), np.max(np.abs(lambda_values))))
         return VariationalResidual(
             radius_gradient=variational.radius_gradient,
             lambda_gradient=variational.lambda_gradient,
@@ -745,9 +834,7 @@ def solve_fixed_boundary_cli(
             variational=initial_variational,
             force=evaluate_force(projected_initial, initial_energy),
             staggered_weak_force=initial_weak_force,
-            normalized_divergence_rms=normalized_divergence_rms(
-                initial_energy.field, initial_energy.geometry, grid
-            ),
+            normalized_divergence_rms=normalized_divergence_rms(initial_energy.field, initial_energy.geometry, grid),
             history=jnp.asarray(history),
             iterations=0,
             converged=True,
@@ -758,122 +845,31 @@ def solve_fixed_boundary_cli(
         )
         return result
 
-    callback_iterations = 0
-    history_stride = 10 if x0.size > 512 else 1
-
-    def callback(x: np.ndarray) -> None:
-        nonlocal callback_iterations
-        callback_iterations += 1
-        if callback_iterations == 1 or callback_iterations % history_stride == 0:
-            record(callback_iterations, x)
-
-    # Reserve iterations for Newton: L-BFGS can stall on relative energy while
-    # physical forces are still large.
-    polish_cap = 100 if x0.size > 2048 else 50
-    if x0.size <= 512:
-        polish_cap = 200
-    polish_reserve = min(polish_cap, max(1, int(config.max_iterations) // 4))
-    available = int(config.max_iterations) - polish_reserve
-    lbfgs_budget = max(10, available // 2) if x0.size > 512 else max(1, available)
-    optimization = minimize(
-        fun=lambda x: evaluate(x)[0],
-        x0=x0,
-        jac=lambda x: evaluate(x)[1],
-        method="L-BFGS-B",
-        bounds=list(zip(lower_bounds, upper_bounds, strict=True)),
-        callback=callback,
-        options={
-            "maxiter": lbfgs_budget,
-            "gtol": float(gradient_tolerance),
-            "ftol": np.finfo(float).eps,
-            "maxls": 50,
-            "maxcor": 20,
-        },
+    optimization = _optimize_fixed_boundary(
+        x0,
+        lower_bounds,
+        upper_bounds,
+        objective=objective,
+        evaluate=evaluate,
+        packed_variational=packed_variational,
+        unpack=unpack,
+        record=record,
+        config=config,
+        gradient_tolerance=gradient_tolerance,
+        matrix_free_context=(grid, vectorizer),
     )
-    final_x = np.asarray(optimization.x)
-    optimizer_success = bool(optimization.success)
-    optimizer_message = str(optimization.message)
-    polish_evaluations = 0
-    newton_steps = 0
-    linear_iterations = 0
-    final_linear_residual = 0.0
-
-    # L-BFGS commonly reaches machine-level relative energy change before the
-    # physical force is small.  An exact dense residual-Newton polish is a
-    # reliable M2 reference for modest systems; M4 replaces this size-limited
-    # path with matrix-free Newton-GMRES and the separable preconditioner.
-    candidate_variational = packed_variational(
-        final_x, unpack(jnp.asarray(final_x))
-    )
-    gradient_function = jax.jit(jax.grad(objective))
-    if float(candidate_variational.maximum) > config.ftol and final_x.size > 512:
-        remaining = max(1, int(config.max_iterations) - int(optimization.nit))
-
-        def record_newton(x: np.ndarray) -> None:
-            nonlocal newton_steps
-            newton_steps += 1
-            record(callback_iterations + newton_steps, x)
-
-        (
-            final_x,
-            _attempted_newton_steps,
-            linear_iterations,
-            final_linear_residual,
-            newton_success,
-            newton_message,
-        ) = _matrix_free_newton_polish(
-            final_x,
-            gradient_function,
-            objective,
-            grid,
-            vectorizer,
-            ftol=config.ftol,
-            max_steps=min(polish_reserve, remaining),
-            record_step=record_newton,
-            lower_bounds=lower_bounds,
-            upper_bounds=upper_bounds,
-        )
-        optimizer_success = bool(newton_success)
-        optimizer_message += f"; {newton_message}"
-        candidate_variational = packed_variational(
-            final_x, unpack(jnp.asarray(final_x))
-        )
-
-    # Moderate matrix-free cases may still stall before the physical contract.
-    # A bounded dense fallback is the robust reference lane up to 2048 dofs.
-    if float(candidate_variational.maximum) > config.ftol and final_x.size <= 2048:
-        hessian_function = jax.jit(jax.jacfwd(jax.grad(objective)))
-        remaining = max(
-            1, int(config.max_iterations) - int(optimization.nit) - newton_steps
-        )
-        polish = least_squares(
-            fun=lambda x: np.asarray(gradient_function(jnp.asarray(x)), dtype=float),
-            x0=final_x,
-            jac=lambda x: np.asarray(hessian_function(jnp.asarray(x)), dtype=float),
-            bounds=(lower_bounds, upper_bounds),
-            method="trf",
-            ftol=1.0e-14,
-            xtol=1.0e-14,
-            gtol=1.0e-14,
-            x_scale="jac",
-            max_nfev=remaining,
-        )
-        final_x = np.asarray(polish.x)
-        polish_evaluations = int(polish.nfev)
-        optimizer_success = bool(polish.success)
-        optimizer_message += f"; residual-Newton: {polish.message}"
+    final_x = optimization.vector
 
     final_state = unpack(jnp.asarray(final_x))
     final_energy = evaluate_energy(final_state)
     final_variational = packed_variational(final_x, final_state)
     final_force = evaluate_force(final_state, final_energy)
     final_weak_force = packed_staggered_weak(final_state)
-    record(callback_iterations + newton_steps + polish_evaluations, final_x)
+    record(optimization.iterations, final_x)
     converged = bool(
-        float(final_variational.maximum) <= config.ftol
-        and not bool(final_energy.geometry.jacobian_sign_changed)
+        float(final_variational.maximum) <= config.ftol and not bool(final_energy.geometry.jacobian_sign_changed)
     )
-    message = optimizer_message
+    message = optimization.message
     if not converged:
         message += f"; variational force={float(final_variational.maximum):.3e}"
     result = MirrorSolveResult(
@@ -882,15 +878,13 @@ def solve_fixed_boundary_cli(
         variational=final_variational,
         force=final_force,
         staggered_weak_force=final_weak_force,
-        normalized_divergence_rms=normalized_divergence_rms(
-            final_energy.field, final_energy.geometry, grid
-        ),
+        normalized_divergence_rms=normalized_divergence_rms(final_energy.field, final_energy.geometry, grid),
         history=jnp.asarray(history),
-        iterations=int(optimization.nit) + newton_steps + polish_evaluations,
+        iterations=optimization.iterations,
         converged=converged,
-        optimizer_success=optimizer_success,
-        linear_iterations=linear_iterations,
-        final_linear_residual=final_linear_residual,
+        optimizer_success=optimization.optimizer_success,
+        linear_iterations=optimization.linear_iterations,
+        final_linear_residual=optimization.final_linear_residual,
         message=message,
     )
     if require_convergence and not converged:
