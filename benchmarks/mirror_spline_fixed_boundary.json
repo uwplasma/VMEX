@@ -39,5 +39,21 @@
     "volume": 5.9136e-6,
     "center_radius": 3.1603e-4
   },
+  "matrix_free_scaling": {
+    "ns": 17,
+    "mpol": 1,
+    "ntheta": 3,
+    "elements": 12,
+    "coefficients": 15,
+    "quadrature_nodes": 50,
+    "active_dofs": 585,
+    "cold_wall_s": 4.8897,
+    "iterations": 127,
+    "linear_iterations": 1000,
+    "final_linear_residual": 9.4787e-7,
+    "variational_max": 1.2294e-15,
+    "staggered_weak_max": 1.2327e-15,
+    "maximum_radius_error": 5.6066e-15
+  },
   "note": "Sequential local cold timings include representation-specific JAX compilation and are evidence, not a steady-state speed claim."
 }

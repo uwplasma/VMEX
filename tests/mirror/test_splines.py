@@ -14,6 +14,7 @@ from vmec_jax.mirror.splines import CubicBSplineBasis  # noqa: E402
 from vmec_jax.mirror import MirrorBoundary, MirrorConfig, MirrorResolution, MirrorState  # noqa: E402
 from vmec_jax.mirror.forces import mirror_energy  # noqa: E402
 from vmec_jax.mirror.geometry import evaluate_geometry  # noqa: E402
+from vmec_jax.mirror.solver import SeparableMirrorPreconditioner  # noqa: E402
 from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorDiscretization,
     SplineMirrorState,
@@ -230,3 +231,62 @@ def test_spline_solver_converges_nonaxisymmetric_finite_current_state() -> None:
     assert float(jnp.max(jnp.abs(evaluated.state.lambda_stream))) > 1.0e-3
     np.testing.assert_allclose(surface_integrals, 0.0, atol=3.0e-15)
     np.testing.assert_allclose(evaluated.state.lambda_stream[0], evaluated.state.lambda_stream[1])
+
+
+def test_spline_coefficient_preconditioner_inverts_tensor_model() -> None:
+    config = MirrorConfig(resolution=MirrorResolution(ns=9, mpol=2, ntheta=7, nxi=9))
+    discretization = SplineMirrorDiscretization.build(config, elements=8)
+    derivative = np.asarray(
+        discretization.spline.basis_matrix(discretization.grid.axial_basis.nodes, derivative=1)
+    ) / float(discretization.grid.dz_dxi)
+    weights = np.asarray(discretization.grid.axial_basis.weights)
+    interior = derivative[:, 1:-1]
+    stiffness = interior.T @ (weights[:, None] * interior)
+    preconditioner = SeparableMirrorPreconditioner.build_from_axial_stiffness(discretization.grid, stiffness)
+    exact = np.random.default_rng(32).normal(size=preconditioner.size)
+
+    np.testing.assert_allclose(
+        preconditioner.apply(preconditioner.operator(exact)),
+        exact,
+        rtol=4.0e-12,
+        atol=4.0e-12,
+    )
+
+
+@pytest.mark.full
+def test_large_spline_solve_uses_matrix_free_coefficient_preconditioner() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=17, mpol=1, ntheta=3, nxi=25),
+        z_min=-1.2,
+        z_max=1.2,
+        ftol=1.0e-12,
+        max_iterations=300,
+    )
+    source_grid = config.build_grid()
+    boundary = MirrorBoundary.from_radius(0.3, source_grid)
+    base = MirrorState.from_boundary(boundary, source_grid)
+    s = jnp.asarray(source_grid.s)[:, None, None]
+    xi = jnp.asarray(source_grid.xi)[None, None, :]
+    initial = MirrorState(
+        base.radius_scale + 0.03 * s * (1.0 - s) * (1.0 - xi**2),
+        base.lambda_stream,
+    )
+    discretization = SplineMirrorDiscretization.build(config, elements=12)
+    assert (source_grid.ns - 2) * source_grid.ntheta * (discretization.coefficient_count - 2) > 512
+
+    result = solve_spline_fixed_boundary_cli(
+        discretization.fit_state(initial, source_grid),
+        discretization.fit_boundary(boundary, source_grid),
+        discretization,
+        config,
+        axial_flux_derivative=0.1,
+        gradient_tolerance=1.0e-12,
+        require_convergence=True,
+    ).evaluated
+
+    assert result.converged
+    assert result.linear_iterations > 0
+    assert result.final_linear_residual < 1.0e-5
+    assert float(result.variational.maximum) <= config.ftol
+    assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
+    np.testing.assert_allclose(result.state.radius_scale, 0.3, atol=7.0e-15)

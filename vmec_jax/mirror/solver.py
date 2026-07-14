@@ -271,24 +271,50 @@ class SeparableMirrorPreconditioner:
     ) -> "SeparableMirrorPreconditioner":
         """Build the normalized separable stiffness inverse for ``grid``."""
 
+        derivative = np.asarray(grid.axial_basis.derivative_matrix, dtype=float)
+        weights = np.asarray(grid.axial_basis.weights, dtype=float)
+        interior_derivative = derivative[:, 1:-1] / float(grid.dz_dxi)
+        axial = interior_derivative.T @ (weights[:, None] * interior_derivative)
+        return cls.build_from_axial_stiffness(
+            grid,
+            axial,
+            radial_nodes=radial_nodes,
+            shift=shift,
+            radial_strength=radial_strength,
+            poloidal_strength=poloidal_strength,
+            axial_strength=axial_strength,
+        )
+
+    @classmethod
+    def build_from_axial_stiffness(
+        cls,
+        grid: "MirrorGrid",
+        axial_stiffness: Array,
+        *,
+        radial_nodes: int | None = None,
+        shift: float = 1.0e-3,
+        radial_strength: float = 1.0,
+        poloidal_strength: float = 1.0,
+        axial_strength: float = 1.0,
+    ) -> "SeparableMirrorPreconditioner":
+        """Build the tensor inverse from a representation-specific axial block."""
+
         strengths = (radial_strength, poloidal_strength, axial_strength)
         if shift <= 0.0 or min(strengths) < 0.0:
             raise ValueError("shift must be positive and stiffness strengths nonnegative")
         nr = grid.ns - 2 if radial_nodes is None else int(radial_nodes)
-        nx = grid.nxi - 2
+        axial = np.asarray(axial_stiffness, dtype=float)
+        if axial.ndim != 2 or axial.shape[0] != axial.shape[1]:
+            raise ValueError("axial stiffness must be a square matrix")
+        nx = int(axial.shape[0])
         if nr < 1 or nx < 1:
-            raise ValueError("preconditioning requires interior radial and axial nodes")
+            raise ValueError("preconditioning requires interior radial and axial values")
 
         ds = float(grid.s[1] - grid.s[0])
         radial = np.diag(np.full(nr, 2.0 / ds**2))
         if nr > 1:
             off_diagonal = np.full(nr - 1, -1.0 / ds**2)
             radial += np.diag(off_diagonal, 1) + np.diag(off_diagonal, -1)
-
-        derivative = np.asarray(grid.axial_basis.derivative_matrix, dtype=float)
-        weights = np.asarray(grid.axial_basis.weights, dtype=float)
-        interior_derivative = derivative[:, 1:-1] / float(grid.dz_dxi)
-        axial = interior_derivative.T @ (weights[:, None] * interior_derivative)
 
         radial_values, radial_vectors = eigh(radial, check_finite=True)
         axial_values, axial_vectors = eigh(axial, check_finite=True)
@@ -396,8 +422,8 @@ def _matrix_free_newton_polish(
     x0: np.ndarray,
     gradient_function: Any,
     objective_function: Any,
-    grid: "MirrorGrid",
-    vectorizer: _MirrorStateVectorizer,
+    vectorizer: Any,
+    preconditioner: tuple[Any, np.ndarray],
     *,
     ftol: float,
     max_steps: int,
@@ -408,7 +434,7 @@ def _matrix_free_newton_polish(
     """Damped Newton-GMRES polish using exact JAX Hessian products."""
 
     x = np.asarray(x0, dtype=float)
-    apply_preconditioner, block_scales = _packed_preconditioner(grid, vectorizer)
+    apply_preconditioner, block_scales = preconditioner
 
     hessian_vector = jax.jit(lambda point, direction: jax.jvp(gradient_function, (point,), (direction,))[1])
     linear_iterations = 0
@@ -522,7 +548,7 @@ def _optimize_fixed_boundary(
     record: Any,
     config: MirrorConfig,
     gradient_tolerance: float,
-    matrix_free_context: tuple["MirrorGrid", _MirrorStateVectorizer] | None,
+    matrix_free_context: tuple[Any, tuple[Any, np.ndarray]] | None,
 ) -> _OptimizationOutcome:
     """Run the common host L-BFGS and residual-Newton solve policy."""
 
@@ -576,7 +602,7 @@ def _optimize_fixed_boundary(
             newton_steps += 1
             record(callback_iterations + newton_steps, x)
 
-        grid, vectorizer = matrix_free_context
+        vectorizer, preconditioner = matrix_free_context
         (
             final_x,
             _attempted_newton_steps,
@@ -588,8 +614,8 @@ def _optimize_fixed_boundary(
             final_x,
             gradient_function,
             objective,
-            grid,
             vectorizer,
+            preconditioner,
             ftol=config.ftol,
             max_steps=min(polish_reserve, remaining),
             record_step=record_newton,
@@ -856,7 +882,7 @@ def solve_fixed_boundary_cli(
         record=record,
         config=config,
         gradient_tolerance=gradient_tolerance,
-        matrix_free_context=(grid, vectorizer),
+        matrix_free_context=(vectorizer, _packed_preconditioner(grid, vectorizer)),
     )
     final_x = optimization.vector
 

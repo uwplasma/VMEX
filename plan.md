@@ -416,6 +416,13 @@ variables versus 45 Chebyshev variables with relative differences of
 Coefficient-space preconditioning, larger knot refinement, and all Milestone 1
 case parity remain open.
 
+The first coefficient-space preconditioner reuses the nodal radial/Fourier
+tensor inverse with a spline Galerkin axial stiffness. A 585-variable
+``mpol=1`` cylinder crosses the dense threshold and converges both residuals to
+``1.23e-15`` while recovering the analytic radius to ``5.6e-15``. Its 1,000
+inner GMRES iterations make this a correctness gate only; bounded Krylov
+scaling remains Milestone 8 work.
+
 Add only `mirror/splines.py`; keep the basis protocol in `basis.py` small.
 
 1. Implement clamped and periodic cubic basis values, first derivatives,

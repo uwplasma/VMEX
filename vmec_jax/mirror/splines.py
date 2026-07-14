@@ -562,6 +562,49 @@ class _SplineStateVectorizer:
         return np.concatenate((radius, (free * self.flux_scale).reshape(-1)))
 
 
+def _packed_spline_preconditioner(
+    discretization: SplineMirrorDiscretization,
+    vectorizer: _SplineStateVectorizer,
+) -> tuple[Any, np.ndarray]:
+    """Build the existing tensor preconditioner on spline coefficients."""
+
+    from .solver import SeparableMirrorPreconditioner
+
+    derivative = np.asarray(
+        discretization.spline.basis_matrix(discretization.grid.axial_basis.nodes, derivative=1)
+    ) / float(discretization.grid.dz_dxi)
+    weights = np.asarray(discretization.grid.axial_basis.weights)
+    interior = derivative[:, 1:-1]
+    stiffness = interior.T @ (weights[:, None] * interior)
+    geometry = SeparableMirrorPreconditioner.build_from_axial_stiffness(discretization.grid, stiffness)
+    stream = None
+    if vectorizer.lambda_size:
+        stream = SeparableMirrorPreconditioner.build_from_axial_stiffness(
+            discretization.grid,
+            stiffness,
+            radial_nodes=discretization.grid.ns - 1,
+        )
+    scales = np.ones(2)
+
+    def apply(vector: np.ndarray) -> np.ndarray:
+        vector = np.asarray(vector, dtype=float)
+        result = np.array(vector, copy=True)
+        result[: vectorizer.radius_size] = geometry.apply(vector[: vectorizer.radius_size]) * scales[0]
+        if stream is not None:
+            result[vectorizer.radius_size :] = (
+                stream.apply_gauge_free(
+                    vector[vectorizer.radius_size :],
+                    free_indices=vectorizer.lambda_free_indices,
+                    pivot=vectorizer.lambda_pivot,
+                    weights=vectorizer.lambda_weights,
+                )
+                * scales[1]
+            )
+        return result
+
+    return apply, scales
+
+
 def solve_spline_fixed_boundary_cli(
     initial_state: SplineMirrorState,
     boundary: SplineMirrorBoundary,
@@ -707,7 +750,10 @@ def solve_spline_fixed_boundary_cli(
             record=record,
             config=config,
             gradient_tolerance=gradient_tolerance,
-            matrix_free_context=None,
+            matrix_free_context=(
+                vectorizer,
+                _packed_spline_preconditioner(discretization, vectorizer),
+            ),
         )
         final_x = optimization.vector
         iterations = optimization.iterations

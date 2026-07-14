@@ -173,6 +173,13 @@ center radius. Larger knot studies and a coefficient-space preconditioner are
 still required before splines become the public default. Compact evidence is
 in ``benchmarks/mirror_spline_fixed_boundary.json``.
 
+Above the dense-reference threshold, a 585-variable ``mpol=1`` cylinder uses
+the same radial/Fourier tensor preconditioner with the spline Galerkin axial
+stiffness. It converges both variational and staggered residuals to
+``1.23e-15`` and recovers the exact radius to ``5.6e-15``. Its 1,000 inner
+GMRES iterations expose conditioning work still assigned to Milestone 8; this
+result establishes a working matrix-free path, not a final scaling claim.
+
 Fixed-boundary implicit gradients
 ---------------------------------
 
