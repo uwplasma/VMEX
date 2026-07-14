@@ -3,8 +3,9 @@
 This M2 solver is the non-differentiable CLI/reference lane.  It minimizes the
 same JAX energy used by the future traced lane, but lets SciPy control L-BFGS
 line searches and early exits.  Crucially, SciPy success is not equilibrium
-success: the returned state is converged only when the independently computed
-physical tensor-force residual meets ``MirrorConfig.ftol``.
+success: the returned state is converged only when the normalized variational
+force meets ``MirrorConfig.ftol``. The independently differenced tensor force
+and ``div(B)`` remain discretization-verification diagnostics.
 
 Large M2 systems are polished with separably preconditioned Newton-GMRES;
 small systems retain an exact dense Newton reference.  M9 adds implicit
@@ -37,6 +38,7 @@ from .forces import (
     isotropic_force_residual,
     mirror_energy,
 )
+from .geometry import normalized_divergence_rms
 from .model import (
     MirrorBoundary,
     MirrorConfig,
@@ -63,6 +65,7 @@ class MirrorSolveResult:
     energy: MirrorEnergy | AnisotropicMirrorEnergy
     variational: VariationalResidual
     force: IsotropicForceResidual | AnisotropicForceResidual
+    normalized_divergence_rms: Array
     history: Array
     iterations: int
     converged: bool
@@ -74,7 +77,14 @@ class MirrorSolveResult:
 
 jax.tree_util.register_dataclass(
     MirrorSolveResult,
-    data_fields=["state", "energy", "variational", "force", "history"],
+    data_fields=[
+        "state",
+        "energy",
+        "variational",
+        "force",
+        "normalized_divergence_rms",
+        "history",
+    ],
     meta_fields=[
         "iterations",
         "converged",
@@ -680,6 +690,9 @@ def solve_fixed_boundary_cli(
             energy=initial_energy,
             variational=initial_variational,
             force=evaluate_force(projected_initial, initial_energy),
+            normalized_divergence_rms=normalized_divergence_rms(
+                initial_energy.field, initial_energy.geometry, grid
+            ),
             history=jnp.asarray(history),
             iterations=0,
             converged=True,
@@ -812,6 +825,9 @@ def solve_fixed_boundary_cli(
         energy=final_energy,
         variational=final_variational,
         force=final_force,
+        normalized_divergence_rms=normalized_divergence_rms(
+            final_energy.field, final_energy.geometry, grid
+        ),
         history=jnp.asarray(history),
         iterations=int(optimization.nit) + newton_steps + polish_evaluations,
         converged=converged,

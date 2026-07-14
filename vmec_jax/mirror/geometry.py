@@ -188,6 +188,37 @@ def divergence_b(field: ContravariantField, geometry: MirrorGeometry, grid: "Mir
     return _safe_divide(theta_term + xi_term, geometry.sqrt_g)
 
 
+def normalized_divergence_rms(
+    field: ContravariantField,
+    geometry: MirrorGeometry,
+    grid: "MirrorGrid",
+) -> Array:
+    """Return the volume-weighted RMS of ``div(B)`` normalized by ``B/L``.
+
+    The magnetic axis and open end cuts are constrained coordinate boundaries,
+    so this diagnostic norms the active volume. Its normalization permits
+    comparisons across field strengths and mirror lengths.
+    """
+
+    divergence = divergence_b(field, geometry, grid)[1:, :, 1:-1]
+    b_squared = magnetic_field_squared(field, geometry)[1:, :, 1:-1]
+    weights = (
+        jnp.asarray(grid.radial_weights[1:])[:, None, None]
+        * jnp.asarray(grid.theta_basis.weights)[None, :, None]
+        * jnp.asarray(grid.axial_basis.weights)[None, None, 1:-1]
+        * geometry.sqrt_g[1:, :, 1:-1]
+    )
+    weight_sum = jnp.sum(weights)
+    divergence_rms = jnp.sqrt(jnp.sum(weights * divergence**2) / weight_sum)
+    length = float(grid.z[-1] - grid.z[0])
+    field_gradient_rms = jnp.sqrt(
+        jnp.sum(weights * b_squared / length**2) / weight_sum
+    )
+    return divergence_rms / jnp.maximum(
+        field_gradient_rms, jnp.finfo(divergence_rms.dtype).tiny
+    )
+
+
 def magnetic_field_squared(field: ContravariantField, geometry: MirrorGeometry) -> Array:
     """Contract contravariant components with the covariant metric."""
 

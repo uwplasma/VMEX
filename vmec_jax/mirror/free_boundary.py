@@ -11,14 +11,18 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from .forces import (
+    AnisotropicForceResidual,
     AnisotropicMirrorEnergy,
     InterfaceResidual,
+    IsotropicForceResidual,
     MirrorEnergy,
+    anisotropic_force_residual,
     anisotropic_mirror_energy,
     interface_residual,
+    isotropic_force_residual,
     mirror_energy,
 )
-from .geometry import magnetic_field_squared
+from .geometry import magnetic_field_squared, normalized_divergence_rms
 from .exterior_bie import (
     AxisymmetricExteriorVacuum,
     NonaxisymmetricExteriorVacuum,
@@ -69,6 +73,8 @@ class FreeBoundaryMirrorResult:
     boundary: MirrorBoundary
     plasma_state: MirrorState
     plasma_energy: MirrorEnergy | AnisotropicMirrorEnergy
+    plasma_force: IsotropicForceResidual | AnisotropicForceResidual
+    normalized_divergence_rms: Array
     plasma_b_squared: Array
     perpendicular_pressure: Array
     vacuum_geometry: VacuumGeometry | "ClosedMirrorSurface"
@@ -458,6 +464,18 @@ def solve_free_boundary_cli(
     )
     final_residual = np.asarray(residual_jit(jnp.asarray(solution)), dtype=float)
     variational_max = float(np.max(np.abs(final_residual)))
+    if pressure_closure is None:
+        plasma_force = isotropic_force_residual(plasma, plasma_grid)
+    else:
+        plasma_force = anisotropic_force_residual(
+            state,
+            plasma,
+            plasma_grid,
+            _ScaledPressureClosure(pressure_closure, mass_scale),
+        )
+    divergence_rms = normalized_divergence_rms(
+        plasma.field, plasma.geometry, plasma_grid
+    )
     converged = bool(
         variational_max <= config.ftol
         and not bool(plasma.geometry.jacobian_sign_changed)
@@ -471,6 +489,8 @@ def solve_free_boundary_cli(
         boundary=boundary,
         plasma_state=state,
         plasma_energy=plasma,
+        plasma_force=plasma_force,
+        normalized_divergence_rms=divergence_rms,
         plasma_b_squared=plasma_b_squared_full,
         perpendicular_pressure=perpendicular_pressure,
         vacuum_geometry=vacuum_geometry,

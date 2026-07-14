@@ -361,6 +361,12 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
     assert len(results) == 4
     assert all(result.converged for result in results)
     assert all(float(result.variational_max) <= config.ftol for result in results)
+    assert all(
+        np.isfinite(float(result.plasma_force.normalized_rms)) for result in results
+    )
+    assert all(
+        float(result.normalized_divergence_rms) < 3.0e-13 for result in results
+    )
     assert all(float(result.interface.normal_stress_rms) < 1.0e-12 for result in results)
     assert np.all(np.diff(center_radii) > 0.0)
     assert center_radii[-1] > 1.005 * center_radii[0]

@@ -24,6 +24,7 @@ from vmec_jax.mirror import (  # noqa: E402
     magnetic_field_squared,
     mirror_energy,
 )
+from vmec_jax.mirror.geometry import normalized_divergence_rms  # noqa: E402
 
 
 def _axisymmetric_grid(*, ns: int = 17, nxi: int = 33, half_length: float = 1.8):
@@ -65,6 +66,7 @@ def test_cylinder_geometry_matches_exact_metrics_volume_and_field() -> None:
         atol=3.0e-14,
     )
     np.testing.assert_allclose(divergence_b(field, geometry, grid), 0.0, atol=3.0e-14)
+    assert float(normalized_divergence_rms(field, geometry, grid)) < 3.0e-14
 
 
 def test_polynomial_flared_tube_matches_exact_jacobian_and_volume() -> None:

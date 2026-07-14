@@ -7,7 +7,7 @@ or inspected without reconstructing the solver objects.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,8 @@ class MoutData:
     variational_max: float
     normal_stress_rms: float
     b_normal_rms: float
+    pointwise_force_rms: float = np.nan
+    normalized_divergence_rms: float = np.nan
     closure: str = "unknown"
     message: str = ""
     schema: str = MIRROR_OUTPUT_SCHEMA
@@ -106,6 +108,7 @@ def mout_from_result(
     if coils.ndim != 3 or coils.shape[-1] != 3:
         raise ValueError("coil_xyz must have shape (ncoil, npoint, 3)")
     interface = getattr(result, "interface", None)
+    force = getattr(result, "plasma_force", getattr(result, "force", None))
     variational = getattr(result, "variational", None)
     variational_max = getattr(result, "variational_max", None)
     if variational_max is None:
@@ -137,6 +140,12 @@ def mout_from_result(
         ),
         b_normal_rms=(
             float(interface.vacuum_b_normal_rms) if interface is not None else np.nan
+        ),
+        pointwise_force_rms=(
+            float(force.normalized_rms) if force is not None else np.nan
+        ),
+        normalized_divergence_rms=float(
+            getattr(result, "normalized_divergence_rms", np.nan)
         ),
         closure=str(closure),
         message=str(result.message),
@@ -186,7 +195,8 @@ def write_mout(path: str | Path, data: MoutData, *, overwrite: bool = True) -> P
         dataset.setncattr("schema", data.schema)
         for name in (
             "ftol", "iterations", "converged", "mass_scale", "variational_max",
-            "normal_stress_rms", "b_normal_rms", "closure", "message",
+            "normal_stress_rms", "b_normal_rms", "pointwise_force_rms",
+            "normalized_divergence_rms", "closure", "message",
         ):
             value = getattr(data, name)
             dataset.setncattr(name, int(value) if isinstance(value, (bool, np.bool_)) else value)
@@ -231,11 +241,18 @@ def read_mout(path: str | Path) -> MoutData:
             "lambda_stream", "mod_b", "b_xyz", "p_perpendicular", "p_parallel",
             "history", "coil_xyz",
         )}
-        attributes = {
-            field.name: dataset.getncattr(field.name)
-            for field in fields(MoutData)
-            if field.name not in arrays and field.name != "schema"
-        }
+        attributes = {}
+        for field in fields(MoutData):
+            if field.name in arrays or field.name == "schema":
+                continue
+            if field.name in dataset.ncattrs():
+                attributes[field.name] = dataset.getncattr(field.name)
+            elif field.default is not MISSING:
+                attributes[field.name] = field.default
+            else:
+                raise ValueError(
+                    f"mout file is missing required attribute: {field.name}"
+                )
     attributes["converged"] = bool(attributes["converged"])
     attributes["iterations"] = int(attributes["iterations"])
     data = MoutData(**arrays, **attributes, schema=schema)

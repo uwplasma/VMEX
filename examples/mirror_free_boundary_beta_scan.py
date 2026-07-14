@@ -38,12 +38,12 @@ from vmec_jax.mirror import (  # noqa: E402
     build_vacuum_grid,
     load_free_boundary_restart,
     mout_from_result,
+    plot_mout,
     write_mout,
     save_free_boundary_restart,
     solve_axisymmetric_beta_scan_cli,
     summarize_axisymmetric_beta_scan,
 )
-from vmec_jax import plot_mout  # noqa: E402
 
 # Inputs: edit these values, then run the file directly.
 BETAS = np.asarray([0.0, 0.01, 0.03, 0.10, 0.25, 0.50])
@@ -198,6 +198,8 @@ summary = np.asarray(
             float(item.paraxial_field_ratio),
             float(item.paraxial_relative_error),
             float(result.variational_max),
+            float(result.plasma_force.normalized_rms),
+            float(result.normalized_divergence_rms),
             float(result.interface.normal_stress_rms),
             float(result.interface.vacuum_b_normal_rms),
             float(result.mass_scale),
@@ -211,7 +213,8 @@ summary = np.asarray(
 header = (
     "requested_beta,achieved_reference_beta,volume_averaged_beta,center_radius_m,"
     "center_axis_field_T,diamagnetic_field_ratio,paraxial_field_ratio,"
-    "paraxial_relative_error,variational_max,normal_stress_rms,bnormal_rms_normalized,"
+    "paraxial_relative_error,variational_max,pointwise_force_rms,"
+    "normalized_divergence_rms,normal_stress_rms,bnormal_rms_normalized,"
     "mass_scale,iterations,exterior_compatibility,exterior_condition_number"
 )
 np.savetxt(OUTPUT_DIR / "beta_scan.csv", summary, delimiter=",", header=header, comments="")

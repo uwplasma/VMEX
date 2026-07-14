@@ -243,8 +243,11 @@ render horizontal 3D, coil, cap-to-cap field-line, ``|B|``, pressure,
 cross-section, and residual figures. The same figures can be regenerated with
 ``vmec --plot mout_*.nc``. The data include geometry, the stream function,
 Cartesian magnetic field, both pressure moments, interface residuals, solver
-history, closure metadata, and optional coil curves. Straight-axis mirror data
-are never encoded as a toroidal WOUT file.
+history, normalized variational and pointwise-force residuals, normalized
+``div(B)``, closure metadata, and optional coil curves. The variational residual
+defines ``ftol``. The pointwise force is a reconstructed discretization
+diagnostic, while ``div(B)`` checks the field representation. Straight-axis
+mirror data are never encoded as a toroidal WOUT file.
 
 The compact six-point isotropic reference data are recorded in
 ``benchmarks/mirror_free_boundary_axisymmetric.json``. At 50% requested and
