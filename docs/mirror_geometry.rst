@@ -99,6 +99,43 @@ The axis residual and 10,500 Krylov iterations remain promotion blockers.
 Systems through 2,048 unknowns have a bounded dense reference polish; larger
 systems report matrix-free convergence honestly.
 
+Independent nonaxisymmetric analytic fixtures
+----------------------------------------------
+
+``vmec_jax.mirror.analytic`` contains validation data that never call an
+equilibrium solve. ``RotatingEllipseParaxial`` maps a unit circle through a
+flux-conserving ellipse whose major axis turns by 90 degrees from one end to
+the other. A compensating field-line-label angle makes the first-order vacuum
+identity vanish while preserving
+
+.. math::
+
+   X_{1c}Y_{1s}-X_{1s}Y_{1c}=\bar B/B_0.
+
+It evaluates the Rodriguez-Helander-Goodman Appendix-C Riccati equation and
+the independent general and magnetic-well-minimum formulas for
+``(B20,B2c,B2s)``. Tests recover those coefficients from low-radius Fourier
+samples and verify that the order-``r`` ``m=1`` field strength is zero. This is
+the coefficient oracle for the native-spline fixed-boundary solve; it is not
+itself an equilibrium.
+
+``StraightFieldLineMirror`` implements the Agren-Savenko paraxial scalar
+potential, on-axis field, Clebsch labels, straight nonparallel field lines,
+and analytic elliptical sections. Its tests verify curl-free field, the
+expected order-``(a/c)^2`` solenoidal and field-line truncation errors, axial
+flux conservation, and
+
+.. math::
+
+   B_0(z)=\frac{B_0(0)}{1-z^2/c^2}, \qquad
+   \mathcal E(z)=\frac{1+|z/c|}{1-|z/c|}.
+
+Both fixtures require a thin tube and ``|z|<c``. The separate
+``long_thin_beta_scaling`` helper records the simultaneous
+``beta`` and ``lambda=(a/L)^2`` ordering only for ``beta <= 0.3`` and
+``a/L <= 0.2``. Its ``sqrt(1-beta)`` field ratio is an asymptotic pressure-
+balance reference, not a finite-beta solution or ellipticity prediction.
+
 Fixed-boundary implicit gradients
 ---------------------------------
 

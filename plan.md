@@ -196,7 +196,7 @@ equilibrium criterion.
 |---|---:|---|---|
 | Axisymmetric fixed mirror | 85% | real solve, `ftol=1e-12`, MMS, independent weak force, gradients | B-spline parity |
 | Axisymmetric free mirror | 80% | coupled solve, beta 0--50%, `B.n`, stress, weak force, three-grid paraxial trend | dense-Jacobian scaling and B-spline parity |
-| Nonaxisymmetric fixed mirror | 45% | theta-dependent state and one refinement run | no rotating-ellipse/SFLM coefficient validation |
+| Nonaxisymmetric fixed mirror | 55% | theta-dependent solve plus independent rotating-ellipse/SFLM coefficient oracles | no B-spline solve against either oracle |
 | Nonaxisymmetric free mirror | 30% | theta-dependent BIE and residual exist | no converged analytic fixture or panel study |
 | ANIMEC model | 55% | functional, moments, isotropic limit, indicators | source-equation audit and independent finite-beta case |
 | Implicit derivatives | 65% | fixed and axisymmetric-free FD checks | duplicated Krylov path and missing spline/nonaxisymmetric scaling |
@@ -382,6 +382,11 @@ branch gets smaller during implementation, not only at the end.
 
 ### Milestone 3: independent nonaxisymmetric fixtures
 
+Status: implementation complete locally. One compact ``mirror/analytic.py``
+contains both fixtures and their explicit validity domains; five independent
+tests cover flux, vacuum consistency, Riccati, quadrupole, curl/divergence,
+straight-line, ellipticity, finite-difference radial order, and JAX derivatives.
+
 Add at most one compact `mirror/analytic.py`.
 
 1. Implement data-only rotating-ellipse paraxial coefficients: `B0`, first-order
@@ -556,7 +561,7 @@ meets its size budget, and draft PR #22 is ready for scientific review.
   <https://doi.org/10.1017/S0022377824000345>
 - Rodriguez et al., *Constructing precisely quasi-isodynamic magnetic fields*
   (2023): <https://doi.org/10.1017/S0022377823001125>
-- Kesner et al., *Theory of the straight field line mirror* (2005):
+- Agren and Savenko, *Theory of the straight field line mirror* (2005):
   <https://info.fusion.ciemat.es/OCS/EPS2005/pdf/P4_069.pdf>
 - Goodman, Freidberg, and Lane, *Analytic mirror equilibria with new long-thin
   terms* (1986): <https://doi.org/10.1063/1.865851>

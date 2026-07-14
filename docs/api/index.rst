@@ -123,6 +123,9 @@ Outputs
 Straight-axis mirrors
 ---------------------
 
+.. automodule:: vmec_jax.mirror.analytic
+   :members:
+
 .. automodule:: vmec_jax.mirror.model
    :members:
 
