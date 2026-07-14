@@ -137,12 +137,14 @@ surface is an output, not an input.
 Direct ESSOS coils
 ~~~~~~~~~~~~~~~~~~
 
-``free_boundary_essos_coils.py`` replaces mgrid interpolation with direct,
-differentiable Biot--Savart evaluation of the Landreman--Paul QA coils. It
-calibrates pressure against *achieved* WOUT beta and uses bounded adaptive
-continuation. The validated branch reaches 3.350% actual beta; the failed
-3.3625% minimum-step trial is retained as a conditioning limit rather than
-shown as a converged surface.
+``free_boundary_essos_coils.py`` keeps coil ownership in ESSOS.  It tabulates
+the Landreman--Paul QA coil Biot--Savart field once into an in-memory
+``MgridField`` for the NESTOR forward solve, with no mgrid file to manage.
+Its virtual-casing objective separately accepts the same ESSOS ``xyz -> B``
+callable for differentiation.  The scan calibrates pressure against *achieved*
+WOUT beta and uses bounded adaptive continuation. The validated branch reaches
+3.350% actual beta; the failed 3.3625% minimum-step trial is retained as a
+conditioning limit rather than shown as a converged surface.
 
 .. image:: _static/figures/readme_essos_beta_scan.png
    :alt: Direct-coil Landreman-Paul free-boundary beta continuation

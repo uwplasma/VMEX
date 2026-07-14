@@ -25,11 +25,8 @@ original, it is differentiable and runs on GPUs.
   differentiation of the converged fixed point — no finite differences, no
   unrolling — validated against central finite differences to ~1e-6 relative
   (see the gradient table in the docs), with an O(1)-memory adjoint. **Free
-  boundary** fixed-surface coil objectives are differentiable through virtual
-  casing. Solved-LCFS `extcur` sensitivities use a matrix-free forward
-  implicit solve and agree with strict central re-solves to 0.33–0.42%; the
-  many-parameter reverse derivative of the NESTOR solved-LCFS fixed point is
-  deferred pending a compact operator-level transpose.
+  boundary** is differentiable end-to-end through the virtual-casing vacuum
+  field (coil / `extcur` derivatives), finite-difference-validated.
 - **Drop-in.** Reads VMEC2000 `input.*` namelists and VMEC++-style JSON,
   prints VMEC2000-format iteration output, and writes `wout_*.nc` files
   that load unchanged in simsopt and booz_xform.
@@ -164,7 +161,7 @@ CPU, single thread; `benchmarks/baseline.json`; reproduce with
 | Free-boundary tokamaks (`ntor = 0`) | ✅ | ✅ | ❌ |
 | Non-stellarator-symmetric (`LASYM = T`) | ✅ | ✅ | ❌ |
 | Fixed-boundary fallback on missing mgrid | ✅ | ✅ | ❌ |
-| Spline profiles (cubic / Akima) | ✅ | ✅ | ✅ |
+| Spline profiles (cubic / Akima) | ✅ | ✅ | ❌ |
 | VMEC++-schema JSON input | ✅ | ❌ | ✅ |
 | Hot restart from a previous state | ✅ | ❌ | ✅ |
 | Typed zero-crash errors | ✅ | ❌ | ✅ |
@@ -173,20 +170,19 @@ CPU, single thread; `benchmarks/baseline.json`; reproduce with
 | GPU execution | ✅ | ❌ | ❌ |
 | Differentiable fixed boundary (implicit diff, O(1) memory) | ✅ | ❌ | ❌ |
 | Differentiable free boundary (virtual casing) | ✅ | ❌ | ❌ |
-| 2D block preconditioner (stiff-case speedup) | ✅ | ✅ | ❌ |
+| 2D block preconditioner (stiff-case speedup) | ✅ | ❌ | ❌ |
 | Near-axis (pyQSC / pyQIC) optimization seed | ✅ | ❌ | ❌ |
 
 ### Free boundary straight from coils
 
 The "free boundary directly from coils" row is a workflow, not a checkbox:
-pass a `CoilSet` as `external_field=` and the NESTOR vacuum solve evaluates a
-JAX Biot-Savart at exactly the boundary points it needs, every iteration — no
-mgrid file and no grid-interpolation error. The field evaluation is
-JAX-differentiable. Solved-LCFS mgrid-current sensitivities are now available
-through forward implicit differentiation. The many-parameter direct-coil
-shape reverse solve is explicitly deferred after the profiled operator-level
-alternatives exceeded the release memory/runtime envelope. See the full
-[functionality and support matrix](docs/functionality_matrix.rst).
+tabulate an [ESSOS](https://github.com/uwplasma/ESSOS) coil set onto the solver
+grid in memory (`essos.coils.Coils.to_mgrid`) and pass it as `external_field=` —
+no MAKEGRID file to manage, no on-disk round-trip. For gradients the
+differentiable free boundary evaluates a JAX Biot-Savart at exactly the boundary
+points it needs, every iteration (a plain `xyz→B` callable), so the coil degrees
+of freedom stay differentiable end-to-end. vmec_jax keeps no coil code of its
+own; coils live in ESSOS.
 
 ![Free-boundary Landreman-Paul QA pressure scan directly from ESSOS coils](docs/_static/figures/readme_essos_beta_scan.png)
 
@@ -196,36 +192,42 @@ by its 16 modular coils as optimized in
 `examples/data/`). Pressure is ramped at fixed coil currents with each point
 warm-started from the previous boundary, and `PRES_SCALE` is calibrated per
 point so the **actual** volume-average beta of the converged wout
-(`betatotal`) — not a nominal input value — follows a calibrated continuation
-to 3.350% (force-residual sum below 2.2e-10 at ns = 51). The plasma dilates and
-the magnetic axis Shafranov-shifts 16.2 cm outboard at the φ = 0 section while
-the coils never move. The minimum 0.0125% step fails at 3.3625%, so 4–5% is not
-claimed. Reproduce with `python examples/free_boundary_essos_coils.py`.*
+(`betatotal`) — not a nominal input value — lands on 0, 1, 2, 3 % (all within
+0.08 %, force residual ~2e-10 at ns = 51). The plasma dilates and the magnetic
+axis Shafranov-shifts 14 cm outboard at the φ = 0 section (right panel) while
+the coils never move. Reproduce with
+`python examples/free_boundary_essos_coils.py`.*
 
-The same physical tokamak coil set converges through direct Biot–Savart and a
-generated mgrid at actual beta 0–3%; solved LCFS differences remain below
-``6.31e-4``:
+### Single-stage plasma + coil optimization
 
-![Direct-coil versus generated-mgrid tokamak beta scan](docs/_static/figures/readme_tokamak_coil_parity.png)
+The plasma boundary and the coils can be optimized **simultaneously**, driven by
+one exact gradient. A single `jax.value_and_grad` threads the implicit-adjoint
+derivative of the fixed-boundary equilibrium (boundary → converged VMEC state →
+physics targets) *and* the virtual-casing + Biot-Savart derivative of the coil
+field (coil currents → `B·n` on the *moving* boundary) through one backward
+pass — no finite differences, no nested inner/outer loop.
+
+![Single-stage plasma+coil optimization, vacuum and finite beta](docs/_static/figures/readme_single_stage.png)
+
+*The Landreman–Paul QA plasma boundary and the currents of its 16 ESSOS modular
+coils are co-optimized against one functional `J = w·⟨(B_ext·n)²⟩ +
+(ι_edge − ι*)²` — coil↔plasma consistency plus an edge-rotational-transform
+target — for a **vacuum** and a **finite-β** (⟨β⟩ = 1.4 %) case. One L-BFGS-B
+descent over the joint (boundary Fourier modes + coil currents) vector cuts J
+**6.6×** (vacuum) and **2.4×** (finite β): the boundary reshapes (blue vs grey
+dashed) and the coil currents retune together, with the joint gradient
+finite-difference validated. Coils come from ESSOS — vmec_jax stays
+coil-agnostic. Reproduce with
+`python examples/single_stage_essos_coils_opt.py`.*
 
 ## Code size
 
-vmec-jax delivers that superset of capabilities in little more than **half the
-code**, and is the most densely documented of the three. Solver source only (tests,
-language bindings, and vendored third-party excluded), counted with
-[`pygount`](https://pypi.org/project/pygount/) 3.2:
-
-| code base | language | files | code (SLOC) | comments / docstrings | doc-to-code |
-|---|---|---:|---:|---:|---:|
-| **vmec-jax** | Python | 41 | **13,326** | 6,744 | **0.51** |
-| VMEC2000 (PARVMEC) | Fortran | 115 | 24,190 | 8,425 | 0.35 |
-| VMEC++ | C++ / Python | 117 | 22,824 | 7,646 | 0.34 |
-
-vmec-jax is little more than half the SLOC of VMEC2000 and VMEC++, while
-*adding* differentiability, GPU execution, direct-coil free boundary, and a
-built-in Boozer transform — and it carries the highest comment/docstring
-density of the three (reproduce with
-`pygount --format=summary vmec_jax`).
+The current package is 72 Python modules / 34,197 physical lines, including
+the 20-module, 8,087-line open-mirror research backend. The tracked checkout
+is 8.29 MiB; generated WOUT, mgrid, and raw plotting output are ignored. This
+is intentionally an honest snapshot rather than a cross-language SLOC claim:
+the planned ESSOS migration removes the remaining private mirror/hybrid coil
+compatibility layer, while the public VMEC API remains coil-agnostic.
 
 ## Python API
 
@@ -273,20 +275,7 @@ harmonics released at once; `examples/optimization/*_ess.py`; the staged
 | QA | 2 | QS (1, 0)  | 2.04e-01 | **7.2e-06** | 5 | **14.5 min** | precise; aspect 6.00, iota 0.42 (ladder: 3.7e-07 in 25.5 min) |
 | QH | 4 | QS (1, −1) | 6.91e-01 | **5.83e-05** | 5 | 25.5 min (ladder) | precise; aspect 8.00, iota −1.22 |
 | QP | 2 | QS (0, 1)  | 4.46e-01 | 4.5e-02 | 5 | ~3.4 h (ladder) | hardest QS class — plateaus near 5e-2 |
-| QI | 1 | omnigenity | 4.52e-01 | **9.58e-03** | 6 | ESS + fixed-weight continuation | compact; aspect 8.001, abs(iota) 0.120 |
-
-![Compact QI optimization convergence and measured continuation path](docs/_static/figures/qi_compact_convergence.png)
-
-*The QI campaign releases all max-mode-6 harmonics with ESS, then restores
-QI, aspect, iota, and mirror bounds in three fixed-weight continuation calls.
-The checked-in 77 KiB restart reconverges the accepted deck and guards QI
-`<1e-2`, aspect `<=8.01`, `|iota|>=0.12`, and mirror `<=0.45`; timings, RSS,
-objective components, and the cold-interior-guess caveat are in
-`benchmarks/qi_compact.json`.*
-
-![Compact QI LCFS colored by |B| with field-line pitch](docs/_static/figures/qi_compact_3d.png)
-
-![Compact QI |B| contours on the mid-radius and boundary surfaces](docs/_static/figures/qi_compact_modB.png)
+| QI | 1 | omnigenity | 4.52e-01 | **1.81e-02** | 6 | **17.3 min** | 25× via the traceable Goodman constructed-QI residual |
 
 ![QA/QH/QP optimization: seed vs optimized boundary, 3-D |B| geometry, and Boozer |B| on the LCFS](docs/_static/figures/readme_optimization.png)
 
@@ -373,7 +362,6 @@ objective library.
 ```text
 vmec input.X             solve (INDATA or VMEC++ JSON), write wout_X.nc
 vmec --plot wout_*.nc    diagnostic plots from a WOUT file
-vmec --plot mout_*.nc    straight-axis mirror diagnostics
 vmec --booz wout_*.nc    run booz_xform_jax, write boozmn_*.nc
 vmec --plot boozmn_*.nc  Boozer contour/spectrum plots
 vmec --test              run and plot the bundled quick-start case

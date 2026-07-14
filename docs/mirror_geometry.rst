@@ -15,8 +15,9 @@ The branch currently includes:
 * axisymmetric and nonaxisymmetric fixed-boundary finite-current solves,
 * isotropic and ANIMEC-style anisotropic pressure energies and independent
   tensor-force diagnostics,
-* a variational scalar-potential vacuum annulus with direct JAX Biot-Savart
-  coils or the shared ESSOS/MAKEGRID-compatible ``MgridField``,
+* a variational scalar-potential vacuum annulus with an ``xyz -> B`` field
+  callable or the shared ESSOS/MAKEGRID-compatible ``MgridField``; new public
+  coil workflows use ESSOS, while legacy mirror constructors are internal,
 * coupled axisymmetric isotropic and anisotropic free-boundary beta
   continuation with compressed restart files,
 * a free-space boundary-integral vacuum backend on the lateral LCFS and both

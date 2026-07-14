@@ -22,8 +22,8 @@ All runnable examples live under this single `examples/` tree.
     an mgrid vacuum field (NESTOR); the LCFS is solved for, not prescribed.
   - `free_boundary_beta_scan.py` — ramp the pressure of the free-boundary case
     (coil currents fixed); the LCFS is re-solved by NESTOR at each beta.
-  - `free_boundary_essos_coils.py` — free-boundary beta scan directly from
-    ESSOS coils (direct JAX Biot-Savart, no mgrid file); `PRES_SCALE` is
+  - `free_boundary_essos_coils.py` — free-boundary beta scan from ESSOS coils,
+    tabulated once to an in-memory mgrid for the forward solve; `PRES_SCALE` is
     calibrated per point so the *actual* wout `betatotal` targets 0--5 % with
     bounded adaptive continuation.
   - `free_boundary_tokamak_coils.py` — construct circular tokamak TF/PF coils,

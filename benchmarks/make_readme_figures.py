@@ -33,7 +33,7 @@ Produces (into ``docs/_static/figures/``):
 
 Usage:
     python benchmarks/make_readme_figures.py
-        [--only runtime,parity,convergence,optimization,qi,precond,showcase,mirror]
+        [--only runtime,parity,convergence,optimization,qi,precond,showcase,mirror,single_stage]
         [--outdir docs/_static/figures]
 
 Figures are written uncompressed; compress before committing:
@@ -44,6 +44,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -941,11 +942,104 @@ def make_showcase_figure(out: Path) -> None:
     print("wrote", out)
 
 
+# The expensive optimization output is intentionally cached outside tracked
+# files. The compact reviewed PNG in docs is the artifact committed to git.
+SINGLE_STAGE_EXAMPLE = REPO / "examples" / "single_stage_essos_coils_opt.py"
+SINGLE_STAGE_OUT = REPO / "benchmarks" / "output_single_stage_essos_coils_opt"
+SINGLE_STAGE_CASES = [("A_vacuum", "QA - vacuum"),
+                      ("B_finite_beta", "QA - finite $\\beta$")]
+
+
+def _ensure_single_stage_outputs() -> dict:
+    """Read cached single-stage outputs, creating them at the full example budget."""
+    import subprocess
+    import sys
+
+    summary = SINGLE_STAGE_OUT / "summary.json"
+    needed = [summary, SINGLE_STAGE_OUT / "coils_gamma.npy"]
+    for name, _ in SINGLE_STAGE_CASES:
+        needed += [SINGLE_STAGE_OUT / f"wout_{name}_initial.nc",
+                   SINGLE_STAGE_OUT / f"wout_{name}_final.nc"]
+    if not all(path.exists() for path in needed):
+        env = dict(os.environ)
+        env.pop("VMEC_JAX_EXAMPLES_CI", None)
+        run = subprocess.run([sys.executable, str(SINGLE_STAGE_EXAMPLE)],
+                             cwd=str(REPO / "benchmarks"), env=env,
+                             capture_output=True, text=True, timeout=3600)
+        if run.returncode:
+            raise RuntimeError("single-stage example failed:\n"
+                               f"{run.stdout[-3000:]}\n{run.stderr[-2000:]}")
+    return {row["name"]: row for row in json.loads(summary.read_text())}
+
+
+def make_single_stage_figure(out: Path) -> None:
+    """Plot cached ESSOS coil/plasma joint-optimization results for the README."""
+    from matplotlib import cm
+    from matplotlib.colors import Normalize
+    import vmec_jax as vj
+    from vmec_jax.core.plotting import surface_modB, surface_rz
+
+    summary = _ensure_single_stage_outputs()
+    gamma = np.load(SINGLE_STAGE_OUT / "coils_gamma.npy")
+    fig = plt.figure(figsize=(6.2, 7.3), dpi=150)
+    grid = fig.add_gridspec(2, 2, height_ratios=[1, 1.35], hspace=0.34, wspace=0.3)
+    theta = np.linspace(0, 2 * np.pi, 241)
+    for col, (name, title) in enumerate(SINGLE_STAGE_CASES):
+        row = summary[name]
+        initial = vj.read_wout(SINGLE_STAGE_OUT / f"wout_{name}_initial.nc")
+        final = vj.read_wout(SINGLE_STAGE_OUT / f"wout_{name}_final.nc")
+        phi = np.array([0.0, np.pi / int(final.nfp)])
+        ax = fig.add_subplot(grid[0, col])
+        Ri, Zi = surface_rz(initial, s_index=-1, theta=theta, phi=phi)
+        Rf, Zf = surface_rz(final, s_index=-1, theta=theta, phi=phi)
+        for R, Z, color, style, label in ((Ri, Zi, MUTED, (0, (4, 3)), "initial"),
+                                           (Rf, Zf, BLUE, "-", "final")):
+            for k in range(phi.size):
+                ax.plot(R[:, k], Z[:, k], color=color, lw=1.6, ls=style,
+                        alpha=1 if k == 0 else 0.55, label=label if k == 0 else None)
+        ax.set_aspect("equal", adjustable="datalim")
+        ax.set_title(title, loc="left", fontsize=10.5, color=INK)
+        ax.set_xlabel("R (m)", fontsize=8.5)
+        if col == 0:
+            ax.set_ylabel("Z (m)", fontsize=8.5)
+        ax.legend(fontsize=6.5, frameon=False)
+        ax.tick_params(labelsize=7)
+        ax.text(0.5, -0.22, f"J: {row['J0']:.2e} -> {row['Jf']:.2e} ({row['ratio']:.1f}x)",
+                transform=ax.transAxes, ha="center", fontsize=8, color=GREEN_TEXT)
+
+        ax3 = fig.add_subplot(grid[1, col], projection="3d")
+        ph = np.linspace(0, 2 * np.pi, min(240, 70 * int(final.nfp)))
+        th = np.linspace(0, 2 * np.pi, 64)
+        R, Z = surface_rz(final, s_index=-1, theta=th, phi=ph)
+        B = surface_modB(final, s_index=-1, theta=th, phi=ph)
+        phi_2d = np.meshgrid(ph, th)[0]
+        X, Y = R * np.cos(phi_2d), R * np.sin(phi_2d)
+        norm = Normalize(float(B.min()), float(B.max()))
+        ax3.plot_surface(X, Y, Z, facecolors=cm.jet(norm(B)), linewidth=0, shade=False)
+        for filament in gamma:
+            closed = np.vstack([filament, filament[:1]])
+            ax3.plot(*closed.T, color="#b06a34", lw=1, alpha=0.9)
+        scale = 1.03 * float(max(np.abs(gamma[..., 0]).max(), np.abs(gamma[..., 1]).max()))
+        zmax = 1.05 * float(np.abs(gamma[..., 2]).max())
+        ax3.auto_scale_xyz([-scale, scale], [-scale, scale], [-zmax, zmax])
+        ax3.set_axis_off()
+        ax3.view_init(elev=32, azim=-60)
+        mapper = cm.ScalarMappable(cmap="jet", norm=norm)
+        mapper.set_array([])
+        fig.colorbar(mapper, ax=ax3, pad=0.0, fraction=0.04, shrink=0.6)
+    fig.suptitle("Single-stage plasma + coil optimization", fontsize=12.5, color=INK)
+    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    _compress_png(out)
+    print("wrote", out)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--only",
-        default="runtime,parity,convergence,optimization,qi,precond,showcase,mirror")
+        default="runtime,parity,convergence,optimization,qi,precond,showcase,mirror,single_stage")
     ap.add_argument("--outdir", default=str(REPO / "docs" / "_static" / "figures"))
     args = ap.parse_args()
     outdir = Path(args.outdir)
@@ -966,6 +1060,8 @@ def main() -> None:
         make_showcase_figure(outdir / "readme_equilibrium_showcase.png")
     if "mirror" in which:
         make_mirror_figure(outdir / "mirror_fixed_boundary_3d.png")
+    if "single_stage" in which:
+        make_single_stage_figure(outdir / "readme_single_stage.png")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,14 @@
-"""Fourier coil sets and pure-JAX Biot-Savart external fields (plan.md §8).
+"""Internal mirror/hybrid coil compatibility helpers (plan.md §8).
 
-This module is the clean-core home of direct-coil free-boundary inputs:
+The public toroidal free-boundary API is coil-agnostic: construct coils in
+`ESSOS <https://github.com/uwplasma/ESSOS>`_, tabulate them to an in-memory
+``MgridField`` for the NESTOR forward solve, and pass an ESSOS ``xyz -> B``
+callable to differentiable virtual-casing objectives.  This module remains
+private while the open-mirror and hybrid research backends are migrated to that
+same interface.  Do not add new public dependencies on it.
+
+It currently supplies legacy mirror/hybrid constructors and pure-JAX
+Biot--Savart utilities:
 
 - :class:`CoilSet` — a frozen pytree of Fourier-represented coil centerlines
   plus currents (differentiable leaves: ``base_curve_dofs``,

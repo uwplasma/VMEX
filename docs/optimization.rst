@@ -270,6 +270,12 @@ from the bundled CTH-like free-boundary equilibrium it reshapes the boundary to
 move the edge rotational transform while re-tuning the coils to keep
 ``<(B.n)^2>`` small — one exact gradient over both dof families.
 
+``examples/single_stage_essos_coils_opt.py`` is the coil-agnostic variant:
+its coil half is an ESSOS ``essos.coils.Coils`` Biot--Savart callable, while
+the forward NESTOR solve remains an ``MgridField`` calculation.  This keeps the
+production equilibrium backend independent of any particular coil package
+without breaking the differentiable coil path.
+
 Worked results
 --------------
 

@@ -114,7 +114,9 @@ jobs:
   parity:
     name: Parity suite ${{ matrix.shard }} (goldens, coverage)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The catch-all shard includes the expanded parity suite.  Its measured
+    # wall time can exceed 15 minutes on a cold GitHub runner.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

@@ -8,7 +8,23 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
-from virtual_casing_jax import laplace_dx_u_eval, laplace_fx_u, laplace_fxd_u_eval
+
+try:
+    from virtual_casing_jax import laplace_dx_u_eval, laplace_fx_u, laplace_fxd_u_eval
+except ModuleNotFoundError as _vcj_error:  # optional research acceleration
+    if _vcj_error.name != "virtual_casing_jax":
+        raise
+    _VCJ_ERROR = _vcj_error
+
+    def _missing_virtual_casing(*_args, **_kwargs):
+        raise ModuleNotFoundError(
+            "The free-space mirror boundary-integral backend requires "
+            "virtual_casing_jax. Install its pinned optional dependency to use it."
+        ) from _VCJ_ERROR
+
+    laplace_dx_u_eval = _missing_virtual_casing
+    laplace_fx_u = _missing_virtual_casing
+    laplace_fxd_u_eval = _missing_virtual_casing
 
 from ..core.coils import biot_savart
 from .exterior import ClosedMirrorSurface, build_closed_mirror_surface

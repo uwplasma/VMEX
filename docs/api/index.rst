@@ -73,9 +73,6 @@ Free boundary
 .. automodule:: vmec_jax.core.mgrid
    :members:
 
-.. automodule:: vmec_jax.core.coils
-   :members:
-
 Differentiation and optimization
 --------------------------------
 

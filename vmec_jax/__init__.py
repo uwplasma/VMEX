@@ -6,14 +6,13 @@ Public API (lazily imported; ``import vmec_jax as vj``):
 - :func:`~vmec_jax.core.solver.solve` — single-grid fixed-boundary solve
 - :func:`~vmec_jax.core.multigrid.solve_multigrid` — NS_ARRAY ladder (runvmec.f)
 - :func:`~vmec_jax.core.freeboundary.solve_free_boundary` — NESTOR free boundary
-- :func:`~vmec_jax.core.hybrid_free_boundary.solve_square_coil_free_boundary_scan`
-  — solved-boundary 16-coil hybrid continuation
 - :func:`~vmec_jax.core.wout.read_wout` / :func:`~vmec_jax.core.wout.write_wout`
   / :func:`~vmec_jax.core.wout.wout_from_state` / :class:`~vmec_jax.core.wout.WoutData`
 - :func:`~vmec_jax.core.plotting.plot_wout` / :func:`~vmec_jax.core.plotting.plot_boozmn`
 - :func:`~vmec_jax.core.boozer.run_booz_xform` — Boozer transform (booz_xform_jax)
 - :func:`~vmec_jax.core.mgrid.read_mgrid` / :func:`~vmec_jax.core.mgrid.write_mgrid`
-  / :class:`~vmec_jax.core.mgrid.MgridField` / :class:`~vmec_jax.core.coils.CoilSet`
+  / :class:`~vmec_jax.core.mgrid.MgridField` (external field is an mgrid or any
+  ``xyz->B`` callable; coils live in ESSOS, ``essos.coils.Coils``)
 - ``vmec_jax.optimize`` — objectives + least-squares driver (module)
 - ``vmec_jax.implicit`` — implicit differentiation of the equilibrium (module)
 - ``vmec_jax.errors`` — typed zero-crash exceptions (also exported directly)
@@ -84,18 +83,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     "solve": (".core.solver", "solve"),
     "solve_multigrid": (".core.multigrid", "solve_multigrid"),
     "solve_free_boundary": (".core.freeboundary", "solve_free_boundary"),
-    "CoupledFreeBoundaryProblem": (
-        ".core.freeboundary_implicit",
-        "CoupledFreeBoundaryProblem",
-    ),
-    "CoupledSensitivityResult": (
-        ".core.freeboundary_implicit",
-        "CoupledSensitivityResult",
-    ),
-    "solve_square_coil_free_boundary_scan": (
-        ".core.hybrid_free_boundary",
-        "solve_square_coil_free_boundary_scan",
-    ),
     # wout IO
     "WoutData": (".core.wout", "WoutData"),
     "read_wout": (".core.wout", "read_wout"),
@@ -104,26 +91,12 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     # plotting + Boozer
     "plot_wout": (".core.plotting", "plot_wout"),
     "plot_boozmn": (".core.plotting", "plot_boozmn"),
-    "plot_mout": (".mirror.plotting", "plot_mout"),
-    "plot_hybrid_free_boundary_scan": (".core.plotting", "plot_hybrid_free_boundary_scan"),
     "run_booz_xform": (".core.boozer", "run_booz_xform"),
     # external fields
-    "CoilSet": (".core.coils", "CoilSet"),
-    "planar_ellipse_coils": (".core.coils", "planar_ellipse_coils"),
-    "square_mirror_coils": (".core.coils", "square_mirror_coils"),
-    "tokamak_coils": (".core.coils", "tokamak_coils"),
     "MgridData": (".core.mgrid", "MgridData"),
     "MgridField": (".core.mgrid", "MgridField"),
     "read_mgrid": (".core.mgrid", "read_mgrid"),
     "write_mgrid": (".core.mgrid", "write_mgrid"),
-    # toroidal stellarator-mirror hybrid geometry
-    "CoilInformedAxis": (".core.hybrid", "CoilInformedAxis"),
-    "coil_informed_toroidal_flux": (".core.hybrid", "coil_informed_toroidal_flux"),
-    "HybridBoundarySamples": (".core.hybrid", "HybridBoundarySamples"),
-    "sample_stellarator_mirror_hybrid": (".core.hybrid", "sample_stellarator_mirror_hybrid"),
-    "stellarator_mirror_hybrid_input": (".core.hybrid", "stellarator_mirror_hybrid_input"),
-    "hybrid_projection_error": (".core.hybrid", "hybrid_projection_error"),
-    "trace_square_coil_vacuum_axis": (".core.hybrid", "trace_square_coil_vacuum_axis"),
     # errors
     "VmecError": (".core.errors", "VmecError"),
     "VmecInputError": (".core.errors", "VmecInputError"),

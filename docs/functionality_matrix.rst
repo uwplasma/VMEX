@@ -97,7 +97,9 @@ Free boundary and external fields
      - Supported
      - Requires MAKEGRID
      - Requires MAKEGRID
-     - :mod:`vmec_jax.core.coils`, :mod:`vmec_jax.core.freeboundary`
+     - ESSOS coils tabulated to :class:`vmec_jax.core.mgrid.MgridField` for
+       :mod:`vmec_jax.core.freeboundary`; ESSOS ``xyz -> B`` callable for
+       :mod:`vmec_jax.core.freeboundary_diff`
    * - Missing-``mgrid`` fixed-boundary fallback
      - Supported
      - Supported

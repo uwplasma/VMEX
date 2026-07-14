@@ -335,9 +335,10 @@ every iteration when diagnosing incremental-update stalls.
 
 The external field comes either from an ``mgrid`` file
 (:mod:`vmec_jax.core.mgrid`, trilinear interpolation weighted by ``EXTCUR``)
-or directly from a Biot-Savart coil set (:mod:`vmec_jax.core.coils`, ESSOS
-layout) — the latter is interpolation-free and differentiable through the
-coil parameters.
+or from any ``xyz -> B`` callable — e.g. an ESSOS ``essos.coils.Coils``
+Biot-Savart field (``lambda pts: coils.B(pts)``), interpolation-free and
+differentiable through the coil parameters. vmec_jax itself carries no coil
+code; coils live in ESSOS.
 
 Differentiable free boundary (virtual casing)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -369,8 +370,8 @@ the integral). The key structural fact: for a *fixed* trial boundary,
 coil degrees of freedom, so it is precomputed once and frozen. The residual
 assembled by
 :class:`~vmec_jax.core.freeboundary_diff.FreeBoundaryDiffProblem` is then a
-smooth JAX function of the external-field dofs alone (``CoilSet`` Fourier
-coefficients/currents via
+smooth JAX function of the external-field dofs alone (coil Fourier
+coefficients/currents of a callable ESSOS coil field via
 :func:`~vmec_jax.core.freeboundary_diff.external_B_cartesian`, or
 ``extcur``), and its ``value_and_grad_bnormal`` helper returns gradients
 validated against finite differences — no NESTOR adjoint is required.
@@ -460,10 +461,55 @@ state: its cost is a fixed handful of residual evaluations (one
 linearization plus the GMRES matvecs) and its memory is O(1) in the
 iteration count — independent of how many Richardson steps, restarts, or
 multigrid stages the forward solve needed. Multigrid stages act purely as an
-initializer and are stop-gradient by construction. Gradient accuracy is
-validated against central finite differences in CI. See :doc:`optimization`
+initializer and are stop-gradient by construction. See :doc:`optimization`
 for usage and the references (Skene & Burns 2026; jaxopt; DESC) in
 :doc:`references`.
+
+Gradient checking: solver-sensitive metrics and the frozen path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The adjoint returns the derivative of the fixed point of the **frozen**
+residual :math:`F`: the preconditioner, the ``tcon`` constraint strength, the
+converged m=1 Z-force branch, and the dof mask are all captured once at the
+base parameters and held fixed, not re-derived as :math:`p` moves. This is
+exactly the object the implicit function theorem differentiates, and it has a
+subtle consequence for how the gradient must be *validated*.
+
+Equilibrium outputs fall into two classes:
+
+- **Smooth bulk integrals** — the magnetic energy ``wb``, the aspect ratio,
+  the volume: volume averages of the converged geometry. For these a naive
+  central finite difference through the full host solver
+  (re-converging independently at :math:`p\pm h`) already matches
+  ``jax.grad`` to :math:`\mathrm{rtol}\le 10^{-6}`. The solver's internal
+  path — how many Richardson steps, which restarts fired — averages out of a
+  bulk integral.
+
+- **Solver-sensitive metrics** — the rotational transform ``iota`` (built
+  from the current-constrained ``chips`` at ``ncurr = 1``), the mirror ratio,
+  the magnetic well, the Boozer/QI residual: these read the converged state
+  *directly and locally*. A naive re-solve at :math:`p\pm h` lets the
+  convergence logic (restart timing, the m=1 rotation, the last accepted
+  step) re-form slightly differently on each side. That is an :math:`O(1)`
+  perturbation of the discrete *path*, not of the *fixed point*, and it can
+  swamp — even sign-flip — the finite difference. On ``li383_low_res``,
+  :math:`d(\iota_{\mathrm{edge}})/d(\mathrm{RBC}(-1,1))` is :math:`-0.773`
+  from the adjoint but :math:`+0.045` from a naive central FD: the two do not
+  even agree in sign.
+
+The naive FD is therefore **not a valid reference** for solver-sensitive
+metrics — the disagreement is a property of the finite-difference probe, not
+an error in the adjoint. The correct check reuses the *same* frozen residual
+the adjoint differentiates:
+:func:`~vmec_jax.core.implicit.frozen_path_directional_fd` takes a directional
+step :math:`p\pm h`, Newton-solves the frozen :math:`F` to its perturbed root
+(rather than re-running the full adaptive solver from scratch), and finite-
+differences that. It reproduces the adjoint to solver accuracy for ``iota``,
+mirror, well, and QI alike, and it is the reference used in
+``tests/test_implicit_grad.py``. Bulk integrals are validated against both the
+naive and the frozen-path FD; solver-sensitive metrics against the frozen-path
+FD only. In short: the adjoint linearizes the fixed point, so a correct
+numerical check must also hold the path fixed.
 
 Forward-mode Jacobians for least squares (block-tridiagonal)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

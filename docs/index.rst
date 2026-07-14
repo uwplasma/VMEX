@@ -91,6 +91,7 @@ Documentation
       theory
       equations
       algorithms
+      confinement
       architecture
       mirror_geometry
 

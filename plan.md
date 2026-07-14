@@ -11,13 +11,37 @@ the working tree. Keep this plan.md under 200 KB through review. Repository-wide
 tagging, and publication are post-merge administrator operations; they are not performed by rewriting
 a feature PR under review.
 
-**Mirror status (2026-07-13): REVIEW-READY IMPLEMENTATION.** Axisymmetric straight-axis finite-beta
+**Mirror status (2026-07-14): REVIEW-READY IMPLEMENTATION.** Axisymmetric straight-axis finite-beta
 free boundary is the supported high-beta target under the anisotropic `fixed_flux_cut` model in
 Phase 5. The
 toroidal Fourier hybrid is validated only through achieved beta 0.8333% and is deferred above that
 measured limit. The nonaxisymmetric straight-mirror lane is deferred after failing its local-mode
 refinement gate. The finite implementation roadmap and local release gates are complete. Required CI
 and post-merge release administration are tracked separately in the final acceptance ledger.
+
+**Post-main integration and slimming gate (2026-07-14).** Merge main through
+``ed4ac7ac`` before further mirror work.  The public equilibrium interface is
+coil-agnostic: forward NESTOR accepts an ``MgridField`` and differentiable
+virtual-casing objectives accept an ``xyz -> B`` callable, with coils owned by
+ESSOS.  The legacy internal ``core.coils`` module remains only while the
+open-mirror/hybrid constructors are migrated and then deleted with its
+compatibility tests.  Do not add public APIs to it.  Before promotion, perform
+an import/coverage audit and delete or move each experimental helper only after
+its accepted evidence has a documented home.  Keep one concise support table in
+the README/functionality matrix and one plan; historical phase prose below is
+evidence, not a second implementation queue.
+
+The remaining finite work is: (S1) ESSOS migration and removal of the internal
+coil layer; (S2) consolidate mirror/hybrid examples and retain only compressed
+review figures; (S3) document public models, equations, limits, and plotting
+entry points; (S4) rerun the full local/PR matrix after the merge. Native
+B-spline **equilibrium** geometry is deferred: cubic/Akima *profiles* are
+supported, but a B-spline axis/boundary state is not. The only justified next
+prototype is a low-dimensional spline control projected to the existing
+periodic Fourier state, with geometry, WOUT, convergence, and derivative gates;
+it is not a second solver backend. The Fourier hybrid remains research-supported
+only through achieved beta 0.8333%; the straight-axis axisymmetric free-boundary
+mirror is the supported model.
 
 ---
 
@@ -73,9 +97,9 @@ phase specs (still authoritative for detail); this roadmap supersedes the scatte
 folds in every requirement from the user prompts and the two independent reviews.
 
 ### Done and verified on the current merged branch (2026-07-12)
-- Legacy tree deleted; after merging main through ``9f3ccb31`` the package is **72 Python files / 33,960
-  lines**, including the focused 20-file / 8,072-line open-mirror backend and the traceable
-  omnigenity module. The tracked checkout is about 8.0 MiB;
+- Legacy tree deleted; after merging main through ``ed4ac7ac`` the package is **72 Python files / 34,197
+  lines**, including the focused 20-file / 8,087-line open-mirror backend and the traceable
+  omnigenity module. The tracked checkout is about 8.29 MiB;
   no generated mirror results are tracked.
 - Fixed-boundary equilibrium at **VMEC2000 machine-precision parity** across the 9 golden fixtures
   (exact iteration counts incl. lasym after the fixaray dnorm fix; wb ~1e-16, geometry ~1e-12).
@@ -323,8 +347,8 @@ derivatives, simultaneous plasma/coil optimization, straight mirrors, toroidal h
 QA/QH/QP/QI optimization. Fast scripts have CI smoke tests; expensive solves and derivative checks
 are marked ``full``. The original target set is retained below for provenance:
   - `run_fixed_boundary.py` (exists), `run_from_json.py` (VMEC++ JSON in/out + convert),
-  - `free_boundary_mgrid.py` (mgrid path), `free_boundary_essos_coils.py` (direct Biot-Savart, no
-    mgrid; needs ESSOS), `free_boundary_beta_scan.py` (β=0..5% hot-restarted; the README β-scan),
+  - `free_boundary_mgrid.py` (mgrid path), `free_boundary_essos_coils.py` (ESSOS coils tabulated to
+    an in-memory mgrid; needs ESSOS), `free_boundary_beta_scan.py` (β=0..5% hot-restarted; the README β-scan),
   - `profiles_power_and_spline.py` (power_series vs cubic/akima; pressure/iota/current; ncurr=0 vs 1),
   - `finite_beta_scan.py` (pressure ramp; beta, Mercier, Shafranov shift),
   - `take_gradients.py` (implicit d(aspect|iota|QS)/d(boundary|profile) vs FD; jacrev usage),
@@ -680,8 +704,8 @@ R9 release and the VMEX rename R21).** Ten items (+k added 2026-07-12):
            arXiv:2211.09829), reusing the in-tree Boozer transform — fixes the documented "QI not
            precise" weakness. Touches optimize.py — AFTER R25.3 merges.
        h3. **Single-stage plasma–coil optimization with exact gradients**, using ESSOS from
-           github.com/uwplasma/ESSOS for the coil side (differentiable Biot-Savart already in-tree via
-           CoilSet.from_essos) + virtual casing + implicit diff composed end-to-end.
+           github.com/uwplasma/ESSOS for the coil side (differentiable Biot-Savart from ESSOS coils,
+           consumed as an mgrid or xyz->B callable) + virtual casing + implicit diff composed end-to-end.
        h4. **Turbulence proxies from spectrax-gk (github.com/uwplasma/spectrax-gk)** — its available
            LINEAR, NONLINEAR and QUASILINEAR proxies wired as optimization objectives on vmec_jax
            geometry.
@@ -1128,7 +1152,8 @@ vmec_jax/
   vacuum.py         # NESTOR: Green's function, analyt/scalpot, potvac solve              (NESTOR_vacuum/)
   freeboundary.py   # free-boundary iteration, ivac/nvacskip cadence, MagneticField protocol
   mgrid.py          # mgrid netCDF read/write, interpolated MagneticField
-  coils.py          # ESSOS bridge: coils -> direct Biot-Savart field, write_mgrid from coils
+  # (no in-tree coils module — coils live in ESSOS (essos.coils.Coils); the
+  #  external field is consumed as an mgrid or a generic xyz->B callable)
   implicit.py       # custom_vjp implicit differentiation of the equilibrium (Phase 4)
   wout.py           # wout writer/reader — full Appendix-A variable set incl. jxbforce, mercier, bss
   printing.py       # VMEC2000-format iteration lines, stage banners, threed1 summary     (printout.f)
@@ -2207,7 +2232,7 @@ Structure:
 
 - [x] The tracked checkout is about 9 MB; generated outputs and large NetCDF references are ignored
       or fetched. All feature-branch commits are authored by rogeriojorge.
-- [x] `vmec_jax/` is 72 files / 33,960 physical lines; every core module is ≤999 lines, the largest
+- [x] `vmec_jax/` is 72 files / 34,197 physical lines; every core module is ≤999 lines, the largest
       mirror module is 862 lines, 569 public API-like definitions have docstrings, and ruff/mypy pass.
 - [x] Fixed/free toroidal boundary, mgrid/direct coils, tokamak/stellarator, symmetry/asymmetry,
       WOUT/print parity, missing-mgrid fallback, multigrid, and hot restart pass their documented gates.
