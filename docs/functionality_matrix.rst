@@ -273,7 +273,8 @@ The exact numerical contracts and failed promotion gates are in
        states; forward tangent and scaling studies remain open
    * - Nonaxisymmetric straight mirror
      - Research
-     - Local Fourier-mode refinement did not pass; no production claim
+     - Complete radius-plus-stream-function free-boundary solves reach
+       ``ftol=1e-12``, but local Fourier-mode refinement did not pass
    * - Toroidal Fourier stellarator-mirror hybrid
      - Deferred
      - The experimental Fourier target was removed; the planned model uses a

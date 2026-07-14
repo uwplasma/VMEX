@@ -632,106 +632,36 @@ opt-in axisymmetric nonlinear coupling. It still needs broader shaped and
 near-singular references and higher-order side panels before the finite outer
 cylinder can be removed as the default backend.
 
-The first M7 nonaxisymmetric seam is also explicit. ``magnetic_field_xyz``
-converts the full contravariant mirror field without an axisymmetry shortcut,
-and ``plasma_external_neumann`` assembles lateral plus graded-cap data on a
-theta-dependent closed surface. A finite-current ``mpol=1`` manufactured case
-matches the metric ``|B|^2`` contraction to ``5e-13``, keeps lateral ``B.n``
-below ``2e-15``, and closes integrated flux within ``2e-3`` on a small grid.
-The same case now solves the full-theta exterior Dirichlet trace with condition
-number below 20 and equation residual below ``2e-12``. Theta/axial surface
-derivatives reconstruct total lateral tangency below ``3e-15``, and a complete
-boundary-shape JVP is finite and nonzero. This is a differentiable 3D vacuum
-closure. ``solve_free_boundary_cli`` now inserts it into the same nonlinear
-plasma/interior/interface residual used in axisymmetry; the former
-``solve_axisymmetric_free_boundary_cli`` name remains an alias.
+The nonaxisymmetric seam is explicit. ``magnetic_field_xyz`` converts the full
+contravariant field without an axisymmetry shortcut, while
+``plasma_external_neumann`` assembles lateral and cap data on a
+theta-dependent closed surface. ``solve_free_boundary_cli`` now packs the
+interior radius and gauge-free stream function together. Earlier refinement
+runs held the stream function fixed; those incomplete-equilibrium rows have
+been removed rather than used as validation evidence.
 
-With two oppositely offset circular end coils, an ``mpol=1, ntheta=3`` tube
-retains a genuine midplane ``m=1`` radius spread of 0.433 mm after solving,
-rather than relaxing to replicated axisymmetry. Beta 0 and 10% converge in
-9 and 7 evaluations with force below ``3.7e-15``, tangency below ``3e-17``,
-stress below ``2.1e-15``, compatibility near ``1.05e-3``, and condition below
-3.7. At 10%, the theta-zero center radius expands from 0.201985 m to
-0.204418 m and the ``m=1`` spread remains 0.467 mm. The coarse M7 smoke uses
-a separate ``2e-3`` compatibility gate; axisymmetric production remains at
-``1e-6``. Nonaxisymmetric resolution convergence and independent coil/field
-references remain promotion gates.
-The same genuine-3D case continues through 25% and 50% without stalling. From
-zero to 50%, mean midplane radius grows ``0.201794 -> 0.217968 m``, mean
-central field falls ``0.082215 -> 0.071173 T``, and Fourier ``m=1`` radius
-amplitude grows ``0.255 -> 0.421 mm`` while residual remains below
-``3.7e-15``. This is a nonlinear robustness result, not a spatial-accuracy
-promotion.
-``solve_beta_scan_cli`` is the topology-independent hot-start driver and
-propagates the finite-current profile through its reference and finite-beta
-solves; ``solve_axisymmetric_beta_scan_cli`` remains a compatibility alias.
+The corrected finite-current endpoint case uses two oppositely offset end-coil
+fields supplied by ESSOS. At ``(ns,ntheta,nxi)=(5,3,5)`` and ``(7,5,7)``, beta
+0 and 50% all converge at requested ``ftol=1e-12``. Variational and independent
+weak-force residuals, normalized ``div(B)``, normal stress, and ``B.n`` remain
+below ``1e-14``. On the medium grid, beta 50% expands the mean center radius to
+``0.2177835 m`` and reduces the center field to ``0.0624544 T``. The stream
+function is nonzero, so this is a complete nonaxisymmetric MHD state rather
+than a radius-only shape optimization.
 
-The first M7 resolution audit is deliberately not promoted. For
-``(ns,ntheta,nxi)=(5,5,5),(7,5,7),(9,7,9)``, the beta-zero theta-zero center
-radius is ``0.201934, 0.201504, 0.202207`` m, axis field is
-``0.083300, 0.084187, 0.083302`` T, and sampled theta radius spread is
-``0.638, 0.362, 0.582`` mm. At 10%, the corresponding values are
-``0.204334, 0.204008, 0.204625`` m, ``0.079472, 0.080224, 0.079416`` T, and
-``0.685, 0.391, 0.618`` mm. Every nonlinear residual is below ``1.2e-14`` and
-compatibility improves from about ``1.6e-5`` to ``8e-8``, but the observables
-are nonmonotonic and the last two axis fields differ by about 1%.
-
-Measured two-point runtimes are 25.6 seconds locally, then 287.7 and 896.1
-seconds on one A4000; the GPU grids use 2.74 and 3.65 GB host RSS. The finest
-run is therefore evidence of both nonlinear robustness and unresolved spatial
-convergence, not a validation result. M7 needs a better refinement coordinate,
-higher-order exterior trace, and lower-memory Jacobian before another larger
-grid is worthwhile.
-
-Global observables are better behaved at high beta. For the beta-0/50%
-endpoint study, the ``(7,5,7)`` to ``(9,7,9)`` relative changes at 50% are
-``6.46e-4`` in theta-mean radius, ``1.09e-3`` in theta-mean field,
-``4.45e-4`` in volume, and ``5.28e-4`` in total energy. Compatibility improves
-from ``1.18e-5`` to ``2.55e-8``. The ``m=1`` amplitude changes from 0.305 to
-0.131 mm, however, so only the global response is stable to 0.2%; local 3D
-shape is not promoted. Inputs and complete values are stored in
+Global coarse-to-medium changes are at most 0.96% for center radius, center
+field, volume, and energy. The local center ``m=1`` amplitude changes by 81%
+at beta zero and 73% at beta 50%, however. The medium endpoint pair takes
+800.7 s and 4.25 GiB host RSS on one RTX A4000. A second formulation using
+high-order cap panels did not complete a bounded 690.7 s coarse scan. The lane
+therefore remains research-only: no third brute-force grid is scheduled before
+structured Jacobian solves make local-mode refinement practical. Compact input,
+residual, observable, runtime, and memory evidence is retained in
 ``benchmarks/mirror_free_boundary_nonaxisymmetric.json``.
 
-Spectral side density does not close the local 3D gate. At beta 50%, its
-medium-to-fine changes are ``4.87e-4`` in mean radius, ``3.09e-3`` in mean
-field, ``2.32e-4`` in volume, and ``5.79e-4`` in energy, but the ``m=1``
-amplitude changes from 0.154 to 0.0569 mm. The fine spectral central field
-also differs from the fine linear-density result by 14.1%. The endpoint pairs
-take 565 and 1,830 seconds and peak at 3.66 and 5.39 GiB RSS on an A4000.
-Consequently the option remains a research diagnostic; the next discretization
-study must increase side-geometry and cap-density order together rather than
-adding another brute-force grid.
-
-Exact polar cap geometry with resolution-adaptive radial density interpolation
-was then tested as ``exterior_high_order_cap_panels``. It improves the medium
-dipole off-surface field error from 1.056% to 0.121% without ill-conditioning,
-but fails the equilibrium gates. Axisymmetric compatibility is
-``4.71e-6/3.35e-5`` at beta 0/50% on ``(ns,nxi)=(7,13)`` and
-``5.74e-6/1.67e-5`` on ``(9,17)``, above the production ``1e-6`` limit. The
-medium 3D endpoint pair costs 2,149 s and 9.26 GiB RSS, 3.8 times and 2.5
-times the spectral-side pair. Its fine run exceeded 94 minutes, 11.9 GiB RSS,
-and 9.25 GiB GPU memory without completing. The API remains opt-in for
-quadrature research and is rejected as the production cap discretization.
-``boundary_fourier_amplitudes`` reports theta mean and peak-normalized
-positive Fourier modes without the odd-grid bias of sampled peak-to-peak
-values. Its analytic ``m=0,1,2`` test closes to ``5e-17``. The corrected
-``(5,3,5), (7,5,7), (9,7,9)`` audit converges every nonlinear residual below
-``1e-14`` and improves exterior compatibility from about ``1e-3`` to
-``1e-7``. At beta 50%, medium-to-fine mean radius/field/volume/energy
-changes are ``0.170/0.101/0.044/0.057%``. The center ``m=1`` amplitude,
-however, changes by 36% at beta zero and 72% at beta 50%.
-
-Dropping only the cap nodes was also found to compare different physical
-locations because CGL nodes move toward the caps under refinement. The core
-norm now integrates the Fourier-CGL interpolant with Gauss-Legendre quadrature
-on the fixed ``|xi| <= 0.75`` window. The completed runs retain their raw
-collocation profiles rather than retroactively inventing this value. This
-closes the audit with an unsupported 3D verdict; no larger dense-Jacobian grid
-is scheduled.
-
-.. image:: _static/figures/mirror_nonaxisymmetric_refinement.png
-   :alt: Nonaxisymmetric mirror modal profiles, global refinement, and exterior compatibility
-   :width: 100%
+``solve_beta_scan_cli`` remains the topology-independent hot-start driver and
+propagates current through its reference and finite-beta solves;
+``solve_axisymmetric_beta_scan_cli`` is a compatibility alias.
 
 Two cheaper boundary-limit approximations were tested and rejected. Inward or
 outward offset collocation produced density-system condition numbers from

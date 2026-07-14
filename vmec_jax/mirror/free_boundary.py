@@ -33,6 +33,7 @@ from .exterior_bie import (
     solve_nonaxisymmetric_exterior_vacuum,
 )
 from .model import MirrorBoundary, MirrorConfig, MirrorState, PressureClosure, PressureMoments
+from .solver import _MirrorStateVectorizer
 from .vacuum import (
     MU0,
     VacuumField,
@@ -118,6 +119,7 @@ def solve_free_boundary_cli(
     axial_flux_derivative: Array,
     mass_profile: Array = 0.0,
     current_derivative: Array = 0.0,
+    solve_lambda: bool | None = None,
     gamma: float = 5.0 / 3.0,
     initial_state: MirrorState | None = None,
     initial_potential: Array | None = None,
@@ -138,7 +140,10 @@ def solve_free_boundary_cli(
     The default ``vacuum_backend="annulus"`` retains the finite outer-cylinder
     potential discretization. ``vacuum_backend="exterior"`` instead solves the
     closed-surface free-space Neumann problem at every nonlinear evaluation;
-    its active vector contains no vacuum degrees of freedom.
+    its active vector contains no vacuum degrees of freedom. Axisymmetric
+    solves keep the stream function fixed by default. Nonaxisymmetric solves
+    include its gauge-free coefficients unless ``solve_lambda=False`` is
+    requested explicitly.
     """
 
     if plasma_grid.ntheta != vacuum_grid.ntheta:
@@ -150,6 +155,8 @@ def solve_free_boundary_cli(
         raise ValueError("curved side geometry requires spectral side density")
     if plasma_grid.ntheta != 1 and not use_exterior:
         raise ValueError("nonaxisymmetric free boundary requires vacuum_backend='exterior'")
+    if solve_lambda is None:
+        solve_lambda = plasma_grid.ntheta != 1
     exterior_jacobian_chunk_size = int(exterior_jacobian_chunk_size)
     if exterior_jacobian_chunk_size < 1:
         raise ValueError("exterior_jacobian_chunk_size must be positive")
@@ -183,13 +190,22 @@ def solve_free_boundary_cli(
         vacuum_mask[-1] = False
     vacuum_indices = tuple(np.asarray(index) for index in np.nonzero(vacuum_mask))
     nb = boundary_indices[0].size
-    np_state = plasma_indices[0].size
     nv = vacuum_indices[0].size
 
     base_state = MirrorState.from_boundary(initial_boundary, plasma_grid) if initial_state is None else initial_state
     base_state.validate_shape(plasma_grid)
     if not np.allclose(np.asarray(base_state.radius_scale[-1]), initial_boundary_radius):
         raise ValueError("initial_state boundary must match initial_boundary")
+    plasma_vectorizer = _MirrorStateVectorizer.build(
+        base_state,
+        initial_boundary,
+        plasma_grid,
+        axial_flux_derivative=axial_flux_derivative,
+        solve_lambda=solve_lambda,
+    )
+    if plasma_vectorizer.radius_size != plasma_indices[0].size:
+        raise ValueError("free-boundary plasma packing does not match the interior radius")
+    np_state = plasma_vectorizer.size
     potential_seed = (
         np.zeros(vacuum_grid.shape) if initial_potential is None or use_exterior else np.asarray(initial_potential)
     )
@@ -199,7 +215,7 @@ def solve_free_boundary_cli(
     mass_scale_index = nb + np_state + nv
     x0_parts = [
         initial_boundary_radius[boundary_indices] / boundary_scale,
-        np.asarray(base_state.radius_scale)[plasma_indices] / boundary_scale,
+        plasma_vectorizer.pack(),
         potential_seed[vacuum_indices] / potential_scale,
     ]
     if calibrate_pressure:
@@ -208,8 +224,10 @@ def solve_free_boundary_cli(
     geometric_upper = np.inf if use_exterior else 0.98 * float(outer_radius) / boundary_scale
     if np.isfinite(geometric_upper) and np.max(x0[:nb]) >= geometric_upper:
         raise ValueError("initial plasma boundary must lie inside the outer vacuum cylinder")
-    lower_parts = [np.full(nb + np_state, 0.2), np.full(nv, -np.inf)]
-    upper_parts = [np.full(nb + np_state, geometric_upper), np.full(nv, np.inf)]
+    plasma_lower, plasma_upper = plasma_vectorizer.bounds()
+    plasma_upper[: plasma_vectorizer.radius_size] = geometric_upper
+    lower_parts = [np.full(nb, 0.2), plasma_lower, np.full(nv, -np.inf)]
+    upper_parts = [np.full(nb, geometric_upper), plasma_upper, np.full(nv, np.inf)]
     if calibrate_pressure:
         lower_parts.append(np.asarray([np.finfo(float).tiny]))
         upper_parts.append(np.asarray([np.inf]))
@@ -223,12 +241,13 @@ def solve_free_boundary_cli(
             .set(vector[:nb] * boundary_scale)
         )
         boundary = MirrorBoundary(boundary_radius)
-        radius = base_state.radius_scale.at[plasma_indices].set(vector[nb : nb + np_state] * boundary_scale)
+        packed_state = plasma_vectorizer.unpack(vector[nb : nb + np_state])
+        radius = packed_state.radius_scale
         radius = radius.at[-1].set(boundary_radius)
         radius = radius.at[:, :, 0].set(boundary_radius[:, 0])
         radius = radius.at[:, :, -1].set(boundary_radius[:, -1])
         radius = radius.at[0].set(radius[1])
-        state = MirrorState(radius, base_state.lambda_stream)
+        state = MirrorState(radius, packed_state.lambda_stream)
         potential = (
             jnp.zeros(vacuum_grid.shape)
             .at[vacuum_indices]
@@ -488,16 +507,16 @@ def solve_free_boundary_cli(
             plasma_grid,
             **energy_kwargs,
         )
-        active_weak = (
-            np.asarray(weak_gradient.radius_scale)[plasma_indices]
-            * boundary_scale
-            / plasma_scale
-        )
+        active_weak = plasma_vectorizer.pullback_gradient(weak_gradient) / plasma_scale
+        radius_weak = active_weak[: plasma_vectorizer.radius_size]
+        lambda_weak = active_weak[plasma_vectorizer.radius_size :]
         plasma_staggered_weak_force = VariationalResidual(
             radius_gradient=full_weak_force.radius_gradient,
             lambda_gradient=full_weak_force.lambda_gradient,
-            radius_rms=jnp.asarray(np.sqrt(np.mean(active_weak**2))),
-            lambda_rms=jnp.asarray(0.0),
+            radius_rms=jnp.asarray(np.sqrt(np.mean(radius_weak**2))),
+            lambda_rms=jnp.asarray(
+                np.sqrt(np.mean(lambda_weak**2)) if lambda_weak.size else 0.0
+            ),
             maximum=jnp.asarray(np.max(np.abs(active_weak))),
         )
     else:

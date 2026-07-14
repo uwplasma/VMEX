@@ -1,89 +1,92 @@
 {
-  "schema": "vmec_jax.benchmark.mirror_free_boundary_nonaxisymmetric/3",
+  "schema": "vmec_jax.benchmark.mirror_free_boundary_nonaxisymmetric/4",
   "case": {
-    "coils": "two radius-0.9 m circular coils at z=+-1 m with x offsets +-0.04 m",
-    "current_A": 200000.0,
+    "external_field": "ESSOS two-coil mirror with opposite x offsets",
     "axial_current_derivative": "1e-3 * s",
-    "vacuum_backend": "exterior",
+    "plasma_state": "radius plus gauge-free lambda",
+    "vacuum_backend": "exterior, spectral side density, linear caps",
+    "betas": [0.0, 0.5],
     "ftol": 1e-12,
     "device": "office RTX A4000"
   },
-  "coarse_continuation": [
-    {"beta": 0.0, "ns": 5, "ntheta": 3, "nxi": 5, "residual": 3.347e-15, "compatibility": 1.052e-3, "mean_center_radius_m": 0.201794061, "mean_center_field_T": 0.082214875, "m1_radius_m": 2.552960688e-4},
-    {"beta": 0.10, "ns": 5, "ntheta": 3, "nxi": 5, "residual": 3.606e-15, "compatibility": 1.045e-3, "mean_center_radius_m": 0.204211564, "mean_center_field_T": 0.080297249, "m1_radius_m": 2.751920830e-4},
-    {"beta": 0.25, "ns": 5, "ntheta": 3, "nxi": 5, "residual": 3.259e-15, "compatibility": 1.032e-3, "mean_center_radius_m": 0.208446062, "mean_center_field_T": 0.077188766, "m1_radius_m": 3.138854216e-4},
-    {"beta": 0.50, "ns": 5, "ntheta": 3, "nxi": 5, "residual": 2.846e-15, "compatibility": 1.004e-3, "mean_center_radius_m": 0.217967976, "mean_center_field_T": 0.071173090, "m1_radius_m": 4.214999372e-4}
-  ],
-  "resolution_endpoints": [
-    {"beta": 0.0, "ns": 7, "ntheta": 5, "nxi": 7, "wall_s_pair": 519.192, "residual": 5.414e-15, "compatibility": 1.210e-5, "mean_center_radius_m": 0.201433021, "mean_center_field_T": 0.082602174, "m1_radius_m": 1.858306997e-4, "volume_m3": 0.1646506814, "energy_J": 714.5106337},
-    {"beta": 0.50, "ns": 7, "ntheta": 5, "nxi": 7, "wall_s_pair": 519.192, "residual": 5.236e-15, "compatibility": 1.178e-5, "mean_center_radius_m": 0.218017052, "mean_center_field_T": 0.071106731, "m1_radius_m": 3.048037102e-4, "volume_m3": 0.1832254167, "energy_J": 872.1254992},
-    {"beta": 0.0, "ns": 9, "ntheta": 7, "nxi": 9, "wall_s_pair": 1409.805, "residual": 9.008e-15, "compatibility": 8.932e-8, "mean_center_radius_m": 0.201939661, "mean_center_field_T": 0.082036062, "m1_radius_m": 6.886007618e-5, "volume_m3": 0.1646253048, "energy_J": 714.5481563},
-    {"beta": 0.50, "ns": 9, "ntheta": 7, "nxi": 9, "wall_s_pair": 1409.805, "residual": 9.010e-15, "compatibility": 2.551e-8, "mean_center_radius_m": 0.217876261, "mean_center_field_T": 0.071029365, "m1_radius_m": 1.314742785e-4, "volume_m3": 0.1833070235, "energy_J": 872.5859988}
-  ],
-  "spectral_side_density_endpoints": [
-    {"beta": 0.0, "ns": 7, "ntheta": 5, "nxi": 7, "wall_s_pair": 565.050, "peak_rss_mib": 3745.2, "residual": 3.853e-15, "compatibility": 1.224e-5, "mean_center_radius_m": 0.2014239447, "mean_center_field_T": 0.0841681463, "m1_radius_m": 1.063197429e-4, "volume_m3": 0.1646260179, "energy_J": 714.5290465},
-    {"beta": 0.50, "ns": 7, "ntheta": 5, "nxi": 7, "wall_s_pair": 565.050, "peak_rss_mib": 3745.2, "residual": 5.645e-15, "compatibility": 1.196e-5, "mean_center_radius_m": 0.2178956220, "mean_center_field_T": 0.0624290683, "m1_radius_m": 1.540190773e-4, "volume_m3": 0.1833355810, "energy_J": 871.7166867},
-    {"beta": 0.0, "ns": 9, "ntheta": 7, "nxi": 9, "wall_s_pair": 1830.180, "peak_rss_mib": 5515.2, "residual": 8.204e-15, "compatibility": 1.630e-7, "mean_center_radius_m": 0.2018529383, "mean_center_field_T": 0.0836069924, "m1_radius_m": 5.928157384e-5, "volume_m3": 0.1645930095, "energy_J": 714.5496967},
-    {"beta": 0.50, "ns": 9, "ntheta": 7, "nxi": 9, "wall_s_pair": 1830.180, "peak_rss_mib": 5515.2, "residual": 8.184e-15, "compatibility": 9.381e-8, "mean_center_radius_m": 0.2177894842, "mean_center_field_T": 0.0622370622, "m1_radius_m": 5.686962478e-5, "volume_m3": 0.1833781722, "energy_J": 872.2220062}
-  ],
-  "high_order_cap_endpoints": [
-    {"beta": 0.0, "ns": 7, "ntheta": 5, "nxi": 7, "wall_s_pair": 2149.071, "peak_rss_mib": 9484.43, "residual": 6.232e-15, "compatibility": 1.23387e-5, "condition_number": 3.1942, "mean_center_radius_m": 0.2013537792, "mean_center_field_T": 0.0842445100, "m1_radius_m": 1.208498e-4, "volume_m3": 0.1644859896, "energy_J": 715.3369019},
-    {"beta": 0.50, "ns": 7, "ntheta": 5, "nxi": 7, "wall_s_pair": 2149.071, "peak_rss_mib": 9484.43, "residual": 5.9745e-15, "compatibility": 1.2084e-5, "condition_number": 3.1733, "mean_center_radius_m": 0.2176959347, "mean_center_field_T": 0.0625874857, "m1_radius_m": 1.717984e-4, "volume_m3": 0.1830292581, "energy_J": 872.3276618}
-  ],
-  "high_order_cap_axisymmetric": [
-    {"beta": 0.0, "ns": 7, "nxi": 13, "wall_s_pair": 437.177, "peak_rss_mib": 3986.23, "residual": 3.6053e-15, "compatibility": 4.7142e-6, "condition_number": 3.6227, "center_radius_m": 0.2016582823, "center_field_T": 0.0835001999},
-    {"beta": 0.50, "ns": 7, "nxi": 13, "wall_s_pair": 437.177, "peak_rss_mib": 3986.23, "residual": 4.1178e-15, "compatibility": 3.3496e-5, "condition_number": 3.5457, "center_radius_m": 0.2175342195, "center_field_T": 0.0622328410},
-    {"beta": 0.0, "ns": 9, "nxi": 17, "wall_s_pair": 992.380, "peak_rss_mib": 4361.33, "residual": 6.4266e-15, "compatibility": 5.7361e-6, "condition_number": 3.6717, "center_radius_m": 0.2016374816, "center_field_T": 0.0835190198},
-    {"beta": 0.50, "ns": 9, "nxi": 17, "wall_s_pair": 992.380, "peak_rss_mib": 4361.33, "residual": 1.0144e-14, "compatibility": 1.6656e-5, "condition_number": 3.5892, "center_radius_m": 0.2177395180, "center_field_T": 0.0619257340}
-  ],
-  "high_order_cap_fine_3d_attempt": {
-    "grid": {"ns": 9, "ntheta": 7, "nxi": 9},
-    "jacobian_chunk_size": 1,
-    "terminated_after_s": 5660,
-    "peak_rss_mib": 12210.9,
-    "gpu_memory_mib": 9474,
-    "result": "not completed"
-  },
-  "corrected_fixed_cap_refinement": {
-    "method": "spectral side density, curved side geometry, linear cap density; consistent (5,3,5), (7,5,7), (9,7,9) ladder",
-    "note": "The stored endpoint-excluded L2 values use the superseded moving-CGL-node diagnostic. Raw modal profiles are authoritative. The code now evaluates future core norms from the Fourier-CGL interpolant on the fixed |xi|<=0.75 window.",
-    "grids": [
-      {
-        "grid": {"ns": 5, "ntheta": 3, "nxi": 5},
-        "wall_s_pair": 292.699,
-        "peak_rss_mib": 2807.38,
-        "beta0": {"residual": 2.392e-15, "compatibility": 1.025468e-3, "mean_center_radius_m": 0.201483137, "mean_center_field_T": 0.083764942, "m1_center_m": 1.564123e-4, "volume_m3": 0.165137335, "energy_J": 717.452574, "m1_axial_profile_m": [0.03, 9.349228e-4, 1.564123e-4, 1.774971e-3, 0.03]},
-        "beta50": {"residual": 2.980e-15, "compatibility": 9.745645e-4, "mean_center_radius_m": 0.217011866, "mean_center_field_T": 0.062968033, "m1_center_m": 2.550223e-4, "volume_m3": 0.183758254, "energy_J": 877.061025, "m1_axial_profile_m": [0.03, 9.293524e-4, 2.550223e-4, 1.860294e-3, 0.03]}
-      },
-      {
-        "grid": {"ns": 7, "ntheta": 5, "nxi": 7},
-        "wall_s_pair": 943.944,
-        "peak_rss_mib": 4677.04,
-        "beta0": {"residual": 6.638e-15, "compatibility": 1.213309e-5, "mean_center_radius_m": 0.201500628, "mean_center_field_T": 0.084119898, "m1_center_m": 1.084229e-4, "volume_m3": 0.164603721, "energy_J": 714.640880, "m1_axial_profile_m": [0.03, 3.722467e-3, 2.074752e-3, 1.084229e-4, 2.070597e-3, 3.725807e-3, 0.03]},
-        "beta50": {"residual": 5.182e-15, "compatibility": 1.178635e-5, "mean_center_radius_m": 0.217873935, "mean_center_field_T": 0.062458380, "m1_center_m": 1.538539e-4, "volume_m3": 0.183198851, "energy_J": 871.874192, "m1_axial_profile_m": [0.03, 3.994786e-3, 2.502859e-3, 1.538539e-4, 2.498537e-3, 3.995781e-3, 0.03]}
-      },
-      {
-        "grid": {"ns": 9, "ntheta": 7, "nxi": 9},
-        "wall_s_pair": 2994.901,
-        "peak_rss_mib": 7524.89,
-        "beta0": {"residual": 9.914e-15, "compatibility": 1.119939e-7, "mean_center_radius_m": 0.201714652, "mean_center_field_T": 0.083692245, "m1_center_m": 7.952242e-5, "volume_m3": 0.164573538, "energy_J": 714.657085, "m1_axial_profile_m": [0.03, 7.222170e-3, 3.436400e-3, 5.522847e-4, 7.952242e-5, 5.528100e-4, 3.435387e-3, 7.222996e-3, 0.03]},
-        "beta50": {"residual": 8.509e-15, "compatibility": 6.185172e-8, "mean_center_radius_m": 0.217503786, "mean_center_field_T": 0.062395096, "m1_center_m": 8.936920e-5, "volume_m3": 0.183278796, "energy_J": 872.368427, "m1_axial_profile_m": [0.03, 7.395369e-3, 3.761070e-3, 6.517945e-4, 8.936920e-5, 6.523182e-4, 3.759832e-3, 7.396687e-3, 0.03]}
-      }
-    ],
-    "medium_to_fine_relative": {
-      "beta0": {"mean_center_radius": 1.061e-3, "mean_center_field": 5.110e-3, "volume": 1.834e-4, "energy": 2.268e-5, "m1_center": 3.634e-1},
-      "beta50": {"mean_center_radius": 1.702e-3, "mean_center_field": 1.014e-3, "volume": 4.362e-4, "energy": 5.665e-4, "m1_center": 7.216e-1}
+  "coarse": {
+    "grid": {"ns": 5, "ntheta": 3, "nxi": 5},
+    "wall_s_pair_warm": 71.406,
+    "peak_rss_mib": 2201.96,
+    "beta0": {
+      "iterations": 26,
+      "variational_max": 4.571e-15,
+      "staggered_weak_max": 5.750e-16,
+      "normal_stress_rms": 2.122e-15,
+      "vacuum_b_normal_rms": 3.731e-17,
+      "normalized_divb": 2.841e-16,
+      "lambda_max": 2.723e-4,
+      "compatibility": 9.505e-4,
+      "center_radius_m": 0.2014018783,
+      "center_field_T": 0.0838655345,
+      "center_m1_m": 0.0024869107,
+      "volume_m3": 0.1651036492,
+      "energy_J": 717.0835279
     },
-    "figure": "docs/_static/figures/mirror_nonaxisymmetric_refinement.png",
-    "verdict": "Nonlinear and exterior closure convergence pass. Global beta-50 response is stable near 0.2%, but the local m=1 shape does not converge; M7 remains research-only."
+    "beta50": {
+      "iterations": 28,
+      "variational_max": 2.757e-15,
+      "staggered_weak_max": 4.318e-16,
+      "normal_stress_rms": 1.569e-15,
+      "vacuum_b_normal_rms": 4.449e-17,
+      "normalized_divb": 2.967e-16,
+      "lambda_max": 2.697e-4,
+      "compatibility": 8.984e-4,
+      "center_radius_m": 0.2168913152,
+      "center_field_T": 0.0630597155,
+      "center_m1_m": 0.0031770992,
+      "volume_m3": 0.1836946314,
+      "energy_J": 876.6910493
+    }
   },
-  "assessment": {
-    "beta50_medium_to_fine_relative": {"mean_center_radius": 6.462e-4, "mean_center_field": 1.089e-3, "volume": 4.452e-4, "energy": 5.277e-4},
-    "m1_radius_relative_change": 1.318,
-    "spectral_beta50_medium_to_fine_relative": {"mean_center_radius": 4.873e-4, "mean_center_field": 3.085e-3, "volume": 2.323e-4, "energy": 5.793e-4},
-    "spectral_m1_radius_relative_change": 1.708,
-    "spectral_vs_linear_fine_beta50_field_relative": 0.1413,
-    "high_order_axis_beta50_medium_to_fine_relative": {"center_radius": 9.44e-4, "center_field": 4.93e-3},
-    "status": "The corrected three-grid ladder confirms nonlinear and vacuum-closure convergence but not local m=1 convergence: medium-to-fine center-mode changes remain 36%/72% at beta 0/50%. Global beta-50 response is stable near 0.2%. High-order cap panels fail the 1e-6 axisymmetric compatibility gate, cost 3.8x the spectral medium pair with 2.5x RSS, and did not complete the fine 3D pair in 94 minutes; all 3D variants remain research-only."
-  }
+  "medium": {
+    "grid": {"ns": 7, "ntheta": 5, "nxi": 7},
+    "wall_s_pair": 800.733,
+    "peak_rss_mib": 4249.73,
+    "beta0": {
+      "iterations": 83,
+      "variational_max": 9.126e-15,
+      "staggered_weak_max": 7.109e-16,
+      "normal_stress_rms": 3.291e-15,
+      "vacuum_b_normal_rms": 2.697e-17,
+      "normalized_divb": 9.602e-16,
+      "lambda_max": 4.107e-4,
+      "compatibility": 1.407e-5,
+      "center_radius_m": 0.2014399571,
+      "center_field_T": 0.0841332019,
+      "center_m1_m": 0.0004639745,
+      "volume_m3": 0.1645469340,
+      "energy_J": 714.0342608
+    },
+    "beta50": {
+      "iterations": 36,
+      "variational_max": 5.641e-15,
+      "staggered_weak_max": 3.927e-16,
+      "normal_stress_rms": 2.629e-15,
+      "vacuum_b_normal_rms": 2.550e-17,
+      "normalized_divb": 9.500e-16,
+      "lambda_max": 4.129e-4,
+      "compatibility": 1.358e-5,
+      "center_radius_m": 0.2177834999,
+      "center_field_T": 0.0624543569,
+      "center_m1_m": 0.0008679221,
+      "volume_m3": 0.1831145106,
+      "energy_J": 871.1950597
+    }
+  },
+  "coarse_to_medium_relative_change": {
+    "beta0": {"center_radius": 1.891e-4, "center_field": 3.192e-3, "volume": 3.372e-3, "energy": 4.252e-3, "center_m1": 0.8134},
+    "beta50": {"center_radius": 4.114e-3, "center_field": 9.600e-3, "volume": 3.158e-3, "energy": 6.269e-3, "center_m1": 0.7268}
+  },
+  "bounded_alternative": {
+    "method": "high-order cap panels, four-beta coarse scan",
+    "terminated_after_s": 690.7,
+    "result": "did not complete the bounded test"
+  },
+  "assessment": "The full radius-plus-lambda MHD residual converges through beta 0.50 with weak force, div(B), stress, and B.n near roundoff. Global coarse-to-medium observables change by at most 0.96%, but local m=1 changes by 73-81% and the medium pair costs 13.3 minutes. Keep the lane research-only until structured Jacobian solves make a third level practical and local modes converge. All earlier radius-only benchmark rows were removed as incomplete equilibria."
 }

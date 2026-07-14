@@ -34,6 +34,7 @@ def run(
     high_order: bool,
     jacobian_chunk_size: int,
     axisymmetric: bool,
+    beta_values: tuple[float, ...] = (0.0, 0.50),
 ) -> dict:
     """Run one endpoint pair and return machine-readable diagnostics."""
 
@@ -83,7 +84,7 @@ def run(
         boundary = MirrorBoundary(
             base.radius_scale + 0.03 * jnp.asarray(grid.xi)[None, :] * jnp.cos(jnp.asarray(grid.theta)[:, None])
         )
-    betas = jnp.asarray([0.0, 0.50])
+    betas = jnp.asarray(beta_values)
     start = time.perf_counter()
     results = solve_beta_scan_cli(
         boundary,
@@ -116,6 +117,11 @@ def run(
             "residual": float(result.variational_max),
             "normal_stress_rms": float(result.interface.normal_stress_rms),
             "vacuum_b_normal_rms": float(result.interface.vacuum_b_normal_rms),
+            "staggered_weak_max": float(
+                result.plasma_staggered_weak_force.maximum
+            ),
+            "normalized_divb": float(result.normalized_divergence_rms),
+            "lambda_max": float(jnp.max(jnp.abs(result.plasma_state.lambda_stream))),
             "compatibility": float(result.vacuum_field.neumann_result.compatibility_error),
             "condition_number": float(result.vacuum_field.neumann_result.condition_number),
             "achieved_beta": float(diagnostic.achieved_reference_beta),
@@ -166,6 +172,7 @@ def main() -> None:
     parser.add_argument("--linear-cap", action="store_true")
     parser.add_argument("--jacobian-chunk-size", type=int, default=1)
     parser.add_argument("--axisymmetric", action="store_true")
+    parser.add_argument("--beta-zero-only", action="store_true")
     parser.add_argument("--output")
     args = parser.parse_args()
     result = run(
@@ -175,6 +182,7 @@ def main() -> None:
         high_order=not args.linear_cap,
         jacobian_chunk_size=args.jacobian_chunk_size,
         axisymmetric=args.axisymmetric,
+        beta_values=(0.0,) if args.beta_zero_only else (0.0, 0.50),
     )
     text = json.dumps(result, indent=2)
     if args.output:

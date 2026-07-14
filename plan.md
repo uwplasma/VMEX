@@ -197,7 +197,7 @@ equilibrium criterion.
 | Axisymmetric fixed mirror | 90% | real solve, `ftol=1e-12`, MMS, weak force, gradients, spline parity | spline implicit derivatives and final release evidence |
 | Axisymmetric free mirror | 80% | coupled solve, beta 0--50%, `B.n`, stress, weak force, three-grid paraxial trend | dense-Jacobian scaling and spline coupling |
 | Nonaxisymmetric fixed mirror | 82% | spline rotating ellipse/SFLM, finite beta/refinement, reverse implicit adjoint, plotted example | finest-knot amplitude and forward tangent |
-| Nonaxisymmetric free mirror | 30% | theta-dependent BIE and residual exist | no converged analytic fixture or panel study |
+| Nonaxisymmetric free mirror | 55% (deferred) | complete radius-plus-lambda solves through beta 50%, global two-grid convergence, roundoff residuals | local `m=1` mode changes 73--81%; dense medium pair costs 13.3 min |
 | ANIMEC model | 55% | functional, moments, isotropic limit, indicators | source-equation audit and independent finite-beta case |
 | Implicit derivatives | 74% | nodal/free VJP plus spline nonaxisymmetric adjoint FD checks | forward spline tangent and SOLVAX scaling |
 | Preconditioning | 45% | separable prototype and Newton-GMRES | no bounded-iteration basis/resolution study |
@@ -503,6 +503,20 @@ Gate: paraxial coefficients have the expected radial order, observables and
 weak force converge, and the residual contract is met.
 
 ### Milestone 6: nonaxisymmetric free-boundary mirrors
+
+Status: bounded and deferred from promotion. The original refinement rows held
+the stream function fixed and were therefore incomplete MHD equilibria; they
+have been removed. The corrected exterior solve packs radius and gauge-free
+``lambda`` together. On an office RTX A4000, beta 0 and 50% converge at
+``ftol=1e-12`` on ``(ns,ntheta,nxi)=(5,3,5)`` and ``(7,5,7)``. Weak force,
+``div(B)``, normal stress, and ``B.n`` are all below ``1e-14``. Coarse-to-medium
+changes in center radius, center field, volume, and energy are at most 0.96%,
+while the local center ``m=1`` amplitude changes by 73--81%. The medium pair
+costs 800.7 s and 4.25 GiB host RSS; a high-order-cap four-beta alternative did
+not complete in a bounded 690.7 s run. This satisfies the planned two-method
+stop rule: retain the complete research solver and compact negative benchmark,
+but do not advertise a supported nonaxisymmetric free-boundary model or schedule
+a brute-force third grid before Milestone 8 changes the linear algebra.
 
 1. Supply an ESSOS/MGRID or analytic external-field fixture to the existing
    theta-dependent vacuum path.
