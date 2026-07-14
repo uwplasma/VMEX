@@ -16,10 +16,13 @@ from .forces import (
     InterfaceResidual,
     IsotropicForceResidual,
     MirrorEnergy,
+    VariationalResidual,
     anisotropic_force_residual,
     anisotropic_mirror_energy,
     interface_residual,
     isotropic_force_residual,
+    isotropic_staggered_fixed_boundary_gradient,
+    isotropic_staggered_weak_residual,
     mirror_energy,
 )
 from .geometry import magnetic_field_squared, normalized_divergence_rms
@@ -74,6 +77,7 @@ class FreeBoundaryMirrorResult:
     plasma_state: MirrorState
     plasma_energy: MirrorEnergy | AnisotropicMirrorEnergy
     plasma_force: IsotropicForceResidual | AnisotropicForceResidual
+    plasma_staggered_weak_force: VariationalResidual | None
     normalized_divergence_rms: Array
     plasma_b_squared: Array
     perpendicular_pressure: Array
@@ -466,6 +470,36 @@ def solve_free_boundary_cli(
     variational_max = float(np.max(np.abs(final_residual)))
     if pressure_closure is None:
         plasma_force = isotropic_force_residual(plasma, plasma_grid)
+        energy_kwargs = {
+            "axial_flux_derivative": axial_flux_derivative,
+            "mass_profile": jnp.asarray(mass_profile) * mass_scale,
+            "current_derivative": current_derivative,
+            "gamma": gamma,
+        }
+        full_weak_force = isotropic_staggered_weak_residual(
+            state,
+            boundary,
+            plasma_grid,
+            **energy_kwargs,
+        )
+        weak_gradient = isotropic_staggered_fixed_boundary_gradient(
+            state,
+            boundary,
+            plasma_grid,
+            **energy_kwargs,
+        )
+        active_weak = (
+            np.asarray(weak_gradient.radius_scale)[plasma_indices]
+            * boundary_scale
+            / plasma_scale
+        )
+        plasma_staggered_weak_force = VariationalResidual(
+            radius_gradient=full_weak_force.radius_gradient,
+            lambda_gradient=full_weak_force.lambda_gradient,
+            radius_rms=jnp.asarray(np.sqrt(np.mean(active_weak**2))),
+            lambda_rms=jnp.asarray(0.0),
+            maximum=jnp.asarray(np.max(np.abs(active_weak))),
+        )
     else:
         plasma_force = anisotropic_force_residual(
             state,
@@ -473,6 +507,7 @@ def solve_free_boundary_cli(
             plasma_grid,
             _ScaledPressureClosure(pressure_closure, mass_scale),
         )
+        plasma_staggered_weak_force = None
     divergence_rms = normalized_divergence_rms(
         plasma.field, plasma.geometry, plasma_grid
     )
@@ -490,6 +525,7 @@ def solve_free_boundary_cli(
         plasma_state=state,
         plasma_energy=plasma,
         plasma_force=plasma_force,
+        plasma_staggered_weak_force=plasma_staggered_weak_force,
         normalized_divergence_rms=divergence_rms,
         plasma_b_squared=plasma_b_squared_full,
         perpendicular_pressure=perpendicular_pressure,

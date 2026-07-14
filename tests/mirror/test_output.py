@@ -67,6 +67,7 @@ def _sample_mout() -> MoutData:
         variational_max=8.0e-13,
         normal_stress_rms=2.0e-10,
         b_normal_rms=3.0e-11,
+        staggered_weak_max=6.0e-13,
         pointwise_force_rms=4.0e-4,
         normalized_divergence_rms=5.0e-13,
         closure="isotropic",
@@ -79,6 +80,7 @@ def test_mout_roundtrip(tmp_path) -> None:
     assert loaded.schema == "vmec_jax.mirror.mout/1"
     assert loaded.converged
     assert loaded.closure == "isotropic"
+    assert loaded.staggered_weak_max == pytest.approx(6.0e-13)
     assert loaded.pointwise_force_rms == pytest.approx(4.0e-4)
     assert loaded.normalized_divergence_rms == pytest.approx(5.0e-13)
     np.testing.assert_allclose(loaded.boundary_radius, _sample_mout().boundary_radius)
@@ -90,10 +92,12 @@ def test_mout_reads_files_before_independent_diagnostics(tmp_path) -> None:
 
     path = write_mout(tmp_path / "mout_legacy.nc", _sample_mout())
     with netCDF4.Dataset(path, "r+") as dataset:
+        dataset.delncattr("staggered_weak_max")
         dataset.delncattr("pointwise_force_rms")
         dataset.delncattr("normalized_divergence_rms")
 
     loaded = read_mout(path)
+    assert np.isnan(loaded.staggered_weak_max)
     assert np.isnan(loaded.pointwise_force_rms)
     assert np.isnan(loaded.normalized_divergence_rms)
 
@@ -121,6 +125,7 @@ def test_mout_from_solved_result_contract() -> None:
     assert data.b_xyz.shape == (*shape, 3)
     assert np.all(np.isfinite(data.b_xyz))
     assert np.all(np.isnan(data.p_parallel))
+    assert np.isnan(data.staggered_weak_max)
     assert np.isnan(data.pointwise_force_rms)
     assert np.isnan(data.normalized_divergence_rms)
 
@@ -158,6 +163,7 @@ def test_mout_accepts_fixed_boundary_result() -> None:
     np.testing.assert_allclose(data.p_perpendicular, data.p_parallel)
     assert np.all(np.isfinite(data.mod_b))
     np.testing.assert_allclose(data.history, [[0.0, 1.0e-13]])
+    assert np.isnan(data.staggered_weak_max)
     assert np.isnan(data.pointwise_force_rms)
     assert np.isnan(data.normalized_divergence_rms)
 

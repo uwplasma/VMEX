@@ -36,6 +36,8 @@ from .forces import (
     anisotropic_mirror_energy,
     fixed_boundary_variational_residual,
     isotropic_force_residual,
+    isotropic_staggered_fixed_boundary_gradient,
+    isotropic_staggered_weak_residual,
     mirror_energy,
 )
 from .geometry import normalized_divergence_rms
@@ -56,7 +58,7 @@ class MirrorSolveResult:
     """Solved state, diagnostics, and dense iteration history.
 
     History columns are ``iteration, total_energy, radius_variational_rms,
-    lambda_variational_rms, variational_max, continuum_tensor_rms``.
+    lambda_variational_rms, variational_max, pointwise_force_rms``.
     ``optimizer_success`` is recorded separately and never substitutes for
     ``converged``.
     """
@@ -65,6 +67,7 @@ class MirrorSolveResult:
     energy: MirrorEnergy | AnisotropicMirrorEnergy
     variational: VariationalResidual
     force: IsotropicForceResidual | AnisotropicForceResidual
+    staggered_weak_force: VariationalResidual | None
     normalized_divergence_rms: Array
     history: Array
     iterations: int
@@ -82,6 +85,7 @@ jax.tree_util.register_dataclass(
         "energy",
         "variational",
         "force",
+        "staggered_weak_force",
         "normalized_divergence_rms",
         "history",
     ],
@@ -241,6 +245,27 @@ class _MirrorStateVectorizer:
             [np.full(self.radius_size, 5.0), np.full(self.lambda_size, np.inf)]
         )
         return lower, upper
+
+    def pullback_gradient(self, gradient: MirrorState) -> np.ndarray:
+        """Map a physical state gradient to normalized solver variables."""
+
+        radius = (
+            np.asarray(gradient.radius_scale)[self.radius_indices]
+            * self.radius_scale
+        )
+        if not self.solve_lambda:
+            return radius
+        shape = self.base.radius_scale.shape
+        interior = np.asarray(gradient.lambda_stream)[1:, :, 1:-1].reshape(
+            shape[0] - 1, -1
+        )
+        pivot_gradient = interior[:, self.lambda_pivot]
+        free = interior[:, self.lambda_free_indices] - (
+            pivot_gradient[:, None]
+            * self.lambda_interior_weights[self.lambda_free_indices][None, :]
+            / self.lambda_interior_weights[self.lambda_pivot]
+        )
+        return np.concatenate([radius, (free * self.flux_scale).reshape(-1)])
 
 
 @dataclass(frozen=True)
@@ -664,6 +689,34 @@ def solve_fixed_boundary_cli(
             maximum=jnp.asarray(maximum),
         )
 
+    def packed_staggered_weak(state: MirrorState) -> VariationalResidual | None:
+        if pressure_closure is not None:
+            return None
+        weak = isotropic_staggered_weak_residual(
+            state,
+            boundary,
+            grid,
+            **energy_kwargs,
+        )
+        if not solve_lambda:
+            return weak
+        gradient = isotropic_staggered_fixed_boundary_gradient(
+            state,
+            boundary,
+            grid,
+            **energy_kwargs,
+        )
+        packed = vectorizer.pullback_gradient(gradient) / energy_scale
+        radius_values = packed[: vectorizer.radius_size]
+        lambda_values = packed[vectorizer.radius_size :]
+        return VariationalResidual(
+            radius_gradient=weak.radius_gradient,
+            lambda_gradient=weak.lambda_gradient,
+            radius_rms=jnp.asarray(np.sqrt(np.mean(radius_values**2))),
+            lambda_rms=jnp.asarray(np.sqrt(np.mean(lambda_values**2))),
+            maximum=jnp.asarray(np.max(np.abs(packed))),
+        )
+
     history: list[tuple[float, float, float, float, float, float]] = []
 
     def record(iteration: int, x: np.ndarray) -> None:
@@ -685,11 +738,13 @@ def solve_fixed_boundary_cli(
     record(0, x0)
     if history[-1][4] <= config.ftol:
         initial_variational = packed_variational(x0, projected_initial)
+        initial_weak_force = packed_staggered_weak(projected_initial)
         result = MirrorSolveResult(
             state=projected_initial,
             energy=initial_energy,
             variational=initial_variational,
             force=evaluate_force(projected_initial, initial_energy),
+            staggered_weak_force=initial_weak_force,
             normalized_divergence_rms=normalized_divergence_rms(
                 initial_energy.field, initial_energy.geometry, grid
             ),
@@ -812,6 +867,7 @@ def solve_fixed_boundary_cli(
     final_energy = evaluate_energy(final_state)
     final_variational = packed_variational(final_x, final_state)
     final_force = evaluate_force(final_state, final_energy)
+    final_weak_force = packed_staggered_weak(final_state)
     record(callback_iterations + newton_steps + polish_evaluations, final_x)
     converged = bool(
         float(final_variational.maximum) <= config.ftol
@@ -825,6 +881,7 @@ def solve_fixed_boundary_cli(
         energy=final_energy,
         variational=final_variational,
         force=final_force,
+        staggered_weak_force=final_weak_force,
         normalized_divergence_rms=normalized_divergence_rms(
             final_energy.field, final_energy.geometry, grid
         ),

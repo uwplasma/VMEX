@@ -106,6 +106,16 @@ def test_cgl_operators_obey_integration_by_parts_and_spectral_interpolation() ->
     roundtrip = fine.interpolate(interpolated, coarse.nodes)
     np.testing.assert_allclose(roundtrip, values, rtol=2.0e-13, atol=2.0e-13)
 
+    rng = np.random.default_rng(17)
+    left = jnp.asarray(rng.normal(size=coarse.size))
+    right = jnp.asarray(rng.normal(size=coarse.size))
+    np.testing.assert_allclose(
+        jnp.vdot(left, coarse.differentiate(right)),
+        jnp.vdot(coarse.differentiate_transpose(left), right),
+        rtol=2.0e-14,
+        atol=2.0e-14,
+    )
+
 
 def test_theta_fft_derivative_and_quadrature_resolve_requested_modes() -> None:
     basis = ThetaBasis.build(ntheta=13, mpol=5)
@@ -114,6 +124,14 @@ def test_theta_fft_derivative_and_quadrature_resolve_requested_modes() -> None:
     expected = -1.2 * jnp.sin(3.0 * theta) - 1.0 * jnp.cos(5.0 * theta)
     np.testing.assert_allclose(basis.differentiate(values), expected, rtol=2.0e-13, atol=2.0e-13)
     np.testing.assert_allclose(basis.integrate(values), 1.4 * np.pi, rtol=2.0e-13, atol=2.0e-13)
+
+    left = 0.3 + jnp.sin(2.0 * theta) - 0.1 * jnp.cos(4.0 * theta)
+    np.testing.assert_allclose(
+        jnp.vdot(left, basis.differentiate(values)),
+        jnp.vdot(basis.differentiate_transpose(left), values),
+        rtol=2.0e-13,
+        atol=2.0e-13,
+    )
 
     axisym = ThetaBasis.build(ntheta=1, mpol=0)
     np.testing.assert_array_equal(axisym.differentiate(jnp.asarray([3.0])), jnp.asarray([0.0]))

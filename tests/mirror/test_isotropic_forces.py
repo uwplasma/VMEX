@@ -20,13 +20,19 @@ from vmec_jax.mirror import (  # noqa: E402
     SeparableMirrorPreconditioner,
     MirrorState,
     fixed_boundary_energy_gradient,
+    fixed_boundary_variational_residual,
     isotropic_force_residual,
     mass_profile_from_pressure,
     mirror_energy,
     project_fixed_boundary_state,
     solve_fixed_boundary_cli,
 )
-from vmec_jax.mirror.forces import MU0  # noqa: E402
+from vmec_jax.mirror.forces import (  # noqa: E402
+    MU0,
+    isotropic_staggered_energy_gradient,
+    isotropic_staggered_fixed_boundary_gradient,
+    isotropic_staggered_weak_residual,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -145,6 +151,106 @@ def test_energy_gradient_matches_central_difference_for_interior_shape() -> None
     epsilon = 2.0e-6
     directional_fd = (objective(epsilon) - objective(-epsilon)) / (2.0 * epsilon)
     np.testing.assert_allclose(directional_ad, directional_fd, rtol=2.0e-7, atol=2.0e-5)
+
+
+def test_staggered_first_variation_matches_autodiff_for_3d_finite_beta() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=7, mpol=2, ntheta=7, nxi=11),
+        z_min=-1.3,
+        z_max=1.1,
+    )
+    grid = config.build_grid()
+    theta = jnp.asarray(grid.theta)[None, :, None]
+    xi = jnp.asarray(grid.xi)[None, None, :]
+    s = jnp.asarray(grid.s)[:, None, None]
+    radius = 0.31 * (
+        1.0
+        + 0.04 * s * jnp.cos(2.0 * theta) * (1.0 - xi**2)
+        + 0.03 * s * xi
+    )
+    lam = 0.006 * s * jnp.sin(theta) * (1.0 - xi**2)
+    state = MirrorState(radius, lam)
+    kwargs = {
+        "axial_flux_derivative": jnp.linspace(0.09, 0.12, grid.ns),
+        "current_derivative": jnp.linspace(0.01, 0.025, grid.ns),
+        "mass_profile": 1.2e3 * (1.0 - jnp.asarray(grid.s)) ** 2,
+    }
+    automatic = jax.grad(lambda trial: mirror_energy(trial, grid, **kwargs).total)(
+        state
+    )
+    staggered = isotropic_staggered_energy_gradient(state, grid, **kwargs)
+    np.testing.assert_allclose(
+        staggered.radius_scale,
+        automatic.radius_scale,
+        rtol=2.0e-12,
+        atol=2.0e-8,
+    )
+    np.testing.assert_allclose(
+        staggered.lambda_stream,
+        automatic.lambda_stream,
+        rtol=2.0e-12,
+        atol=2.0e-8,
+    )
+
+
+def test_staggered_weak_force_matches_fixed_boundary_projection() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=7, mpol=2, ntheta=7, nxi=11),
+        z_min=-1.3,
+        z_max=1.1,
+    )
+    grid = config.build_grid()
+    theta = jnp.asarray(grid.theta)[:, None]
+    xi = jnp.asarray(grid.xi)[None, :]
+    boundary = MirrorBoundary.from_radius(
+        0.31 * (1.0 + 0.03 * jnp.cos(2.0 * theta) * (1.0 - xi**2)),
+        grid,
+    )
+    state = MirrorState.from_boundary(boundary, grid)
+    s = jnp.asarray(grid.s)[:, None, None]
+    state = replace(
+        state,
+        radius_scale=state.radius_scale
+        + 0.01 * s * (1.0 - s) * (1.0 - xi[None] ** 2),
+        lambda_stream=0.004
+        * s
+        * jnp.sin(jnp.asarray(grid.theta))[None, :, None]
+        * (1.0 - xi[None] ** 2),
+    )
+    kwargs = {
+        "axial_flux_derivative": jnp.linspace(0.09, 0.12, grid.ns),
+        "current_derivative": jnp.linspace(0.01, 0.025, grid.ns),
+        "mass_profile": 1.2e3 * (1.0 - jnp.asarray(grid.s)) ** 2,
+    }
+    automatic = fixed_boundary_energy_gradient(state, boundary, grid, **kwargs)
+    staggered = isotropic_staggered_fixed_boundary_gradient(
+        state,
+        boundary,
+        grid,
+        **kwargs,
+    )
+    np.testing.assert_allclose(
+        staggered.radius_scale,
+        automatic.radius_scale,
+        rtol=3.0e-12,
+        atol=3.0e-8,
+    )
+    np.testing.assert_allclose(
+        staggered.lambda_stream,
+        automatic.lambda_stream,
+        rtol=3.0e-12,
+        atol=3.0e-8,
+    )
+    weak = isotropic_staggered_weak_residual(state, boundary, grid, **kwargs)
+    variational = fixed_boundary_variational_residual(
+        state,
+        boundary,
+        grid,
+        **kwargs,
+    )
+    np.testing.assert_allclose(weak.radius_rms, variational.radius_rms, rtol=3.0e-12)
+    np.testing.assert_allclose(weak.lambda_rms, variational.lambda_rms, rtol=3.0e-12)
+    np.testing.assert_allclose(weak.maximum, variational.maximum, rtol=3.0e-12)
 
 
 def test_radial_gauss_quadrature_controls_lambda_checkerboard_mode() -> None:
@@ -286,6 +392,8 @@ def test_reference_solver_polishes_perturbed_cylinder_to_physical_ftol() -> None
     assert result.optimizer_success
     assert result.iterations > 0
     assert float(result.variational.maximum) <= config.ftol
+    assert result.staggered_weak_force is not None
+    assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
     assert result.history.shape[1] == 6
     assert float(result.history[-1, 4]) <= config.ftol
     np.testing.assert_allclose(result.state.radius_scale, 0.3, atol=2.0e-13)

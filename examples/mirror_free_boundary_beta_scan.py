@@ -198,6 +198,7 @@ summary = np.asarray(
             float(item.paraxial_field_ratio),
             float(item.paraxial_relative_error),
             float(result.variational_max),
+            float(result.plasma_staggered_weak_force.maximum),
             float(result.plasma_force.normalized_rms),
             float(result.normalized_divergence_rms),
             float(result.interface.normal_stress_rms),
@@ -213,7 +214,7 @@ summary = np.asarray(
 header = (
     "requested_beta,achieved_reference_beta,volume_averaged_beta,center_radius_m,"
     "center_axis_field_T,diamagnetic_field_ratio,paraxial_field_ratio,"
-    "paraxial_relative_error,variational_max,pointwise_force_rms,"
+    "paraxial_relative_error,variational_max,staggered_weak_max,pointwise_force_rms,"
     "normalized_divergence_rms,normal_stress_rms,bnormal_rms_normalized,"
     "mass_scale,iterations,exterior_compatibility,exterior_condition_number"
 )

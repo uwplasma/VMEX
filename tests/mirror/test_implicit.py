@@ -348,7 +348,7 @@ def test_tabulated_closure_adjoint_matches_central_difference() -> None:
     predicted = float(
         jnp.vdot(adjoint.gradient.pressure_closure.parallel_values, direction)
     )
-    epsilon = 1.0e-4
+    epsilon = 1.0e-3
     quantities = []
     for sign in (-1.0, 1.0):
         varied_closure = TabulatedPressureClosure(

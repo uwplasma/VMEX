@@ -134,6 +134,16 @@ class ChebyshevBasis:
         result = jnp.tensordot(jnp.asarray(self.derivative_matrix), moved, axes=((1,), (0,)))
         return jnp.moveaxis(result, 0, axis)
 
+    def differentiate_transpose(self, values: Array, *, axis: int = -1) -> Array:
+        """Apply the transpose first-derivative matrix along ``axis``."""
+
+        values = jnp.asarray(values)
+        moved = jnp.moveaxis(values, axis, 0)
+        result = jnp.tensordot(
+            jnp.asarray(self.derivative_matrix).T, moved, axes=((1,), (0,))
+        )
+        return jnp.moveaxis(result, 0, axis)
+
     def differentiate_twice(self, values: Array, *, axis: int = -1) -> Array:
         """Apply the CGL second-derivative matrix."""
 
@@ -208,6 +218,11 @@ class ThetaBasis:
         transformed = jnp.fft.fft(values, axis=axis)
         derivative = jnp.fft.ifft(1j * modes.reshape(shape) * transformed, axis=axis)
         return derivative if jnp.iscomplexobj(values) else derivative.real
+
+    def differentiate_transpose(self, values: Array, *, axis: int = -1) -> Array:
+        """Apply the transpose periodic derivative on the uniform grid."""
+
+        return -self.differentiate(values, axis=axis)
 
     def integrate(self, values: Array, *, axis: int = -1) -> Array:
         """Integrate periodic nodal values over ``[0,2*pi)``."""

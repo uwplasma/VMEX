@@ -243,18 +243,25 @@ render horizontal 3D, coil, cap-to-cap field-line, ``|B|``, pressure,
 cross-section, and residual figures. The same figures can be regenerated with
 ``vmec --plot mout_*.nc``. The data include geometry, the stream function,
 Cartesian magnetic field, both pressure moments, interface residuals, solver
-history, normalized variational and pointwise-force residuals, normalized
-``div(B)``, closure metadata, and optional coil curves. The variational residual
-defines ``ftol``. The pointwise force is a reconstructed discretization
-diagnostic, while ``div(B)`` checks the field representation. Straight-axis
-mirror data are never encoded as a toroidal WOUT file.
+history, normalized variational, staggered-weak, and pointwise-force residuals,
+normalized ``div(B)``, closure metadata, and optional coil curves. The
+variational residual defines ``ftol``. The staggered weak residual independently
+assembles the first variation on the energy quadrature and is checked on the
+same constrained solver variables. The pointwise force reconstructs
+``J x B - grad(p)`` on the full mesh and remains a non-gating spatial-error
+diagnostic. ``div(B)`` checks the field representation. Straight-axis mirror
+data are never encoded as a toroidal WOUT file.
 
 The compact six-point isotropic reference data are recorded in
 ``benchmarks/mirror_free_boundary_axisymmetric.json``. At 50% requested and
-achieved central beta, the solve reaches a variational residual of
-``5.67e-15`` in 10 iterations. The center radius increases by 7.64% and the
+achieved central beta, the solve reaches variational and staggered-weak
+residuals of ``5.38e-15`` and ``7.08e-16`` in 10 iterations. The center radius
+increases by 7.64% and the
 on-axis field decreases by 24.91%; the solved field ratio is 0.7509 versus
-the paraxial ``sqrt(1-beta)=0.7071`` reference.
+the paraxial ``sqrt(1-beta)=0.7071`` reference. The three-resolution scan took
+137 seconds and peaked at 12.1 GiB RSS; ``(9,17)`` remained in dense Jacobian
+assembly after five minutes. These measurements make free-boundary Jacobian
+memory and runtime explicit optimization targets.
 
 Fixed-boundary 3D solver
 ------------------------

@@ -1,5 +1,5 @@
 {
-  "schema": "vmec_jax.benchmark.mirror_free_boundary_axisymmetric/1",
+  "schema": "vmec_jax.benchmark.mirror_free_boundary_axisymmetric/2",
   "case": {
     "coils": "two radius-0.9 m circular coils separated by 2.0 m",
     "current_A": 200000.0,
@@ -12,12 +12,17 @@
     "max_iterations": 2000
   },
   "runs": [
-    {"beta": 0.00, "volume_beta": 0.0, "center_radius_m": 0.2531505773, "center_field_T": 0.0835434403, "field_ratio": 1.0, "paraxial_ratio": 1.0, "variational_max": 2.601e-15, "normal_stress_rms": 1.359e-15, "bnormal_rms": 1.423e-16, "iterations": 7, "exterior_compatibility": 1.025e-9},
-    {"beta": 0.01, "volume_beta": 0.0032014990, "center_radius_m": 0.2534321625, "center_field_T": 0.0831689254, "field_ratio": 0.9955171237, "paraxial_ratio": 0.9949874371, "variational_max": 2.656e-15, "normal_stress_rms": 1.667e-15, "bnormal_rms": 8.420e-17, "iterations": 6, "exterior_compatibility": 9.867e-10},
-    {"beta": 0.03, "volume_beta": 0.0097046933, "center_radius_m": 0.2540043739, "center_field_T": 0.0824156184, "field_ratio": 0.9865001742, "paraxial_ratio": 0.9848857802, "variational_max": 3.423e-15, "normal_stress_rms": 2.291e-15, "bnormal_rms": 6.815e-17, "iterations": 6, "exterior_compatibility": 8.972e-10},
-    {"beta": 0.10, "volume_beta": 0.0335855480, "center_radius_m": 0.2561081548, "center_field_T": 0.0797325769, "field_ratio": 0.9543846484, "paraxial_ratio": 0.9486832981, "variational_max": 2.415e-15, "normal_stress_rms": 1.742e-15, "bnormal_rms": 9.237e-17, "iterations": 7, "exterior_compatibility": 4.006e-10},
-    {"beta": 0.25, "volume_beta": 0.0916382281, "center_radius_m": 0.2612368996, "center_field_T": 0.0737182616, "field_ratio": 0.8823943726, "paraxial_ratio": 0.8660254038, "variational_max": 5.120e-15, "normal_stress_rms": 3.069e-15, "bnormal_rms": 1.087e-16, "iterations": 8, "exterior_compatibility": 1.711e-9},
-    {"beta": 0.50, "volume_beta": 0.2181300426, "center_radius_m": 0.2724581005, "center_field_T": 0.0627368024, "field_ratio": 0.7509482750, "paraxial_ratio": 0.7071067812, "variational_max": 5.666e-15, "normal_stress_rms": 2.810e-15, "bnormal_rms": 1.625e-16, "iterations": 10, "exterior_compatibility": 3.669e-9}
+    {"beta": 0.00, "volume_beta": 0.0, "center_radius_m": 0.2531505773, "center_field_T": 0.0835434403, "field_ratio": 1.0, "paraxial_ratio": 1.0, "variational_max": 4.062e-15, "staggered_weak_max": 9.881e-16, "pointwise_force_rms": 0.1024295, "divb_rms": 1.255e-15, "normal_stress_rms": 2.472e-15, "bnormal_rms": 0.0, "iterations": 7, "exterior_compatibility": 1.025e-9},
+    {"beta": 0.01, "volume_beta": 0.0032014990, "center_radius_m": 0.2534321625, "center_field_T": 0.0831689254, "field_ratio": 0.9955171237, "paraxial_ratio": 0.9949874371, "variational_max": 3.617e-15, "staggered_weak_max": 9.428e-16, "pointwise_force_rms": 0.0986979, "divb_rms": 1.255e-15, "normal_stress_rms": 1.587e-15, "bnormal_rms": 0.0, "iterations": 6, "exterior_compatibility": 9.867e-10},
+    {"beta": 0.03, "volume_beta": 0.0097046933, "center_radius_m": 0.2540043739, "center_field_T": 0.0824156184, "field_ratio": 0.9865001742, "paraxial_ratio": 0.9848857802, "variational_max": 4.971e-15, "staggered_weak_max": 1.373e-15, "pointwise_force_rms": 0.0911712, "divb_rms": 1.256e-15, "normal_stress_rms": 2.269e-15, "bnormal_rms": 0.0, "iterations": 6, "exterior_compatibility": 8.972e-10},
+    {"beta": 0.10, "volume_beta": 0.0335855480, "center_radius_m": 0.2561081548, "center_field_T": 0.0797325769, "field_ratio": 0.9543846484, "paraxial_ratio": 0.9486832981, "variational_max": 4.114e-15, "staggered_weak_max": 8.326e-16, "pointwise_force_rms": 0.0645000, "divb_rms": 1.258e-15, "normal_stress_rms": 1.968e-15, "bnormal_rms": 0.0, "iterations": 7, "exterior_compatibility": 4.006e-10},
+    {"beta": 0.25, "volume_beta": 0.0916382281, "center_radius_m": 0.2612368996, "center_field_T": 0.0737182616, "field_ratio": 0.8823943726, "paraxial_ratio": 0.8660254038, "variational_max": 6.978e-15, "staggered_weak_max": 9.979e-16, "pointwise_force_rms": 0.0345817, "divb_rms": 1.263e-15, "normal_stress_rms": 3.305e-15, "bnormal_rms": 0.0, "iterations": 8, "exterior_compatibility": 1.711e-9},
+    {"beta": 0.50, "volume_beta": 0.2181300426, "center_radius_m": 0.2724581005, "center_field_T": 0.0627368024, "field_ratio": 0.7509482750, "paraxial_ratio": 0.7071067812, "variational_max": 5.378e-15, "staggered_weak_max": 7.076e-16, "pointwise_force_rms": 0.1683728, "divb_rms": 1.273e-15, "normal_stress_rms": 2.034e-15, "bnormal_rms": 0.0, "iterations": 10, "exterior_compatibility": 3.669e-9}
+  ],
+  "refinement": [
+    {"ns": 3, "nxi": 5, "wall_s": 20.31, "max_variational": 1.431e-15, "max_staggered_weak": 9.746e-16, "max_divb": 1.693e-16, "max_normal_stress": 1.184e-15, "beta_0_radius_m": 0.2529606, "beta_50_radius_m": 0.2685422, "beta_50_field_ratio": 0.7846947, "beta_50_pointwise_force_rms": 0.3565930},
+    {"ns": 5, "nxi": 9, "wall_s": 23.77, "max_variational": 3.920e-15, "max_staggered_weak": 2.113e-15, "max_divb": 5.811e-16, "max_normal_stress": 2.100e-15, "beta_0_radius_m": 0.2532031, "beta_50_radius_m": 0.2718110, "beta_50_field_ratio": 0.7593992, "beta_50_pointwise_force_rms": 0.1428625},
+    {"ns": 7, "nxi": 13, "wall_s": 90.38, "max_variational": 6.978e-15, "max_staggered_weak": 1.373e-15, "max_divb": 1.273e-15, "max_normal_stress": 3.305e-15, "beta_0_radius_m": 0.2531506, "beta_50_radius_m": 0.2724581, "beta_50_field_ratio": 0.7509483, "beta_50_pointwise_force_rms": 0.1683728}
   ],
   "assessment": {
     "all_points_converged": true,
@@ -25,6 +30,9 @@
     "center_radius_change_at_beta_50": 0.076357,
     "center_field_change_at_beta_50": -0.249052,
     "beta_50_paraxial_relative_error": 0.062001,
-    "mout_size_kib_per_point": 59
+    "mout_size_kib_per_point": 59,
+    "three_resolution_peak_rss_mib": 12104.3,
+    "pointwise_force_is_gating": false,
+    "ns9_nxi17_attempt": "stopped during dense Jacobian assembly after more than 300 s"
   }
 }

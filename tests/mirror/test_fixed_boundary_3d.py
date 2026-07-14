@@ -73,6 +73,8 @@ def test_helical_finite_current_solve_converges_with_gauge_free_lambda() -> None
 
     assert result.converged
     assert float(result.variational.maximum) <= config.ftol
+    assert result.staggered_weak_force is not None
+    assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
     assert float(result.variational.lambda_rms) < config.ftol
     assert float(jnp.max(jnp.abs(result.state.lambda_stream))) > 1.0e-3
     assert float(jnp.max(jnp.abs(pitch))) > 1.0e-3

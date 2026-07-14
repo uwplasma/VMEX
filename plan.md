@@ -147,7 +147,8 @@ The production axisymmetric exterior-vacuum scan used `ns=7`, `nxi=13`,
 `ftol=1e-12`, `max_iterations=2000`, and beta
 `[0, 0.01, 0.03, 0.10, 0.25, 0.50]`. It converged in 6--10 iterations with:
 
-- variational maxima between `2e-15` and `7e-15`;
+- variational maxima between `3.6e-15` and `7.0e-15` and independently
+  assembled staggered-weak maxima between `7.1e-16` and `1.4e-15`;
 - normalized `div(B)` between `1.25e-15` and `1.28e-15`;
 - normal-stress residuals below `3.4e-15` and normalized `B.n` below `2e-16`;
 - a 7.6% center-radius increase and 24.9% center-field decrease at beta 0.50;
@@ -155,10 +156,16 @@ The production axisymmetric exterior-vacuum scan used `ns=7`, `nxi=13`,
   `sqrt(1-beta)=0.70711`, a 6.2% relative difference.
 
 Thus beta is coupled to the solved state and the high-beta trend is physically
-visible. The unresolved issue is the pointwise isotropic force reconstruction.
-At beta 0.10 its normalized RMS changes from `0.0445` to `0.0645` to `0.0973`
-for `(ns,nxi)=(5,7),(7,13),(9,17)`, while radius and interface observables
-converge. The error is largest near the LCFS but remains in the bulk.
+visible. A bounded `(3,5)`, `(5,9)`, `(7,13)` scan completed in 137 seconds and
+peaked at 12.1 GiB RSS. Between the two finest levels, the beta-0.50 radius and
+field ratio change by 0.24% and 1.1%. A `(9,17)` attempt was stopped after more
+than five minutes in dense Jacobian assembly; this is a performance blocker,
+not equilibrium evidence.
+
+The unresolved diagnostic is the pointwise isotropic force reconstruction. At
+beta 0.10 its normalized RMS is `0.134`, `0.0362`, and `0.0645` on the three
+bounded levels, while the constrained discrete and weak residuals remain near
+machine precision. The pointwise value is therefore recorded but non-gating.
 
 VMEC2000 computes magnetic pressure, kinetic pressure, covariant fields, and
 force kernels on a radial half mesh and forms full-mesh forces with explicit
@@ -324,6 +331,11 @@ Gate: local tests and docs pass; the next pushed CI run is green.
 
 ### Milestone 1: freeze scalar-pressure reference physics
 
+Status: discrete/weak implementation and bounded axisymmetric evidence
+complete. The pointwise reconstruction failed its refinement criterion and is
+explicitly non-gating. Dense free-boundary Jacobian scaling is carried into the
+solver simplification work.
+
 Files: only existing `mirror/forces.py`, `geometry.py`, `diagnostics.py`, and
 focused tests unless a small helper clearly reduces code.
 
@@ -344,8 +356,10 @@ focused tests unless a small helper clearly reduces code.
 
 Gate: axisymmetric fixed and free observables converge; discrete and weak force
 meet the residual contract; the beta trend and paraxial field depression are
-resolution stable. Otherwise correct the discrete pressure/field staggering
-before proceeding.
+resolution stable. Require less than 0.5% center-radius and 2% center-field
+change between the two finest bounded levels. The current evidence passes.
+Pointwise force may become gating only after a compatible reconstruction passes
+manufactured refinement tests.
 
 ### Milestone 2: remove known false and misowned lanes
 

@@ -41,6 +41,7 @@ class MoutData:
     variational_max: float
     normal_stress_rms: float
     b_normal_rms: float
+    staggered_weak_max: float = np.nan
     pointwise_force_rms: float = np.nan
     normalized_divergence_rms: float = np.nan
     closure: str = "unknown"
@@ -109,6 +110,11 @@ def mout_from_result(
         raise ValueError("coil_xyz must have shape (ncoil, npoint, 3)")
     interface = getattr(result, "interface", None)
     force = getattr(result, "plasma_force", getattr(result, "force", None))
+    weak_force = getattr(
+        result,
+        "plasma_staggered_weak_force",
+        getattr(result, "staggered_weak_force", None),
+    )
     variational = getattr(result, "variational", None)
     variational_max = getattr(result, "variational_max", None)
     if variational_max is None:
@@ -140,6 +146,9 @@ def mout_from_result(
         ),
         b_normal_rms=(
             float(interface.vacuum_b_normal_rms) if interface is not None else np.nan
+        ),
+        staggered_weak_max=(
+            float(weak_force.maximum) if weak_force is not None else np.nan
         ),
         pointwise_force_rms=(
             float(force.normalized_rms) if force is not None else np.nan
@@ -195,8 +204,9 @@ def write_mout(path: str | Path, data: MoutData, *, overwrite: bool = True) -> P
         dataset.setncattr("schema", data.schema)
         for name in (
             "ftol", "iterations", "converged", "mass_scale", "variational_max",
-            "normal_stress_rms", "b_normal_rms", "pointwise_force_rms",
-            "normalized_divergence_rms", "closure", "message",
+            "normal_stress_rms", "b_normal_rms", "staggered_weak_max",
+            "pointwise_force_rms", "normalized_divergence_rms", "closure",
+            "message",
         ):
             value = getattr(data, name)
             dataset.setncattr(name, int(value) if isinstance(value, (bool, np.bool_)) else value)

@@ -1,5 +1,5 @@
 {
-  "schema": "vmec_jax.benchmark.mirror_fixed_boundary_3d/2",
+  "schema": "vmec_jax.benchmark.mirror_fixed_boundary_3d/3",
   "case": {
     "mpol": 1,
     "ftol": 1e-12,
@@ -20,6 +20,21 @@
     {"ns": 15, "nxi": 21, "ntheta": 5, "wall_s": 39.8838, "variational": 4.20566e-13, "force_all": 0.04294207, "force_axis": 0.10709337, "force_bulk": 0.00969489, "energy": 1111047.200806642},
     {"ns": 15, "nxi": 25, "ntheta": 5, "wall_s": 37.3964, "variational": 1.88774e-13, "force_all": 0.04292468, "force_axis": 0.10705183, "force_bulk": 0.00968731, "energy": 1111047.200809912}
   ],
+  "axisymmetric_reference": {
+    "case": {
+      "boundary": "0.3 * (1 + 0.12 * (1-xi^2))",
+      "mass_profile": "2000 * (1-s)",
+      "current_derivative": "0.03 * s",
+      "axial_flux_derivative": 0.1,
+      "max_iterations": 1000
+    },
+    "runs": [
+      {"ns": 3, "nxi": 5, "wall_s": 2.278, "iterations": 16, "variational_max": 5.061e-16, "staggered_weak_max": 4.928e-16, "pointwise_force_rms": 0.0120213, "divb_rms": 2.364e-16, "energy": 1151288.8512510383},
+      {"ns": 5, "nxi": 9, "wall_s": 4.908, "iterations": 62, "variational_max": 7.017e-16, "staggered_weak_max": 6.390e-16, "pointwise_force_rms": 0.0125170, "divb_rms": 5.378e-16, "energy": 1151345.8604082803},
+      {"ns": 7, "nxi": 13, "wall_s": 7.860, "iterations": 106, "variational_max": 7.030e-16, "staggered_weak_max": 7.363e-16, "pointwise_force_rms": 0.0102563, "divb_rms": 8.429e-16, "energy": 1151345.8893008095}
+    ],
+    "peak_rss_mib": 1625.0
+  },
   "device_runs": [
     {"device": "office_cpu", "ns": 15, "nxi": 15, "ntheta": 5, "wall_s": 35.2080, "variational": 2.25388e-13, "force_all": 0.04300223, "energy": 1111047.200761879},
     {"device": "office_gpu", "ns": 15, "nxi": 15, "ntheta": 5, "wall_s": 44.1992, "variational": 6.10853e-13, "force_all": 0.04300223, "energy": 1111047.200761879}

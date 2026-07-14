@@ -362,6 +362,10 @@ def test_two_coil_free_boundary_beta_scan_uses_solved_expanding_surfaces() -> No
     assert all(result.converged for result in results)
     assert all(float(result.variational_max) <= config.ftol for result in results)
     assert all(
+        float(result.plasma_staggered_weak_force.maximum) <= 1.1 * config.ftol
+        for result in results
+    )
+    assert all(
         np.isfinite(float(result.plasma_force.normalized_rms)) for result in results
     )
     assert all(
