@@ -451,6 +451,19 @@ memory scaling.
 
 ### Milestone 5: nonaxisymmetric fixed-boundary mirrors
 
+Status: active. A five-stage native-spline continuation reaches the full
+90-degree, elongation-1.5 thin tube at ``ns=5`` with discrete/weak residuals
+below ``1.2e-16`` and ``div(B)<7.4e-15``. Even theta quadrature is mandatory:
+12 nodes preserve half-turn symmetry and reduce the forbidden ``m=1`` signal
+below ``9e-15``; 5 or 9 nodes alias even nonlinear products into odd modes.
+The full-mesh axis ``|B|`` reconstruction does not converge radially and is not
+a valid paraxial oracle. The compatible half-mesh field recovers the expected
+``m=2`` phase but not yet its amplitude. At ``ns=7`` the solve stays nested only
+after invalid-Jacobian states receive infinite optimizer merit; it reaches
+``ftol`` but requires 2,500--17,017 inner GMRES iterations. Thus equilibrium
+existence and symmetry pass, while paraxial amplitude and preconditioner gates
+remain open.
+
 1. Solve the 90-degree rotating ellipse with the common scalar-pressure
    residual and B-spline axial state.
 2. Fit `|B|` by radial order and poloidal mode. Require vanishing first-order

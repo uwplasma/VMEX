@@ -632,6 +632,7 @@ def solve_spline_fixed_boundary_cli(
         MirrorConvergenceError,
         MirrorSolveResult,
         _optimize_fixed_boundary,
+        _valid_energy_objective,
     )
 
     grid = discretization.grid
@@ -669,7 +670,7 @@ def solve_spline_fixed_boundary_cli(
     energy_scale = max(abs(float(initial_energy.total)), np.finfo(float).tiny)
 
     def objective(vector: Array) -> Array:
-        return evaluate_energy(unpack(vector)).total / energy_scale
+        return _valid_energy_objective(evaluate_energy(unpack(vector)), energy_scale)
 
     value_and_gradient = jax.jit(jax.value_and_grad(objective))
     cache_x: np.ndarray | None = None
@@ -731,7 +732,7 @@ def solve_spline_fixed_boundary_cli(
         )
 
     record(0, x0)
-    if history[-1][4] <= config.ftol:
+    if history[-1][4] <= config.ftol and not bool(initial_energy.geometry.jacobian_sign_changed):
         final_x = x0
         iterations = 0
         optimizer_success = True

@@ -53,6 +53,13 @@ Array = Any
 _DEVICE_ACTIVE = object()
 
 
+def _valid_energy_objective(energy: MirrorEnergy | AnisotropicMirrorEnergy, energy_scale: float) -> Array:
+    """Normalize energy and reject states with crossed flux surfaces."""
+
+    value = energy.total / float(energy_scale)
+    return jnp.where(energy.geometry.jacobian_sign_changed, jnp.inf, value)
+
+
 @dataclass(frozen=True)
 class MirrorSolveResult:
     """Solved state, diagnostics, and dense iteration history.
@@ -770,7 +777,7 @@ def solve_fixed_boundary_cli(
         return vectorizer.unpack(x)
 
     def objective(x: Array) -> Array:
-        return evaluate_energy(unpack(x)).total / energy_scale
+        return _valid_energy_objective(evaluate_energy(unpack(x)), energy_scale)
 
     value_and_gradient = jax.jit(jax.value_and_grad(objective))
     cache_x: np.ndarray | None = None
@@ -851,7 +858,7 @@ def solve_fixed_boundary_cli(
         )
 
     record(0, x0)
-    if history[-1][4] <= config.ftol:
+    if history[-1][4] <= config.ftol and not bool(initial_energy.geometry.jacobian_sign_changed):
         initial_variational = packed_variational(x0, projected_initial)
         initial_weak_force = packed_staggered_weak(projected_initial)
         result = MirrorSolveResult(

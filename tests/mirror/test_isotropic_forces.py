@@ -32,7 +32,10 @@ from vmec_jax.mirror.forces import (  # noqa: E402
     mass_profile_from_pressure,
     mirror_energy,
 )
-from vmec_jax.mirror.solver import SeparableMirrorPreconditioner  # noqa: E402
+from vmec_jax.mirror.solver import (  # noqa: E402
+    SeparableMirrorPreconditioner,
+    _valid_energy_objective,
+)
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -56,9 +59,7 @@ def _cylinder(*, ns: int = 11, nxi: int = 21, radius: float = 0.3, half_length: 
 
 
 def test_fixed_boundary_projection_enforces_geometry_and_lambda_gauge() -> None:
-    grid = MirrorConfig(
-        resolution=MirrorResolution(ns=7, mpol=2, ntheta=7, nxi=13)
-    ).build_grid()
+    grid = MirrorConfig(resolution=MirrorResolution(ns=7, mpol=2, ntheta=7, nxi=13)).build_grid()
     theta = jnp.asarray(grid.theta)[:, None]
     xi = jnp.asarray(grid.xi)[None, :]
     boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.05 * jnp.cos(2.0 * theta) * xi**2), grid)
@@ -127,6 +128,21 @@ def test_mass_profile_recovers_reference_isotropic_pressure() -> None:
     assert float(isotropic_force_residual(finite_beta, grid).normalized_rms) < 2.0e-13
 
 
+def test_optimizer_merit_rejects_crossed_flux_surfaces() -> None:
+    config = MirrorConfig(resolution=MirrorResolution(ns=5, nxi=7))
+    grid = config.build_grid()
+    boundary = MirrorBoundary.from_radius(0.3, grid)
+    valid = MirrorState.from_boundary(boundary, grid)
+    valid_energy = mirror_energy(valid, grid, axial_flux_derivative=0.1)
+    invalid = replace(valid, radius_scale=valid.radius_scale.at[1].set(1.2))
+    invalid_energy = mirror_energy(invalid, grid, axial_flux_derivative=0.1)
+
+    assert not bool(valid_energy.geometry.jacobian_sign_changed)
+    assert bool(invalid_energy.geometry.jacobian_sign_changed)
+    np.testing.assert_allclose(_valid_energy_objective(valid_energy, float(valid_energy.total)), 1.0)
+    assert np.isinf(float(_valid_energy_objective(invalid_energy, 1.0)))
+
+
 def test_energy_gradient_matches_central_difference_for_interior_shape() -> None:
     grid, boundary, base = _cylinder(ns=9, nxi=17)
     s = jnp.asarray(grid.s)[:, None, None]
@@ -163,11 +179,7 @@ def test_staggered_first_variation_matches_autodiff_for_3d_finite_beta() -> None
     theta = jnp.asarray(grid.theta)[None, :, None]
     xi = jnp.asarray(grid.xi)[None, None, :]
     s = jnp.asarray(grid.s)[:, None, None]
-    radius = 0.31 * (
-        1.0
-        + 0.04 * s * jnp.cos(2.0 * theta) * (1.0 - xi**2)
-        + 0.03 * s * xi
-    )
+    radius = 0.31 * (1.0 + 0.04 * s * jnp.cos(2.0 * theta) * (1.0 - xi**2) + 0.03 * s * xi)
     lam = 0.006 * s * jnp.sin(theta) * (1.0 - xi**2)
     state = MirrorState(radius, lam)
     kwargs = {
@@ -175,9 +187,7 @@ def test_staggered_first_variation_matches_autodiff_for_3d_finite_beta() -> None
         "current_derivative": jnp.linspace(0.01, 0.025, grid.ns),
         "mass_profile": 1.2e3 * (1.0 - jnp.asarray(grid.s)) ** 2,
     }
-    automatic = jax.grad(lambda trial: mirror_energy(trial, grid, **kwargs).total)(
-        state
-    )
+    automatic = jax.grad(lambda trial: mirror_energy(trial, grid, **kwargs).total)(state)
     staggered = isotropic_staggered_energy_gradient(state, grid, **kwargs)
     np.testing.assert_allclose(
         staggered.radius_scale,
@@ -210,12 +220,8 @@ def test_staggered_weak_force_matches_fixed_boundary_projection() -> None:
     s = jnp.asarray(grid.s)[:, None, None]
     state = replace(
         state,
-        radius_scale=state.radius_scale
-        + 0.01 * s * (1.0 - s) * (1.0 - xi[None] ** 2),
-        lambda_stream=0.004
-        * s
-        * jnp.sin(jnp.asarray(grid.theta))[None, :, None]
-        * (1.0 - xi[None] ** 2),
+        radius_scale=state.radius_scale + 0.01 * s * (1.0 - s) * (1.0 - xi[None] ** 2),
+        lambda_stream=0.004 * s * jnp.sin(jnp.asarray(grid.theta))[None, :, None] * (1.0 - xi[None] ** 2),
     )
     kwargs = {
         "axial_flux_derivative": jnp.linspace(0.09, 0.12, grid.ns),
@@ -254,9 +260,7 @@ def test_staggered_weak_force_matches_fixed_boundary_projection() -> None:
 
 
 def test_radial_gauss_quadrature_controls_lambda_checkerboard_mode() -> None:
-    config = MirrorConfig(
-        resolution=MirrorResolution(ns=15, mpol=1, ntheta=3, nxi=15)
-    )
+    config = MirrorConfig(resolution=MirrorResolution(ns=15, mpol=1, ntheta=3, nxi=15))
     grid = config.build_grid()
     boundary = MirrorBoundary.from_radius(0.3, grid)
     base = MirrorState.from_boundary(boundary, grid)
@@ -269,9 +273,7 @@ def test_radial_gauss_quadrature_controls_lambda_checkerboard_mode() -> None:
     baseline = mirror_energy(base, grid, axial_flux_derivative=0.1).total
 
     def excess_energy(lam):
-        state = project_fixed_boundary_state(
-            MirrorState(base.radius_scale, lam), boundary, grid
-        )
+        state = project_fixed_boundary_state(MirrorState(base.radius_scale, lam), boundary, grid)
         return mirror_energy(state, grid, axial_flux_derivative=0.1).total - baseline
 
     alternating_energy = excess_energy(alternating)
@@ -292,9 +294,7 @@ def test_flared_tube_manufactured_lorentz_force_converges_spectrally() -> None:
         boundary = MirrorBoundary.from_radius(radius, grid)
         state = MirrorState.from_boundary(boundary, grid)
         flux = 0.1
-        residual = isotropic_force_residual(
-            mirror_energy(state, grid, axial_flux_derivative=flux), grid
-        )
+        residual = isotropic_force_residual(mirror_energy(state, grid, axial_flux_derivative=flux), grid)
 
         radius_z = 0.3 * 0.24 * xi / half_length
         radius_zz = jnp.full_like(xi, 0.3 * 0.24 / half_length**2)
@@ -318,9 +318,7 @@ def test_separable_preconditioner_is_exact_for_its_model_and_reduces_gmres_work(
     rng = np.random.default_rng(42)
     exact = rng.normal(size=preconditioner.size)
     right_hand_side = preconditioner.operator(exact)
-    np.testing.assert_allclose(
-        preconditioner.apply(right_hand_side), exact, rtol=2.0e-12, atol=2.0e-12
-    )
+    np.testing.assert_allclose(preconditioner.apply(right_hand_side), exact, rtol=2.0e-12, atol=2.0e-12)
 
     operator = LinearOperator(
         (preconditioner.size, preconditioner.size),
@@ -347,9 +345,7 @@ def test_separable_preconditioner_is_exact_for_its_model_and_reduces_gmres_work(
         M=inverse,
         rtol=1.0e-11,
         atol=0.0,
-        callback=lambda _: iterations.__setitem__(
-            "preconditioned", iterations["preconditioned"] + 1
-        ),
+        callback=lambda _: iterations.__setitem__("preconditioned", iterations["preconditioned"] + 1),
         callback_type="pr_norm",
     )
     assert plain_info == accelerated_info == 0
@@ -374,9 +370,7 @@ def test_reference_solver_polishes_perturbed_cylinder_to_physical_ftol() -> None
     xi = jnp.asarray(grid.xi)[None, None, :]
     perturbation = 0.03 * s * (1.0 - s) * (1.0 - xi**2)
     initial = replace(base, radius_scale=base.radius_scale + perturbation)
-    initial_force = isotropic_force_residual(
-        mirror_energy(initial, grid, axial_flux_derivative=0.1), grid
-    )
+    initial_force = isotropic_force_residual(mirror_energy(initial, grid, axial_flux_derivative=0.1), grid)
     assert float(initial_force.normalized_rms) > 1.0e-2
 
     result = solve_fixed_boundary_cli(
