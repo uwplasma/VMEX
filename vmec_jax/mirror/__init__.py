@@ -74,6 +74,10 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     ),
     "FixedBoundaryParameters": (".implicit", "FixedBoundaryParameters"),
     "MirrorAdjointResult": (".implicit", "MirrorAdjointResult"),
+    "SplineFixedBoundaryParameters": (
+        ".implicit",
+        "SplineFixedBoundaryParameters",
+    ),
     "fixed_boundary_adjoint": (".implicit", "fixed_boundary_adjoint"),
     "fixed_boundary_parameters": (".implicit", "fixed_boundary_parameters"),
     "make_fixed_boundary_implicit_config": (
@@ -83,6 +87,14 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     "solve_fixed_boundary_implicit": (
         ".implicit",
         "solve_fixed_boundary_implicit",
+    ),
+    "spline_fixed_boundary_adjoint": (
+        ".implicit",
+        "spline_fixed_boundary_adjoint",
+    ),
+    "spline_fixed_boundary_parameters": (
+        ".implicit",
+        "spline_fixed_boundary_parameters",
     ),
     "FreeBoundaryAdjointConfig": (
         ".free_boundary_implicit",

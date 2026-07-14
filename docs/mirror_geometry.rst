@@ -302,6 +302,15 @@ to JAX objectives. Its static context keeps the host solver out of the AD tape::
 The custom VJP matches the explicit adjoint for both isotropic and registered
 anisotropic controls. The supported free-boundary field derivative follows.
 
+``spline_fixed_boundary_adjoint`` uses that same transpose-solve implementation
+on the coefficient-native residual. Boundary spline coefficients, flux,
+conserved mass, and current remain differentiable; neither the host iterations
+nor spline evaluation history is stored. A combined axisymmetric direction and
+a nonaxisymmetric ``solve_lambda=True`` boundary direction agree with two
+independently reconverged equilibria to ``3.92e-10`` and ``3.20e-10`` relative.
+This establishes the reverse implicit path. A forward tangent wrapper and the
+final SOLVAX parity study remain Milestone 8 work.
+
 Axisymmetric free-boundary implicit gradients
 ---------------------------------------------
 

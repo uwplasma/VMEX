@@ -103,5 +103,16 @@
       "wall_s": 81.57
     },
     "status": "m2 amplitude decreases monotonically but remains about 48% above the direct paraxial estimate at the bounded 13-coefficient level; defer further knots until preconditioning improves"
+  },
+  "implicit_adjoint": {
+    "axisymmetric_combined_controls_relative_error": 3.924e-10,
+    "nonaxisymmetric_solve_lambda_relative_error": 3.202e-10,
+    "controls": [
+      "boundary spline coefficients",
+      "axial flux derivative",
+      "conserved mass profile",
+      "axial current derivative"
+    ],
+    "method": "matrix-free reverse implicit solve on the converged coefficient residual"
   }
 }

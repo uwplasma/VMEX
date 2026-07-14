@@ -25,6 +25,13 @@ from vmec_jax.mirror import (  # noqa: E402
     solve_fixed_boundary_cli,
     solve_fixed_boundary_implicit,
     solve_anisotropic_fixed_boundary_cli,
+    spline_fixed_boundary_adjoint,
+    spline_fixed_boundary_parameters,
+)
+from vmec_jax.mirror.splines import (  # noqa: E402
+    SplineMirrorBoundary,
+    SplineMirrorDiscretization,
+    solve_spline_fixed_boundary_cli,
 )
 
 
@@ -126,6 +133,169 @@ def test_fixed_boundary_adjoint_rejects_unconverged_state() -> None:
         fixed_boundary_adjoint(
             Result(), parameters, grid, lambda state, energy: energy.total
         )
+
+
+def test_spline_adjoint_matches_reconverged_central_difference() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=5, nxi=9),
+        ftol=1.0e-12,
+        max_iterations=1000,
+    )
+    source_grid = config.build_grid()
+    s, xi = jnp.asarray(source_grid.s), jnp.asarray(source_grid.xi)
+    boundary = MirrorBoundary.from_radius(
+        0.3 * (1.0 + 0.1 * (1.0 - xi**2)), source_grid
+    )
+    discretization = SplineMirrorDiscretization.build(config, elements=3)
+    spline_boundary = discretization.fit_boundary(boundary, source_grid)
+    mass = 2.0e3 * (1.0 - s)
+    current = 1.0e-2 * s
+    result = solve_spline_fixed_boundary_cli(
+        discretization.fit_state(
+            MirrorState.from_boundary(boundary, source_grid), source_grid
+        ),
+        spline_boundary,
+        discretization,
+        config,
+        axial_flux_derivative=0.1,
+        mass_profile=mass,
+        current_derivative=current,
+        gradient_tolerance=1.0e-12,
+        require_convergence=True,
+    )
+    parameters = spline_fixed_boundary_parameters(
+        spline_boundary,
+        axial_flux_derivative=0.1,
+        mass_profile=mass,
+        current_derivative=current,
+    )
+
+    def quantity(state, _energy):
+        return state.radius_scale[2, 0, discretization.grid.nxi // 2]
+
+    adjoint = spline_fixed_boundary_adjoint(
+        result,
+        parameters,
+        discretization,
+        quantity,
+        rtol=1.0e-10,
+    )
+    nodes = jnp.asarray(discretization.spline.collocation_nodes)
+    boundary_direction = 0.01 * (1.0 - nodes**2)[None, :]
+    flux_direction = jnp.asarray(0.003)
+    mass_direction = 100.0 * (1.0 - s)
+    current_direction = 2.0e-3 * s
+    predicted = float(
+        jnp.vdot(adjoint.gradient.boundary_coefficients, boundary_direction)
+        + adjoint.gradient.axial_flux_derivative * flux_direction
+        + jnp.vdot(adjoint.gradient.mass_profile, mass_direction)
+        + jnp.vdot(adjoint.gradient.current_derivative, current_direction)
+    )
+
+    values = []
+    epsilon = 1.0e-4
+    for sign in (-1.0, 1.0):
+        varied_boundary = SplineMirrorBoundary(
+            spline_boundary.radius_coefficients
+            + sign * epsilon * boundary_direction
+        )
+        initial = discretization.transfer_boundary(
+            result.coefficient_state, spline_boundary, varied_boundary
+        )
+        varied = solve_spline_fixed_boundary_cli(
+            initial,
+            varied_boundary,
+            discretization,
+            config,
+            axial_flux_derivative=0.1 + sign * epsilon * flux_direction,
+            mass_profile=mass + sign * epsilon * mass_direction,
+            current_derivative=current + sign * epsilon * current_direction,
+            gradient_tolerance=1.0e-12,
+            require_convergence=True,
+        )
+        values.append(float(quantity(varied.evaluated.state, varied.evaluated.energy)))
+    finite_difference = (values[1] - values[0]) / (2.0 * epsilon)
+
+    assert adjoint.converged
+    assert adjoint.iterations > 0
+    assert adjoint.relative_residual < 1.0e-10
+    np.testing.assert_allclose(predicted, finite_difference, rtol=2.0e-6, atol=1.0e-10)
+
+
+def test_nonaxisymmetric_spline_adjoint_includes_stream_function() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=1, ntheta=4, nxi=7),
+        ftol=1.0e-12,
+        max_iterations=1000,
+    )
+    source_grid = config.build_grid()
+    s = jnp.asarray(source_grid.s)
+    theta = jnp.asarray(source_grid.theta)[:, None]
+    xi = jnp.asarray(source_grid.xi)[None, :]
+    boundary = MirrorBoundary.from_radius(
+        0.3 * (1.0 + 0.02 * jnp.cos(theta) * (1.0 - xi**2)), source_grid
+    )
+    discretization = SplineMirrorDiscretization.build(config, elements=3)
+    spline_boundary = discretization.fit_boundary(boundary, source_grid)
+    current = 1.0e-3 * s
+    result = solve_spline_fixed_boundary_cli(
+        discretization.fit_state(
+            MirrorState.from_boundary(boundary, source_grid), source_grid
+        ),
+        spline_boundary,
+        discretization,
+        config,
+        axial_flux_derivative=0.1,
+        mass_profile=100.0 * (1.0 - s),
+        current_derivative=current,
+        solve_lambda=True,
+        gradient_tolerance=1.0e-12,
+        require_convergence=True,
+    )
+    parameters = spline_fixed_boundary_parameters(
+        spline_boundary,
+        axial_flux_derivative=0.1,
+        mass_profile=100.0 * (1.0 - s),
+        current_derivative=current,
+    )
+
+    adjoint = spline_fixed_boundary_adjoint(
+        result,
+        parameters,
+        discretization,
+        lambda _state, energy: energy.geometry.volume,
+        solve_lambda=True,
+        rtol=1.0e-9,
+    )
+    direction = jnp.zeros_like(spline_boundary.radius_coefficients).at[0, 2].set(0.01)
+    predicted = float(jnp.vdot(adjoint.gradient.boundary_coefficients, direction))
+    values = []
+    epsilon = 2.0e-4
+    for sign in (-1.0, 1.0):
+        varied_boundary = SplineMirrorBoundary(
+            spline_boundary.radius_coefficients + sign * epsilon * direction
+        )
+        varied = solve_spline_fixed_boundary_cli(
+            discretization.transfer_boundary(
+                result.coefficient_state, spline_boundary, varied_boundary
+            ),
+            varied_boundary,
+            discretization,
+            config,
+            axial_flux_derivative=0.1,
+            mass_profile=parameters.mass_profile,
+            current_derivative=current,
+            solve_lambda=True,
+            gradient_tolerance=1.0e-12,
+            require_convergence=True,
+        )
+        values.append(float(varied.evaluated.energy.geometry.volume))
+    finite_difference = (values[1] - values[0]) / (2.0 * epsilon)
+
+    assert adjoint.converged
+    assert adjoint.relative_residual < 1.0e-8
+    assert float(jnp.max(jnp.abs(result.evaluated.state.lambda_stream))) > 1.0e-4
+    np.testing.assert_allclose(predicted, finite_difference, rtol=2.0e-5, atol=1.0e-9)
 
 
 @pytest.mark.parametrize(

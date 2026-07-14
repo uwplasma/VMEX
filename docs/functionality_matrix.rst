@@ -267,6 +267,10 @@ The exact numerical contracts and failed promotion gates are in
      - Supported in axisymmetry
      - :mod:`vmec_jax.mirror.implicit` and
        :mod:`vmec_jax.mirror.free_boundary_implicit`
+   * - Native-spline fixed-boundary adjoint
+     - Research
+     - Reverse implicit derivatives include nonaxisymmetric stream-function
+       states; forward tangent and scaling studies remain open
    * - Nonaxisymmetric straight mirror
      - Research
      - Local Fourier-mode refinement did not pass; no production claim
@@ -276,7 +280,8 @@ The exact numerical contracts and failed promotion gates are in
        native spline axis and surface state
    * - Native spline-state toroidal hybrid
      - Deferred
-     - No independent spline equilibrium state is claimed
+     - The open-mirror spline state is validated; the closed centerline,
+       frame, and equilibrium metric are not yet implemented
 
 Code and validation footprint
 -----------------------------

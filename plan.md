@@ -196,12 +196,12 @@ equilibrium criterion.
 |---|---:|---|---|
 | Axisymmetric fixed mirror | 90% | real solve, `ftol=1e-12`, MMS, weak force, gradients, spline parity | spline implicit derivatives and final release evidence |
 | Axisymmetric free mirror | 80% | coupled solve, beta 0--50%, `B.n`, stress, weak force, three-grid paraxial trend | dense-Jacobian scaling and spline coupling |
-| Nonaxisymmetric fixed mirror | 78% | spline rotating ellipse/SFLM, finite-beta and path-order checks, radial/poloidal refinement, plotted example | finest-knot amplitude and derivatives |
+| Nonaxisymmetric fixed mirror | 82% | spline rotating ellipse/SFLM, finite beta/refinement, reverse implicit adjoint, plotted example | finest-knot amplitude and forward tangent |
 | Nonaxisymmetric free mirror | 30% | theta-dependent BIE and residual exist | no converged analytic fixture or panel study |
 | ANIMEC model | 55% | functional, moments, isotropic limit, indicators | source-equation audit and independent finite-beta case |
-| Implicit derivatives | 65% | fixed and axisymmetric-free FD checks | duplicated Krylov path and missing spline/nonaxisymmetric scaling |
+| Implicit derivatives | 74% | nodal/free VJP plus spline nonaxisymmetric adjoint FD checks | forward spline tangent and SOLVAX scaling |
 | Preconditioning | 45% | separable prototype and Newton-GMRES | no bounded-iteration basis/resolution study |
-| Native B-spline open mirror | 65% | tested basis/state/transfer, fixed solve, knot convergence, coefficient preconditioner | free-boundary state and derivative parity |
+| Native B-spline open mirror | 70% | basis/state/transfer, fixed solve, knot convergence, coefficient preconditioner and adjoint | free-boundary state and forward tangent |
 | Native B-spline closed hybrid | 0% | Fourier target is not reusable physics | centerline/frame/metric/residual implementation |
 | ESSOS ownership cleanup | 100% | MGRID/callable contract and live ESSOS smoke | none |
 | Source simplification | 40% | Fourier-hybrid and coil ownership removed | public API and large mirror modules remain |
@@ -479,6 +479,11 @@ the staggered midplane ``m=2`` amplitude falls from ``0.0567`` to ``0.00795 T``
 over 7 to 13 coefficients and remains about 48% above the direct paraxial
 estimate. This bounded negative result moves further amplitude work behind the
 Milestone 8 preconditioner rather than allowing an unbounded refinement loop.
+The shared reverse implicit solve now differentiates spline boundary
+coefficients, flux, conserved mass, and current. Axisymmetric combined controls
+and a nonaxisymmetric ``solve_lambda=True`` direction agree with reconverged
+finite differences to ``3.92e-10`` and ``3.20e-10`` relative. Forward tangent
+and SOLVAX scaling remain open rather than being inferred from the adjoint.
 
 1. Solve the 90-degree rotating ellipse with the common scalar-pressure
    residual and B-spline axial state.
