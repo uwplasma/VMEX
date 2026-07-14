@@ -21,9 +21,11 @@ import jax
 import jax.numpy as jnp
 
 from .geometry import (
+    ClosedAxisGeometry,
     ContravariantField,
     MirrorGeometry,
     contravariant_field,
+    evaluate_closed_geometry,
     evaluate_geometry,
     magnetic_field_squared,
     radial_derivative,
@@ -163,6 +165,60 @@ def staggered_magnetic_terms(
     b_theta = samples.field_theta_numerator / jacobian
     b_xi = samples.field_xi_numerator / jacobian
     b_squared = g_thetatheta * b_theta**2 + 2.0 * g_thetaxi * b_theta * b_xi + g_xixi * b_xi**2
+    jacobian_cell = jnp.mean(jacobian, axis=0)
+    magnetic_density_cell = jnp.mean(b_squared * jacobian, axis=0)
+    return magnetic_density_cell / jacobian_cell, jacobian_cell
+
+
+def closed_staggered_magnetic_terms(
+    state: MirrorState,
+    grid: "MirrorGrid",
+    axis: ClosedAxisGeometry,
+    axial_flux_derivative: Array,
+    current_derivative: Array,
+) -> tuple[Array, Array]:
+    """Return radial-Gauss magnetic terms for a closed spline axis."""
+
+    samples = _half_mesh_samples(
+        state,
+        grid,
+        axial_flux_derivative,
+        current_derivative,
+    )
+    theta = jnp.asarray(grid.theta)[None, None, :, None, None]
+    normal = jnp.asarray(axis.normal)[None, None, None, :, :]
+    binormal = jnp.asarray(axis.binormal)[None, None, None, :, :]
+    radial_direction = jnp.cos(theta) * normal + jnp.sin(theta) * binormal
+    poloidal_direction = -jnp.sin(theta) * normal + jnp.cos(theta) * binormal
+    normal_xi = grid.axial_basis.differentiate(jnp.asarray(axis.normal), axis=0)[None, None, None]
+    binormal_xi = grid.axial_basis.differentiate(jnp.asarray(axis.binormal), axis=0)[None, None, None]
+    radial_direction_xi = jnp.cos(theta) * normal_xi + jnp.sin(theta) * binormal_xi
+    centerline_xi = (jnp.asarray(axis.tangent) * jnp.asarray(axis.speed)[:, None])[None, None, None]
+
+    radius = samples.radius
+    e_theta = (
+        samples.d_radius_dtheta[..., None] * radial_direction
+        + radius[..., None] * poloidal_direction
+    )
+    e_xi = (
+        centerline_xi
+        + samples.d_radius_dxi[..., None] * radial_direction
+        + radius[..., None] * radial_direction_xi
+    )
+    jacobian = samples.radius_radius_s * jnp.sum(
+        radial_direction * jnp.cross(poloidal_direction, e_xi),
+        axis=-1,
+    )
+    g_thetatheta = jnp.sum(e_theta * e_theta, axis=-1)
+    g_thetaxi = jnp.sum(e_theta * e_xi, axis=-1)
+    g_xixi = jnp.sum(e_xi * e_xi, axis=-1)
+    b_theta = samples.field_theta_numerator / jacobian
+    b_xi = samples.field_xi_numerator / jacobian
+    b_squared = (
+        g_thetatheta * b_theta**2
+        + 2.0 * g_thetaxi * b_theta * b_xi
+        + g_xixi * b_xi**2
+    )
     jacobian_cell = jnp.mean(jacobian, axis=0)
     magnetic_density_cell = jnp.mean(b_squared * jacobian, axis=0)
     return magnetic_density_cell / jacobian_cell, jacobian_cell
@@ -398,12 +454,13 @@ def mirror_energy(
     current_derivative: Array = 0.0,
     gamma: float = 5.0 / 3.0,
     mu0: float = float(MU0),
+    axis: ClosedAxisGeometry | None = None,
 ) -> MirrorEnergy:
     """Evaluate mass-conserving isotropic mirror energy."""
 
     if gamma <= 1.0:
         raise ValueError("gamma must be greater than one")
-    geometry = evaluate_geometry(state, grid)
+    geometry = evaluate_geometry(state, grid) if axis is None else evaluate_closed_geometry(state, grid, axis)
     field = contravariant_field(
         state,
         geometry,
@@ -416,12 +473,21 @@ def mirror_energy(
     mass = _profile(mass_profile, grid.ns, b_squared.dtype, name="mass_profile")
     pressure = mass / volume_derivative ** float(gamma)
 
-    b_squared_half, jacobian_half = staggered_magnetic_terms(
-        state,
-        grid,
-        axial_flux_derivative,
-        current_derivative,
-    )
+    if axis is None:
+        b_squared_half, jacobian_half = staggered_magnetic_terms(
+            state,
+            grid,
+            axial_flux_derivative,
+            current_derivative,
+        )
+    else:
+        b_squared_half, jacobian_half = closed_staggered_magnetic_terms(
+            state,
+            grid,
+            axis,
+            axial_flux_derivative,
+            current_derivative,
+        )
     volume_derivative_half = _surface_integral(jacobian_half, grid)
     mass_half = 0.5 * (mass[1:] + mass[:-1])
     pressure_half = mass_half / volume_derivative_half ** float(gamma)
@@ -513,34 +579,11 @@ def anisotropic_fixed_boundary_energy_gradient(
 def _coordinate_basis(geometry: MirrorGeometry, grid: "MirrorGrid") -> Array:
     """Return Cartesian covariant basis vectors as ``[..., xyz, q]``."""
 
-    radius = geometry.radius
-    r_s = jnp.where(
-        jnp.abs(radius) > jnp.finfo(radius.dtype).eps,
-        geometry.d_radius_ds_regular / jnp.where(radius != 0.0, radius, 1.0),
-        0.0,
-    )
-    r_s = r_s.at[0].set(r_s[1])
-    theta = jnp.asarray(grid.theta)[None, :, None]
-    cosine, sine = jnp.cos(theta), jnp.sin(theta)
-    zeros = jnp.zeros_like(radius)
-    e_s = jnp.stack([r_s * cosine, r_s * sine, zeros], axis=-1)
-    e_theta = jnp.stack(
-        [
-            geometry.d_radius_dtheta * cosine - radius * sine,
-            geometry.d_radius_dtheta * sine + radius * cosine,
-            zeros,
-        ],
+    del grid
+    return jnp.stack(
+        [geometry.e_s_xyz, geometry.e_theta_xyz, geometry.e_xi_xyz],
         axis=-1,
     )
-    e_xi = jnp.stack(
-        [
-            geometry.d_radius_dxi * cosine,
-            geometry.d_radius_dxi * sine,
-            jnp.full_like(radius, float(grid.dz_dxi)),
-        ],
-        axis=-1,
-    )
-    return jnp.stack([e_s, e_theta, e_xi], axis=-1)
 
 
 def _current_contravariant(
@@ -910,6 +953,8 @@ def isotropic_force_residual(
     grid: "MirrorGrid",
     *,
     mu0: float = float(MU0),
+    closed: bool = False,
+    characteristic_length: float | Array | None = None,
 ) -> IsotropicForceResidual:
     """Compute ``curl(B)/mu0 x B - grad(p)`` in mirror coordinates."""
 
@@ -945,10 +990,11 @@ def isotropic_force_residual(
         axis=-2,
     )
     force_covariant = jnp.stack([force_s, force_theta, force_xi], axis=-1)
-    # The axis, side boundary, and end cuts are constrained rather than active
-    # force equations. Keep their pointwise values but norm the free interior.
-    force_active = force_covariant[1:-1, :, 1:-1]
-    inverse_metric = jnp.linalg.inv(metric[1:-1, :, 1:-1])
+    axial_slice = slice(None) if closed else slice(1, -1)
+    # The axis and side are constrained. Open mirrors also constrain end cuts;
+    # a closed hybrid norms every periodic axial point.
+    force_active = force_covariant[1:-1, :, axial_slice]
+    inverse_metric = jnp.linalg.inv(metric[1:-1, :, axial_slice])
     force_squared = jnp.einsum(
         "...i,...ij,...j->...",
         force_active,
@@ -958,13 +1004,17 @@ def isotropic_force_residual(
     weights = (
         jnp.asarray(grid.radial_weights[1:-1])[:, None, None]
         * jnp.asarray(grid.theta_basis.weights)[None, :, None]
-        * jnp.asarray(grid.axial_basis.weights)[None, None, 1:-1]
-        * geometry.sqrt_g[1:-1, :, 1:-1]
+        * jnp.asarray(grid.axial_basis.weights)[None, None, axial_slice]
+        * geometry.sqrt_g[1:-1, :, axial_slice]
     )
     physical_rms = jnp.sqrt(jnp.sum(weights * force_squared) / jnp.sum(weights))
     component_rms = jnp.sqrt(jnp.sum(weights[..., None] * force_active**2, axis=(0, 1, 2)) / jnp.sum(weights))
-    length = float(grid.z[-1] - grid.z[0])
-    magnetic_force_scale = energy.b_squared[1:-1, :, 1:-1] / (float(mu0) * length)
+    length = (
+        jnp.asarray(characteristic_length)
+        if characteristic_length is not None
+        else jnp.asarray(float(grid.z[-1] - grid.z[0]))
+    )
+    magnetic_force_scale = energy.b_squared[1:-1, :, axial_slice] / (float(mu0) * length)
     reference_rms = jnp.sqrt(jnp.sum(weights * magnetic_force_scale**2) / jnp.sum(weights))
     normalized_rms = physical_rms / jnp.maximum(reference_rms, jnp.finfo(physical_rms.dtype).tiny)
     active_s = jnp.asarray(grid.s[1:-1])

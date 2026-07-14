@@ -49,8 +49,14 @@ and rotating-ellipse sections around that frame without end cuts. Its circular
 limit recovers analytic torus volume to ``2e-5`` relative and keeps discrete
 ``div(B)`` below ``2e-14``; the racetrack ellipse rotates 90 degrees between
 the long legs and matches its area-times-axis-length volume to ``3e-4``.
-An equilibrium solve remains unimplemented, so ordinary toroidal Fourier
-projection and the spline geometry are not presented as supported models.
+The coefficient-native solver now applies the same radial-Gauss energy and
+``ftol=1e-12`` variational contract. A circular torus converges in 23
+evaluations with residual ``1.05e-16`` and normalized ``div(B)=1.79e-15``. A
+finite-current racetrack with solved stream function converges in 65 evaluations
+with residual ``3.11e-15`` and ``div(B)=3.50e-13``. Its 90-degree ellipse is an
+actual solved fixed boundary, not a Fourier projection. Pointwise force and
+resolution gates remain open, so this is a research implementation and is not
+yet exported as a supported equilibrium model.
 
 Plotting and output scope
 -------------------------

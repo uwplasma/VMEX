@@ -202,7 +202,7 @@ equilibrium criterion.
 | Implicit derivatives | 74% | nodal/free VJP plus spline nonaxisymmetric adjoint FD checks | forward spline tangent and SOLVAX scaling |
 | Preconditioning | 45% | separable prototype and Newton-GMRES | no bounded-iteration basis/resolution study |
 | Native B-spline open mirror | 70% | basis/state/transfer, fixed solve, knot convergence, coefficient preconditioner and adjoint | free-boundary state and forward tangent |
-| Native B-spline closed hybrid | 25% | periodic racetrack/frame, rotating ellipse, analytic torus metric, `div(B)`, geometry gradients | energy residual, fixed solve, limits, implicit derivatives |
+| Native B-spline closed hybrid | 40% | shared staggered energy and fixed solves for torus and finite-current rotating ellipse at `ftol=1e-12` | pointwise/refinement gates, limits, preconditioner, implicit derivatives |
 | ESSOS ownership cleanup | 100% | MGRID/callable contract and live ESSOS smoke | none |
 | Source simplification | 40% | Fourier-hybrid and coil ownership removed | public API and large mirror modules remain |
 
@@ -559,6 +559,18 @@ between opposite straight legs, returns with up/down symmetry, preserves
 positive Jacobian, matches ``pi*a*b*axis_length`` to ``3e-4``, and has finite
 reverse derivatives with respect to centerline controls. The remaining metric
 gate is an independent finite-difference derivative check before solving MHD.
+
+The first fixed-boundary solves now use the same radial-Gauss magnetic energy,
+coefficient vectorizer, host optimizer, residual-Newton fallback, and
+component-wise variational gate as open mirrors. The circular torus converges
+in 23 evaluations with variational maximum ``1.05e-16`` and normalized
+``div(B)=1.79e-15``. The 16-control racetrack with a 90-degree rotating ellipse,
+finite current, and solved gauge-free ``lambda`` converges in 65 evaluations
+with variational maximum ``3.11e-15`` and ``div(B)=3.50e-13``. A complete
+centerline-control JVP agrees with centered finite differences to ``2e-7``
+relative. The pointwise force reconstructions are ``4.90`` and ``1.51`` and are
+not accepted as promotion evidence; closed-periodic reconstruction and
+refinement are the next bounded gate. No closed solver is exported publicly yet.
 
 1. Define a periodic cubic B-spline Cartesian centerline with two long straight
    legs and two smooth curved returns; enforce closure and at least C2 continuity.

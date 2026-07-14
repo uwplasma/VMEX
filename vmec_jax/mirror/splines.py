@@ -477,6 +477,7 @@ class _SplineStateVectorizer:
     radius_indices: tuple[np.ndarray, np.ndarray, np.ndarray]
     radius_scale: float
     flux_scale: float
+    lambda_axial_indices: np.ndarray
     lambda_free_indices: np.ndarray
     lambda_pivot: int
     lambda_weights: np.ndarray
@@ -503,23 +504,31 @@ class _SplineStateVectorizer:
 
         shape = np.asarray(base.radius_coefficients).shape
         radius_mask = np.zeros(shape, dtype=bool)
-        radius_mask[1:-1, :, 1:-1] = True
+        if discretization.closed:
+            radius_mask[1:-1] = True
+            lambda_axial_indices = np.arange(shape[2])
+        else:
+            radius_mask[1:-1, :, 1:-1] = True
+            lambda_axial_indices = np.arange(1, shape[2] - 1)
         radius_indices = tuple(np.asarray(index) for index in np.nonzero(radius_mask))
 
         coefficient_weights = np.asarray(discretization.evaluation_matrix).T @ np.asarray(
             discretization.grid.axial_basis.weights
         )
         interior_weights = (
-            np.asarray(discretization.grid.theta_basis.weights)[:, None] * coefficient_weights[None, 1:-1]
+            np.asarray(discretization.grid.theta_basis.weights)[:, None]
+            * coefficient_weights[None, lambda_axial_indices]
         ).reshape(-1)
         if solve_lambda and interior_weights.size < 2:
             raise ValueError("lambda solve requires at least two interior coefficients")
         pivot = int(np.argmax(interior_weights)) if interior_weights.size else 0
         free_indices = np.delete(np.arange(interior_weights.size), pivot)
         endpoint_weights = np.zeros((shape[1], shape[2]))
-        endpoint_weights[:, [0, -1]] = (
-            np.asarray(discretization.grid.theta_basis.weights)[:, None] * coefficient_weights[None, [0, -1]]
-        )
+        if not discretization.closed:
+            endpoint_weights[:, [0, -1]] = (
+                np.asarray(discretization.grid.theta_basis.weights)[:, None]
+                * coefficient_weights[None, [0, -1]]
+            )
         fixed_sum = np.einsum("jk,ijk->i", endpoint_weights, np.asarray(base.lambda_coefficients)[1:])
         return cls(
             base=base,
@@ -527,6 +536,7 @@ class _SplineStateVectorizer:
             radius_indices=radius_indices,
             radius_scale=radius_scale,
             flux_scale=flux_scale,
+            lambda_axial_indices=lambda_axial_indices,
             lambda_free_indices=free_indices,
             lambda_pivot=pivot,
             lambda_weights=interior_weights,
@@ -554,7 +564,7 @@ class _SplineStateVectorizer:
         radius = np.asarray(self.base.radius_coefficients)[self.radius_indices] / self.radius_scale
         if not self.solve_lambda:
             return radius
-        interior = np.asarray(self.base.lambda_coefficients)[1:, :, 1:-1].reshape(
+        interior = np.asarray(self.base.lambda_coefficients)[1:, :, self.lambda_axial_indices].reshape(
             self.base.radius_coefficients.shape[0] - 1, -1
         )
         lam = interior[:, self.lambda_free_indices].reshape(-1) / self.flux_scale
@@ -573,7 +583,7 @@ class _SplineStateVectorizer:
 
         shape = self.base.lambda_coefficients.shape
         free = vector[self.radius_size :].reshape(shape[0] - 1, self.lambda_free_indices.size) * self.flux_scale
-        interior = self.base.lambda_coefficients[1:, :, 1:-1].reshape(shape[0] - 1, -1)
+        interior = self.base.lambda_coefficients[1:, :, self.lambda_axial_indices].reshape(shape[0] - 1, -1)
         interior = interior.at[:, jnp.asarray(self.lambda_free_indices)].set(free)
         weighted_free = jnp.sum(
             free * jnp.asarray(self.lambda_weights[self.lambda_free_indices])[None, :],
@@ -583,7 +593,9 @@ class _SplineStateVectorizer:
             self.lambda_weights[self.lambda_pivot]
         )
         interior = interior.at[:, self.lambda_pivot].set(pivot_value)
-        lam = self.base.lambda_coefficients.at[1:, :, 1:-1].set(interior.reshape(shape[0] - 1, shape[1], shape[2] - 2))
+        lam = self.base.lambda_coefficients.at[1:, :, self.lambda_axial_indices].set(
+            interior.reshape(shape[0] - 1, shape[1], self.lambda_axial_indices.size)
+        )
         return SplineMirrorState(radius, lam.at[0].set(lam[1]))
 
     def bounds(self) -> tuple[np.ndarray, np.ndarray]:
@@ -605,7 +617,10 @@ class _SplineStateVectorizer:
 
         lambda_coefficients = np.tensordot(np.asarray(gradient.lambda_stream), matrix, axes=((-1,), (0,)))
         lambda_coefficients[1] += lambda_coefficients[0]
-        interior = lambda_coefficients[1:, :, 1:-1].reshape(lambda_coefficients.shape[0] - 1, -1)
+        interior = lambda_coefficients[1:, :, self.lambda_axial_indices].reshape(
+            lambda_coefficients.shape[0] - 1,
+            -1,
+        )
         pivot_gradient = interior[:, self.lambda_pivot]
         free = interior[:, self.lambda_free_indices] - (
             pivot_gradient[:, None]
@@ -669,10 +684,15 @@ def solve_spline_fixed_boundary_cli(
     current_derivative: Array = 0.0,
     gamma: float = 5.0 / 3.0,
     solve_lambda: bool = False,
+    axis: Any | None = None,
     gradient_tolerance: float = 1.0e-11,
     require_convergence: bool = False,
 ) -> SplineMirrorSolveResult:
-    """Solve a scalar-pressure fixed boundary in native spline coefficients."""
+    """Solve an open or closed scalar-pressure spline fixed boundary.
+
+    A closed discretization requires its evaluated periodic ``axis``. Open
+    mirrors retain fixed end cuts and reject that argument.
+    """
 
     from .forces import (
         VariationalResidual,
@@ -693,6 +713,8 @@ def solve_spline_fixed_boundary_cli(
         raise ValueError("spline radial and poloidal resolution must match MirrorConfig")
     if gradient_tolerance <= 0.0:
         raise ValueError("gradient_tolerance must be positive")
+    if discretization.closed != (axis is not None):
+        raise ValueError("closed spline discretizations require an axis; open ones do not")
     vectorizer = _SplineStateVectorizer.build(
         initial_state,
         boundary,
@@ -716,7 +738,7 @@ def solve_spline_fixed_boundary_cli(
         return discretization.evaluate_state(unpack_coefficients(vector))
 
     def evaluate_energy(state: MirrorState):
-        return mirror_energy(state, grid, **energy_kwargs)
+        return mirror_energy(state, grid, axis=axis, **energy_kwargs)
 
     initial_evaluated = unpack(jnp.asarray(x0))
     initial_energy = evaluate_energy(initial_evaluated)
@@ -753,7 +775,9 @@ def solve_spline_fixed_boundary_cli(
             maximum=jnp.asarray(np.max(np.abs(packed))),
         )
 
-    def packed_weak(state: MirrorState) -> VariationalResidual:
+    def packed_weak(state: MirrorState) -> VariationalResidual | None:
+        if discretization.closed:
+            return None
         gradient = isotropic_staggered_energy_gradient(state, grid, **energy_kwargs)
         packed = vectorizer.pullback_evaluated_gradient(gradient) / energy_scale
         radius = packed[: vectorizer.radius_size]
@@ -766,13 +790,21 @@ def solve_spline_fixed_boundary_cli(
             maximum=jnp.asarray(np.max(np.abs(packed))),
         )
 
+    def force_residual(energy):
+        return isotropic_force_residual(
+            energy,
+            grid,
+            closed=discretization.closed,
+            characteristic_length=None if axis is None else axis.arc_length,
+        )
+
     history: list[tuple[float, float, float, float, float, float]] = []
 
     def record(iteration: int, vector: np.ndarray) -> None:
         state = unpack(jnp.asarray(vector))
         energy = evaluate_energy(state)
         variational = packed_variational(vector, state)
-        force = isotropic_force_residual(energy, grid)
+        force = force_residual(energy)
         history.append(
             (
                 float(iteration),
@@ -805,8 +837,12 @@ def solve_spline_fixed_boundary_cli(
             config=config,
             gradient_tolerance=gradient_tolerance,
             matrix_free_context=(
-                vectorizer,
-                _packed_spline_preconditioner(discretization, vectorizer),
+                None
+                if discretization.closed
+                else (
+                    vectorizer,
+                    _packed_spline_preconditioner(discretization, vectorizer),
+                )
             ),
         )
         final_x = optimization.vector
@@ -820,7 +856,7 @@ def solve_spline_fixed_boundary_cli(
     final_state = discretization.evaluate_state(coefficient_state)
     final_energy = evaluate_energy(final_state)
     final_variational = packed_variational(final_x, final_state)
-    final_force = isotropic_force_residual(final_energy, grid)
+    final_force = force_residual(final_energy)
     final_weak = packed_weak(final_state)
     record(iterations, final_x)
     converged = bool(

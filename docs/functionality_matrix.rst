@@ -280,9 +280,9 @@ The exact numerical contracts and failed promotion gates are in
      - The experimental Fourier target was removed; the planned model uses a
        native spline axis and surface state
    * - Native spline-state toroidal hybrid
-     - Deferred
-     - Periodic centerline, frame, rotating ellipse, and torus metric are
-       validated; the closed equilibrium solve is not yet implemented
+     - Research
+     - Fixed torus and finite-current rotating-ellipse solves reach
+       ``ftol=1e-12``; refinement and limiting-case gates remain open
 
 Code and validation footprint
 -----------------------------
