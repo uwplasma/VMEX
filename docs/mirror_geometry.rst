@@ -136,6 +136,23 @@ Both fixtures require a thin tube and ``|z|<c``. The separate
 ``a/L <= 0.2``. Its ``sqrt(1-beta)`` field ratio is an asymptotic pressure-
 balance reference, not a finite-beta solution or ellipticity prediction.
 
+Native spline basis status
+--------------------------
+
+``vmec_jax.mirror.splines.CubicBSplineBasis`` now supplies the isolated basis
+contract for the next solver state. Open axes use clamped knots; closed hybrid
+centerlines use folded uniform periodic cubics. Values and two derivatives are
+JAX operations, each nonzero span uses four-point Gauss-Legendre quadrature,
+and open refinement uses exact Boehm knot insertion. The basis matches SciPy,
+reproduces cubics, preserves curves under insertion, closes periodic values and
+two derivatives, and has tested JVP/VJP actions. For a smooth periodic fixture,
+maximum errors at 8, 16, 32, and 64 controls are ``5.06e-3``, ``2.76e-4``,
+``1.65e-5``, and ``1.02e-6``.
+
+This basis is not yet the equilibrium state. Until coefficient-native geometry,
+force, and boundary variations pass Chebyshev parity, ``MirrorConfig`` keeps
+the Chebyshev collocation path as the supported solver.
+
 Fixed-boundary implicit gradients
 ---------------------------------
 

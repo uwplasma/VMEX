@@ -403,6 +403,10 @@ explicit domain of validity.
 
 ### Milestone 4: native B-spline axial state
 
+Status: basis layer complete locally. Clamped and periodic cubic values,
+derivatives, quadrature, fitting, exact open-knot insertion, and JVP/VJP tests
+pass. Coefficient-native equilibrium state and Chebyshev parity remain open.
+
 Add only `mirror/splines.py`; keep the basis protocol in `basis.py` small.
 
 1. Implement clamped and periodic cubic basis values, first derivatives,
