@@ -598,8 +598,8 @@ use the same linear panel rule.
 
 Source ownership is kept narrow: ``exterior.py`` builds geometry and reduction
 maps, ``exterior_mesh.py`` owns side-panel topology and Duffy assembly,
-``exterior_interpolation.py`` owns reusable density interpolation, and
-``exterior_bie.py`` owns Neumann solves. These numerical kernels remain in
+including its density interpolation, and ``exterior_bie.py`` owns Neumann
+solves. These numerical kernels remain in
 their owning modules rather than the flattened public namespace.
 ``solve_axisymmetric_exterior_vacuum`` now owns the complete M6 adapter:
 it closes the moving boundary, continues the plasma field through both end

@@ -195,10 +195,10 @@ The initial audit relative to `origin/main` found 137 changed files, 24,370
 added lines, and 4,255 deleted lines. The first Phase 1 restoration reduces the
 working diff to 71 files, 19,378 added lines, and 1,610 deleted lines: 66
 unrelated files and about 5,000 added lines are gone. `vmec_jax/mirror` now
-contains 9,502 lines in 20 modules and now exposes 24 lazy names. Its largest files
+contains 9,491 lines in 19 modules and exposes 24 lazy names. Its largest files
 are `forces.py` (1,098), `solver.py` (1,001), `splines.py` (983), and
-`exterior_bie.py` (764). `exterior_mesh.py` is down to 412 lines. There are 148 collected
-mirror tests.
+`exterior_bie.py` (764). `exterior_mesh.py` is down to 412 lines. There are 148
+collected mirror tests.
 
 The earlier QI, direct-coil, optimization, and core-refactor work is restored to
 `origin/main`. Only the mirror package, mirror evidence, and small CLI, device,
@@ -433,7 +433,7 @@ source, tests, examples, evidence, documentation, and narrow shared integration
 hooks. The public-API target is complete. The failed curved-side/high-order-cap
 exterior option and its module are deleted after its bounded endpoint run did
 not complete in 690 seconds; the retained spectral-side, linear-panel path
-passes its exterior and shape-derivative tests. The 20-module package and large
+passes its exterior and shape-derivative tests. The 19-module package and large
 solver/force/spline files remain the active reduction work.
 
 Gate: the diff is materially smaller, all retained benchmark claims reproduce,
