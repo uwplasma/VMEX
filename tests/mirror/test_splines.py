@@ -37,6 +37,8 @@ from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
     SplineMirrorState,
+    _SplineStateVectorizer,
+    _packed_spline_preconditioner,
     initialize_closed_vacuum_stream_function,
     solve_spline_fixed_boundary_cli,
     trace_closed_field_line,
@@ -783,6 +785,33 @@ def test_spline_coefficient_preconditioner_inverts_tensor_model() -> None:
         exact,
         rtol=4.0e-12,
         atol=4.0e-12,
+    )
+
+
+def test_periodic_spline_preconditioner_uses_all_gauge_free_coefficients() -> None:
+    resolution = MirrorResolution(ns=5, mpol=2, ntheta=8, nxi=4)
+    discretization, _, boundary, state = _closed_circular_torus(
+        resolution, coefficient_count=12
+    )
+    vectorizer = _SplineStateVectorizer.build(
+        state,
+        boundary,
+        discretization,
+        axial_flux_derivative=0.03,
+        solve_lambda=True,
+    )
+    apply, _ = _packed_spline_preconditioner(discretization, vectorizer)
+    direction = np.random.default_rng(91).normal(size=vectorizer.pack().size)
+    result = apply(direction)
+
+    assert vectorizer.radius_size == (resolution.ns - 2) * resolution.ntheta * 12
+    assert vectorizer.lambda_size == (resolution.ns - 1) * (
+        resolution.ntheta * 12 - 1
+    )
+    assert result.shape == direction.shape
+    assert np.all(np.isfinite(result))
+    np.testing.assert_allclose(
+        apply(1.7 * direction), 1.7 * result, rtol=3.0e-13, atol=3.0e-13
     )
 
 

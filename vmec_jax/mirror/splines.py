@@ -783,8 +783,8 @@ def _packed_spline_preconditioner(
         discretization.spline.basis_matrix(discretization.grid.axial_basis.nodes, derivative=1)
     ) / float(discretization.grid.dz_dxi)
     weights = np.asarray(discretization.grid.axial_basis.weights)
-    interior = derivative[:, 1:-1]
-    stiffness = interior.T @ (weights[:, None] * interior)
+    active_derivative = derivative if discretization.closed else derivative[:, 1:-1]
+    stiffness = active_derivative.T @ (weights[:, None] * active_derivative)
     geometry = SeparableMirrorPreconditioner.build_from_axial_stiffness(discretization.grid, stiffness)
     stream = None
     if vectorizer.lambda_size:
@@ -982,12 +982,8 @@ def solve_spline_fixed_boundary_cli(
             gradient_tolerance=gradient_tolerance,
             start_with_residual_newton=discretization.closed,
             matrix_free_context=(
-                None
-                if discretization.closed
-                else (
-                    vectorizer,
-                    _packed_spline_preconditioner(discretization, vectorizer),
-                )
+                vectorizer,
+                _packed_spline_preconditioner(discretization, vectorizer),
             ),
         )
         final_x = optimization.vector
