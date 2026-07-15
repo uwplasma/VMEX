@@ -38,7 +38,10 @@ from vmec_jax.mirror.geometry import (  # noqa: E402
     magnetic_field_squared,
     magnetic_field_xyz,
 )
-from vmec_jax.mirror.solver import MirrorConvergenceError  # noqa: E402
+from vmec_jax.mirror.solver import (  # noqa: E402
+    MirrorConvergenceError,
+    _dense_residual_newton,
+)
 from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
@@ -65,6 +68,27 @@ def test_clamped_basis_matches_scipy_and_partitions_unity() -> None:
     np.testing.assert_allclose(np.sum(actual, axis=1), 1.0, atol=2.0e-15)
     np.testing.assert_allclose(actual[0], np.eye(basis.size)[0], atol=0.0)
     np.testing.assert_allclose(actual[-1], np.eye(basis.size)[-1], atol=0.0)
+
+
+def test_dense_residual_newton_rejects_invalid_root() -> None:
+    accepted = []
+    solution, iterations, _, converged, message = _dense_residual_newton(
+        np.asarray([1.0]),
+        lambda x: x + 1.0,
+        lambda _: jnp.ones((1, 1)),
+        lambda x: jnp.where(x[0] >= 0.0, x[0] ** 2, jnp.inf),
+        ftol=1.0e-12,
+        max_steps=10,
+        record_step=lambda x: accepted.append(x.copy()),
+        lower_bounds=np.asarray([-np.inf]),
+        upper_bounds=np.asarray([np.inf]),
+    )
+
+    assert not converged
+    assert message == "dense residual Newton stalled"
+    assert iterations == 1
+    assert solution[0] == pytest.approx(0.0)
+    assert all(candidate[0] >= 0.0 for candidate in accepted)
 
 
 def test_clamped_derivatives_and_cubic_reproduction() -> None:

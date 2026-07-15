@@ -392,6 +392,7 @@ def _dense_residual_newton(
     x0: np.ndarray,
     gradient_function: Any,
     hessian_function: Any,
+    objective_function: Any,
     *,
     ftol: float,
     max_steps: int,
@@ -422,7 +423,8 @@ def _dense_residual_newton(
                 gradient_function(jnp.asarray(candidate)),
                 dtype=float,
             )
-            if np.max(np.abs(candidate_residual)) < maximum:
+            candidate_value = float(objective_function(jnp.asarray(candidate)))
+            if np.isfinite(candidate_value) and np.max(np.abs(candidate_residual)) < maximum:
                 x = candidate
                 record_step(x)
                 accepted = True
@@ -499,6 +501,7 @@ def _optimize_fixed_boundary(
             x0,
             gradient_function,
             hessian_function,
+            objective,
             ftol=config.ftol,
             max_steps=config.max_iterations,
             record_step=record_dense_root,
