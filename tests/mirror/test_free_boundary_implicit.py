@@ -15,7 +15,6 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
-    build_vacuum_grid,
     free_boundary_adjoint,
     solve_free_boundary_cli,
 )
@@ -97,23 +96,20 @@ def test_free_boundary_field_adjoint_matches_central_difference() -> None:
         max_iterations=300,
     )
     grid = config.build_grid()
-    vacuum_grid = build_vacuum_grid(grid, nrho=5)
     field = ParaxialMirrorField(jnp.asarray(0.08), jnp.asarray(0.02))
     on_axis = field.center_field + field.curvature * jnp.asarray(grid.z) ** 2
     center = grid.nxi // 2
     flux = 0.5 * on_axis[center] * 0.25**2
     initial_boundary = MirrorBoundary.from_axis_field(flux, on_axis, grid)
     solve_options = dict(
-        outer_radius=0.1,
         axial_flux_derivative=flux,
-        vacuum_backend="exterior",
         exterior_ntheta=8,
         exterior_order=6,
         exterior_spectral_side_density=True,
         require_convergence=True,
     )
     result = solve_free_boundary_cli(
-        initial_boundary, grid, vacuum_grid, config, field, **solve_options
+        initial_boundary, grid, config, field, **solve_options
     )
     parameters = free_boundary_parameters(field, axial_flux_derivative=flux)
 
@@ -148,7 +144,6 @@ def test_free_boundary_field_adjoint_matches_central_difference() -> None:
         varied = solve_free_boundary_cli(
             result.boundary,
             grid,
-            vacuum_grid,
             config,
             varied_field,
             initial_state=result.plasma_state,

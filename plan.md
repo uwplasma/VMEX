@@ -200,12 +200,13 @@ The initial audit relative to `origin/main` found 137 changed files, 24,370
 added lines, and 4,255 deleted lines. Phase 1 and the current cleanup reduce the
 working diff to 71 files, 18,538 added lines, and 1,633 deleted lines: 66
 unrelated files and about 5,000 added lines are gone. `vmec_jax/mirror` now
-contains 9,534 lines in 16 modules and exposes 24 lazy names. Continuation lives
+contains 8,953 lines in 15 modules and exposes 23 lazy names. Continuation lives
 with the free-boundary workflow, restart/plot/diagnostic output lives in one
 output module, and exterior interpolation lives with the BIE solve. The largest
 files remain `forces.py` (1,098), `solver.py` (1,001), `splines.py` (983), and
-`output.py` (925), so the module-count gate is met but the line and oversized-
-file gates are not. There are 148 collected mirror tests.
+`output.py` (912), so the module-count gate is met but the line and oversized-
+file gates are not. There are 138 collected mirror tests; the removed tests
+exercised only the deleted finite-cylinder model.
 
 The earlier QI, direct-coil, optimization, and core-refactor work is restored to
 `origin/main`. Only the mirror package, mirror evidence, and small CLI, device,
@@ -448,7 +449,7 @@ of that final test fix remains for closing Phase 0 globally.
    mirror CLI, plotting, packaging, and shared solver contracts.
 3. Reduce the public mirror namespace from 47 names to at most 24.
 4. Choose one production exterior formulation: unbounded panel/Green solve.
-   Keep the annulus only as a small internal oracle or delete it after parity.
+   Delete the annulus after parity; do not expose two vacuum models.
    Remove unused spectral/curved-panel variants that do not improve the bounded
    convergence gate.
 5. Consolidate modules only where ownership is artificial. Target at most 16
@@ -465,18 +466,21 @@ exterior option and its module are deleted after its bounded endpoint run did
 not complete in 690 seconds; the retained spectral-side, linear-panel path
 passes its exterior and shape-derivative tests. Continuation, plotting, exterior
 interpolation, and scalar diagnostics are now colocated with their owning
-workflows, reducing the package to 16 modules. The source-line and oversized-
-file gates remain active; the next reduction removes or demotes the annulus
-backend before splitting any large physics kernel by habit.
+workflows. The finite-cylinder annulus, its grid/potential/restart contracts,
+and its model-specific tests are deleted after the free-space isotropic,
+anisotropic, tabulated-pressure, and restart tests passed. This reduces the
+package to 15 modules and 8,953 lines. The source-line and oversized-file gates
+remain active; the next reduction removes duplicated assembly from the three
+largest physics files rather than splitting code by habit.
 
 A 2026-07-14 full three-resolution beta gate reached the requested nonlinear
 `ftol <= 1e-12` at every point but did not meet its independent discretization
 thresholds. For the unbounded exterior solve, the medium-to-fine beta-10% center
-field changed by `8.38e-4` against a `5e-4` threshold. For the annulus solve it
-changed by `6.12e-4` against `1e-4`. These are unresolved spatial-convergence
-failures, not optimizer failures. Do not loosen the tests: remove the annulus as
-a production backend after bounded parity, and refine the exterior panel,
-radial, and axial studies until physical observables converge.
+field changed by `8.38e-4` against a `5e-4` threshold. The now-deleted annulus
+oracle changed by `6.12e-4` against `1e-4`. These are unresolved spatial-
+convergence failures, not optimizer failures. Do not loosen the retained test:
+refine the exterior panel, radial, and axial studies until physical observables
+converge.
 
 Gate: the diff is materially smaller, all retained benchmark claims reproduce,
 and no physics result depends on an unrelated branch-only core refactor.
@@ -667,7 +671,7 @@ Percentages measure accepted promotion evidence, not code written.
 | Preconditioning | 45% | periodic blocks and bounded Krylov scaling |
 | Implicit derivatives | 74% | spline forward tangent, hybrid and retained free lanes |
 | ANIMEC | 50% | source parity and independent finite-beta benchmark |
-| Source/API simplification | 74% | remove annulus production path and reduce oversized files |
+| Source/API simplification | 82% | reduce duplicated assembly and oversized files |
 | ESSOS ownership cleanup | 100% | retain interchange tests only |
 
 ## 8. Explicit deferrals

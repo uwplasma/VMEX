@@ -16,7 +16,6 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
-    build_vacuum_grid,
 )
 from vmec_jax.mirror.free_boundary import (  # noqa: E402
     interpolate_fixed_boundary_state,
@@ -79,11 +78,10 @@ def test_fixed_boundary_state_interpolation_is_differentiable() -> None:
 def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
     config = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=5))
     grid = config.build_grid()
-    vacuum_grid = build_vacuum_grid(grid, nrho=3)
     reference = MirrorBoundary.from_radius(0.3, grid)
     restart_boundary = MirrorBoundary.from_radius(0.31, grid)
     restart_state = MirrorState.from_boundary(restart_boundary, grid)
-    restart = FreeBoundaryRestart(restart_boundary, restart_state, jnp.zeros(vacuum_grid.shape), 2.5)
+    restart = FreeBoundaryRestart(restart_boundary, restart_state, 2.5)
     received = []
 
     def fake_solve(boundary, *_args, **kwargs):
@@ -98,7 +96,6 @@ def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
         return SimpleNamespace(
             boundary=boundary,
             plasma_state=kwargs["initial_state"],
-            vacuum_potential=kwargs["initial_potential"],
             mass_scale=jnp.asarray(kwargs["initial_mass_scale"] + 0.5),
         )
 
@@ -106,11 +103,9 @@ def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
     solve_axisymmetric_beta_scan_cli(
         reference,
         grid,
-        vacuum_grid,
         config,
         object(),
         jnp.asarray([0.0, 0.0]),
-        outer_radius=0.6,
         axial_flux_derivative=0.1,
         reference_field=1.0,
         initial_restart=restart,

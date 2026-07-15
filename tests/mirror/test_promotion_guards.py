@@ -19,7 +19,6 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorResolution,
     MirrorState,
     TabulatedPressureClosure,
-    build_vacuum_grid,
     solve_free_boundary_cli,
 )
 from vmec_jax.mirror.output import (  # noqa: E402
@@ -183,25 +182,18 @@ def test_beta_diagnostics_evaluate_solved_state(ntheta: int) -> None:
 
 def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
     grid = _grid()
-    vacuum_grid = build_vacuum_grid(grid, nrho=3)
     boundary = MirrorBoundary.from_radius(0.2, grid)
     config = MirrorConfig(resolution=MirrorResolution(ns=3, nxi=5))
     common = dict(
         initial_boundary=boundary,
         plasma_grid=grid,
-        vacuum_grid=vacuum_grid,
         config=config,
         external_field=object(),
-        outer_radius=0.4,
         axial_flux_derivative=0.1,
     )
 
-    with pytest.raises(ValueError, match="vacuum_backend"):
-        solve_free_boundary_cli(**common, vacuum_backend="invalid")
     with pytest.raises(ValueError, match="chunk"):
-        solve_free_boundary_cli(
-            **common, vacuum_backend="exterior", exterior_jacobian_chunk_size=0
-        )
+        solve_free_boundary_cli(**common, exterior_jacobian_chunk_size=0)
     with pytest.raises(ValueError, match="target_central_pressure"):
         solve_free_boundary_cli(**common, target_central_pressure=0.0)
     with pytest.raises(ValueError, match="initial_mass_scale"):
@@ -217,55 +209,19 @@ def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
             **{**common, "initial_boundary": MirrorBoundary(jnp.ones((2, 5)))}
         )
 
-    mismatched_theta = _grid(ntheta=3)
-    with pytest.raises(ValueError, match="theta nodes"):
-        solve_free_boundary_cli(
-            **{**common, "vacuum_grid": build_vacuum_grid(mismatched_theta, nrho=3)}
-        )
-    mismatched_axial = _grid(nxi=7)
-    with pytest.raises(ValueError, match="axial nodes"):
-        solve_free_boundary_cli(
-            **{**common, "vacuum_grid": build_vacuum_grid(mismatched_axial, nrho=3)}
-        )
-    nonaxisymmetric = _grid(ntheta=3)
-    with pytest.raises(ValueError, match="nonaxisymmetric"):
-        solve_free_boundary_cli(
-            initial_boundary=MirrorBoundary.from_radius(0.2, nonaxisymmetric),
-            plasma_grid=nonaxisymmetric,
-            vacuum_grid=build_vacuum_grid(nonaxisymmetric, nrho=3),
-            config=MirrorConfig(
-                resolution=MirrorResolution(
-                    ns=3, mpol=1, ntheta=3, nxi=5
-                )
-            ),
-            external_field=object(),
-            outer_radius=0.4,
-            axial_flux_derivative=0.1,
-        )
-
-
 def test_free_boundary_rejects_inconsistent_initial_guesses() -> None:
     grid = _grid()
-    vacuum_grid = build_vacuum_grid(grid, nrho=3)
     boundary = MirrorBoundary.from_radius(0.2, grid)
     config = MirrorConfig(resolution=MirrorResolution(ns=3, nxi=5))
     common = dict(
         initial_boundary=boundary,
         plasma_grid=grid,
-        vacuum_grid=vacuum_grid,
         config=config,
         external_field=object(),
-        outer_radius=0.4,
         axial_flux_derivative=0.1,
     )
     wrong_boundary = MirrorBoundary.from_radius(0.3, grid)
     with pytest.raises(ValueError, match="initial_state boundary"):
         solve_free_boundary_cli(
             **common, initial_state=MirrorState.from_boundary(wrong_boundary, grid)
-        )
-    with pytest.raises(ValueError, match="initial_potential shape"):
-        solve_free_boundary_cli(**common, initial_potential=jnp.zeros(2))
-    with pytest.raises(ValueError, match="inside the outer"):
-        solve_free_boundary_cli(
-            **{**common, "initial_boundary": MirrorBoundary.from_radius(0.5, grid)}
         )

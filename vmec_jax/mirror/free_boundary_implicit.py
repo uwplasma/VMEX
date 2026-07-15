@@ -15,6 +15,7 @@ from .exterior_bie import (
     solve_axisymmetric_exterior_vacuum,
 )
 from .forces import (
+    MU0,
     AnisotropicMirrorEnergy,
     MirrorEnergy,
     anisotropic_mirror_energy,
@@ -23,7 +24,6 @@ from .forces import (
 from .geometry import magnetic_field_squared
 from .model import MirrorBoundary, MirrorState
 from .solver import _MirrorStateVectorizer, _packed_preconditioner
-from .vacuum import MU0
 
 Array = Any
 FreeBoundaryQuantity = Callable[

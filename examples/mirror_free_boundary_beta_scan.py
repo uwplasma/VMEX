@@ -33,7 +33,6 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     TabulatedPressureClosure,
-    build_vacuum_grid,
     mout_from_result,
     plot_mout,
     write_mout,
@@ -55,8 +54,6 @@ HOT_FRACTION = 0.2
 TEMPERATURE_RATIO = 0.7
 NS = 7
 NXI = 13
-NRHO = 7
-VACUUM_BACKEND = "exterior"  # "annulus" retains a finite outer cylinder
 EXTERIOR_NTHETA = 12
 EXTERIOR_ORDER = 8
 EXTERIOR_SPECTRAL_SIDE_DENSITY = False  # More accurate, but costlier.
@@ -68,8 +65,7 @@ COIL_RADIUS = 0.9
 COIL_SEPARATION = 2.0
 COIL_CURRENT = 2.0e5
 CENTER_RADIUS = 0.25
-OUTER_RADIUS = 0.65
-OUTPUT_DIR = Path(f"results/mirror_free_boundary_beta_scan_{VACUUM_BACKEND}")
+OUTPUT_DIR = Path("results/mirror_free_boundary_beta_scan")
 SAVE_RESTARTS = True
 RESTART_FROM = None  # e.g. OUTPUT_DIR / "beta_003p0pct.npz"; then trim BETAS
 PLEIADES_REFERENCE = Path(__file__).resolve().parent / "data" / "pleiades_two_coil_beta_reference.csv"
@@ -110,8 +106,7 @@ config = MirrorConfig(
     max_iterations=MAX_ITERATIONS,
 )
 grid = config.build_grid()
-vacuum_grid = build_vacuum_grid(grid, nrho=NRHO)
-initial_restart = None if RESTART_FROM is None else load_free_boundary_restart(RESTART_FROM, grid, vacuum_grid)
+initial_restart = None if RESTART_FROM is None else load_free_boundary_restart(RESTART_FROM, grid)
 z = jnp.asarray(grid.z)
 coil_z = 0.5 * COIL_SEPARATION
 vacuum_axis_field = sum(
@@ -152,20 +147,17 @@ if PRESSURE_MODEL in {"bi_maxwellian", "tabulated"}:
 elif PRESSURE_MODEL != "isotropic":
     raise ValueError("PRESSURE_MODEL must be 'isotropic', 'bi_maxwellian', or 'tabulated'")
 
-print(f"Solving {BETAS.size} beta points at ns={NS}, nxi={NXI}, vacuum={VACUUM_BACKEND}, ftol={FTOL:.0e}")
+print(f"Solving {BETAS.size} beta points at ns={NS}, nxi={NXI}, ftol={FTOL:.0e}")
 results = solve_axisymmetric_beta_scan_cli(
     initial_boundary,
     grid,
-    vacuum_grid,
     config,
     external_field,
     jnp.asarray(BETAS),
-    outer_radius=OUTER_RADIUS,
     axial_flux_derivative=axial_flux_derivative,
     reference_field=float(vacuum_axis_field[center]),
     initial_restart=initial_restart,
     pressure_closure=pressure_closure,
-    vacuum_backend=VACUUM_BACKEND,
     exterior_ntheta=EXTERIOR_NTHETA,
     exterior_order=EXTERIOR_ORDER,
     exterior_spectral_side_density=EXTERIOR_SPECTRAL_SIDE_DENSITY,
@@ -223,8 +215,8 @@ summary = np.asarray(
             float(result.interface.vacuum_b_normal_rms),
             float(result.mass_scale),
             float(result.iterations),
-            float(result.vacuum_field.neumann_result.compatibility_error) if VACUUM_BACKEND == "exterior" else np.nan,
-            float(result.vacuum_field.neumann_result.condition_number) if VACUUM_BACKEND == "exterior" else np.nan,
+            float(result.vacuum_field.neumann_result.compatibility_error),
+            float(result.vacuum_field.neumann_result.condition_number),
         ]
         for item, result in zip(diagnostics, results, strict=True)
     ]

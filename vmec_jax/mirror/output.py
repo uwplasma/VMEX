@@ -20,7 +20,7 @@ from .forces import MU0, staggered_field_strength
 from .geometry import contravariant_field, evaluate_geometry, magnetic_field_xyz
 from .model import MIRROR_OUTPUT_SCHEMA, MirrorBoundary, MirrorState
 
-RESTART_SCHEMA = "vmec_jax.mirror.free_boundary_restart/1"
+RESTART_SCHEMA = "vmec_jax.mirror.free_boundary_restart/2"
 
 
 @dataclass(frozen=True)
@@ -529,7 +529,6 @@ class FreeBoundaryRestart:
 
     boundary: MirrorBoundary
     plasma_state: MirrorState
-    vacuum_potential: Any
     mass_scale: float
 
     @classmethod
@@ -539,7 +538,6 @@ class FreeBoundaryRestart:
         return cls(
             boundary=result.boundary,
             plasma_state=result.plasma_state,
-            vacuum_potential=result.vacuum_potential,
             mass_scale=float(result.mass_scale),
         )
 
@@ -574,9 +572,6 @@ def save_free_boundary_restart(
         "lambda_stream": _finite_restart_array(
             restart.plasma_state.lambda_stream, name="lambda_stream"
         ),
-        "vacuum_potential": _finite_restart_array(
-            restart.vacuum_potential, name="vacuum_potential"
-        ),
         "mass_scale": _finite_restart_array(restart.mass_scale, name="mass_scale"),
     }
     temporary: Path | None = None
@@ -594,7 +589,7 @@ def save_free_boundary_restart(
 
 
 def load_free_boundary_restart(
-    path: str | Path, plasma_grid: Any, vacuum_grid: Any
+    path: str | Path, plasma_grid: Any
 ) -> FreeBoundaryRestart:
     """Load restart data after strict schema, shape, and finiteness checks."""
 
@@ -608,9 +603,6 @@ def load_free_boundary_restart(
         )
         radius = _finite_restart_array(data["radius_scale"], name="radius_scale")
         lam = _finite_restart_array(data["lambda_stream"], name="lambda_stream")
-        potential = _finite_restart_array(
-            data["vacuum_potential"], name="vacuum_potential"
-        )
         mass_scale = float(
             _finite_restart_array(data["mass_scale"], name="mass_scale")
         )
@@ -622,16 +614,11 @@ def load_free_boundary_restart(
         )
     if radius.shape != plasma_grid.shape or lam.shape != plasma_grid.shape:
         raise ValueError("restart plasma state does not match the requested grid")
-    if potential.shape != vacuum_grid.shape:
-        raise ValueError(
-            f"restart vacuum shape {potential.shape} != {vacuum_grid.shape}"
-        )
     if mass_scale <= 0.0:
         raise ValueError("restart mass_scale must be positive")
     return FreeBoundaryRestart(
         boundary=MirrorBoundary(boundary),
         plasma_state=MirrorState(radius, lam),
-        vacuum_potential=potential,
         mass_scale=mass_scale,
     )
 

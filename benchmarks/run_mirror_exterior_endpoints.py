@@ -16,7 +16,6 @@ from vmec_jax.mirror import (
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
-    build_vacuum_grid,
     solve_beta_scan_cli,
 )
 from vmec_jax.mirror.output import (
@@ -52,7 +51,6 @@ def run(
         max_iterations=1000,
     )
     grid = config.build_grid()
-    vacuum_grid = build_vacuum_grid(grid, nrho=ns)
     dofs = np.zeros((2, 3, 3))
     dofs[:, 0, 2] = 0.9
     dofs[:, 1, 1] = 0.9
@@ -90,15 +88,12 @@ def run(
     results = solve_beta_scan_cli(
         boundary,
         grid,
-        vacuum_grid,
         config,
         external_field,
         betas,
-        outer_radius=0.1,
         axial_flux_derivative=flux,
         reference_field=float(on_axis[center]),
         current_derivative=(0.0 if axisymmetric else 1.0e-3 * jnp.asarray(grid.s)),
-        vacuum_backend="exterior",
         exterior_ntheta=ntheta,
         exterior_order=6,
         exterior_spectral_side_density=True,

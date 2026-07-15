@@ -29,9 +29,33 @@ except ModuleNotFoundError as _vcj_error:  # optional research acceleration
 from .exterior import ClosedMirrorSurface, build_closed_mirror_surface
 from .exterior_mesh import panel_green_boundary_residual, panel_green_gradient_off_surface
 from .geometry import magnetic_field_xyz
-from .vacuum import _external_field_xyz
 
 Array = Any
+
+
+def _external_field_xyz(source: Any, points_xyz: Array) -> Array:
+    """Evaluate an MGRID field or vectorized ``xyz -> B`` callable."""
+
+    if hasattr(source, "b_cyl"):
+        x, y, z = jnp.moveaxis(points_xyz, -1, 0)
+        radius = jnp.sqrt(x**2 + y**2)
+        phi = jnp.arctan2(y, x)
+        b_r, b_phi, b_z = source.b_cyl(radius, phi, z)
+        cosine, sine = jnp.cos(phi), jnp.sin(phi)
+        return jnp.stack(
+            (b_r * cosine - b_phi * sine, b_r * sine + b_phi * cosine, b_z),
+            axis=-1,
+        )
+    if callable(source):
+        field = jnp.asarray(source(points_xyz))
+        if field.shape != points_xyz.shape:
+            raise ValueError(
+                f"external field returned shape {field.shape}; expected {points_xyz.shape}"
+            )
+        return field
+    raise TypeError(
+        "external field must provide b_cyl or be a vectorized xyz -> B callable"
+    )
 
 
 @dataclass(frozen=True)

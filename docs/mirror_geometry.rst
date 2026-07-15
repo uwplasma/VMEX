@@ -38,19 +38,18 @@ The branch currently includes:
 * axisymmetric and nonaxisymmetric fixed-boundary finite-current solves,
 * isotropic and ANIMEC-style anisotropic pressure energies and independent
   tensor-force diagnostics,
-* a variational scalar-potential vacuum annulus with an ``xyz -> B`` field
+* a free-space boundary-integral vacuum model with an ``xyz -> B`` field
   callable or the shared ESSOS/MAKEGRID-compatible ``MgridField``; coil
   geometry and Biot-Savart evaluation remain in ESSOS,
 * coupled axisymmetric isotropic and anisotropic free-boundary beta
   continuation with compressed restart files,
-* a free-space boundary-integral vacuum backend on the lateral LCFS and both
-  end disks, alongside the finite-annulus backend,
+* a closed-surface Neumann solve on the lateral LCFS and both end disks,
 * a genuine theta-dependent exterior free-boundary solve with finite axial
   current and a nonaxisymmetric external field, and
 * component-wise nonlinear convergence checks at a requested ``ftol=1e-12``.
 
-The axisymmetric free-boundary path has completed annulus and
-unbounded-exterior resolution studies through 50% requested beta. The
+The axisymmetric free-boundary path has completed unbounded-exterior studies
+through 50% requested beta. The
 nonaxisymmetric path also converges through 50%, but its point observables are
 not monotone under spatial refinement, so it is not promoted. A native periodic
 B-spline hybrid geometry and fixed-boundary research solve now exist. The
@@ -433,13 +432,10 @@ From a developer checkout, run:
 
 The script has editable inputs at its top and no command-line parser. It
 solves every beta point from 0 through 50% and writes CSV plus three reviewed
-figures under ``results/mirror_free_boundary_beta_scan_exterior/``. The figures include horizontal
+figures under ``results/mirror_free_boundary_beta_scan/``. The figures include horizontal
 ``z`` geometry, LCFS displacement, on-axis and LCFS ``|B|``, pressure balance,
 coils, cap-to-cap field lines, field arrows, and coupled residual histories.
-Generated results are ignored by git.
-The default ``VACUUM_BACKEND = "exterior"`` removes the finite outer cylinder.
-Set it to ``"annulus"`` for the bounded comparison model; each backend writes
-to a separate result directory. Exterior CSV rows include closed-surface
+Generated results are ignored by git. CSV rows include closed-surface
 compatibility and BIE condition number for every beta point.
 
 ``PRESSURE_MODEL`` selects the mass-conserving isotropic scan, a consistent
@@ -450,8 +446,9 @@ the firehose/mirror ellipticity indicators to remain valid.
 
 Set ``SAVE_RESTARTS = True`` to write one compressed ``.npz`` hot-start per
 beta point. :func:`vmec_jax.mirror.output.load_free_boundary_restart` checks its
-schema and both plasma/vacuum grid shapes before returning the boundary,
-plasma state, vacuum potential, and calibrated mass scale.
+schema and plasma-grid shape before returning the boundary, plasma state, and
+calibrated mass scale. The BIE potential is recomputed because the moving
+boundary changes at every continuation point.
 Set ``RESTART_FROM`` and trim ``BETAS`` to resume only the unfinished suffix;
 the original beta-zero boundary remains the pressure-profile reference.
 
@@ -506,14 +503,9 @@ MGRID and vectorized ``xyz -> B`` callables share one external-field adapter.
 MGRID interpolation tests remain in vmec_jax; filament sampling and
 Biot-Savart parity tests live with ESSOS.
 
-The mixed vacuum truncation fixes the correction potential on the outer
-cylinder, preserves zero correction flux through the axial cuts, and obtains
-total-field tangency naturally on the plasma side. Finite-wall Neumann and
-mixed-Dirichlet center fields approach one another as the outer cylinder is
-expanded, but their remaining gap is reported as truncation uncertainty. A
-free-space boundary-integral backend now removes this truncation. The annulus
-remains useful for parity and inexpensive comparison tests; exterior trace
-order and memory cost remain M5 promotion gates.
+The free-space model has no artificial outer cylinder. Exterior trace order,
+panel refinement, closed-surface compatibility, and memory cost remain
+promotion gates.
 
 Open-exterior foundation
 ------------------------
@@ -607,17 +599,17 @@ cuts, cancels the supplied external normal field on the side, solves the exterio
 Neumann problem, and returns the lateral total-field trace. Tangency and a
 full shape JVP pass on the coupled adapter, so the remaining gate is nonlinear
 equilibrium behavior rather than a missing differentiation path.
-The adapter is also available as ``vacuum_backend="exterior"`` in the coupled
-axisymmetric free-boundary and beta-continuation drivers. On the coarse
+The adapter is the sole vacuum model in the coupled axisymmetric free-boundary
+and beta-continuation drivers. On the coarse
 ``(ns,nxi,ntheta_panel)=(5,7,8)`` two-coil gate, beta 0 and 10% both converge
 in seven nonlinear evaluations. Maximum residuals are ``7.93e-16`` and
 ``2.95e-15``; vacuum tangency is below ``6.3e-17`` and normalized stress below
 ``1.3e-15``. The center radius increases from 0.252576 m to 0.255603 m. This
 proves the unbounded model is an actual finite-beta equilibrium path, while
 the four-grid dipole study above still limits its quantitative promotion.
-The legacy ``outer_radius`` argument is ignored by this backend, and restart
-files retain a zero placeholder potential because the BIE potential is solved
-and stored in ``result.vacuum_field.neumann_result`` rather than hot-started.
+Restart files contain only the plasma state, boundary, and pressure scale; the
+BIE potential is solved into ``result.vacuum_field.neumann_result`` rather than
+hot-started.
 The nonlinear validity gate requires relative closed-surface flux compatibility
 below ``1e-6`` and condition number below ``1e8``. Compatibility is reported
 separately and must decrease under refinement; it is not conflated with the

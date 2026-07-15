@@ -27,7 +27,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     "solve_fixed_boundary_cli": (".solver", "solve_fixed_boundary_cli"),
     "FreeBoundaryMirrorResult": (".free_boundary", "FreeBoundaryMirrorResult"),
     "solve_free_boundary_cli": (".free_boundary", "solve_free_boundary_cli"),
-    "build_vacuum_grid": (".vacuum", "build_vacuum_grid"),
     # Continuation.
     "solve_beta_scan_cli": (".free_boundary", "solve_beta_scan_cli"),
     # Implicit differentiation.
