@@ -9,7 +9,7 @@ jax = pytest.importorskip("jax")
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
 
-from vmec_jax.mirror.exterior_mesh import (  # noqa: E402
+from vmec_jax.mirror.exterior import (  # noqa: E402
     _spectral_side_density_samples,
     _unit_gauss_legendre,
     duffy_triangle_single_layer,

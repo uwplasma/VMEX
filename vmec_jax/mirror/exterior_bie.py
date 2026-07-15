@@ -9,8 +9,12 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .exterior import ClosedMirrorSurface, build_closed_mirror_surface
-from .exterior_mesh import panel_green_boundary_residual, panel_green_gradient_off_surface
+from .exterior import (
+    ClosedMirrorSurface,
+    build_closed_mirror_surface,
+    panel_green_boundary_residual,
+    panel_green_gradient_off_surface,
+)
 from .geometry import magnetic_field_xyz
 
 Array = Any
