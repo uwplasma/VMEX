@@ -128,6 +128,17 @@ Audit baseline (2026-07-15 CDT, final source/literature/worktree review through 
   the analytic derivative to `2.22e-16`; VMEC's documented 101-point integral
   differs from the analytic integral by `6.33e-10`, so the represented
   integral, not a silently mixed exact normalization, is the code-parity gate.
+- The matched-``APHI`` ordinary VMEC gate converges in both VMEC-JAX and local
+  VMEC2000 in 158 iterations with identical `fsqr/fsqz/fsql`, volume, energy,
+  axis, and field scalars to roundoff. It exposed and repaired an ordinary
+  WOUT bug: `phi` must accumulate half-mesh `phips` as in `fileout.f`, not
+  full-mesh `phipf`. On the spline mirror, the geometry-matched analytic
+  vacuum state has strong force `4.18e-6` at `ns=7`, but minimizing the
+  discrete energy to variational `1.22e-16` moves it to strong force
+  `8.87e-2` (`3.99e-2` in the bulk). T8 is therefore blocked on consistency
+  between the radial Gauss variational operator and the independently
+  staggered force, not on APHI normalization, cyclic Krylov convergence, or a
+  simple fixed-axis shift.
 
 Execution update (2026-07-15): T1 enforced the matrix-free open policy and
 compacted its evidence; T2 removed the nodal fixed solver, custom VJP, and
@@ -1066,6 +1077,17 @@ are labeled scalar-pressure equilibria, not ANIMEC or kinetic predictions.
    repeating the historical constant-``APHI`` case. A constant mirror
    derivative is not an admissible concentric fixture and cannot be used to
    infer an axis or force bug.
+   Before promoting parity, close the discovered discrete-consistency gap:
+   project the independently staggered force onto the exact same active spline
+   coefficient variations and compare it term by term with the energy
+   gradient on the analytic vacuum state. Isolate radial metric, flux
+   interpolation, axis-row, and boundary-work contributions with one
+   manufactured perturbation at a time. Repair the mismatched term, then
+   require a solve from the analytic state to retain a strong force below
+   `1e-4` and to decrease under `ns=5,9,17` refinement while reaching
+   variational `ftol <= 1e-12`. Do not loosen `ftol`, accept a stationary
+   discrete state with worsening physical force, or add axis optimization
+   until this virtual-work identity passes.
    Compare volume, energy terms, axis/edge `iota`, magnetic well, `|B|`, and
    independently reconstructed force on three grids; do not compare only
    output coefficients with different basis conventions.
