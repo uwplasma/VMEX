@@ -25,7 +25,7 @@ from .forces import (
     MirrorEnergy,
     VariationalResidual,
 )
-from .model import MirrorBoundary, MirrorConfig, MirrorState, project_fixed_boundary_state
+from .model import MirrorConfig, MirrorState
 
 Array = Any
 
@@ -93,140 +93,6 @@ class MirrorConvergenceError(RuntimeError):
             f"mirror solve did not reach ftol: variational force "
             f"{float(result.variational.maximum):.3e} after {result.iterations} iterations"
         )
-
-
-def _free_radius_mask(grid: "MirrorGrid") -> np.ndarray:
-    """Geometry dofs excluding axis, side boundary, and both end cuts."""
-
-    mask = np.zeros(grid.shape, dtype=bool)
-    mask[1:-1, :, 1:-1] = True
-    return mask
-
-
-@dataclass(frozen=True)
-class _MirrorStateVectorizer:
-    """Pack constrained geometry and gauge-free lambda into solver vectors."""
-
-    base: MirrorState
-    radius_indices: tuple[np.ndarray, np.ndarray, np.ndarray]
-    radius_scale: float
-    flux_scale: float
-    lambda_free_indices: np.ndarray
-    lambda_pivot: int
-    lambda_interior_weights: np.ndarray
-    lambda_fixed_weighted_sum: np.ndarray
-    solve_lambda: bool
-
-    @classmethod
-    def build(
-        cls,
-        state: MirrorState,
-        boundary: MirrorBoundary,
-        grid: "MirrorGrid",
-        *,
-        axial_flux_derivative: Array,
-        solve_lambda: bool,
-    ) -> "_MirrorStateVectorizer":
-        """Build the constrained state-to-solver-vector mapping."""
-        base = project_fixed_boundary_state(state, boundary, grid)
-        radius_scale = float(np.mean(np.asarray(boundary.radius_scale)))
-        if not np.isfinite(radius_scale) or radius_scale <= 0.0:
-            raise ValueError("mean boundary radius must be positive and finite")
-        flux = np.asarray(axial_flux_derivative, dtype=float)
-        flux_scale = max(float(np.max(np.abs(flux))), np.finfo(float).tiny)
-        interior_weights = (
-            np.asarray(grid.theta_basis.weights)[:, None] * np.asarray(grid.axial_basis.weights)[None, 1:-1]
-        ).reshape(-1)
-        if solve_lambda and interior_weights.size < 2:
-            raise ValueError("lambda solve requires at least two interior theta-xi nodes")
-        pivot = int(np.argmax(interior_weights)) if interior_weights.size else 0
-        free_indices = np.delete(np.arange(interior_weights.size), pivot)
-        full_weights = np.asarray(grid.theta_basis.weights)[:, None] * np.asarray(grid.axial_basis.weights)[None, :]
-        endpoint_weights = np.zeros_like(full_weights)
-        endpoint_weights[:, [0, -1]] = full_weights[:, [0, -1]]
-        fixed_sum = np.einsum("jk,ijk->i", endpoint_weights, np.asarray(base.lambda_stream)[1:])
-        return cls(
-            base=base,
-            radius_indices=tuple(np.asarray(index) for index in np.nonzero(_free_radius_mask(grid))),
-            radius_scale=radius_scale,
-            flux_scale=flux_scale,
-            lambda_free_indices=free_indices,
-            lambda_pivot=pivot,
-            lambda_interior_weights=interior_weights,
-            lambda_fixed_weighted_sum=fixed_sum,
-            solve_lambda=bool(solve_lambda),
-        )
-
-    @property
-    def radius_size(self) -> int:
-        """Return the number of independently solved radius values."""
-        return int(self.radius_indices[0].size)
-
-    @property
-    def lambda_size(self) -> int:
-        """Return the number of gauge-free stream-function values."""
-        if not self.solve_lambda:
-            return 0
-        return int((self.base.radius_scale.shape[0] - 1) * self.lambda_free_indices.size)
-
-    @property
-    def size(self) -> int:
-        """Return the total solver-vector length."""
-        return self.radius_size + self.lambda_size
-
-    def pack(self) -> np.ndarray:
-        """Pack the constrained mirror state into normalized solver variables."""
-        radius = np.asarray(self.base.radius_scale)[self.radius_indices] / self.radius_scale
-        if not self.solve_lambda:
-            return radius
-        interior = np.asarray(self.base.lambda_stream)[1:, :, 1:-1].reshape(self.base.radius_scale.shape[0] - 1, -1)
-        lam = interior[:, self.lambda_free_indices].reshape(-1) / self.flux_scale
-        return np.concatenate([radius, lam])
-
-    def unpack(self, vector: Array) -> MirrorState:
-        """Reconstruct a constrained mirror state from solver variables."""
-        vector = jnp.asarray(vector)
-        radius = self.base.radius_scale.at[self.radius_indices].set(vector[: self.radius_size] * self.radius_scale)
-        radius = radius.at[0].set(radius[1])
-        if not self.solve_lambda:
-            return MirrorState(radius, self.base.lambda_stream)
-        shape = self.base.radius_scale.shape
-        free = vector[self.radius_size :].reshape(shape[0] - 1, self.lambda_free_indices.size) * self.flux_scale
-        interior = self.base.lambda_stream[1:, :, 1:-1].reshape(shape[0] - 1, -1)
-        interior = interior.at[:, jnp.asarray(self.lambda_free_indices)].set(free)
-        weighted_free = jnp.sum(
-            free * jnp.asarray(self.lambda_interior_weights[self.lambda_free_indices])[None, :],
-            axis=1,
-        )
-        pivot_value = -(jnp.asarray(self.lambda_fixed_weighted_sum) + weighted_free) / float(
-            self.lambda_interior_weights[self.lambda_pivot]
-        )
-        interior = interior.at[:, self.lambda_pivot].set(pivot_value)
-        lam = self.base.lambda_stream.at[1:, :, 1:-1].set(interior.reshape(shape[0] - 1, shape[1], shape[2] - 2))
-        lam = lam.at[0].set(lam[1])
-        return MirrorState(radius, lam)
-
-    def bounds(self) -> tuple[np.ndarray, np.ndarray]:
-        """Return conservative bounds for normalized solver variables."""
-        lower = np.concatenate([np.full(self.radius_size, 0.2), np.full(self.lambda_size, -np.inf)])
-        upper = np.concatenate([np.full(self.radius_size, 5.0), np.full(self.lambda_size, np.inf)])
-        return lower, upper
-
-    def pullback_gradient(self, gradient: MirrorState) -> np.ndarray:
-        """Map a physical state gradient to normalized solver variables."""
-
-        radius = np.asarray(gradient.radius_scale)[self.radius_indices] * self.radius_scale
-        if not self.solve_lambda:
-            return radius
-        shape = self.base.radius_scale.shape
-        interior = np.asarray(gradient.lambda_stream)[1:, :, 1:-1].reshape(shape[0] - 1, -1)
-        pivot_gradient = interior[:, self.lambda_pivot]
-        free = interior[:, self.lambda_free_indices] - (
-            pivot_gradient[:, None]
-            * self.lambda_interior_weights[self.lambda_free_indices][None, :]
-            / self.lambda_interior_weights[self.lambda_pivot]
-        )
-        return np.concatenate([radius, (free * self.flux_scale).reshape(-1)])
 
 
 @dataclass(frozen=True)
@@ -374,34 +240,6 @@ class SeparableMirrorPreconditioner:
         return projected.reshape(np.asarray(vector).shape)
 
 
-def _packed_preconditioner(grid: "MirrorGrid", vectorizer: _MirrorStateVectorizer) -> tuple[Any, np.ndarray]:
-    """Build the shared geometry/lambda inverse and mutable block scales."""
-
-    geometry = SeparableMirrorPreconditioner.build(grid)
-    stream = None
-    if vectorizer.lambda_size:
-        stream = SeparableMirrorPreconditioner.build(grid, radial_nodes=grid.ns - 1)
-    scales = np.ones(2)
-
-    def apply(vector: np.ndarray) -> np.ndarray:
-        vector = np.asarray(vector, dtype=float)
-        result = np.array(vector, copy=True)
-        result[: vectorizer.radius_size] = geometry.apply(vector[: vectorizer.radius_size]) * scales[0]
-        if stream is not None:
-            result[vectorizer.radius_size :] = (
-                stream.apply_gauge_free(
-                    vector[vectorizer.radius_size :],
-                    free_indices=vectorizer.lambda_free_indices,
-                    pivot=vectorizer.lambda_pivot,
-                    weights=vectorizer.lambda_interior_weights,
-                )
-                * scales[1]
-            )
-        return result
-
-    return apply, scales
-
-
 def _matrix_free_newton_polish(
     x0: np.ndarray,
     gradient_function: Any,
@@ -422,9 +260,9 @@ def _matrix_free_newton_polish(
 
     hessian_vector = jax.jit(lambda point, direction: jax.jvp(gradient_function, (point,), (direction,))[1])
     hessian_columns = jax.jit(
-        lambda point, directions: jax.vmap(
-            lambda direction: jax.jvp(gradient_function, (point,), (direction,))[1]
-        )(directions)
+        lambda point, directions: jax.vmap(lambda direction: jax.jvp(gradient_function, (point,), (direction,))[1])(
+            directions
+        )
     )
     linear_iterations = 0
     final_linear_residual = np.inf
@@ -442,6 +280,7 @@ def _matrix_free_newton_polish(
             return product + damping * np.asarray(direction)
 
         if local_preconditioner is None and build_local is not None:
+
             def matrix_columns(directions: np.ndarray) -> np.ndarray:
                 directions = np.asarray(directions, dtype=float)
                 products = hessian_columns(jnp.asarray(x), jnp.asarray(directions))

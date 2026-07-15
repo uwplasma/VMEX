@@ -25,6 +25,7 @@ from vmec_jax.mirror.implicit import (  # noqa: E402
     free_boundary_parameters,
     spline_fixed_boundary_parameters,
 )
+from vmec_jax.mirror.forces import MU0, mass_profile_from_pressure, mirror_energy  # noqa: E402
 from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
@@ -243,22 +244,24 @@ jax.tree_util.register_dataclass(
 
 
 def test_free_boundary_adjoint_rejects_unconverged_and_3d_results() -> None:
-    axisymmetric_grid = MirrorConfig(resolution=MirrorResolution(ns=3, nxi=5)).build_grid()
+    axisymmetric_config = MirrorConfig(resolution=MirrorResolution(ns=3, nxi=5))
+    axisymmetric = SplineMirrorDiscretization.build_cgl(axisymmetric_config, elements=2)
     parameters = free_boundary_parameters(object(), axial_flux_derivative=0.1)
     with pytest.raises(ValueError, match="converged"):
         free_boundary_adjoint(
             type("Result", (), {"converged": False})(),
             parameters,
-            axisymmetric_grid,
+            axisymmetric,
             lambda *_: 0.0,
         )
 
-    nonaxisymmetric_grid = MirrorConfig(resolution=MirrorResolution(ns=3, mpol=1, nxi=5)).build_grid()
+    nonaxisymmetric_config = MirrorConfig(resolution=MirrorResolution(ns=3, mpol=1, nxi=5))
+    nonaxisymmetric = SplineMirrorDiscretization.build_cgl(nonaxisymmetric_config, elements=2)
     with pytest.raises(ValueError, match="axisymmetry"):
         free_boundary_adjoint(
             type("Result", (), {"converged": True})(),
             parameters,
-            nonaxisymmetric_grid,
+            nonaxisymmetric,
             lambda *_: 0.0,
         )
 
@@ -279,19 +282,25 @@ def test_free_boundary_field_adjoint_matches_central_difference() -> None:
     on_axis = field.center_field + field.curvature * jnp.asarray(grid.z) ** 2
     center = grid.nxi // 2
     flux = 0.5 * on_axis[center] * 0.25**2
-    initial_boundary = discretization.fit_boundary(
-        MirrorBoundary.from_axis_field(flux, on_axis, grid),
-        source_grid,
+    nodal_boundary = MirrorBoundary.from_axis_field(flux, on_axis, grid)
+    initial_boundary = discretization.fit_boundary(nodal_boundary, source_grid)
+    reference_energy = mirror_energy(
+        MirrorState.from_boundary(nodal_boundary, grid),
+        grid,
+        axial_flux_derivative=flux,
     )
+    pressure = 0.03 * field.center_field**2 / (2.0 * MU0) * (1.0 - jnp.asarray(grid.s))
+    mass_profile = mass_profile_from_pressure(pressure, reference_energy.volume_derivative)
     solve_options = dict(
         axial_flux_derivative=flux,
+        mass_profile=mass_profile,
         exterior_ntheta=8,
         exterior_order=6,
         exterior_spectral_side_density=True,
         require_convergence=True,
     )
     result = solve_free_boundary_cli(initial_boundary, discretization, config, field, **solve_options)
-    parameters = free_boundary_parameters(field, axial_flux_derivative=flux)
+    parameters = free_boundary_parameters(field, axial_flux_derivative=flux, mass_profile=mass_profile)
 
     def quantity(boundary, _state, _energy, _vacuum):
         return boundary.radius_scale[0, center]
@@ -299,7 +308,7 @@ def test_free_boundary_field_adjoint_matches_central_difference() -> None:
     adjoint = free_boundary_adjoint(
         result,
         parameters,
-        grid,
+        discretization,
         quantity,
         config=FreeBoundaryAdjointConfig(
             axisymmetric_ntheta=8,
@@ -315,7 +324,7 @@ def test_free_boundary_field_adjoint_matches_central_difference() -> None:
     )
 
     epsilon = 1.0e-4
-    values = []
+    field_values = []
     for sign in (-1.0, 1.0):
         varied_field = ParaxialMirrorField(
             field.center_field + sign * epsilon * direction.center_field,
@@ -329,10 +338,27 @@ def test_free_boundary_field_adjoint_matches_central_difference() -> None:
             initial_state=result.coefficient_state,
             **solve_options,
         )
-        values.append(float(quantity(varied.boundary, None, None, None)))
-    finite_difference = (values[1] - values[0]) / (2.0 * epsilon)
+        field_values.append(float(quantity(varied.boundary, None, None, None)))
+    field_finite_difference = (field_values[1] - field_values[0]) / (2.0 * epsilon)
+
+    mass_direction = 0.1 * mass_profile
+    mass_predicted = float(jnp.vdot(adjoint.gradient.mass_profile, mass_direction))
+    mass_values = []
+    for sign in (-1.0, 1.0):
+        varied_options = solve_options | {"mass_profile": mass_profile + sign * epsilon * mass_direction}
+        varied = solve_free_boundary_cli(
+            result.coefficient_boundary,
+            discretization,
+            config,
+            field,
+            initial_state=result.coefficient_state,
+            **varied_options,
+        )
+        mass_values.append(float(quantity(varied.boundary, None, None, None)))
+    mass_finite_difference = (mass_values[1] - mass_values[0]) / (2.0 * epsilon)
     assert result.converged
     assert float(result.variational_max) <= config.ftol
     assert adjoint.converged
     assert adjoint.relative_residual < 1.0e-8
-    np.testing.assert_allclose(predicted, finite_difference, rtol=2.0e-4)
+    np.testing.assert_allclose(predicted, field_finite_difference, rtol=3.0e-4)
+    np.testing.assert_allclose(mass_predicted, mass_finite_difference, rtol=3.0e-4)

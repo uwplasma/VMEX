@@ -13,11 +13,10 @@ import jax.numpy as jnp
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
 
-from .exterior_bie import AxisymmetricExteriorVacuum, solve_axisymmetric_exterior_vacuum
-from .forces import MU0, MirrorEnergy, mirror_energy
-from .geometry import magnetic_field_squared, regularize_axis_stream_function
+from .forces import MirrorEnergy, mirror_energy
+from .free_boundary import FreeBoundaryParameters, _build_free_equilibrium_problem
+from .geometry import regularize_axis_stream_function
 from .model import MirrorBoundary, MirrorState
-from .solver import _MirrorStateVectorizer, _packed_preconditioner
 
 Array = Any
 MirrorQuantity = Callable[[MirrorState, MirrorEnergy], Array]
@@ -426,16 +425,6 @@ def spline_fixed_boundary_tangent(
 FreeBoundaryQuantity = Callable[[MirrorBoundary, MirrorState, MirrorEnergy, Any], Array]
 
 
-@dataclass(frozen=True)
-class FreeBoundaryParameters:
-    """Differentiable controls for an exterior free-boundary equilibrium."""
-
-    external_field: Any
-    axial_flux_derivative: Array
-    mass_profile: Array
-    current_derivative: Array
-
-
 @dataclass(frozen=True, eq=False)
 class FreeBoundaryAdjointConfig:
     """Static exterior quadrature and linear-solver controls."""
@@ -459,11 +448,11 @@ class FreeBoundaryAdjointResult:
     converged: bool
 
 
-for _cls, _data, _meta in (
-    (FreeBoundaryParameters, ["external_field", "axial_flux_derivative", "mass_profile", "current_derivative"], []),
-    (FreeBoundaryAdjointResult, ["value", "gradient"], ["iterations", "relative_residual", "converged"]),
-):
-    jax.tree_util.register_dataclass(_cls, data_fields=_data, meta_fields=_meta)
+jax.tree_util.register_dataclass(
+    FreeBoundaryAdjointResult,
+    data_fields=["value", "gradient"],
+    meta_fields=["iterations", "relative_residual", "converged"],
+)
 
 
 def free_boundary_parameters(
@@ -486,97 +475,48 @@ def free_boundary_parameters(
 def free_boundary_adjoint(
     result: Any,
     parameters: FreeBoundaryParameters,
-    plasma_grid: Any,
+    discretization: Any,
     quantity: FreeBoundaryQuantity,
     *,
     config: FreeBoundaryAdjointConfig = FreeBoundaryAdjointConfig(),
 ) -> FreeBoundaryAdjointResult:
     """Differentiate a scalar through a converged axisymmetric exterior solve.
 
-    End-cut radii and pressure are fixed. The eliminated exterior Neumann solve
-    contributes field and shape derivatives directly to interface-stress rows.
+    End-cut radii are fixed. Pressure-profile, flux, current, applied-field,
+    and solved lateral-shape responses follow the same primal residual.
     """
 
     if not bool(result.converged):
         raise ValueError("free-boundary differentiation requires a converged result")
-    if plasma_grid.ntheta != 1:
+    grid = discretization.grid
+    if grid.ntheta != 1:
         raise ValueError("free-boundary adjoint currently supports axisymmetry only")
-    if not isinstance(result.vacuum_field, AxisymmetricExteriorVacuum):
-        raise ValueError("free-boundary adjoint requires the exterior vacuum backend")
     if config.rtol <= 0.0 or config.max_restarts < 1:
         raise ValueError("adjoint tolerances and iteration limits must be positive")
-    fixed_boundary = jnp.asarray(result.boundary.radius_scale)
-    base_state = result.plasma_state
-    boundary_indices = (
-        np.zeros(plasma_grid.nxi - 2, dtype=int),
-        np.arange(1, plasma_grid.nxi - 1),
+    problem = _build_free_equilibrium_problem(
+        result.coefficient_boundary,
+        result.coefficient_state,
+        discretization,
+        parameters.external_field,
+        axial_flux_derivative=parameters.axial_flux_derivative,
+        mass_profile=parameters.mass_profile,
+        current_derivative=parameters.current_derivative,
+        solve_lambda=False,
+        gamma=config.gamma,
+        target_central_pressure=result.target_central_pressure,
+        initial_mass_scale=float(result.mass_scale),
+        exterior_ntheta=config.axisymmetric_ntheta,
+        exterior_order=config.exterior_order,
+        exterior_spectral_side_density=config.spectral_side_density,
+        plasma_scale=result.plasma_scale,
     )
-    plasma_mask = np.zeros(plasma_grid.shape, dtype=bool)
-    plasma_mask[1:-1, :, 1:-1] = True
-    plasma_indices = tuple(np.asarray(index) for index in np.nonzero(plasma_mask))
-    boundary_size = plasma_grid.nxi - 2
-    plasma_size = plasma_indices[0].size
-    x_star = jnp.concatenate(
-        [
-            fixed_boundary[boundary_indices],
-            jnp.asarray(base_state.radius_scale)[plasma_indices],
-        ]
-    )
-    energy_scale = max(abs(float(result.plasma_energy.total)), 1.0)
-
-    def unpack(vector: Array) -> tuple[MirrorBoundary, MirrorState]:
-        boundary_radius = fixed_boundary.at[boundary_indices].set(vector[:boundary_size])
-        boundary = MirrorBoundary(boundary_radius)
-        radius = base_state.radius_scale.at[plasma_indices].set(vector[boundary_size:])
-        radius = radius.at[-1].set(boundary_radius)
-        radius = radius.at[:, :, 0].set(boundary_radius[:, 0])
-        radius = radius.at[:, :, -1].set(boundary_radius[:, -1])
-        radius = radius.at[0].set(radius[1])
-        return boundary, MirrorState(radius, base_state.lambda_stream)
-
-    def plasma_components(vector: Array, controls: FreeBoundaryParameters):
-        boundary, state = unpack(vector)
-        plasma = mirror_energy(
-            state,
-            plasma_grid,
-            axial_flux_derivative=controls.axial_flux_derivative,
-            mass_profile=controls.mass_profile,
-            current_derivative=controls.current_derivative,
-            gamma=config.gamma,
-        )
-        pressure = jnp.broadcast_to(plasma.pressure[:, None, None], plasma.b_squared.shape)
-        plasma_b_squared = magnetic_field_squared(plasma.field, plasma.geometry)
-        return boundary, state, plasma, pressure, plasma_b_squared
-
-    def components(vector: Array, controls: FreeBoundaryParameters):
-        boundary, state, plasma, pressure, plasma_b_squared = plasma_components(vector, controls)
-        vacuum = solve_axisymmetric_exterior_vacuum(
-            boundary,
-            plasma.field,
-            plasma_grid,
-            controls.external_field,
-            axisymmetric_ntheta=config.axisymmetric_ntheta,
-            order=config.exterior_order,
-            spectral_side_density=config.spectral_side_density,
-        )
-        return boundary, state, plasma, pressure, plasma_b_squared, vacuum
-
-    def normalized_plasma_energy(vector: Array, controls: FreeBoundaryParameters) -> Array:
-        return plasma_components(vector, controls)[2].total / energy_scale
+    x_star = jnp.asarray(problem.vectorizer.pack())
 
     def residual(vector: Array, controls: FreeBoundaryParameters) -> Array:
-        _, _, _, pressure, plasma_b_squared, vacuum = components(vector, controls)
-        plasma_gradient = jax.grad(normalized_plasma_energy, argnums=0)(vector, controls)[boundary_size:]
-        plasma_side = plasma_b_squared[-1, 0, 1:-1]
-        vacuum_side = jnp.sum(vacuum.lateral_field_xyz[1:-1] ** 2, axis=-1)
-        pressure_side = pressure[-1, 0, 1:-1]
-        jump = pressure_side + (plasma_side - vacuum_side) / (2.0 * MU0)
-        stress_scale = jnp.abs(pressure_side) + plasma_side / (2.0 * MU0) + vacuum_side / (2.0 * MU0)
-        stress = jump / jnp.maximum(stress_scale, jnp.finfo(stress_scale.dtype).tiny)
-        return jnp.concatenate([stress, plasma_gradient])
+        return problem.parameterized_residual_function(vector, controls)
 
     def evaluate_quantity(vector: Array, controls: FreeBoundaryParameters) -> Array:
-        boundary, state, plasma, _, _, vacuum = components(vector, controls)
+        _, _, _, boundary, state, plasma, _, _, vacuum = problem.parameterized_components_function(vector, controls)
         value = jnp.asarray(quantity(boundary, state, plasma, vacuum))
         if value.ndim != 0:
             raise ValueError("free-boundary adjoint quantity must return a scalar")
@@ -585,54 +525,30 @@ def free_boundary_adjoint(
     equilibrium_residual = np.asarray(residual(x_star, parameters), dtype=float)
     if np.max(np.abs(equilibrium_residual)) > 10.0 * max(float(result.variational_max), 1.0e-12):
         raise ValueError("reconstructed free-boundary residual does not match result")
-    value, (quantity_x, quantity_parameters) = jax.value_and_grad(evaluate_quantity, argnums=(0, 1))(x_star, parameters)
-    _, transpose = jax.vjp(lambda vector: residual(vector, parameters), x_star)
-    transpose_action = jax.jit(lambda vector: transpose(vector)[0])
+    boundary_size = problem.vectorizer.boundary_size
+    state_size = problem.vectorizer.state_size
+    scales = np.ones(3 if problem.vectorizer.calibrate_pressure else 2)
 
-    def matrix_vector(vector: np.ndarray) -> np.ndarray:
-        return np.asarray(transpose_action(jnp.asarray(vector)), dtype=float)
-
-    vectorizer = _MirrorStateVectorizer.build(
-        base_state,
-        result.boundary,
-        plasma_grid,
-        axial_flux_derivative=parameters.axial_flux_derivative,
-        solve_lambda=False,
-    )
-    if vectorizer.radius_size != plasma_size:
-        raise ValueError("free-boundary plasma packing does not match primal packing")
-    plasma_preconditioner, _ = _packed_preconditioner(plasma_grid, vectorizer)
-    scales = np.ones(2)
-
-    def apply_preconditioner(vector: np.ndarray) -> np.ndarray:
-        output = np.array(vector, dtype=float, copy=True)
-        output[:boundary_size] *= scales[0]
-        output[boundary_size:] = scales[1] * plasma_preconditioner(vector[boundary_size:])
-        return output
-
-    right_hand_side = np.asarray(quantity_x, dtype=float)
-    adjoint, iterations, relative_residual, converged = _solve_implicit_system(
-        matrix_vector,
-        right_hand_side,
-        apply_preconditioner,
+    block_slices = [slice(0, boundary_size), slice(boundary_size, boundary_size + state_size)]
+    if problem.vectorizer.calibrate_pressure:
+        block_slices.append(slice(boundary_size + state_size, None))
+    adjoint = _implicit_adjoint(
+        x_star,
+        parameters,
+        residual,
+        evaluate_quantity,
+        problem.preconditioner(),
         scales,
-        (slice(0, boundary_size), slice(boundary_size, None)),
+        tuple(block_slices),
         rtol=config.rtol,
         max_restarts=config.max_restarts,
     )
-    _, parameter_pullback = jax.vjp(lambda controls: residual(x_star, controls), parameters)
-    residual_parameter_gradient = parameter_pullback(jnp.asarray(adjoint))[0]
-    total_gradient = jax.tree.map(
-        lambda direct, implicit: direct - implicit,
-        quantity_parameters,
-        residual_parameter_gradient,
-    )
     return FreeBoundaryAdjointResult(
-        value=value,
-        gradient=total_gradient,
-        iterations=iterations,
-        relative_residual=relative_residual,
-        converged=converged,
+        value=adjoint.value,
+        gradient=adjoint.gradient,
+        iterations=adjoint.iterations,
+        relative_residual=adjoint.relative_residual,
+        converged=adjoint.converged,
     )
 
 
