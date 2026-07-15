@@ -18,7 +18,7 @@ from vmec_jax.mirror import (  # noqa: E402
     free_boundary_adjoint,
     solve_free_boundary_cli,
 )
-from vmec_jax.mirror.free_boundary_implicit import (  # noqa: E402
+from vmec_jax.mirror.implicit import (  # noqa: E402
     FreeBoundaryAdjointConfig,
     free_boundary_parameters,
 )

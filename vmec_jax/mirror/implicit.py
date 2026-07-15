@@ -1,8 +1,6 @@
-"""Implicit adjoints for converged fixed-boundary mirror equilibria.
+"""Implicit fixed, spline, and free-boundary mirror derivatives.
 
-The derivative is taken through the equilibrium equation, not through the
-host-controlled optimization history. This gives memory use independent of
-the number of nonlinear iterations and one adjoint solve per scalar quantity.
+Derivatives use converged equilibrium equations, not host iteration histories.
 """
 
 from __future__ import annotations
@@ -18,7 +16,9 @@ import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
 from solvax import block_thomas_factor, block_thomas_solve
 
-from .forces import MirrorEnergy, mirror_energy
+from .exterior_bie import AxisymmetricExteriorVacuum, solve_axisymmetric_exterior_vacuum
+from .forces import MU0, MirrorEnergy, mirror_energy
+from .geometry import magnetic_field_squared
 from .model import MirrorBoundary, MirrorState, project_fixed_boundary_state
 from .solver import (
     _MirrorStateVectorizer,
@@ -315,14 +315,9 @@ def fixed_boundary_adjoint(
 ) -> MirrorAdjointResult:
     """Differentiate one scalar quantity through a converged equilibrium.
 
-    The packed equilibrium equation is the gradient of the normalized MHD
-    energy with all fixed side/end geometry and the stream-function gauge
-    already eliminated. The transpose system is solved matrix-free with exact
-    JAX products and the primal separable preconditioner. ``linear_solver`` is
-    ``"gmres"`` for the usual one-RHS reverse solve. ``"block"`` assembles the
-    exact nearest-radial block-tridiagonal Hessian with three-color probes and
-    certifies its SOLVAX block-Thomas solution with GMRES; this is useful for
-    verification or future batched right-hand sides, not faster for one scalar.
+    The residual is the normalized MHD energy gradient after fixed geometry
+    and gauge elimination. ``"gmres"`` is the one-RHS default; ``"block"``
+    verifies the nearest-radial Hessian with SOLVAX block Thomas.
     """
 
     if not bool(result.converged):
@@ -657,9 +652,8 @@ def solve_fixed_boundary_implicit(
 ) -> MirrorState:
     """Return a converged state with an implicit reverse derivative.
 
-    The host nonlinear iterations run through :func:`jax.pure_callback` and
-    are absent from the AD tape. Reverse mode solves the converged equilibrium
-    adjoint, so its memory does not grow with the number of primal iterations.
+    Host iterations stay outside the AD tape through :func:`jax.pure_callback`;
+    reverse memory is therefore independent of the primal iteration count.
     """
 
     return jax.pure_callback(
@@ -734,7 +728,258 @@ solve_fixed_boundary_implicit.defvjp(
 )
 
 
+FreeBoundaryQuantity = Callable[[MirrorBoundary, MirrorState, MirrorEnergy, Any], Array]
+
+
+@dataclass(frozen=True)
+class FreeBoundaryParameters:
+    """Differentiable controls for an exterior free-boundary equilibrium."""
+
+    external_field: Any
+    axial_flux_derivative: Array
+    mass_profile: Array
+    current_derivative: Array
+
+
+@dataclass(frozen=True, eq=False)
+class FreeBoundaryAdjointConfig:
+    """Static exterior quadrature and linear-solver controls."""
+
+    axisymmetric_ntheta: int = 40
+    exterior_order: int = 8
+    spectral_side_density: bool = False
+    gamma: float = 5.0 / 3.0
+    rtol: float = 1.0e-9
+    max_restarts: int = 30
+
+
+@dataclass(frozen=True)
+class FreeBoundaryAdjointResult:
+    """Scalar value, total control gradient, and transpose-solve diagnostics."""
+
+    value: Array
+    gradient: FreeBoundaryParameters
+    iterations: int
+    relative_residual: float
+    converged: bool
+
+
+for _cls, _data, _meta in (
+    (FreeBoundaryParameters, ["external_field", "axial_flux_derivative", "mass_profile", "current_derivative"], []),
+    (FreeBoundaryAdjointResult, ["value", "gradient"], ["iterations", "relative_residual", "converged"]),
+):
+    jax.tree_util.register_dataclass(_cls, data_fields=_data, meta_fields=_meta)
+
+
+def free_boundary_parameters(
+    external_field: Any,
+    *,
+    axial_flux_derivative: Array,
+    mass_profile: Array = 0.0,
+    current_derivative: Array = 0.0,
+) -> FreeBoundaryParameters:
+    """Collect free-boundary controls in a differentiable pytree."""
+
+    return FreeBoundaryParameters(
+        external_field=external_field,
+        axial_flux_derivative=jnp.asarray(axial_flux_derivative),
+        mass_profile=jnp.asarray(mass_profile),
+        current_derivative=jnp.asarray(current_derivative),
+    )
+
+
+def free_boundary_adjoint(
+    result: Any,
+    parameters: FreeBoundaryParameters,
+    plasma_grid: Any,
+    quantity: FreeBoundaryQuantity,
+    *,
+    config: FreeBoundaryAdjointConfig = FreeBoundaryAdjointConfig(),
+) -> FreeBoundaryAdjointResult:
+    """Differentiate a scalar through a converged axisymmetric exterior solve.
+
+    End-cut radii and pressure are fixed. The eliminated exterior Neumann solve
+    contributes field and shape derivatives directly to interface-stress rows.
+    """
+
+    if not bool(result.converged):
+        raise ValueError("free-boundary differentiation requires a converged result")
+    if plasma_grid.ntheta != 1:
+        raise ValueError("free-boundary adjoint currently supports axisymmetry only")
+    if not isinstance(result.vacuum_field, AxisymmetricExteriorVacuum):
+        raise ValueError("free-boundary adjoint requires the exterior vacuum backend")
+    if config.rtol <= 0.0 or config.max_restarts < 1:
+        raise ValueError("adjoint tolerances and iteration limits must be positive")
+    fixed_boundary = jnp.asarray(result.boundary.radius_scale)
+    base_state = result.plasma_state
+    boundary_indices = (
+        np.zeros(plasma_grid.nxi - 2, dtype=int),
+        np.arange(1, plasma_grid.nxi - 1),
+    )
+    plasma_mask = np.zeros(plasma_grid.shape, dtype=bool)
+    plasma_mask[1:-1, :, 1:-1] = True
+    plasma_indices = tuple(np.asarray(index) for index in np.nonzero(plasma_mask))
+    boundary_size = plasma_grid.nxi - 2
+    plasma_size = plasma_indices[0].size
+    x_star = jnp.concatenate(
+        [
+            fixed_boundary[boundary_indices],
+            jnp.asarray(base_state.radius_scale)[plasma_indices],
+        ]
+    )
+    energy_scale = max(abs(float(result.plasma_energy.total)), 1.0)
+
+    def unpack(vector: Array) -> tuple[MirrorBoundary, MirrorState]:
+        boundary_radius = fixed_boundary.at[boundary_indices].set(
+            vector[:boundary_size]
+        )
+        boundary = MirrorBoundary(boundary_radius)
+        radius = base_state.radius_scale.at[plasma_indices].set(
+            vector[boundary_size:]
+        )
+        radius = radius.at[-1].set(boundary_radius)
+        radius = radius.at[:, :, 0].set(boundary_radius[:, 0])
+        radius = radius.at[:, :, -1].set(boundary_radius[:, -1])
+        radius = radius.at[0].set(radius[1])
+        return boundary, MirrorState(radius, base_state.lambda_stream)
+
+    def plasma_components(vector: Array, controls: FreeBoundaryParameters):
+        boundary, state = unpack(vector)
+        plasma = mirror_energy(
+            state,
+            plasma_grid,
+            axial_flux_derivative=controls.axial_flux_derivative,
+            mass_profile=controls.mass_profile,
+            current_derivative=controls.current_derivative,
+            gamma=config.gamma,
+        )
+        pressure = jnp.broadcast_to(
+            plasma.pressure[:, None, None], plasma.b_squared.shape
+        )
+        plasma_b_squared = magnetic_field_squared(plasma.field, plasma.geometry)
+        return boundary, state, plasma, pressure, plasma_b_squared
+
+    def components(vector: Array, controls: FreeBoundaryParameters):
+        boundary, state, plasma, pressure, plasma_b_squared = plasma_components(
+            vector, controls
+        )
+        vacuum = solve_axisymmetric_exterior_vacuum(
+            boundary,
+            plasma.field,
+            plasma_grid,
+            controls.external_field,
+            axisymmetric_ntheta=config.axisymmetric_ntheta,
+            order=config.exterior_order,
+            spectral_side_density=config.spectral_side_density,
+        )
+        return boundary, state, plasma, pressure, plasma_b_squared, vacuum
+
+    def normalized_plasma_energy(
+        vector: Array, controls: FreeBoundaryParameters
+    ) -> Array:
+        return plasma_components(vector, controls)[2].total / energy_scale
+
+    def residual(vector: Array, controls: FreeBoundaryParameters) -> Array:
+        _, _, _, pressure, plasma_b_squared, vacuum = components(vector, controls)
+        plasma_gradient = jax.grad(normalized_plasma_energy, argnums=0)(
+            vector, controls
+        )[boundary_size:]
+        plasma_side = plasma_b_squared[-1, 0, 1:-1]
+        vacuum_side = jnp.sum(vacuum.lateral_field_xyz[1:-1] ** 2, axis=-1)
+        pressure_side = pressure[-1, 0, 1:-1]
+        jump = pressure_side + (plasma_side - vacuum_side) / (2.0 * MU0)
+        stress_scale = (
+            jnp.abs(pressure_side)
+            + plasma_side / (2.0 * MU0)
+            + vacuum_side / (2.0 * MU0)
+        )
+        stress = jump / jnp.maximum(
+            stress_scale, jnp.finfo(stress_scale.dtype).tiny
+        )
+        return jnp.concatenate([stress, plasma_gradient])
+
+    def evaluate_quantity(vector: Array, controls: FreeBoundaryParameters) -> Array:
+        boundary, state, plasma, _, _, vacuum = components(vector, controls)
+        value = jnp.asarray(quantity(boundary, state, plasma, vacuum))
+        if value.ndim != 0:
+            raise ValueError("free-boundary adjoint quantity must return a scalar")
+        return value
+
+    equilibrium_residual = np.asarray(residual(x_star, parameters), dtype=float)
+    if np.max(np.abs(equilibrium_residual)) > 10.0 * max(
+        float(result.variational_max), 1.0e-12
+    ):
+        raise ValueError("reconstructed free-boundary residual does not match result")
+    value, (quantity_x, quantity_parameters) = jax.value_and_grad(
+        evaluate_quantity, argnums=(0, 1)
+    )(x_star, parameters)
+    _, transpose = jax.vjp(lambda vector: residual(vector, parameters), x_star)
+    transpose_action = jax.jit(lambda vector: transpose(vector)[0])
+
+    def matrix_vector(vector: np.ndarray) -> np.ndarray:
+        return np.asarray(transpose_action(jnp.asarray(vector)), dtype=float)
+
+    vectorizer = _MirrorStateVectorizer.build(
+        base_state,
+        result.boundary,
+        plasma_grid,
+        axial_flux_derivative=parameters.axial_flux_derivative,
+        solve_lambda=False,
+    )
+    if vectorizer.radius_size != plasma_size:
+        raise ValueError("free-boundary plasma packing does not match primal packing")
+    plasma_preconditioner, _ = _packed_preconditioner(
+        plasma_grid, vectorizer
+    )
+    scales = np.ones(2)
+
+    def apply_preconditioner(vector: np.ndarray) -> np.ndarray:
+        output = np.array(vector, dtype=float, copy=True)
+        output[:boundary_size] *= scales[0]
+        output[boundary_size:] = (
+            scales[1] * plasma_preconditioner(vector[boundary_size:])
+        )
+        return output
+    right_hand_side = np.asarray(quantity_x, dtype=float)
+    adjoint, iterations, relative_residual, converged = _solve_implicit_system(
+        matrix_vector,
+        right_hand_side,
+        apply_preconditioner,
+        scales,
+        (slice(0, boundary_size), slice(boundary_size, None)),
+        rtol=config.rtol,
+        max_restarts=config.max_restarts,
+    )
+    _, parameter_pullback = jax.vjp(
+        lambda controls: residual(x_star, controls), parameters
+    )
+    residual_parameter_gradient = parameter_pullback(jnp.asarray(adjoint))[0]
+    total_gradient = jax.tree.map(
+        lambda direct, implicit: direct - implicit,
+        quantity_parameters,
+        residual_parameter_gradient,
+    )
+    return FreeBoundaryAdjointResult(
+        value=value,
+        gradient=total_gradient,
+        iterations=iterations,
+        relative_residual=relative_residual,
+        converged=converged,
+    )
+
+
 __all__ = [
+    "FreeBoundaryAdjointConfig",
+    "FreeBoundaryAdjointResult",
+    "FreeBoundaryParameters",
+    "free_boundary_adjoint",
+    "free_boundary_parameters",
+]
+
+__all__ = [
+    "FreeBoundaryAdjointConfig",
+    "FreeBoundaryAdjointResult",
+    "FreeBoundaryParameters",
     "FixedBoundaryImplicitConfig",
     "FixedBoundaryParameters",
     "MirrorAdjointResult",
@@ -742,6 +987,8 @@ __all__ = [
     "SplineFixedBoundaryParameters",
     "fixed_boundary_adjoint",
     "fixed_boundary_parameters",
+    "free_boundary_adjoint",
+    "free_boundary_parameters",
     "make_fixed_boundary_implicit_config",
     "spline_fixed_boundary_adjoint",
     "spline_fixed_boundary_tangent",
