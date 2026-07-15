@@ -110,6 +110,44 @@ def test_dense_residual_newton_honors_iteration_limit() -> None:
     assert solution[0] == pytest.approx(2.0**-51)
 
 
+def test_dense_residual_newton_rejects_numerical_stagnation() -> None:
+    solution, iterations, _, converged, message = _dense_residual_newton(
+        np.asarray([1.0]),
+        lambda x: x,
+        lambda _: 1.0e6 * jnp.ones((1, 1)),
+        lambda x: x[0] ** 2,
+        ftol=1.0e-12,
+        max_steps=1000,
+        record_step=lambda _: None,
+        lower_bounds=np.asarray([-np.inf]),
+        upper_bounds=np.asarray([np.inf]),
+    )
+
+    assert not converged
+    assert message == "dense residual Newton stalled"
+    assert iterations == 0
+    assert solution[0] == pytest.approx(1.0)
+
+
+def test_dense_residual_newton_bounds_slow_progress() -> None:
+    solution, iterations, _, converged, message = _dense_residual_newton(
+        np.asarray([1.0]),
+        lambda x: x,
+        lambda _: 5.0e3 * jnp.ones((1, 1)),
+        lambda x: x[0] ** 2,
+        ftol=1.0e-12,
+        max_steps=1000,
+        record_step=lambda _: None,
+        lower_bounds=np.asarray([-np.inf]),
+        upper_bounds=np.asarray([np.inf]),
+    )
+
+    assert not converged
+    assert message == "dense residual Newton stalled"
+    assert iterations == 20
+    assert solution[0] == pytest.approx((1.0 - 1.0 / 5.0e3) ** 20)
+
+
 def test_clamped_derivatives_and_cubic_reproduction() -> None:
     basis = CubicBSplineBasis.clamped(np.linspace(-1.0, 1.0, 8))
 
@@ -540,6 +578,63 @@ def test_closed_hybrid_section_stages_preserve_area_and_periodic_transfer() -> N
         atol=2.0e-17,
     )
     np.testing.assert_allclose(transferred.radius_coefficients[-1], fine_boundary.radius_coefficients)
+
+
+def test_closed_state_transfer_refines_radial_grid_and_center_tangent() -> None:
+    coarse_resolution = MirrorResolution(ns=5, mpol=3, nxi=4)
+    fine_resolution = MirrorResolution(ns=9, mpol=3, nxi=4)
+    coarse = SplineMirrorDiscretization.build_closed(
+        coarse_resolution,
+        coefficient_count=4,
+        quadrature_order=3,
+    )
+    fine = SplineMirrorDiscretization.build_closed(
+        fine_resolution,
+        coefficient_count=8,
+        quadrature_order=3,
+    )
+    source_s = jnp.asarray(coarse.grid.s)[:, None, None]
+    theta = jnp.asarray(coarse.grid.theta)[None, :, None]
+    radius = jnp.broadcast_to(0.25 + 0.01 * source_s, (coarse.grid.ns, coarse.grid.ntheta, 4))
+    lam = jnp.broadcast_to(0.002 * source_s * jnp.sin(theta), radius.shape)
+    center_shape = (coarse.grid.ns, 4)
+    center = jnp.stack(
+        (
+            jnp.broadcast_to(0.003 * (1.0 - source_s[:, 0]), center_shape),
+            jnp.broadcast_to(-0.002 * (1.0 - source_s[:, 0]), center_shape),
+        ),
+        axis=1,
+    )
+    state = SplineMirrorState(radius, lam, center)
+    boundary = SplineMirrorBoundary(jnp.full((fine.grid.ntheta, 8), 0.26))
+
+    transferred = fine.transfer_closed_state(state, coarse, boundary)
+    target_s = jnp.asarray(fine.grid.s)
+    expected_radius = 0.25 + 0.01 * target_s
+    expected_radius = expected_radius.at[0].set(expected_radius[1])
+    np.testing.assert_allclose(
+        transferred.radius_coefficients[:, 0, 0],
+        expected_radius,
+        atol=2.0e-16,
+    )
+    np.testing.assert_allclose(
+        transferred.center_coefficients[:, 0, 0],
+        0.003 * (1.0 - target_s),
+        atol=2.0e-16,
+    )
+    np.testing.assert_allclose(transferred.radius_coefficients[-1], boundary.radius_coefficients)
+    np.testing.assert_allclose(transferred.center_coefficients[-1], 0.0, atol=0.0)
+
+    tangent = jax.jvp(
+        lambda scale: fine.transfer_closed_state(
+            SplineMirrorState(radius, lam, scale * center),
+            coarse,
+            boundary,
+        ).center_coefficients,
+        (jnp.asarray(1.0),),
+        (jnp.asarray(0.4),),
+    )[1]
+    np.testing.assert_allclose(tangent, 0.4 * transferred.center_coefficients, atol=2.0e-16)
 
 
 def _closed_circular_torus(resolution, *, coefficient_count=8):

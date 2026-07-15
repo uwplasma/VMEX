@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 import jax
 import jax.numpy as jnp
 import numpy as np
-from scipy.linalg import eigh
+from scipy.linalg import eigh, lstsq
 from scipy.optimize import least_squares, minimize
 from scipy.sparse.linalg import LinearOperator, gmres
 
@@ -404,15 +404,25 @@ def _dense_residual_newton(
 
     x = np.asarray(x0, dtype=float)
     final_linear_residual = np.inf
+    stagnation_reference = np.inf
+    stagnation_steps = 0
     step_limit = max(0, int(max_steps))
     for iteration in range(step_limit):
         residual = np.asarray(gradient_function(jnp.asarray(x)), dtype=float)
         maximum = float(np.max(np.abs(residual)))
+        if not np.isfinite(stagnation_reference):
+            stagnation_reference = maximum
         if maximum <= float(ftol):
             return x, iteration, final_linear_residual, True, "dense residual Newton converged"
 
         hessian = np.asarray(hessian_function(jnp.asarray(x)), dtype=float)
-        direction = np.linalg.lstsq(hessian, -residual, rcond=1.0e-13)[0]
+        direction = lstsq(
+            hessian,
+            -residual,
+            cond=1.0e-13,
+            lapack_driver="gelsy",
+            check_finite=False,
+        )[0]
         final_linear_residual = float(
             np.linalg.norm(hessian @ direction + residual)
             / max(np.linalg.norm(residual), np.finfo(float).tiny)
@@ -425,13 +435,24 @@ def _dense_residual_newton(
                 dtype=float,
             )
             candidate_value = float(objective_function(jnp.asarray(candidate)))
-            if np.isfinite(candidate_value) and np.max(np.abs(candidate_residual)) < maximum:
+            candidate_maximum = float(np.max(np.abs(candidate_residual)))
+            sufficient_decrease = candidate_maximum <= (1.0 - 1.0e-4 * 0.5**line_search) * maximum
+            if np.isfinite(candidate_value) and (
+                candidate_maximum <= float(ftol) or sufficient_decrease
+            ):
                 x = candidate
                 record_step(x)
                 accepted = True
+                if candidate_maximum <= 0.99 * stagnation_reference:
+                    stagnation_reference = candidate_maximum
+                    stagnation_steps = 0
+                else:
+                    stagnation_steps += 1
                 break
         if not accepted:
             return x, iteration, final_linear_residual, False, "dense residual Newton stalled"
+        if stagnation_steps >= 20:
+            return x, iteration + 1, final_linear_residual, False, "dense residual Newton stalled"
 
     residual = np.asarray(gradient_function(jnp.asarray(x)), dtype=float)
     converged = float(np.max(np.abs(residual))) <= float(ftol)

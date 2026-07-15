@@ -333,12 +333,22 @@ class SplineMirrorDiscretization:
         source: "SplineMirrorDiscretization",
         boundary: SplineMirrorBoundary,
     ) -> SplineMirrorState:
-        """Interpolate a periodic restart onto this coefficient count."""
+        """Interpolate a periodic restart onto this radial and axial grid."""
 
         if not self.closed or not source.closed:
             raise ValueError("closed state transfer requires two periodic discretizations")
-        if self.grid.ns != source.grid.ns or self.grid.ntheta != source.grid.ntheta:
-            raise ValueError("closed state transfer requires matching radial and poloidal grids")
+        if self.grid.ntheta != source.grid.ntheta:
+            raise ValueError("closed state transfer requires matching poloidal grids")
+
+        def transfer_radial(values: Array) -> Array:
+            moved = jnp.moveaxis(jnp.asarray(values), 0, -1)
+            shape = moved.shape[:-1]
+            rows = moved.reshape((-1, source.grid.ns))
+            transferred = jax.vmap(
+                lambda row: jnp.interp(self.grid.s, source.grid.s, row)
+            )(rows)
+            return jnp.moveaxis(transferred.reshape(shape + (self.grid.ns,)), -1, 0)
+
         nodes = jnp.asarray(self.spline.collocation_nodes)
         radius = source.spline.evaluate(state.radius_coefficients, nodes, axis=-1)
         lam = source.spline.evaluate(state.lambda_coefficients, nodes, axis=-1)
@@ -346,9 +356,9 @@ class SplineMirrorDiscretization:
         if center is not None:
             center = source.spline.evaluate(center, nodes, axis=-1)
         transferred = SplineMirrorState(
-            self.spline.fit(radius, axis=-1),
-            self.spline.fit(lam, axis=-1),
-            None if center is None else self.spline.fit(center, axis=-1),
+            transfer_radial(self.spline.fit(radius, axis=-1)),
+            transfer_radial(self.spline.fit(lam, axis=-1)),
+            None if center is None else transfer_radial(self.spline.fit(center, axis=-1)),
         )
         return self.project_fixed_boundary(transferred, boundary)
 
@@ -1315,7 +1325,7 @@ def solve_fixed_boundary_cli(
             start_with_newton=(
                 discretization.closed and not vectorizer.center_size and x0.size <= 512
             ),
-            start_with_dense_root=bool(vectorizer.center_size and x0.size <= 1024),
+            start_with_dense_root=bool(vectorizer.center_size and x0.size <= 2048),
             matrix_free_context=(
                 vectorizer,
                 _packed_spline_preconditioner(discretization, vectorizer),
