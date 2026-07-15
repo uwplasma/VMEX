@@ -7,9 +7,9 @@ success: the returned state is converged only when the normalized variational
 force meets ``MirrorConfig.ftol``. The independently differenced tensor force
 and ``div(B)`` remain discretization-verification diagnostics.
 
-Large M2 systems are polished with separably preconditioned Newton-GMRES;
-small systems retain an exact dense Newton reference.  M9 adds implicit
-differentiation without changing the energy or force APIs.
+Open systems are polished with separably preconditioned Newton-GMRES at every
+size, with a bounded dense rescue for small stalled systems. Closed periodic
+spline systems retain an exact dense Newton reference.
 """
 
 from __future__ import annotations
@@ -40,7 +40,6 @@ from .model import MirrorBoundary, MirrorConfig, MirrorState, project_fixed_boun
 
 Array = Any
 _DEVICE_ACTIVE = object()
-_HOST_REFERENCE_MAX_SIZE = 1024
 
 
 def _valid_energy_objective(energy: MirrorEnergy, energy_scale: float) -> Array:
@@ -551,13 +550,13 @@ def _optimize_fixed_boundary(
     """Run the common host L-BFGS and residual-Newton solve policy.
 
     Small closed spline systems can start with residual Newton when their
-    geometry initializer is already in a valid local basin. This avoids
-    hundreds of relative-energy L-BFGS steps before the same Newton polish;
-    larger systems retain the matrix-free policy.
+    geometry initializer is already in a valid local basin. Open systems use
+    their matrix-free preconditioner at every size; the dense residual solve is
+    only a bounded rescue when matrix-free Newton does not reach ``ftol``.
     """
 
     callback_iterations = 0
-    use_matrix_free = x0.size > _HOST_REFERENCE_MAX_SIZE
+    use_matrix_free = matrix_free_context is not None
     history_stride = 10 if use_matrix_free else 1
 
     def callback(x: np.ndarray) -> None:
@@ -668,12 +667,6 @@ def _optimize_fixed_boundary(
         optimizer_success = bool(polish.success)
         optimizer_message += f"; residual-Newton: {polish.message}"
         candidate_variational = packed_variational(final_x, unpack(jnp.asarray(final_x)))
-
-    # Medium systems normally finish on the fast host reference. If that
-    # polish stalls just above physical ftol, use the scalable Newton path as
-    # a rescue rather than accepting a tolerance-dependent size cliff.
-    if float(candidate_variational.maximum) > config.ftol and not use_matrix_free and matrix_free_context is not None:
-        run_matrix_free_polish()
 
     return _OptimizationOutcome(
         vector=final_x,

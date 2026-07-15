@@ -1,727 +1,205 @@
 {
-  "schema": "vmec_jax.benchmark.mirror_fixed_boundary/2",
+  "schema": "vmec_jax.benchmark.mirror_fixed_boundary/3",
   "provenance": {
-    "measurement_commit": "ae97b8af5847aa8df7fc14347d5c1250c36fdc9e",
-    "input_schema": "vmec_jax.mirror.input/1",
-    "basis": "CGL or clamped cubic B-spline in xi; legacy uniform theta collocation",
-    "represented_modes": "mixed; see each section",
-    "grid": "see each run",
-    "hardware_class": "office CPU and NVIDIA RTX A4000",
-    "promotion_status": "partially_stale",
-    "stale_sections": [
-      "nodal_3d",
-      "nonaxisymmetric_validation",
-      "implicit_derivatives shaped cases"
-    ],
-    "stale_reason": "shaped states predate axis regularity and input/2; nodal_3d declares mpol=1 with ntheta=5, which is a different represented space under the current exact-mpol contract"
+    "measurement_commit": "d0c97b255dbbaed4b6d0077dd2b34188872c88ed",
+    "measurement_dirty": true,
+    "measurement_patch": "force-region diagnostics plus always-matrix-free open-solver policy later committed in T1",
+    "api_commit": "61e63f1089ba4ae721acbeafde2e3d88abf0db32",
+    "input_schema": "vmec_jax.mirror.input/2",
+    "basis": "coefficient-native clamped cubic B-spline in xi; Fourier through mpol in theta; staggered full/Gauss mesh in s",
+    "represented_modes": "ntheta=2*mpol+1 with no Nyquist mode",
+    "grid": "three simultaneous ns/mpol/nxi/spline-element refinements; separate fine-grid half-radius runs",
+    "hardware_class": "local Apple CPU and office NVIDIA RTX A4000",
+    "promotion_status": "axisymmetric_supported_nonaxisymmetric_blocked",
+    "stale_sections": [],
+    "stale_reason": "none; negative nonaxisymmetric evidence is retained intentionally"
   },
-  "nodal_3d": {
+  "axisymmetric_finite_beta": {
     "case": {
-      "mpol": 1,
-      "ftol": 1e-12,
-      "max_iterations": 1000,
+      "boundary": "0.3*(1+0.12*(1-xi^2))",
       "axial_flux_derivative": 0.1,
-      "current_derivative": "1e-3 * s",
-      "boundary": "0.3 * (1 + 0.02*cos(theta)*(1-xi^2))"
+      "mass_profile": "2000*(1-s)",
+      "current_derivative": "0.03*s",
+      "ftol": 1e-12,
+      "max_iterations": 1000
     },
-    "radial_runs": [
+    "status": "passes spline/CGL parity and physical refinement",
+    "runs": [
       {
-        "ns": 15,
-        "nxi": 15,
-        "ntheta": 5,
-        "dofs": 1741,
-        "device": "office_cpu",
-        "wall_s": 35.208,
-        "variational": 2.25388e-13,
-        "force_all": 0.04300223,
-        "force_axis": 0.10723572,
-        "force_bulk": 0.0097239,
-        "energy": 1111047.200761879,
-        "linear_iterations": 2000
+        "ns": 5,
+        "nxi": 9,
+        "spline_elements": 4,
+        "spline_coefficients": 7,
+        "nodal_wall_s": 5.7663,
+        "spline_wall_s": 2.6954,
+        "spline_iterations": 59,
+        "energy_relative_error": 5.12426e-7,
+        "volume_relative_error": 6.4979e-6,
+        "radius_relative_rms": 2.4031e-4,
+        "field_relative_rms": 1.45105e-3,
+        "variational_max": 7.78485e-16,
+        "weak_max": 7.39491e-16,
+        "strong_force_all": 4.34898e-2,
+        "divb": 1.03225e-14,
+        "energy": 960916.0538898386,
+        "volume": 0.6605396168057344
       },
       {
-        "ns": 17,
-        "nxi": 15,
-        "ntheta": 5,
-        "dofs": 1999,
-        "device": "office_cpu",
-        "wall_s": 35.2647,
-        "variational": 3.68162e-13,
-        "force_all": 0.04307423,
-        "force_axis": 0.09448911,
-        "force_bulk": 0.00933603,
-        "energy": 1111047.035445696,
-        "linear_iterations": 2500
+        "ns": 7,
+        "nxi": 13,
+        "spline_elements": 6,
+        "spline_coefficients": 9,
+        "nodal_wall_s": 9.2888,
+        "spline_wall_s": 3.3244,
+        "spline_iterations": 105,
+        "energy_relative_error": 1.46044e-7,
+        "volume_relative_error": 2.24063e-6,
+        "radius_relative_rms": 6.48526e-5,
+        "field_relative_rms": 1.06525e-3,
+        "variational_max": 1.2179e-15,
+        "weak_max": 1.20646e-15,
+        "strong_force_all": 3.4741e-2,
+        "divb": 5.10579e-15,
+        "energy": 960915.7449277987,
+        "volume": 0.6604227978167513
       },
       {
-        "ns": 19,
-        "nxi": 15,
-        "ntheta": 5,
-        "dofs": 2257,
-        "device": "office_cpu",
-        "wall_s": 46.7043,
-        "variational": 5.17772e-14,
-        "force_all": 0.04313717,
-        "force_axis": 0.10085715,
-        "force_bulk": 0.00893217,
-        "energy": 1111046.902497634,
-        "linear_iterations": 3500
-      },
-      {
-        "ns": 23,
-        "nxi": 15,
-        "ntheta": 5,
-        "dofs": 2773,
-        "device": "office_cpu",
-        "wall_s": 66.4782,
-        "variational": 1.2202e-13,
-        "force_all": 0.04323587,
-        "force_axis": 0.09775608,
-        "force_bulk": 0.00778674,
-        "energy": 1111046.700970343,
-        "linear_iterations": 5500
-      },
-      {
-        "ns": 27,
-        "nxi": 15,
-        "ntheta": 5,
-        "dofs": 3289,
-        "device": "office_cpu",
-        "wall_s": 103.1217,
-        "variational": 8.27557e-13,
-        "force_all": 0.04330529,
-        "force_axis": 0.09599592,
-        "force_bulk": 0.00635325,
-        "energy": 1111046.554568694,
-        "linear_iterations": 8000
-      },
-      {
-        "ns": 31,
-        "nxi": 15,
-        "ntheta": 5,
-        "dofs": 3805,
-        "device": "office_cpu",
-        "wall_s": 141.2001,
-        "peak_process_rss_mib": 1877.2,
-        "variational": 6.80534e-13,
-        "force_all": 0.04335354,
-        "force_axis": 0.10349874,
-        "force_bulk": 0.00627821,
-        "energy": 1111046.4427738,
-        "linear_iterations": 10500
+        "ns": 9,
+        "nxi": 17,
+        "spline_elements": 8,
+        "spline_coefficients": 11,
+        "nodal_wall_s": 12.1517,
+        "spline_wall_s": 4.139,
+        "spline_iterations": 134,
+        "energy_relative_error": 5.5999e-8,
+        "volume_relative_error": 9.85393e-7,
+        "radius_relative_rms": 2.93826e-5,
+        "field_relative_rms": 7.0249e-4,
+        "variational_max": 9.9344e-16,
+        "weak_max": 9.67513e-16,
+        "strong_force_all": 2.87343e-2,
+        "divb": 1.07336e-14,
+        "energy": 960915.6601018097,
+        "volume": 0.6603762300156599
       }
-    ],
-    "axial_runs": [
-      {
-        "ns": 15,
-        "nxi": 21,
-        "ntheta": 5,
-        "wall_s": 39.8838,
-        "variational": 4.20566e-13,
-        "force_all": 0.04294207,
-        "force_axis": 0.10709337,
-        "force_bulk": 0.00969489,
-        "energy": 1111047.200806642
-      },
-      {
-        "ns": 15,
-        "nxi": 25,
-        "ntheta": 5,
-        "wall_s": 37.3964,
-        "variational": 1.88774e-13,
-        "force_all": 0.04292468,
-        "force_axis": 0.10705183,
-        "force_bulk": 0.00968731,
-        "energy": 1111047.200809912
-      }
-    ],
-    "axisymmetric_reference": {
-      "case": {
-        "boundary": "0.3 * (1 + 0.12 * (1-xi^2))",
-        "mass_profile": "2000 * (1-s)",
-        "current_derivative": "0.03 * s",
-        "axial_flux_derivative": 0.1,
-        "max_iterations": 1000
-      },
-      "runs": [
-        {
-          "ns": 3,
-          "nxi": 5,
-          "wall_s": 2.278,
-          "iterations": 16,
-          "variational_max": 5.061e-16,
-          "staggered_weak_max": 4.928e-16,
-          "pointwise_force_rms": 0.0120213,
-          "divb_rms": 2.364e-16,
-          "energy": 1151288.8512510383
-        },
-        {
-          "ns": 5,
-          "nxi": 9,
-          "wall_s": 4.908,
-          "iterations": 62,
-          "variational_max": 7.017e-16,
-          "staggered_weak_max": 6.39e-16,
-          "pointwise_force_rms": 0.012517,
-          "divb_rms": 5.378e-16,
-          "energy": 1151345.8604082803
-        },
-        {
-          "ns": 7,
-          "nxi": 13,
-          "wall_s": 7.86,
-          "iterations": 106,
-          "variational_max": 7.03e-16,
-          "staggered_weak_max": 7.363e-16,
-          "pointwise_force_rms": 0.0102563,
-          "divb_rms": 8.429e-16,
-          "energy": 1151345.8893008095
-        }
-      ],
-      "peak_rss_mib": 1625.0
-    },
-    "device_runs": [
-      {
-        "device": "office_cpu",
-        "ns": 15,
-        "nxi": 15,
-        "ntheta": 5,
-        "wall_s": 35.208,
-        "variational": 2.25388e-13,
-        "force_all": 0.04300223,
-        "energy": 1111047.200761879
-      },
-      {
-        "device": "office_gpu",
-        "ns": 15,
-        "nxi": 15,
-        "ntheta": 5,
-        "wall_s": 44.1992,
-        "variational": 6.10853e-13,
-        "force_all": 0.04300223,
-        "energy": 1111047.200761879
-      }
-    ],
-    "profile_comparison": {
-      "s": [
-        0.0,
-        0.0714285714,
-        0.1428571429,
-        0.2142857143,
-        0.2857142857,
-        0.3571428571,
-        0.4285714286,
-        0.5,
-        0.5714285714,
-        0.6428571429,
-        0.7142857143,
-        0.7857142857,
-        0.8571428571,
-        0.9285714286,
-        1.0
-      ],
-      "legacy_midpoint": {
-        "wall_s": 61.8726,
-        "linear_iterations": 13000,
-        "continuum_force": 0.37111139,
-        "lambda_rms": [
-          0.00534244,
-          0.00534244,
-          0.0002095,
-          0.00405904,
-          0.00084784,
-          0.00366078,
-          0.00112562,
-          0.00345305,
-          0.00128831,
-          0.00332123,
-          0.00139784,
-          0.00322837,
-          0.00147781,
-          0.00315857,
-          0.0015394
-        ],
-        "pitch_rms": [
-          0.12179102,
-          0.12179316,
-          0.00560855,
-          0.09232196,
-          0.0195917,
-          0.08329418,
-          0.02583032,
-          0.07865759,
-          0.02958813,
-          0.07578556,
-          0.03222288,
-          0.07383417,
-          0.0342517,
-          0.07244058,
-          0.03591856
-        ]
-      },
-      "gauss2": {
-        "wall_s": 32.5173,
-        "linear_iterations": 2000,
-        "continuum_force": 0.04371508,
-        "lambda_rms": [
-          0.00356218,
-          0.00356218,
-          0.00268884,
-          0.00206334,
-          0.00166817,
-          0.00142535,
-          0.00126994,
-          0.0011623,
-          0.00108152,
-          0.00101712,
-          0.00096373,
-          0.00091821,
-          0.00087803,
-          0.00083784,
-          0.00076954
-        ],
-        "pitch_rms": [
-          0.08098985,
-          0.08099305,
-          0.06033298,
-          0.0461961,
-          0.03741237,
-          0.03208954,
-          0.02875002,
-          0.02650828,
-          0.02489969,
-          0.02369268,
-          0.02276801,
-          0.02205646,
-          0.0215022,
-          0.02099886,
-          0.0200062
-        ]
-      }
-    }
+    ]
   },
-  "open_spline": {
-    "case": {
-      "ns": 5,
-      "mpol": 0,
-      "chebyshev_nxi": 9,
-      "spline_elements": 4,
-      "spline_coefficients": 7,
-      "spline_quadrature_nodes": 18,
+  "nonaxisymmetric_vacuum": {
+    "status": "blocked: variational and weak solves converge, but strong force has a nonzero refinement floor and worsens as radius decreases",
+    "common": {
       "ftol": 1e-12,
       "max_iterations": 1000,
-      "boundary": "0.3 * (1 + 0.12 * (1-xi^2))",
-      "mass_profile": "2000 * (1-s)",
-      "current_derivative": "0.03 * s",
-      "axial_flux_derivative": 0.1
+      "continuation_stages": [0.0, 0.5, 1.0]
     },
-    "chebyshev": {
-      "active_dofs": 45,
-      "iterations": 59,
-      "cold_wall_s": 9.45,
-      "variational_max": 7.0166e-16,
-      "staggered_weak_max": 7.2737e-16,
-      "energy": 960915.5614921426,
-      "volume": 0.6604127926262385,
-      "center_radius": 0.33505551122648347
-    },
-    "spline": {
-      "active_dofs": 31,
-      "iterations": 59,
-      "cold_wall_s": 3.9551,
-      "variational_max": 5.1196e-16,
-      "staggered_weak_max": 5.0161e-16,
-      "energy": 960916.0538900206,
-      "volume": 0.6604088871894871,
-      "center_radius": 0.33494962473697865
-    },
-    "relative_difference": {
-      "energy": 5.1243e-07,
-      "volume": 5.9136e-06,
-      "center_radius": 0.00031603
-    },
-    "matrix_free_scaling": {
-      "ns": 17,
-      "mpol": 1,
-      "ntheta": 3,
-      "elements": 12,
-      "coefficients": 15,
-      "quadrature_nodes": 50,
-      "active_dofs": 585,
-      "cold_wall_s": 4.8897,
-      "iterations": 127,
-      "linear_iterations": 1000,
-      "final_linear_residual": 9.4787e-07,
-      "variational_max": 1.2294e-15,
-      "staggered_weak_max": 1.2327e-15,
-      "maximum_radius_error": 5.6066e-15
-    },
-    "knot_refinement": {
-      "chebyshev_reference": {
-        "nxi": 17,
-        "active_dofs": 101,
-        "energy": 960915.7158010177,
-        "volume": 0.6604133374981643,
-        "variational_max": 5.4541e-16,
-        "staggered_weak_max": 5.7595e-16
-      },
-      "spline_runs": [
-        {
-          "elements": 2,
-          "coefficients": 5,
-          "active_dofs": 17,
-          "energy_relative_error": 1.0944e-06,
-          "volume_relative_error": 1.1861e-05,
-          "variational_max": 5.8263e-16,
-          "staggered_weak_max": 5.4565e-16
-        },
-        {
-          "elements": 3,
-          "coefficients": 6,
-          "active_dofs": 24,
-          "energy_relative_error": 8.2885e-07,
-          "volume_relative_error": 1.0544e-05,
-          "variational_max": 7.2892e-16,
-          "staggered_weak_max": 8.3737e-16
-        },
-        {
-          "elements": 4,
-          "coefficients": 7,
-          "active_dofs": 31,
-          "energy_relative_error": 3.5184e-07,
-          "volume_relative_error": 6.7387e-06,
-          "variational_max": 8.3695e-15,
-          "staggered_weak_max": 8.3707e-15
-        },
-        {
-          "elements": 6,
-          "coefficients": 9,
-          "active_dofs": 45,
-          "energy_relative_error": 1.2184e-07,
-          "volume_relative_error": 3.7789e-06,
-          "variational_max": 2.3178e-15,
-          "staggered_weak_max": 2.3141e-15
-        },
-        {
-          "elements": 8,
-          "coefficients": 11,
-          "active_dofs": 59,
-          "energy_relative_error": 5.1387e-08,
-          "volume_relative_error": 2.1794e-06,
-          "variational_max": 5.4311e-16,
-          "staggered_weak_max": 5.7782e-16
-        }
-      ]
-    },
-    "three_grid_parity": {
-      "case": "finite-pressure, finite-current flared tube solved independently in both representations",
+    "rotating_ellipse": {
+      "radius": 0.05,
+      "axial_flux_derivative": 0.01,
       "runs": [
         {
           "ns": 5,
-          "chebyshev_nxi": 9,
-          "spline_coefficients": 7,
-          "chebyshev_active_radius_dofs": 27,
-          "spline_active_radius_dofs": 15,
-          "chebyshev_wall_s": 5.236,
-          "spline_wall_s": 3.2679,
-          "energy_relative_error": 5.1243e-07,
-          "volume_relative_error": 5.9136e-06,
-          "radius_relative_rms": 0.00024031
+          "mpol": 4,
+          "elements": 2,
+          "wall_s": 248.148,
+          "variational_max": 4.76613e-15,
+          "weak_max": 4.76854e-15,
+          "strong_force_all": 15.278,
+          "divb": 2.11899e-15,
+          "energy": 430472.6760951815,
+          "volume": 0.01476687399026607
         },
         {
           "ns": 7,
-          "chebyshev_nxi": 13,
-          "spline_coefficients": 9,
-          "chebyshev_active_radius_dofs": 65,
-          "spline_active_radius_dofs": 35,
-          "chebyshev_wall_s": 8.0915,
-          "spline_wall_s": 3.1914,
-          "energy_relative_error": 1.4604e-07,
-          "volume_relative_error": 2.5661e-06,
-          "radius_relative_rms": 6.4853e-05
+          "mpol": 6,
+          "elements": 3,
+          "wall_s": 273.046,
+          "variational_max": 3.74631e-13,
+          "weak_max": 3.7463e-13,
+          "strong_force_all": 12.5402,
+          "divb": 2.79351e-15,
+          "energy": 429040.569553063,
+          "volume": 0.01476800798605884
         },
         {
           "ns": 9,
-          "chebyshev_nxi": 17,
-          "spline_coefficients": 11,
-          "chebyshev_active_radius_dofs": 119,
-          "spline_active_radius_dofs": 63,
-          "chebyshev_wall_s": 11.4682,
-          "spline_wall_s": 4.9957,
-          "energy_relative_error": 5.5999e-08,
-          "volume_relative_error": 1.0366e-06,
-          "radius_relative_rms": 2.9383e-05,
-          "field_vector_relative_rms": 0.00070241,
-          "field_strength_relative_rms": 0.00030532
+          "mpol": 8,
+          "elements": 4,
+          "wall_s": 149.783,
+          "variational_max": 8.1103e-13,
+          "weak_max": 8.1103e-13,
+          "strong_force_all": 12.0933,
+          "divb": 2.67031e-15,
+          "energy": 428680.63811193814,
+          "volume": 0.01476992307398672
         }
       ],
-      "test": "all observable and physical-field errors decrease monotonically; both variational residuals and independent weak residuals remain below 1e-14",
-      "timing_note": "sequential local JAX-enabled cold timings; representation evidence, not steady-state benchmarking"
-    },
-    "note": "Sequential local cold timings include representation-specific JAX compilation and are evidence, not a steady-state speed claim."
-  },
-  "nonaxisymmetric_validation": {
-    "rotating_ellipse": {
-      "case": {
-        "rotation_degrees": 90.0,
-        "elongation": 1.5,
-        "mirror_strength": 0.2,
-        "radius": 0.05,
-        "spline_elements": 4,
-        "ntheta": 12
-      },
-      "ns5": {
-        "continuation_stages": 5,
-        "wall_s": 51.02,
-        "variational_max": 8.2968e-17,
-        "staggered_weak_max": 8.2893e-17,
-        "normalized_divb": 7.3343e-15,
-        "forbidden_m1_max": 8.3537e-16,
-        "staggered_m2_phase_error": 1.31e-12,
-        "staggered_m2_relative_amplitude_error": 1.653
-      },
-      "ns7": {
-        "continuation_stages": 11,
-        "wall_s": 62.54,
-        "variational_max": 2.2875e-13,
-        "staggered_weak_max": 2.2876e-13,
-        "normalized_divb": 7.3573e-15,
-        "linear_iterations_per_stage_range": [
-          2500,
-          17017
-        ],
-        "status": "equilibrium and symmetry pass; quadrupole amplitude and preconditioner scaling remain open"
+      "half_radius_fine_grid": {
+        "radius": 0.025,
+        "wall_s": 258.009,
+        "variational_max": 5.61163e-16,
+        "strong_force_all": 24.356,
+        "energy": 1714341.841618687,
+        "volume": 0.0036924742548427535
       }
     },
     "straight_field_line_mirror": {
-      "case": {
-        "axial_scale": 2.5,
-        "z_range": [
-          -1.0,
-          1.0
-        ],
+      "radius": 0.03,
+      "axial_flux_derivative": 0.005,
+      "coarse": {
         "ns": 5,
-        "ntheta": 12,
-        "spline_elements": 4
+        "mpol": 4,
+        "elements": 2,
+        "wall_s": 230.578,
+        "variational_max": 2.36032e-13,
+        "weak_max": 2.36031e-13,
+        "strong_force_all": 59.6825,
+        "divb": 2.10938e-15,
+        "energy": 304937.54008978023,
+        "volume": 0.005353637116553289
       },
-      "radius_0p03": {
-        "wall_s": 47.28,
-        "variational_max": 9.6783e-17,
-        "staggered_weak_max": 9.6852e-17,
-        "normalized_divb": 7.8584e-15,
-        "field_direction_cosine_mean": 0.99995583,
-        "field_direction_cosine_min": 0.99931629,
-        "full_mesh_vector_relative_rms": 0.06281
+      "medium": {
+        "ns": 7,
+        "mpol": 6,
+        "elements": 3,
+        "status": "invalid: continuation crossed the Jacobian after 13 iterations"
       },
-      "radius_0p015": {
-        "wall_s": 50.59,
-        "variational_max": 2.8953e-16,
-        "staggered_weak_max": 2.9475e-16,
-        "field_direction_cosine_mean": 0.9999879,
-        "field_direction_cosine_min": 0.99980955,
-        "full_mesh_vector_relative_rms": 0.06224
+      "fine": {
+        "ns": 9,
+        "mpol": 8,
+        "elements": 4,
+        "wall_s": 190.021,
+        "variational_max": 9.01898e-13,
+        "weak_max": 9.01899e-13,
+        "strong_force_all": 51.7148,
+        "divb": 3.19592e-15,
+        "energy": 300010.5989716731,
+        "volume": 0.0053533656665202545
       },
-      "status": "field direction has paraxial convergence; full-mesh magnitude is non-gating pending a staggered comparison"
-    },
-    "finite_beta_rotating_ellipse": {
-      "case": {
-        "target_reference_beta": 0.1,
-        "mass_continuation": [
-          0.25,
-          0.5,
-          0.75,
-          1.0
-        ],
-        "ftol": 1e-12,
-        "max_iterations": 2000
-      },
-      "base_ns5_ntheta12_coeff7": {
-        "achieved_beta": 0.09691044,
-        "axis_field_ratio_to_vacuum": 0.97744619,
-        "half_radius_center_m": 0.03520451,
-        "variational_max": 5.023e-16,
-        "staggered_weak_max": 5.132e-16,
-        "normalized_divb": 7.33e-15
-      },
-      "radial_ns7_ntheta12_coeff7": {
-        "achieved_beta": 0.09682454,
-        "axis_field_ratio_to_vacuum": 0.97696654,
-        "half_radius_center_m": 0.03521025,
-        "variational_max": 1.821e-16,
-        "staggered_weak_max": 1.788e-16,
-        "normalized_divb": 7.399e-15
-      },
-      "poloidal_ns5_ntheta16_coeff7": {
-        "achieved_beta": 0.09691246,
-        "axis_field_ratio_to_vacuum": 0.97744041,
-        "half_radius_center_m": 0.0352025,
-        "variational_max": 5.664e-17,
-        "staggered_weak_max": 8.809e-17,
-        "normalized_divb": 7.387e-15
-      },
-      "shape_first_vs_pressure_first": {
-        "state_relative_rms": 3.433e-14,
-        "energy_relative_difference": 1.11e-16
-      },
-      "status": "finite-beta equilibrium and continuation-order independence pass; radial and poloidal global observables are stable below 0.1%"
-    },
-    "axial_knot_amplitude_study": {
-      "coefficient_counts": [
-        7,
-        9,
-        11,
-        13
-      ],
-      "staggered_midplane_m2_T": [
-        0.05667,
-        0.02598,
-        0.01397,
-        0.007953
-      ],
-      "finest": {
-        "variational_max": 2.189e-14,
-        "staggered_weak_max": 2.189e-14,
-        "volume_m3": 0.01477064,
-        "wall_s": 81.57
-      },
-      "status": "m2 amplitude decreases monotonically but remains about 48% above the direct paraxial estimate at the bounded 13-coefficient level; defer further knots until preconditioning improves"
-    },
-    "implicit_adjoint": {
-      "axisymmetric_combined_controls_relative_error": 3.924e-10,
-      "nonaxisymmetric_solve_lambda_relative_error": 3.202e-10,
-      "controls": [
-        "boundary spline coefficients",
-        "axial flux derivative",
-        "conserved mass profile",
-        "axial current derivative"
-      ],
-      "method": "matrix-free reverse implicit solve on the converged coefficient residual"
+      "half_radius_fine_grid": {
+        "radius": 0.015,
+        "wall_s": 314.595,
+        "variational_max": 3.7492e-16,
+        "strong_force_all": 103.557,
+        "energy": 1199746.6361683235,
+        "volume": 0.0013383347301940708
+      }
     }
   },
-  "implicit_derivatives": {
-    "method": "reverse implicit adjoint of the packed energy-gradient residual",
-    "device": "local macOS arm64 CPU",
-    "correctness_case": {
-      "grid": {
-        "ns": 3,
-        "ntheta": 1,
-        "nxi": 5
-      },
-      "physics": "finite isotropic pressure, finite axial current, gauge-free lambda",
-      "controls": [
-        "boundary",
-        "axial_flux",
-        "mass_profile",
-        "current_derivative"
-      ],
-      "adjoint_iterations": 4,
-      "adjoint_relative_residual": 8.849988569620835e-16,
-      "directional_derivative": 0.002876927056522377,
-      "central_finite_difference": 0.0028769273738293855,
-      "relative_error": 1.1029371517885357e-07
-    },
-    "custom_vjp_case": {
-      "forward": "opaque converged host solve through jax.pure_callback",
-      "reverse": "matrix-free implicit adjoint",
-      "model": "isotropic mass-conserving functional",
-      "comparison": "explicit fixed_boundary_adjoint",
-      "gradient_rtol": 2e-09,
-      "gradient_atol": 2e-11
-    },
-    "spline_forward_tangent_case": {
-      "grid": {
-        "ns": 5,
-        "ntheta": 4,
-        "spline_coefficients": 6
-      },
-      "physics": "nonaxisymmetric finite-pressure/current equilibrium with gauge-free stream function",
-      "direction": "one boundary spline coefficient",
-      "method": "exact residual JVP and preconditioned implicit solve",
-      "comparison": "two fully reconverged centered-difference equilibria",
-      "radius_and_stream_function_relative_error_limit": 0.0002,
-      "linear_residual_limit": 1e-08,
-      "status": "pass"
-    },
-    "matrix_free_case": {
-      "grid": {
-        "ns": 17,
-        "ntheta": 1,
-        "nxi": 41
-      },
-      "active_unknowns": 585,
-      "primal_wall_s": 8.6126,
-      "primal_iterations": 129,
-      "primal_linear_iterations": 951,
-      "adjoint_wall_s": 3.4138,
-      "adjoint_iterations": 171,
-      "adjoint_relative_residual": 9.2273e-10,
-      "block_adjoint_wall_s": 4.7895,
-      "block_adjoint_iterations": 0,
-      "block_adjoint_relative_residual": 2.6913e-15,
-      "process_peak_rss_mib": 983.6
-    },
-    "assessment": "The exact reverse solve is independent of the number of physical controls. It is FD-validated with all four isotropic control groups active. The public custom VJP composes the opaque host solve with the same adjoint and remains matrix-free above the dense reference threshold. Three-color block Thomas is exact but takes 4.79 s versus 3.41 s for one preconditioned-GMRES right-hand side, so GMRES remains the scalar-adjoint default; block mode is retained for future batched sensitivities. Coupled free-boundary adjoints remain open."
+  "implicit_derivative": {
+    "case": "rotating-ellipse volume versus one boundary coefficient",
+    "adjoint": 1.5422515667777208e-4,
+    "reconverged_centered_difference": 1.5422515697253308e-4,
+    "relative_error": 1.91622e-9,
+    "linear_relative_residual": 8.49355e-8,
+    "status": "derivative value passes; linear residual remains above the 1e-8 promotion gate"
   },
-  "performance": {
-    "fixed_boundary_cli_vs_differentiable": {
-      "device": "office CPU",
-      "grid": {
-        "ns": 3,
-        "ntheta": 1,
-        "nxi": 5
-      },
-      "physics": "finite pressure, finite current, solved lambda",
-      "ftol": 1e-12,
-      "cli": {
-        "cold_wall_s": 16.27688482697704,
-        "warm_wall_s": 3.747877761023119,
-        "iterations": 10,
-        "variational_max": 9.07540709249588e-16,
-        "peak_rss_mib": 1087.31640625
-      },
-      "custom_vjp_forward": {
-        "cold_wall_s": 18.65400708798552,
-        "warm_wall_s": 4.035415610997006,
-        "peak_rss_mib": 1148.26953125
-      },
-      "ratios_custom_vjp_over_cli": {
-        "cold_wall": 1.146043,
-        "warm_wall": 1.076716,
-        "peak_rss": 1.056057
-      }
-    },
-    "fixed_boundary_device": {
-      "grid": {
-        "ns": 15,
-        "ntheta": 5,
-        "nxi": 15
-      },
-      "office_cpu_wall_s": 35.208,
-      "office_a4000_wall_s": 44.1992,
-      "gpu_over_cpu": 1.255378,
-      "assessment": "The moderate fixed-boundary solve is launch-bound; CPU remains the measured default."
-    },
-    "fixed_boundary_scaling": {
-      "grid_family": "ntheta=5, nxi=15, ns=15..31",
-      "active_dofs": [
-        1741,
-        1999,
-        2257,
-        2773,
-        3289,
-        3805
-      ],
-      "wall_s": [
-        35.208,
-        35.2647,
-        46.7043,
-        66.4782,
-        103.1217,
-        141.2001
-      ],
-      "largest_peak_rss_mib": 1877.2,
-      "source": "benchmarks/mirror_fixed_boundary_3d.json"
-    },
-    "assessment": "The CLI remains the fastest forward path. The custom-VJP forward pays modest callback overhead and adds the iteration-independent reverse derivative. GPU use is retained for large BIE studies, not selected blindly for launch-bound fixed-boundary solves."
+  "solver_performance": {
+    "status": "matrix-free policy improves runtime but the separable preconditioner remains incomplete",
+    "compact_example_wall_s_after": 62.93,
+    "rotating_ellipse_stage_iterations_before": [0, 805, 805, 806, 806],
+    "rotating_ellipse_stage_iterations_after": [0, 481, 482, 485, 502],
+    "fine_axisymmetric_wall_s_before": 4.139,
+    "fine_axisymmetric_wall_s_after": 2.55,
+    "fine_axisymmetric_energy_change_relative": 1.2e-16,
+    "fine_axisymmetric_linear_residual": 2.55859e-10
   }
 }

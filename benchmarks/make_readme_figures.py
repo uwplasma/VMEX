@@ -436,72 +436,86 @@ def make_convergence_figure(out: Path) -> None:
 def make_mirror_figure(out: Path) -> None:
     data = json.loads(
         (REPO / "benchmarks" / "mirror_fixed_boundary.json").read_text()
-    )["nodal_3d"]
-    runs = data["radial_runs"]
-    profiles = data["profile_comparison"]
-    s = np.asarray(profiles["s"])
-    legacy = profiles["legacy_midpoint"]
-    gauss = profiles["gauss2"]
+    )
+    axisymmetric = data["axisymmetric_finite_beta"]["runs"]
+    nonaxisymmetric = data["nonaxisymmetric_vacuum"]
+    performance = data["solver_performance"]
 
     fig, axes = plt.subplots(2, 2, figsize=(8.6, 6.3), dpi=160)
     ax = axes[0, 0]
-    ax.plot(s, legacy["lambda_rms"], "o--", color=RED, lw=1.4, ms=4,
-            label="midpoint (rejected)")
-    ax.plot(s, gauss["lambda_rms"], "o-", color=BLUE, lw=1.8, ms=4,
-            label="two-point Gauss")
-    ax.set(xlabel="normalized flux  s", ylabel="RMS stream function")
-    ax.set_title("Radial hourglass removed", loc="left", fontsize=11)
+    ns = np.asarray([run["ns"] for run in axisymmetric])
+    ax.semilogy(ns, [run["strong_force_all"] for run in axisymmetric],
+                "o-", color=BLUE, lw=1.8, ms=5, label="strong force")
+    ax.semilogy(ns, [run["field_relative_rms"] for run in axisymmetric],
+                "s-", color=YELLOW, lw=1.6, ms=4.5, label="field parity")
+    ax.semilogy(ns, [run["variational_max"] for run in axisymmetric],
+                "^-", color=GREEN_TEXT, lw=1.4, ms=4.5,
+                label="variational")
+    ax.axhline(1.0e-12, color=BASELINE, ls="--", lw=1.0)
+    ax.set(xlabel="radial surfaces  ns", ylabel="normalized residual / error")
+    ax.set_title("Axisymmetric finite-beta refinement", loc="left", fontsize=11)
     ax.grid(True)
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=7.5)
 
     ax = axes[0, 1]
-    ax.plot(s, legacy["pitch_rms"], "o--", color=RED, lw=1.4, ms=4,
-            label="midpoint (rejected)")
-    ax.plot(s, gauss["pitch_rms"], "o-", color=YELLOW, lw=1.8, ms=4,
-            label="two-point Gauss")
-    ax.set(xlabel="normalized flux  s", ylabel="RMS field-line pitch")
-    ax.set_title("Physical pitch profile restored", loc="left", fontsize=11)
-    ax.grid(True)
+    width = 0.34
+    indices = np.arange(len(axisymmetric))
+    nodal = ax.bar(indices - width / 2,
+                   [run["nodal_wall_s"] for run in axisymmetric],
+                   width, color=BASELINE, label="CGL reference")
+    spline = ax.bar(indices + width / 2,
+                    [run["spline_wall_s"] for run in axisymmetric],
+                    width, color=BLUE, label="B-spline")
+    ax.bar_label(nodal, fmt="%.1f", padding=2, fontsize=7, color=INK2)
+    ax.bar_label(spline, fmt="%.1f", padding=2, fontsize=7, color=INK2)
+    ax.set_xticks(indices, [f"ns={value}" for value in ns])
+    ax.set(ylabel="cold wall time (s)")
+    ax.set_title("Coefficient solve preserves parity", loc="left", fontsize=11)
+    ax.grid(axis="y")
     ax.legend(fontsize=8)
 
     ax = axes[1, 0]
-    ns = [run["ns"] for run in runs]
-    for key, label, color in (
-        ("force_axis", "axis region", RED),
-        ("force_all", "all active rows", INK2),
-        ("force_bulk", "bulk  s >= 0.2", BLUE),
-        ("variational", "variational fsq", GREEN_TEXT),
-    ):
-        ax.semilogy(ns, [run[key] for run in runs], "o-", color=color,
-                    lw=1.7, ms=4, label=label)
-    ax.axhline(1.0e-12, color=BASELINE, ls="--", lw=1.0)
-    ax.set(xlabel="radial surfaces  ns", ylabel="normalized force residual")
-    ax.set_title("Bulk force converges; axis stencil remains", loc="left",
-                 fontsize=11)
+    rotating = nonaxisymmetric["rotating_ellipse"]
+    sflm = nonaxisymmetric["straight_field_line_mirror"]
+    ax.semilogy([run["ns"] for run in rotating["runs"]],
+                [run["strong_force_all"] for run in rotating["runs"]],
+                "o-", color=RED, lw=1.8, ms=5, label="rotating ellipse")
+    ax.semilogy([sflm["coarse"]["ns"], sflm["fine"]["ns"]],
+                [sflm["coarse"]["strong_force_all"],
+                 sflm["fine"]["strong_force_all"]],
+                "s-", color=VIOLET, lw=1.8, ms=5, label="SFLM")
+    ax.scatter([rotating["runs"][-1]["ns"]],
+               [rotating["half_radius_fine_grid"]["strong_force_all"]],
+               marker="x", s=45, color=RED, label="ellipse, half radius")
+    ax.scatter([sflm["fine"]["ns"]],
+               [sflm["half_radius_fine_grid"]["strong_force_all"]],
+               marker="x", s=45, color=VIOLET, label="SFLM, half radius")
+    ax.set(xlabel="radial surfaces  ns", ylabel="normalized strong force")
+    ax.set_title("Nonaxisymmetric force gate is blocked", loc="left", fontsize=11)
     ax.grid(True)
-    ax.legend(fontsize=7.5, ncols=2)
+    ax.legend(fontsize=7.2, ncols=2)
 
     ax = axes[1, 1]
-    device = {run["device"]: run for run in data["device_runs"]}
-    labels = ["midpoint CPU\n13k Krylov", "Gauss CPU\n2k Krylov",
-              "Gauss A4000\n2k Krylov"]
-    times = [legacy["wall_s"], device["office_cpu"]["wall_s"],
-             device["office_gpu"]["wall_s"]]
-    bars = ax.bar(labels, times, color=[RED, BLUE, VIOLET], width=0.58)
-    ax.bar_label(bars, fmt="%.1f s", padding=4, color=INK2, fontsize=9)
-    ax.set_ylabel("wall time (s)")
-    ax.set_title("Correct quadrature is also faster", loc="left", fontsize=11)
-    ax.grid(axis="y")
-    ax.set_ylim(0, 72)
+    stages = np.arange(len(performance["rotating_ellipse_stage_iterations_after"]))
+    ax.plot(stages, performance["rotating_ellipse_stage_iterations_before"],
+            "o--", color=BASELINE, lw=1.5, ms=4.5, label="previous policy")
+    ax.plot(stages, performance["rotating_ellipse_stage_iterations_after"],
+            "o-", color=BLUE, lw=1.8, ms=4.5, label="matrix-free policy")
+    ax.set_xticks(stages)
+    ax.set(xlabel="shape-continuation stage", ylabel="Krylov iterations")
+    ax.set_title("Matrix-free policy reduces linear work", loc="left", fontsize=11)
+    ax.grid(True)
+    ax.legend(fontsize=8)
 
     for panel in axes.ravel():
         for side in ("top", "right"):
             panel.spines[side].set_visible(False)
-    fig.suptitle("Fixed-boundary helical mirror: corrected radial convergence",
+    fig.suptitle("Fixed-boundary mirror: supported and blocked evidence",
                  x=0.07, ha="left", fontsize=13)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out, dpi=160, facecolor=SURFACE, transparent=False)
     plt.close(fig)
+    _compress_png(out)
     print("wrote", out)
 
 

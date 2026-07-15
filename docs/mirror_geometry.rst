@@ -4,9 +4,9 @@ Mirror geometry
 ``vmec_jax.mirror`` is the open-field-line equilibrium backend. It uses
 coordinates ``(s, theta, xi)`` with a nonperiodic axial coordinate and
 fixed-flux end cuts. It does not reinterpret a straight mirror as a periodic
-torus. Fixed- and free-boundary solvers are implemented, but every mirror lane
-remains research status until the independent strong-force and refinement
-gates in ``plan.md`` pass.
+torus. The axisymmetric fixed-boundary lane is supported. Nonaxisymmetric
+fixed boundary, free boundary, and the periodic hybrid remain research lanes
+until their independent strong-force and refinement gates in ``plan.md`` pass.
 
 Open topology and end cuts
 --------------------------
@@ -100,7 +100,8 @@ Current capability
 
 The branch currently includes:
 
-* axisymmetric and nonaxisymmetric fixed-boundary finite-current solves,
+* a supported axisymmetric fixed-boundary finite-current solve and a research
+  nonaxisymmetric implementation,
 * an isotropic VMEC-style conserved-mass pressure energy with independent
   weak and pointwise force diagnostics,
 * a free-space boundary-integral vacuum model with an ``xyz -> B`` field
@@ -144,8 +145,8 @@ circular-torus solve jointly advances radius and stream function in 27
 residual-Newton evaluations. Its variational/staggered-weak residuals are
 ``1.88e-15/1.83e-15`` and normalized ``div(B)=4.64e-15``. The independently
 reconstructed pointwise-force norm improves from ``0.709`` at ``ns=5`` to
-``0.570`` at ``ns=7`` but is not yet small. It remains an explicitly
-unconverged, non-gating diagnostic until a manufactured half-to-full force
+``0.570`` at ``ns=7`` but is not yet small. It does not define nonlinear
+``ftol``, but it blocks promotion until a manufactured half-to-full force
 reconstruction refines. The finite-current racetrack also solves its stream
 function and its 90-degree ellipse is an actual fixed-boundary equilibrium,
 not a Fourier projection. Its variational and staggered-weak residuals reach
@@ -170,9 +171,10 @@ normalized ``div(B)``, and optional coil curves. The
 variational residual defines ``ftol``. The staggered weak residual independently
 assembles the first variation on the energy quadrature and is checked on the
 same constrained solver variables. The pointwise force reconstructs
-``J x B - grad(p)`` on the full mesh and remains a non-gating spatial-error
-diagnostic. Its total, near-axis, first-radial-row, bulk, and end-collar norms
-are reported separately. ``div(B)`` checks the field representation.
+``J x B - grad(p)`` on the full mesh. It does not define nonlinear ``ftol``,
+but its magnitude and refinement are independent promotion gates. Its total,
+near-axis, first-radial-row, bulk, and end-collar norms are reported
+separately. ``div(B)`` checks the field representation.
 Straight-axis mirror data are never encoded as a toroidal WOUT file.
 
 The saved ``|B|`` array is reconstructed from the same radial Gauss cells used
@@ -223,13 +225,10 @@ condition: the old state varied ``|B|`` by 9--20% over theta at ``s=0`` even
 though those samples are one physical point. That freedom has been removed;
 all earlier shaped pointwise-force values must be regenerated before use.
 
-The historical ``ns=15,nxi=15,ntheta=5`` shaped record reached variational
-force ``2.25e-13``, but declared ``mpol=1``. Under the current input schema,
-five nodes represent modes through ``mpol=2``. That section of
-``benchmarks/mirror_fixed_boundary.json`` is explicitly stale and its force,
-runtime, and Krylov values are not current validation evidence. The corrected
-study will be regenerated only after the staggered strong-force reconstruction
-passes its manufactured tests.
+Historical shaped records with inconsistent ``mpol`` and ``ntheta`` semantics
+were removed from the compact benchmark rather than labeled as current
+evidence. Schema v3 retains only results generated under
+``ntheta = 2*mpol + 1`` and keeps failed strong-force studies explicitly.
 
 Independent nonaxisymmetric analytic fixtures
 ----------------------------------------------
@@ -306,22 +305,22 @@ center radius.
 Independent solves at ``(ns,nxi)=(5,9),(7,13),(9,17)`` pair 7, 9, and 11
 spline coefficients with the nodal grids. Energy error decreases
 ``5.12e-7 -> 1.46e-7 -> 5.60e-8``, volume error decreases
-``5.91e-6 -> 2.57e-6 -> 1.04e-6``, and sampled radius RMS error decreases
+``6.50e-6 -> 2.24e-6 -> 9.85e-7``, and sampled radius RMS error decreases
 ``2.40e-4 -> 6.49e-5 -> 2.94e-5``. On the finest grid the Cartesian field and
 ``|B|`` differ by ``7.02e-4`` and ``3.05e-4`` RMS. A relative coefficient
 test is deliberately not applied to the near-zero gauge stream function; the
 physical field is the invariant comparison. Splines use roughly half the
-active radius variables and take 3.27, 3.19, and 5.00 seconds versus 5.24,
-8.09, and 11.47 seconds for the local nodal solves. All variational and
+active radius variables and take 2.70, 3.32, and 4.14 seconds versus 5.77,
+9.29, and 12.15 seconds for the local nodal solves. All variational and
 independent weak residuals remain below ``1.3e-15``. Compact evidence is in
-the ``open_spline`` section of ``benchmarks/mirror_fixed_boundary.json``.
+the ``axisymmetric_finite_beta`` section of
+``benchmarks/mirror_fixed_boundary.json``.
 
-Above the dense-reference threshold, a 585-variable ``mpol=1`` cylinder uses
-the same radial/Fourier tensor preconditioner with the spline Galerkin axial
-stiffness. It converges both variational and staggered residuals to
-``1.23e-15`` and recovers the exact radius to ``5.6e-15``. Its 1,000 inner
-GMRES iterations expose conditioning work still assigned to Milestone 8; this
-result establishes a working matrix-free path, not a final scaling claim.
+Open fixed-boundary systems use the radial/Fourier/axial tensor preconditioner
+and matrix-free Newton at every size. The medium regression reaches physical
+``ftol=1e-12`` with true linear residual below ``1e-8``. Its 441 Krylov
+iterations establish the operator path but also motivate the coupled
+radius--stream preconditioner in the next milestone.
 
 The periodic coefficient block uses every cyclic B-spline coefficient and
 passes its gauge-free shape and linearity tests. It is not enabled for closed
@@ -349,39 +348,20 @@ surface at spline collocation nodes before projection, instead of replacing
 only the LCFS and risking crossed surfaces. The optimizer also rejects any
 trial with a changed Jacobian sign, matching the regular VMEC-JAX merit policy.
 
-A five-stage shape continuation solves a thin ellipse rotating 90 degrees from
-cap to cap. With 12 theta nodes, half-turn symmetry is exact and the forbidden
-``m=1`` field-strength signal is below ``9e-16``. Odd or under-integrated theta
-grids alias even nonlinear products into ``m=1`` and are not valid for this
-gate. The compatible staggered field recovers the analytic ``m=2`` phase, but
-its amplitude is not yet converged. The full-mesh axis ``|B|`` reconstruction
-is explicitly non-gating, like the full-mesh pointwise force.
+The 90-degree rotating ellipse reaches variational and independent weak
+residuals below ``8.2e-13`` on three grids, but its all-volume strong force is
+``15.28, 12.54, 12.09`` for ``(ns,mpol,elements)=(5,4,2),(7,6,3),(9,8,4)``.
+The nonzero floor blocks force-balance promotion. Halving its radius on the
+fine grid increases the normalized force to ``24.36`` instead of producing
+the expected paraxial improvement.
 
-The independent Straight Field Line Mirror gives a stronger current gate. For
-semi-axis scale 0.03 m, the solved Cartesian field has mean direction cosine
-``0.999956`` and minimum ``0.999316`` against the gradient of the analytic
-scalar potential. Halving the radius improves these to ``0.999988`` and
-``0.999810``, consistent with paraxial directional convergence. Full-mesh
-field magnitude does not converge under the same study, so magnitude promotion
-awaits a staggered comparison. These shaped values predate the corrected
-axis-regularity map and are retained only as stale research history. Compact
-positive and negative data are in the ``nonaxisymmetric_validation`` section of
-``benchmarks/mirror_fixed_boundary.json``.
-
-A fixed-boundary pressure continuation calibrates conserved mass from the
-vacuum geometry and reaches achieved reference beta ``0.0969``. The center
-field falls by 2.26%. Refining ``ns=5`` to 7 changes that field ratio by
-0.049%; increasing theta nodes from 12 to 16 changes it by 0.0006%.
-Pressure-first and shape-first continuations agree in state to ``3.4e-14``
-relative RMS, excluding continuation order as the source of the response.
-
-The local quadrupole converges more slowly than these global observables.
-Increasing axial spline coefficients through 7, 9, 11, and 13 decreases the
-compatible midplane ``m=2`` amplitude monotonically from ``0.0567`` to
-``0.00795 T``. The finest value remains about 48% above the direct paraxial
-estimate. Further knot escalation is deferred to the structured-preconditioner
-milestone; the amplitude is not promoted early merely because the equilibrium
-residual is small.
+The independent Straight Field Line Mirror has the same defect. Its coarse
+and fine strong-force values are ``59.68`` and ``51.71``; the medium
+continuation crosses its Jacobian. Halving the fine-grid radius increases the
+force to ``103.56``. Cartesian field direction can still agree closely with
+the Agren--Savenko paraxial field while the full MHD force equation fails, so
+direction cosine is a validation observable but not a substitute residual.
+These failed gates are retained in ``benchmarks/mirror_fixed_boundary.json``.
 
 The parser-free root example runs both fixtures through five coefficient-space
 continuation stages and writes MOUT plus horizontal 3-D, cross-section,
@@ -390,12 +370,13 @@ continuation stages and writes MOUT plus horizontal 3-D, cross-section,
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
 At its compact demonstration resolution, the rotating ellipse reaches a
-variational/staggered-weak residual of ``1.84e-16/1.49e-16`` and normalized
-``div(B)=1.03e-14``. The SFLM reaches ``2.10e-14/2.10e-14`` and
-``div(B)=1.13e-14``; its mean field-direction cosine remains above ``0.9979``
-including the fixed-flux end cuts. The figures show the actual solved nested
-surfaces and field lines, not the analytic target alone. Promotion additionally
-requires the independent strong-force refinement recorded below.
+variational/staggered-weak residual of ``7.65e-13/7.65e-13`` and normalized
+``div(B)=1.03e-14``. Its strong force is ``4.06`` in the central radial bulk
+and ``18.01`` in the fixed-cut collars. The SFLM reaches
+``4.97e-13/4.97e-13`` and ``div(B)=1.14e-14``, but its corresponding strong
+force is ``14.31/72.38``. The figures expose both residual histories and show
+the actual solved nested surfaces and field lines, not the analytic target
+alone.
 
 Coefficient fixed-boundary gradients
 ------------------------------------
@@ -410,8 +391,8 @@ fully reconverged equilibria::
 
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
-The current example agrees with centered differences to ``9.11e-10`` relative,
-but its reported linear residual is ``1.34e-7`` and therefore does not pass the
+The current example agrees with centered differences to ``1.92e-9`` relative,
+but its reported linear residual is ``8.49e-8`` and therefore does not pass the
 ``1e-8`` promotion gate. This is assigned to the coupled-preconditioner
 milestone rather than being presented as a promoted derivative.
 
@@ -433,7 +414,7 @@ parity tests, not as a second production state.
 Axisymmetric free-boundary implicit gradients
 ---------------------------------------------
 
-``free_boundary_adjoint`` differentiates the supported axisymmetric exterior
+``free_boundary_adjoint`` differentiates the research axisymmetric exterior
 equilibrium with respect to a differentiable external-field callable, axial
 flux, pressure profile, and axial current. The physical fixed point
 contains the lateral LCFS and plasma-interior radii. The exterior Neumann BIE
@@ -448,26 +429,22 @@ equilibria. Coil-design derivatives belong to the ESSOS integration layer;
 vmec_jax differentiates only the supplied field object.
 
 This derivative holds fixed the end-cut radii and physical pressure profile.
-The nonaxisymmetric free-boundary derivative is deliberately unavailable
-because M7 failed local Fourier-mode refinement; it will not be presented as
-a supported gradient.
+It remains a research API until the coefficient-native free-boundary primal
+lane passes its memory, strong-force, and refinement gates. The
+nonaxisymmetric free-boundary derivative is deliberately unavailable because
+local Fourier-mode refinement failed; it will not be presented as a supported
+gradient.
 
 ``device=None`` uses the shared measured device policy. On the office host,
 the corrected ``15x15`` case took 35.2 seconds on CPU and 44.2 seconds on one
 RTX A4000. Energy and force diagnostics agree to numerical precision. Explicit
 ``device=`` arguments and JAX platform environment pins are always honored.
 
-At the small finite-pressure/current fixed point used to compare public lanes,
-the office-CPU CLI takes ``16.28/3.75 s`` cold/warm. The custom-VJP forward
-takes ``18.65/4.04 s``, or 14.6% cold and 7.7% warm overhead, with a 5.6%
-peak-RSS increase. The CLI therefore remains the fastest forward interface;
-the differentiable lane pays a bounded callback cost and supplies the
-iteration-independent reverse solve. Complete scaling values are in the
-``performance`` section of ``benchmarks/mirror_fixed_boundary.json``.
-
-.. image:: _static/figures/mirror_performance.png
-   :alt: Mirror CLI and differentiable timing, CPU and GPU timing, and 3D scaling
-   :width: 100%
+The host CLI remains the forward-performance reference. Derivatives solve the
+linearized converged coefficient residual and never retain or differentiate
+the nonlinear iteration history. Runtime and memory comparisons are
+regenerated only after the nodal custom-VJP path is removed and the coupled
+preconditioner is fixed.
 
 Release evidence
 ----------------
@@ -491,7 +468,7 @@ fixed open, free axisymmetric, deferred free nonaxisymmetric, and fixed hybrid
 ownership; repository-shape and promotion gates are maintained in ``plan.md``.
 
 .. image:: _static/figures/mirror_fixed_boundary_3d.png
-   :alt: Fixed-boundary helical mirror refinement, force residuals, and CPU/GPU timing
+   :alt: Fixed-boundary axisymmetric convergence, nonaxisymmetric force gates, and matrix-free solver evidence
    :width: 100%
 
 Beta scan example
