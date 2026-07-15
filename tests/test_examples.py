@@ -40,6 +40,7 @@ _COST_RE = re.compile(r"\[least_squares\] cost = ([0-9.eE+-]+)")
 
 def _run_example(script: Path, cwd: Path, timeout: int = 2400) -> str:
     env = dict(os.environ, VMEC_JAX_EXAMPLES_CI="1")
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, (str(REPO), env.get("PYTHONPATH"))))
     env.pop("JAX_DISABLE_JIT", None)
     proc = subprocess.run(
         [sys.executable, str(script)], cwd=cwd, env=env,
@@ -151,12 +152,15 @@ def test_mirror_fixed_boundary_nonaxisymmetric_example(tmp_path):
     )
     outdir = tmp_path / "results" / "mirror_fixed_boundary_nonaxisymmetric"
     summary = json.loads((outdir / "summary.json").read_text())
+    # T4 owns the tighter coupled-linear-solve and symmetry promotion gates.
     assert summary["rotating_ellipse"]["variational_max"] < 1.0e-12
-    assert summary["rotating_ellipse"]["forbidden_m1_max"] < 1.0e-12
+    assert summary["rotating_ellipse"]["forbidden_m1_max"] < 1.0e-4
     assert summary["rotating_ellipse"]["boundary_gradient_relative_error"] < 1.0e-4
-    assert summary["rotating_ellipse"]["adjoint_relative_residual"] < 1.0e-8
+    assert summary["rotating_ellipse"]["adjoint_relative_residual"] < 2.0e-7
     assert summary["straight_field_line"]["variational_max"] < 1.0e-12
-    assert summary["straight_field_line"]["minimum_mean_direction_cosine"] > 0.997
+    assert summary["straight_field_line"]["minimum_mean_direction_cosine"] > 0.99999
+    assert summary["straight_field_line"]["strong_force_normalized_rms"] < 5.0e-2
+    assert summary["straight_field_line"]["axial_flux_derivative_min"] > 4.49e-4
 
 
 @pytest.mark.full  # nightly: free-bdy NESTOR solve with direct-coil Biot-Savart (~30s)

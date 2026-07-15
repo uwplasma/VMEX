@@ -49,13 +49,20 @@ Audit baseline (2026-07-14 CDT / 2026-07-15 UTC, final source review):
   preconditioners. These are candidates for measured reuse, not an automatic
   dependency upgrade.
 
+Execution update (2026-07-15): T1 enforced the matrix-free open policy and
+compacted its evidence; T2 removed the nodal fixed solver, custom VJP, and
+duplicate tests; T3 added and validated the differentiable supplied-field
+initializer and made it the default SFLM path. The tree now contains 7,497
+mirror source lines, 3,970 mirror-test lines, and 20 lazy public names. T4 is
+the active tranche.
+
 The branch contains real equilibrium solvers and useful validation, but it is
-not release-ready. The immediate blockers are duplicate nodal/spline solver
-paths, a physically poor nonaxisymmetric initializer, dense free-boundary
-Jacobian storage, a preconditioner that omits radius--stream-function coupling,
-stale shaped benchmarks, and incomplete closed-hybrid limiting cases. The
-milestones below remove those blockers in dependency order and define explicit
-stop conditions so this PR has a finite end.
+not release-ready. The immediate blockers are dense free-boundary Jacobian
+storage, a preconditioner that omits radius--stream-function coupling, stale
+shaped benchmarks, the artificial open-end collars, and incomplete
+closed-hybrid limiting cases. The milestones below remove those blockers in
+dependency order and define explicit stop conditions so this PR has a finite
+end.
 
 ## 1. Release contract
 
@@ -250,6 +257,9 @@ pressure is strongly anisotropic.
   radial refinement from `ns=5` through 17.
 - A nonaxisymmetric shaped coordinate map with uniform Cartesian field has
   force below `1e-12`.
+- The coefficient-native SFLM field initializer accepts callable or sampled
+  Cartesian fields, infers the analytic flux within `6.3e-5` relative, passes
+  a field-amplitude JVP, and reaches field/force errors of `3.42e-4`/`5.12e-3`.
 - Axis regularity now enforces a single-valued axis `|B|` and a consistent
   derivative pullback.
 - The existing axisymmetric free-boundary solve reaches small variational,
@@ -292,12 +302,12 @@ an incompatible discretization.
   vacuum fixtures. On three grids, rotating-ellipse all-volume strong force is
   `15.28, 12.54, 12.09`; SFLM is `59.68` and `51.71`, with a crossed-Jacobian
   medium run. Halving minor radius makes both worse.
-- The direct analytic SFLM projection is the decisive counterexample: field
-  reconstruction error is `3.91e-4`, tangency RMS is `1.53e-4`, and strong
-  force is `4.42e-3`. A solve initialized there reaches force `4.08e-2` and a
-  lower energy than the old continuation, but spends 17,500 linear iterations
-  and ends at linear residual `0.842`. The representation is viable; the
-  production initializer and coupled preconditioner are not yet viable.
+- The production spline SFLM projection is the decisive counterexample: field
+  reconstruction error is `3.42e-4`, tangency RMS is `1.33e-4`, and strong
+  force is `5.12e-3`. The compact nonlinear continuation reaches force
+  `3.52e-2`, field-direction cosine above `0.9999996`, and strict variational
+  tolerance, but drifts away from the better physical seed. The representation
+  and initializer are viable; the coupled preconditioner is not yet viable.
 - The periodic preconditioner stalled at 3,000 GMRES iterations with linear
   residual about 0.136. CG/MINRES reached only about 0.016. The scalable closed
   primal path therefore remains disabled.
@@ -600,7 +610,7 @@ a different discrete space.
 Exit: manufactured order is established and the physical strong force
 decreases on three grids for accepted fixed equilibria.
 
-### M2. Finish the coefficient path and physical initialization -- in progress
+### M2. Finish the coefficient path and physical initialization -- steps 1--5 complete
 
 1. Commit the compact current fixed-boundary evidence only after JSON, focused
    tests, strict docs, and the complete mirror suite pass on the active solver
@@ -775,9 +785,9 @@ recorded as compact negative evidence.
 
 | Tranche | Change | Required gate |
 | --- | --- | --- |
-| T1 | Validate and commit the active force-region, compact benchmark, docs, and matrix-free policy edits | full mirror suite, strict Sphinx, Ruff, JSON schema |
-| T2 | Delete nodal fixed solve/custom-VJP and redundant tests | public API/import tests; axisymmetric spline parity unchanged; net line reduction |
-| T3 | Add supplied-field-to-Clebsch spline initializer and use it for SFLM | analytic field error `<5e-4`; force `<6e-3`; example smoke |
+| T1 (complete) | Validate and commit the active force-region, compact benchmark, docs, and matrix-free policy edits | full mirror suite, strict Sphinx, Ruff, JSON schema |
+| T2 (complete) | Delete nodal fixed solve/custom-VJP and redundant tests | public API/import tests; axisymmetric spline parity unchanged; net line reduction |
+| T3 (complete) | Add supplied-field-to-Clebsch spline initializer and use it for SFLM | analytic field error `<5e-4`; force `<6e-3`; example smoke |
 | T4 | Implement and A/B the coupled radius--stream preconditioner, including SOLVAX `0.8.3` trial | true linear residual `<=1e-8`; bounded Krylov growth; measured benefit |
 | T5 | Regenerate rotating-ellipse and SFLM fixed-boundary evidence | all section 1.1 fixed-open gates on three grids and half-radius study |
 | T6 | Move free boundary to the shared spline coefficient map and operator Jacobian | dense tiny-case parity; no full Jacobian above threshold; lower peak memory |
@@ -828,19 +838,19 @@ Percentages measure promotion evidence, not lines written:
 | Lane | Complete | Main remaining evidence |
 | --- | ---: | --- |
 | Fixed open axisymmetric | 100% | maintain gates while shared solver code changes |
-| Fixed open nonaxisymmetric | 55% | production field initializer, coupled solve, three-grid force |
-| Open fixed B-spline representation | 92% | remove nodal internals in M2 |
+| Fixed open nonaxisymmetric | 65% | coupled solve and three-grid force |
+| Open fixed B-spline representation | 98% | equal-end/cut-location evidence in M2 |
 | Free open axisymmetric | 65% | spline coefficient solve, operator coupling, regenerated force/beta study |
 | Free open nonaxisymmetric | 25% | conditional three-grid promotion attempt after M4 |
 | Fixed closed B-spline hybrid | 45% | current-semantics VMEC parity, open-leg limit, force, derivatives |
 | Strong-force diagnostic | 100% | maintain gates in promoted equilibrium lanes |
 | Coupled preconditioning | 35% | coupled radius--lambda block and A/B gates |
-| Implicit differentiation | 68% | delete nodal wrapper; unify coefficient maps; rerun promoted primal lanes |
-| Code/API simplification | 76% | remove duplicate solver/tests and reach file/line/API budgets |
-| Docs/examples/artifacts | 60% | replace stale claims and regenerate release showcase |
+| Implicit differentiation | 72% | unify coefficient maps; rerun promoted primal lanes |
+| Code/API simplification | 82% | reach source-line and public-API budgets in T6/T11 |
+| Docs/examples/artifacts | 65% | regenerate remaining release showcase artifacts |
 | ESSOS ownership separation | 85% | remove coil benchmark runner/formulas; retain callable integration only |
 
-Weighted completion of the four required release models is approximately 66%.
+Weighted completion of the four required release models is approximately 68%.
 Free closed hybrid and ANIMEC are deferred and excluded from that percentage.
 
 ## 9. Primary references

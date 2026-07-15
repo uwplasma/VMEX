@@ -355,13 +355,22 @@ The nonzero floor blocks force-balance promotion. Halving its radius on the
 fine grid increases the normalized force to ``24.36`` instead of producing
 the expected paraxial improvement.
 
-The independent Straight Field Line Mirror has the same defect. Its coarse
-and fine strong-force values are ``59.68`` and ``51.71``; the medium
-continuation crosses its Jacobian. Halving the fine-grid radius increases the
-force to ``103.56``. Cartesian field direction can still agree closely with
-the Agren--Savenko paraxial field while the full MHD force equation fails, so
-direction cosine is a validation observable but not a substitute residual.
-These failed gates are retained in ``benchmarks/mirror_fixed_boundary.json``.
+The former zero-stream Straight Field Line Mirror continuation has the same
+defect. Its coarse and fine strong-force values are ``59.68`` and ``51.71``;
+the medium continuation crosses its Jacobian, and halving the fine-grid radius
+increases the force to ``103.56``. These runs remain compact negative evidence
+in ``benchmarks/mirror_fixed_boundary.json`` and are no longer the default.
+
+``initialize_from_cartesian_field`` now keeps a supplied spline geometry fixed,
+infers :math:`\Psi'(s)` from the surface-averaged axial flux, and obtains the
+nonzero poloidal stream-function modes from the remaining contravariant field.
+It accepts either Cartesian field samples or a point callable and performs no
+coil construction or Biot--Savart integration. On the independent
+Agren--Savenko field at ``(ns,mpol,elements)=(9,8,8)``, field reconstruction
+error is ``3.42e-4``, field tangency error is ``1.33e-4``, and the all-volume
+strong-force norm is ``5.12e-3``. The inferred flux differs from the analytic
+``B0*a^2/2 = 4.5e-4`` by less than ``6.3e-5`` relative. A JVP test confirms
+that field-amplitude derivatives pass through the projection.
 
 The parser-free root example runs both fixtures through five coefficient-space
 continuation stages and writes MOUT plus horizontal 3-D, cross-section,
@@ -369,14 +378,17 @@ continuation stages and writes MOUT plus horizontal 3-D, cross-section,
 
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
-At its compact demonstration resolution, the rotating ellipse reaches a
-variational/staggered-weak residual of ``7.65e-13/7.65e-13`` and normalized
-``div(B)=1.03e-14``. Its strong force is ``4.06`` in the central radial bulk
-and ``18.01`` in the fixed-cut collars. The SFLM reaches
-``4.97e-13/4.97e-13`` and ``div(B)=1.14e-14``, but its corresponding strong
-force is ``14.31/72.38``. The figures expose both residual histories and show
-the actual solved nested surfaces and field lines, not the analytic target
-alone.
+At its compact demonstration resolution, the rotating ellipse retains central
+bulk/end-collar strong-force values of ``4.06/18.01``. The SFLM continuation
+now reprojects the analytic field at each shape stage and infers
+``Psi'(s)`` instead of using a prescribed scalar. Its final variational and
+staggered residuals are below ``2.9e-14``, normalized ``div(B)`` is below
+``8.0e-15``, and mean field-direction cosine exceeds ``0.9999996``. The final
+all-volume strong-force norm is ``3.52e-2``: much smaller than the homothetic
+result, but above the initializer's ``5.12e-3``. This drift is a measured input
+to the coupled-preconditioner milestone, not promoted equilibrium evidence.
+The figures expose both residual histories and show the actual solved nested
+surfaces and cap-to-cap field lines, not the analytic target alone.
 
 Coefficient fixed-boundary gradients
 ------------------------------------

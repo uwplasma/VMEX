@@ -33,6 +33,7 @@ from vmec_jax.mirror.analytic import (  # noqa: E402
 from vmec_jax.mirror.forces import staggered_field_strength  # noqa: E402
 from vmec_jax.mirror.geometry import magnetic_field_xyz  # noqa: E402
 from vmec_jax.mirror.implicit import spline_fixed_boundary_parameters  # noqa: E402
+from vmec_jax.mirror.splines import initialize_from_cartesian_field  # noqa: E402
 
 # Inputs: edit these constants, then run this file directly.
 CASES = ("rotating_ellipse", "straight_field_line")
@@ -83,7 +84,14 @@ def boundary_for(case: str, stage: float) -> MirrorBoundary:
     return MirrorBoundary.from_radius(values, source_grid)
 
 
-def plot_validation(case: str, result, coefficient_state, boundary_state, path: Path) -> dict[str, float]:
+def plot_validation(
+    case: str,
+    result,
+    coefficient_state,
+    boundary_state,
+    axial_flux_derivative,
+    path: Path,
+) -> dict[str, float]:
     """Plot the independent symmetry or field-direction check."""
 
     grid = discretization.grid
@@ -124,7 +132,7 @@ def plot_validation(case: str, result, coefficient_state, boundary_state, path: 
         label="Strong force",
     )
     axes[1].axhline(FTOL, color="0.25", ls="--", label="ftol")
-    axes[1].set(title="Final-stage convergence", xlabel="Iteration", ylabel="Maximum residual")
+    axes[1].set(title="Final-stage convergence", xlabel="Iteration", ylabel="Normalized residual")
     axes[1].legend()
 
     diagnostics: dict[str, float] = {}
@@ -133,7 +141,7 @@ def plot_validation(case: str, result, coefficient_state, boundary_state, path: 
             staggered_field_strength(
                 result.state,
                 grid,
-                axial_flux_derivative=AXIAL_FLUX_DERIVATIVE[case],
+                axial_flux_derivative=axial_flux_derivative,
             )
         )
         center = int(np.argmin(np.abs(grid.z)))
@@ -156,10 +164,13 @@ def plot_validation(case: str, result, coefficient_state, boundary_state, path: 
             cosine = np.sum(sampled * analytic, axis=1)
             cosine /= np.linalg.norm(sampled, axis=1) * np.linalg.norm(analytic, axis=1)
             cosine_by_z.append(np.mean(cosine))
-        axes[2].plot(grid.z, cosine_by_z, "o-", color="#009E73")
-        lower = min(cosine_by_z)
-        axes[2].set_ylim(lower - 0.08 * (1.0 - lower), 1.00005)
-        axes[2].set(title="Analytic field direction", xlabel="Axial position z [m]", ylabel="Mean cosine")
+        direction_error = np.maximum(1.0 - np.asarray(cosine_by_z), 1.0e-16)
+        axes[2].semilogy(grid.z, direction_error, "o-", color="#009E73")
+        axes[2].set(
+            title="Analytic field-direction error",
+            xlabel="Axial position z [m]",
+            ylabel="1 - mean cosine",
+        )
         diagnostics["minimum_mean_direction_cosine"] = float(np.min(cosine_by_z))
 
     for axis in axes:
@@ -175,16 +186,30 @@ for case in CASES:
     initial_boundary = boundary_for(case, 0.0)
     previous_boundary = discretization.fit_boundary(initial_boundary, source_grid)
     coefficient_state = discretization.fit_state(MirrorState.from_boundary(initial_boundary, source_grid), source_grid)
+    axial_flux_derivative = AXIAL_FLUX_DERIVATIVE[case]
     stage_iterations = []
     for stage in SHAPE_STAGES:
         final_boundary = discretization.fit_boundary(boundary_for(case, stage), source_grid)
         coefficient_state = discretization.transfer_boundary(coefficient_state, previous_boundary, final_boundary)
+        if case == "straight_field_line" and stage > 0.0:
+            fixture = StraightFieldLineMirror(
+                center_field=1.0,
+                axial_scale=2.5 / stage,
+            )
+            initialized = initialize_from_cartesian_field(
+                coefficient_state,
+                final_boundary,
+                discretization,
+                fixture.field,
+            )
+            coefficient_state = initialized.state
+            axial_flux_derivative = initialized.axial_flux_derivative
         spline_result = solve_fixed_boundary_cli(
             coefficient_state,
             final_boundary,
             discretization,
             config,
-            axial_flux_derivative=AXIAL_FLUX_DERIVATIVE[case],
+            axial_flux_derivative=axial_flux_derivative,
             solve_lambda=True,
             gradient_tolerance=FTOL,
             require_convergence=True,
@@ -202,7 +227,7 @@ for case in CASES:
             discretization.grid,
             config,
             boundary=evaluated_boundary,
-            axial_flux_derivative=AXIAL_FLUX_DERIVATIVE[case],
+            axial_flux_derivative=axial_flux_derivative,
         ),
     )
     plot_mout(mout_path, OUTPUT_DIR, name=case)
@@ -211,6 +236,7 @@ for case in CASES:
         result,
         coefficient_state,
         final_boundary,
+        axial_flux_derivative,
         OUTPUT_DIR / f"{case}_validation.png",
     )
     if case == "rotating_ellipse" and RUN_GRADIENT_CHECK:
@@ -264,6 +290,8 @@ for case in CASES:
         "strong_force_bulk_rms": float(result.force.bulk_normalized_rms),
         "strong_force_end_collar_rms": float(result.force.end_collar_normalized_rms),
         "normalized_divergence_rms": float(result.normalized_divergence_rms),
+        "axial_flux_derivative_min": float(jnp.min(jnp.asarray(axial_flux_derivative))),
+        "axial_flux_derivative_max": float(jnp.max(jnp.asarray(axial_flux_derivative))),
         **validation,
     }
 

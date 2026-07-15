@@ -8,14 +8,14 @@ coefficient evaluation and transfer are differentiable JAX operations.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from .basis import CubicBSplineBasis, MirrorGrid, ThetaBasis
-from .geometry import regularize_axis_stream_function
+from .geometry import evaluate_geometry, regularize_axis_stream_function
 from .model import MirrorBoundary, MirrorConfig, MirrorResolution, MirrorState
 
 Array = Any
@@ -90,6 +90,33 @@ class SplineMirrorState:
 
     radius_coefficients: Array
     lambda_coefficients: Array
+
+
+@dataclass(frozen=True)
+class SuppliedFieldInitialization:
+    """Spline state and radial flux profile inferred from a vacuum field."""
+
+    state: SplineMirrorState
+    axial_flux_derivative: Array
+
+
+def _integrate_poloidal_derivative(derivative: Array) -> Array:
+    """Invert a resolved theta derivative with a zero-mean gauge."""
+
+    ntheta = derivative.shape[1]
+    if ntheta == 1:
+        return jnp.zeros_like(derivative)
+    modes = np.fft.fftfreq(ntheta, d=1.0 / ntheta)
+    inverse = np.zeros(ntheta, dtype=complex)
+    nonzero = modes != 0.0
+    inverse[nonzero] = 1.0 / (1j * modes[nonzero])
+    if ntheta % 2 == 0:
+        inverse[ntheta // 2] = 0.0
+    shape = (1, ntheta) + (1,) * (derivative.ndim - 2)
+    return jnp.fft.ifft(
+        jnp.fft.fft(derivative, axis=1) * jnp.asarray(inverse).reshape(shape),
+        axis=1,
+    ).real
 
 
 @dataclass(frozen=True, eq=False)
@@ -245,6 +272,75 @@ class SplineMirrorDiscretization:
         return self.project_fixed_boundary(SplineMirrorState(transferred, state.lambda_coefficients), target)
 
 
+def initialize_from_cartesian_field(
+    initial_state: SplineMirrorState,
+    boundary: SplineMirrorBoundary,
+    discretization: SplineMirrorDiscretization,
+    field: Array | Callable[[Array], Array],
+) -> SuppliedFieldInitialization:
+    """Project a supplied vacuum field into the open Clebsch representation.
+
+    ``field`` is either Cartesian samples with shape ``grid.shape + (3,)`` or
+    a callable from one Cartesian point to one field vector. The geometry is
+    kept fixed. The surface-averaged axial flux density determines
+    ``Psi'(s)``, and the remaining nonzero poloidal modes determine the
+    stream function. The small component normal to the supplied flux surfaces
+    is intentionally discarded.
+    """
+
+    if discretization.closed:
+        raise ValueError("supplied-field initialization requires an open spline grid")
+    state = discretization.project_fixed_boundary(initial_state, boundary)
+    evaluated = discretization.evaluate_state(state)
+    geometry = evaluate_geometry(evaluated, discretization.grid)
+    if not isinstance(geometry.jacobian_sign_changed, jax.core.Tracer) and bool(
+        geometry.jacobian_sign_changed
+    ):
+        raise ValueError("supplied-field initialization requires a positive Jacobian")
+    if callable(field):
+        points = geometry.xyz.reshape((-1, 3))
+        supplied = jax.vmap(field)(points).reshape(geometry.xyz.shape)
+    else:
+        supplied = jnp.asarray(field)
+    if supplied.shape != geometry.xyz.shape:
+        raise ValueError(f"supplied Cartesian field shape {supplied.shape} must be {geometry.xyz.shape}")
+    if not isinstance(supplied, jax.core.Tracer) and not np.all(np.isfinite(np.asarray(supplied))):
+        raise ValueError("supplied Cartesian field must be finite")
+
+    covariant_theta = jnp.sum(supplied * geometry.e_theta_xyz, axis=-1)
+    covariant_xi = jnp.sum(supplied * geometry.e_xi_xyz, axis=-1)
+    determinant = geometry.g_thetatheta * geometry.g_xixi - geometry.g_thetaxi**2
+    numerator = geometry.g_thetatheta * covariant_xi - geometry.g_thetaxi * covariant_theta
+    safe_determinant = determinant.at[0].set(1.0)
+    b_sup_xi = numerator / safe_determinant
+    b_sup_xi = b_sup_xi.at[0].set(b_sup_xi[1])
+    jac_b_xi = geometry.sqrt_g * b_sup_xi
+    jac_b_xi = jac_b_xi.at[0].set(jac_b_xi[1])
+
+    theta_weights = jnp.asarray(discretization.grid.theta_basis.weights)
+    axial_weights = jnp.asarray(discretization.grid.axial_basis.weights)
+    theta_average = jnp.einsum("j,ijk->ik", theta_weights, jac_b_xi)
+    theta_average /= jnp.sum(theta_weights)
+    axial_flux = jnp.einsum("k,ik->i", axial_weights, theta_average)
+    axial_flux /= jnp.sum(axial_weights)
+    axial_flux = axial_flux.at[0].set(axial_flux[1])
+
+    derivative_theta = jac_b_xi - axial_flux[:, None, None]
+    stream = _integrate_poloidal_derivative(derivative_theta)
+    stream = stream.at[0].set(stream[1])
+    stream_at_nodes = discretization.grid.axial_basis.interpolate(
+        stream,
+        discretization.spline.collocation_nodes,
+        axis=-1,
+    )
+    coefficients = discretization.spline.fit(stream_at_nodes, axis=-1)
+    initialized = discretization.project_fixed_boundary(
+        SplineMirrorState(state.radius_coefficients, coefficients),
+        boundary,
+    )
+    return SuppliedFieldInitialization(initialized, axial_flux)
+
+
 def initialize_closed_vacuum_stream_function(
     state: SplineMirrorState,
     discretization: SplineMirrorDiscretization,
@@ -288,20 +384,7 @@ def initialize_closed_vacuum_stream_function(
         raise ValueError("the closed vacuum metric weight must be positive and finite")
     target_derivative = flux[:, None] * (metric_weight / theta_mean[:, None] - 1.0)
 
-    ntheta = discretization.grid.ntheta
-    if ntheta == 1:
-        lam = jnp.zeros_like(target_derivative)
-    else:
-        modes = np.fft.fftfreq(ntheta, d=1.0 / ntheta)
-        inverse_derivative = np.zeros(ntheta, dtype=complex)
-        nonzero = modes != 0.0
-        inverse_derivative[nonzero] = 1.0 / (1j * modes[nonzero])
-        if ntheta % 2 == 0:
-            inverse_derivative[ntheta // 2] = 0.0
-        lam = jnp.fft.ifft(
-            jnp.fft.fft(target_derivative, axis=1) * jnp.asarray(inverse_derivative)[None],
-            axis=1,
-        ).real
+    lam = _integrate_poloidal_derivative(target_derivative)
     surface_mean = jnp.einsum("ij,j->i", lam, theta_weights)
     lam -= (surface_mean / jnp.sum(theta_weights))[:, None]
     coefficients = jnp.broadcast_to(

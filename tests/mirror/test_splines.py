@@ -42,6 +42,7 @@ from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorState,
     _SplineStateVectorizer,
     _packed_spline_preconditioner,
+    initialize_from_cartesian_field,
     initialize_closed_vacuum_stream_function,
     solve_fixed_boundary_cli as solve_spline_fixed_boundary_cli,
     trace_closed_field_line,
@@ -853,6 +854,109 @@ def test_spline_solver_converges_nonaxisymmetric_finite_current_state() -> None:
         axis_field,
         np.broadcast_to(np.mean(axis_field, axis=0), axis_field.shape),
         rtol=2.0e-13,
+    )
+
+
+def test_supplied_field_initializer_recovers_straight_field_line_mirror() -> None:
+    from vmec_jax.mirror.analytic import StraightFieldLineMirror
+
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=9, mpol=8, nxi=17),
+        z_min=-1.0,
+        z_max=1.0,
+    )
+    source_grid = config.build_grid()
+    discretization = SplineMirrorDiscretization.build(config, elements=8)
+    fixture = StraightFieldLineMirror(center_field=1.0, axial_scale=2.5)
+    theta = jnp.asarray(source_grid.theta)[:, None]
+    z = jnp.asarray(source_grid.z)[None, :]
+    boundary = MirrorBoundary.from_radius(
+        fixture.boundary_radius(0.03, theta, z),
+        source_grid,
+    )
+    spline_boundary = discretization.fit_boundary(boundary, source_grid)
+    initial = discretization.fit_state(
+        MirrorState.from_boundary(boundary, source_grid),
+        source_grid,
+    )
+    initialized = initialize_from_cartesian_field(
+        initial,
+        spline_boundary,
+        discretization,
+        fixture.field,
+    )
+    state = discretization.evaluate_state(initialized.state)
+    energy = mirror_energy(
+        state,
+        discretization.grid,
+        axial_flux_derivative=initialized.axial_flux_derivative,
+    )
+    points = energy.geometry.xyz.reshape((-1, 3))
+    supplied = jax.vmap(fixture.field)(points).reshape(energy.geometry.xyz.shape)
+    reconstructed = magnetic_field_xyz(energy.field, energy.geometry)
+    field_error = jnp.linalg.norm((reconstructed - supplied)[1:])
+    field_error /= jnp.linalg.norm(supplied[1:])
+    normal = jnp.cross(
+        energy.geometry.e_theta_xyz,
+        energy.geometry.e_xi_xyz,
+    )
+    normal /= jnp.linalg.norm(normal, axis=-1, keepdims=True)
+    tangency = jnp.sum(supplied * normal, axis=-1)
+    tangency /= jnp.linalg.norm(supplied, axis=-1)
+    tangency_rms = jnp.sqrt(jnp.mean(tangency[1:] ** 2))
+    force = isotropic_force_residual(
+        energy,
+        discretization.grid,
+        state=state,
+        axial_flux_derivative=initialized.axial_flux_derivative,
+    )
+    sampled = initialize_from_cartesian_field(
+        initial,
+        spline_boundary,
+        discretization,
+        supplied,
+    )
+    _, flux_tangent = jax.jvp(
+        lambda scale: (
+            initialize_from_cartesian_field(
+                initial,
+                spline_boundary,
+                discretization,
+                scale * supplied,
+            ).axial_flux_derivative
+        ),
+        (jnp.asarray(1.0),),
+        (jnp.asarray(1.0),),
+    )
+
+    assert not bool(energy.geometry.jacobian_sign_changed)
+    assert float(tangency_rms) < 2.0e-4
+    assert float(field_error) < 5.0e-4
+    assert float(force.normalized_rms) < 6.0e-3
+    assert float(jnp.max(jnp.abs(initialized.state.lambda_coefficients))) > 1.0e-6
+    assert np.all(np.asarray(initialized.axial_flux_derivative) > 0.0)
+    np.testing.assert_allclose(
+        initialized.axial_flux_derivative,
+        0.5 * fixture.center_field * 0.03**2,
+        rtol=2.0e-4,
+    )
+    np.testing.assert_allclose(
+        flux_tangent,
+        initialized.axial_flux_derivative,
+        rtol=2.0e-12,
+        atol=2.0e-15,
+    )
+    np.testing.assert_allclose(
+        sampled.state.lambda_coefficients,
+        initialized.state.lambda_coefficients,
+        rtol=2.0e-12,
+        atol=2.0e-15,
+    )
+    np.testing.assert_allclose(
+        sampled.axial_flux_derivative,
+        initialized.axial_flux_derivative,
+        rtol=2.0e-12,
+        atol=2.0e-15,
     )
 
 

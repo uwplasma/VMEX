@@ -143,7 +143,23 @@
     },
     "straight_field_line_mirror": {
       "radius": 0.03,
-      "axial_flux_derivative": 0.005,
+      "legacy_axial_flux_derivative": 0.005,
+      "default_initialization": "supplied Cartesian field projected onto spline Clebsch variables",
+      "projected_initializer": {
+        "ns": 9,
+        "mpol": 8,
+        "elements": 8,
+        "field_relative_rms": 0.00034182270090893824,
+        "field_tangency_rms": 0.0001325610262168591,
+        "strong_force_all": 0.005116177781423504,
+        "strong_force_bulk": 0.003058605933075714,
+        "strong_force_end_collar": 0.008190251187051857,
+        "axial_flux_derivative_min": 0.0004499718607285401,
+        "axial_flux_derivative_max": 0.00044999682220614467,
+        "lambda_max": 0.00018499486318173563,
+        "status": "passes the T3 analytic initializer gates"
+      },
+      "legacy_continuation_status": "negative evidence: zero-stream homothetic continuation is not the default",
       "coarse": {
         "ns": 5,
         "mpol": 4,
