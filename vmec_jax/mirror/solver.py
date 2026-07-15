@@ -142,6 +142,7 @@ class SeparableMirrorPreconditioner:
         axial_stiffness: Array,
         *,
         radial_nodes: int | None = None,
+        poloidal_nodes: int | None = None,
         shift: float = 1.0e-3,
         radial_strength: float = 1.0,
         poloidal_strength: float = 1.0,
@@ -153,11 +154,12 @@ class SeparableMirrorPreconditioner:
         if shift <= 0.0 or min(strengths) < 0.0:
             raise ValueError("shift must be positive and stiffness strengths nonnegative")
         nr = grid.ns - 2 if radial_nodes is None else int(radial_nodes)
+        ntheta = grid.ntheta if poloidal_nodes is None else int(poloidal_nodes)
         axial = np.asarray(axial_stiffness, dtype=float)
         if axial.ndim != 2 or axial.shape[0] != axial.shape[1]:
             raise ValueError("axial stiffness must be a square matrix")
         nx = int(axial.shape[0])
-        if nr < 1 or nx < 1:
+        if nr < 1 or ntheta < 1 or nx < 1:
             raise ValueError("preconditioning requires interior radial and axial values")
 
         ds = float(grid.s[1] - grid.s[0])
@@ -170,7 +172,7 @@ class SeparableMirrorPreconditioner:
         axial_values, axial_vectors = eigh(axial, check_finite=True)
         radial_values /= max(float(radial_values[-1]), np.finfo(float).tiny)
         axial_values /= max(float(axial_values[-1]), np.finfo(float).tiny)
-        poloidal_values = np.fft.fftfreq(grid.ntheta, d=1.0 / grid.ntheta) ** 2
+        poloidal_values = np.fft.fftfreq(ntheta, d=1.0 / ntheta) ** 2
         if np.max(poloidal_values) > 0.0:
             poloidal_values /= np.max(poloidal_values)
         denominator = (
@@ -183,7 +185,7 @@ class SeparableMirrorPreconditioner:
             radial_vectors=radial_vectors,
             axial_vectors=axial_vectors,
             denominator=denominator,
-            active_shape=(nr, grid.ntheta, nx),
+            active_shape=(nr, ntheta, nx),
         )
 
     @property
@@ -315,8 +317,7 @@ def _matrix_free_newton_polish(
             # Match the fallback tensor blocks to the local Hessian scale.
             block_scales[:] = 1.0
             probe = np.random.default_rng(0).choice((-1.0, 1.0), size=x.size)
-            split = (slice(0, vectorizer.radius_size), slice(vectorizer.radius_size, None))
-            for block, active in enumerate(split[: 2 if vectorizer.lambda_size else 1]):
+            for block, active in enumerate(vectorizer.block_slices):
                 direction = np.zeros_like(probe)
                 direction[active] = probe[active]
                 response = apply_preconditioner(matrix_vector(direction))

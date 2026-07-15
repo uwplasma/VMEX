@@ -86,10 +86,15 @@ class SplineMirrorBoundary:
 
 @dataclass(frozen=True)
 class SplineMirrorState:
-    """Geometry and stream-function B-spline coefficients."""
+    """Geometry and stream-function B-spline coefficients.
+
+    Closed states optionally carry transverse section-center coefficients with
+    shape ``(ns, 2, coefficient_count)``. Open states leave them ``None``.
+    """
 
     radius_coefficients: Array
     lambda_coefficients: Array
+    center_coefficients: Array | None = None
 
 
 @dataclass(frozen=True)
@@ -223,10 +228,22 @@ class SplineMirrorDiscretization:
         expected = (self.grid.ns, self.grid.ntheta, self.coefficient_count)
         if state.radius_coefficients.shape != expected or state.lambda_coefficients.shape != expected:
             raise ValueError(f"state coefficient arrays must have shape {expected}")
+        center = state.center_coefficients
+        if self.closed:
+            center_expected = (self.grid.ns, 2, self.coefficient_count)
+            if center is not None and center.shape != center_expected:
+                raise ValueError(f"center coefficient array must have shape {center_expected}")
+        elif center is not None:
+            raise ValueError("open spline states do not accept center coefficients")
         matrix = jnp.asarray(self.evaluation_matrix)
         return MirrorState(
             radius_scale=jnp.tensordot(state.radius_coefficients, matrix.T, axes=((-1,), (0,))),
             lambda_stream=jnp.tensordot(state.lambda_coefficients, matrix.T, axes=((-1,), (0,))),
+            center_shift=(
+                None
+                if center is None
+                else jnp.tensordot(center, matrix.T, axes=((-1,), (0,)))
+            ),
         )
 
     def fit_boundary(self, boundary: MirrorBoundary, source_grid: MirrorGrid) -> SplineMirrorBoundary:
@@ -240,7 +257,19 @@ class SplineMirrorDiscretization:
 
         radius = source_grid.axial_basis.interpolate(state.radius_scale, self.spline.collocation_nodes, axis=-1)
         lam = source_grid.axial_basis.interpolate(state.lambda_stream, self.spline.collocation_nodes, axis=-1)
-        return SplineMirrorState(self.spline.fit(radius, axis=-1), self.spline.fit(lam, axis=-1))
+        center = None
+        if state.center_shift is not None:
+            center_nodes = source_grid.axial_basis.interpolate(
+                state.center_shift,
+                self.spline.collocation_nodes,
+                axis=-1,
+            )
+            center = self.spline.fit(center_nodes, axis=-1)
+        return SplineMirrorState(
+            self.spline.fit(radius, axis=-1),
+            self.spline.fit(lam, axis=-1),
+            center,
+        )
 
     def project_fixed_boundary(
         self,
@@ -263,7 +292,16 @@ class SplineMirrorDiscretization:
         axial_weights = jnp.asarray(self.grid.axial_basis.weights)
         mean = jnp.einsum("j,k,ijk->i", theta_weights, axial_weights, evaluated)
         mean /= jnp.sum(theta_weights) * jnp.sum(axial_weights)
-        return SplineMirrorState(radius, lam - mean[:, None, None])
+        center = state.center_coefficients
+        if self.closed:
+            center_shape = (self.grid.ns, 2, self.coefficient_count)
+            if center is not None and center.shape != center_shape:
+                raise ValueError(f"center coefficient array must have shape {center_shape}")
+            if center is not None:
+                center = jnp.asarray(center).at[-1].set(0.0)
+        elif center is not None:
+            raise ValueError("open spline states do not accept center coefficients")
+        return SplineMirrorState(radius, lam - mean[:, None, None], center)
 
     def transfer_boundary(
         self,
@@ -280,7 +318,14 @@ class SplineMirrorDiscretization:
             raise ValueError("boundary transfer requires positive source and target radii")
         radius = self.spline.evaluate(state.radius_coefficients, nodes)
         transferred = self.spline.fit(radius * target_radius[None] / source_radius[None])
-        return self.project_fixed_boundary(SplineMirrorState(transferred, state.lambda_coefficients), target)
+        return self.project_fixed_boundary(
+            SplineMirrorState(
+                transferred,
+                state.lambda_coefficients,
+                state.center_coefficients,
+            ),
+            target,
+        )
 
     def transfer_closed_state(
         self,
@@ -297,9 +342,13 @@ class SplineMirrorDiscretization:
         nodes = jnp.asarray(self.spline.collocation_nodes)
         radius = source.spline.evaluate(state.radius_coefficients, nodes, axis=-1)
         lam = source.spline.evaluate(state.lambda_coefficients, nodes, axis=-1)
+        center = state.center_coefficients
+        if center is not None:
+            center = source.spline.evaluate(center, nodes, axis=-1)
         transferred = SplineMirrorState(
             self.spline.fit(radius, axis=-1),
             self.spline.fit(lam, axis=-1),
+            None if center is None else self.spline.fit(center, axis=-1),
         )
         return self.project_fixed_boundary(transferred, boundary)
 
@@ -365,7 +414,11 @@ def initialize_from_cartesian_field(
     )
     coefficients = discretization.spline.fit(stream_at_nodes, axis=-1)
     initialized = discretization.project_fixed_boundary(
-        SplineMirrorState(state.radius_coefficients, coefficients),
+        SplineMirrorState(
+            state.radius_coefficients,
+            coefficients,
+            state.center_coefficients,
+        ),
         boundary,
     )
     return SuppliedFieldInitialization(initialized, axial_flux)
@@ -422,7 +475,11 @@ def initialize_closed_vacuum_stream_function(
         state.lambda_coefficients.shape,
     )
     coefficients = coefficients.at[0].set(coefficients[1])
-    return SplineMirrorState(state.radius_coefficients, coefficients)
+    return SplineMirrorState(
+        state.radius_coefficients,
+        coefficients,
+        state.center_coefficients,
+    )
 
 
 @dataclass(frozen=True)
@@ -504,6 +561,7 @@ class _SplineStateVectorizer:
     evaluation_matrix: np.ndarray
     radius_indices: tuple[np.ndarray, np.ndarray, np.ndarray]
     radius_scale: float
+    center_scale: float
     flux_scale: float
     lambda_axial_indices: np.ndarray
     lambda_free_indices: np.ndarray
@@ -563,12 +621,17 @@ class _SplineStateVectorizer:
             coefficients = jnp.asarray(base.lambda_coefficients)
             constants = coefficients[1:, 0, 0]
             constants = jnp.concatenate((constants[:1], constants))
-            base = SplineMirrorState(base.radius_coefficients, coefficients - constants[:, None, None])
+            base = SplineMirrorState(
+                base.radius_coefficients,
+                coefficients - constants[:, None, None],
+                base.center_coefficients,
+            )
         return cls(
             base=base,
             evaluation_matrix=np.asarray(discretization.evaluation_matrix),
             radius_indices=radius_indices,
             radius_scale=radius_scale,
+            center_scale=radius_scale,
             flux_scale=flux_scale,
             lambda_axial_indices=lambda_axial_indices,
             lambda_free_indices=free_indices,
@@ -591,17 +654,44 @@ class _SplineStateVectorizer:
             return 0
         return int((self.base.radius_coefficients.shape[0] - 1) * self.lambda_free_indices.size)
 
+    @property
+    def center_size(self) -> int:
+        """Return the number of active transverse center coefficients."""
+
+        if self.base.center_coefficients is None:
+            return 0
+        shape = self.base.center_coefficients.shape
+        return int((shape[0] - 1) * shape[1] * shape[2])
+
+    @property
+    def block_slices(self) -> tuple[slice, ...]:
+        """Return packed radius, center, and lambda blocks that are present."""
+
+        offset = self.radius_size
+        blocks = [slice(0, offset)]
+        if self.center_size:
+            blocks.append(slice(offset, offset + self.center_size))
+            offset += self.center_size
+        if self.lambda_size:
+            blocks.append(slice(offset, offset + self.lambda_size))
+        return tuple(blocks)
+
     def pack(self) -> np.ndarray:
         """Pack the projected coefficient state."""
 
         radius = np.asarray(self.base.radius_coefficients)[self.radius_indices] / self.radius_scale
+        blocks = [radius]
+        if self.center_size:
+            center = np.asarray(self.base.center_coefficients)[:-1].reshape(-1) / self.center_scale
+            blocks.append(center)
         if not self.solve_lambda:
-            return radius
+            return np.concatenate(blocks)
         interior = np.asarray(self.base.lambda_coefficients)[1:, :, self.lambda_axial_indices].reshape(
             self.base.radius_coefficients.shape[0] - 1, -1
         )
         lam = interior[:, self.lambda_free_indices].reshape(-1) / self.flux_scale
-        return np.concatenate((radius, lam))
+        blocks.append(lam)
+        return np.concatenate(blocks)
 
     def unpack(self, vector: Array) -> SplineMirrorState:
         """Reconstruct constrained coefficients from normalized variables."""
@@ -611,11 +701,20 @@ class _SplineStateVectorizer:
             vector[: self.radius_size] * self.radius_scale
         )
         radius = _regularize_axis_radius(radius)
+        offset = self.radius_size
+        center = self.base.center_coefficients
+        if self.center_size:
+            center_shape = center.shape
+            center = center.at[:-1].set(
+                vector[offset : offset + self.center_size].reshape(center_shape[0] - 1, *center_shape[1:])
+                * self.center_scale
+            )
+            offset += self.center_size
         if not self.solve_lambda:
-            return SplineMirrorState(radius, self.base.lambda_coefficients)
+            return SplineMirrorState(radius, self.base.lambda_coefficients, center)
 
         shape = self.base.lambda_coefficients.shape
-        free = vector[self.radius_size :].reshape(shape[0] - 1, self.lambda_free_indices.size) * self.flux_scale
+        free = vector[offset:].reshape(shape[0] - 1, self.lambda_free_indices.size) * self.flux_scale
         interior = self.base.lambda_coefficients[1:, :, self.lambda_axial_indices].reshape(shape[0] - 1, -1)
         interior = interior.at[:, jnp.asarray(self.lambda_free_indices)].set(free)
         if not self.lambda_local_gauge:
@@ -630,13 +729,25 @@ class _SplineStateVectorizer:
         lam = self.base.lambda_coefficients.at[1:, :, self.lambda_axial_indices].set(
             interior.reshape(shape[0] - 1, shape[1], self.lambda_axial_indices.size)
         )
-        return SplineMirrorState(radius, lam.at[0].set(lam[1]))
+        return SplineMirrorState(radius, lam.at[0].set(lam[1]), center)
 
     def bounds(self) -> tuple[np.ndarray, np.ndarray]:
         """Return conservative normalized coefficient bounds."""
 
-        lower = np.concatenate((np.full(self.radius_size, 0.2), np.full(self.lambda_size, -np.inf)))
-        upper = np.concatenate((np.full(self.radius_size, 5.0), np.full(self.lambda_size, np.inf)))
+        lower = np.concatenate(
+            (
+                np.full(self.radius_size, 0.2),
+                np.full(self.center_size, -2.0),
+                np.full(self.lambda_size, -np.inf),
+            )
+        )
+        upper = np.concatenate(
+            (
+                np.full(self.radius_size, 5.0),
+                np.full(self.center_size, 2.0),
+                np.full(self.lambda_size, np.inf),
+            )
+        )
         return lower, upper
 
     def pullback_evaluated_gradient(self, gradient: MirrorState) -> np.ndarray:
@@ -651,8 +762,18 @@ class _SplineStateVectorizer:
         axis_gradient[np.abs(modes) % 2 == 1] = 0.0
         radius_coefficients[1] += np.fft.ifft(axis_gradient, axis=0).real
         radius = radius_coefficients[self.radius_indices] * self.radius_scale
+        blocks = [radius]
+        if self.center_size:
+            if gradient.center_shift is None:
+                raise ValueError("closed evaluated gradient is missing its center map")
+            center_coefficients = np.tensordot(
+                np.asarray(gradient.center_shift),
+                matrix,
+                axes=((-1,), (0,)),
+            )
+            blocks.append((center_coefficients[:-1] * self.center_scale).reshape(-1))
         if not self.solve_lambda:
-            return radius
+            return np.concatenate(blocks)
 
         lambda_coefficients = np.tensordot(np.asarray(gradient.lambda_stream), matrix, axes=((-1,), (0,)))
         lambda_coefficients[1] += lambda_coefficients[0]
@@ -662,14 +783,16 @@ class _SplineStateVectorizer:
         )
         if self.lambda_local_gauge:
             free = interior[:, self.lambda_free_indices]
-            return np.concatenate((radius, (free * self.flux_scale).reshape(-1)))
+            blocks.append((free * self.flux_scale).reshape(-1))
+            return np.concatenate(blocks)
         pivot_gradient = interior[:, self.lambda_pivot]
         free = interior[:, self.lambda_free_indices] - (
             pivot_gradient[:, None]
             * self.lambda_weights[self.lambda_free_indices][None, :]
             / self.lambda_weights[self.lambda_pivot]
         )
-        return np.concatenate((radius, (free * self.flux_scale).reshape(-1)))
+        blocks.append((free * self.flux_scale).reshape(-1))
+        return np.concatenate(blocks)
 
 
 def _packed_spline_layout(
@@ -678,12 +801,38 @@ def _packed_spline_layout(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Return channel, radial, and axial labels for solve variables."""
 
-    channels = np.concatenate(
-        (np.zeros(vectorizer.radius_size, dtype=int), np.ones(vectorizer.lambda_size, dtype=int))
-    )
+    channels = np.zeros(vectorizer.radius_size, dtype=int)
     radial = np.asarray(vectorizer.radius_indices[0], dtype=int)
     axial = np.asarray(vectorizer.radius_indices[2], dtype=int)
+    if vectorizer.center_size:
+        coefficient_count = discretization.coefficient_count
+        center_channels = np.tile(
+            np.repeat(np.arange(1, 3), coefficient_count),
+            discretization.grid.ns - 1,
+        )
+        channels = np.concatenate((channels, center_channels))
+        radial = np.concatenate(
+            (
+                radial,
+                np.repeat(
+                    np.arange(discretization.grid.ns - 1),
+                    2 * coefficient_count,
+                ),
+            )
+        )
+        axial = np.concatenate(
+            (
+                axial,
+                np.tile(
+                    np.tile(np.arange(coefficient_count), 2),
+                    discretization.grid.ns - 1,
+                ),
+            )
+        )
     if vectorizer.lambda_size:
+        channels = np.concatenate(
+            (channels, np.full(vectorizer.lambda_size, 3, dtype=int))
+        )
         axial_count = vectorizer.lambda_axial_indices.size
         free = vectorizer.lambda_free_indices
         radial = np.concatenate(
@@ -754,6 +903,14 @@ def _packed_spline_preconditioner(
     active_derivative = derivative if discretization.closed else derivative[:, 1:-1]
     stiffness = active_derivative.T @ (weights[:, None] * active_derivative)
     geometry = SeparableMirrorPreconditioner.build_from_axial_stiffness(discretization.grid, stiffness)
+    center = None
+    if vectorizer.center_size:
+        center = SeparableMirrorPreconditioner.build_from_axial_stiffness(
+            discretization.grid,
+            stiffness,
+            radial_nodes=discretization.grid.ns - 1,
+            poloidal_nodes=1,
+        )
     stream = None
     if vectorizer.lambda_size:
         stream = SeparableMirrorPreconditioner.build_from_axial_stiffness(
@@ -761,14 +918,30 @@ def _packed_spline_preconditioner(
             stiffness,
             radial_nodes=discretization.grid.ns - 1,
         )
-    scales = np.ones(2)
+    scales = np.ones(len(vectorizer.block_slices))
+    center_start = vectorizer.radius_size
+    lambda_start = center_start + vectorizer.center_size
 
     def apply(vector: np.ndarray) -> np.ndarray:
         vector = np.asarray(vector, dtype=float)
         result = np.array(vector, copy=True)
         result[: vectorizer.radius_size] = geometry.apply(vector[: vectorizer.radius_size]) * scales[0]
+        block = 1
+        if center is not None:
+            center_values = vector[center_start:lambda_start].reshape(
+                discretization.grid.ns - 1,
+                2,
+                discretization.coefficient_count,
+            )
+            solved_center = np.empty_like(center_values)
+            for component in range(2):
+                solved_center[:, component] = center.apply(
+                    center_values[:, component : component + 1].reshape(-1)
+                ).reshape(discretization.grid.ns - 1, discretization.coefficient_count)
+            result[center_start:lambda_start] = solved_center.reshape(-1) * scales[block]
+            block += 1
         if stream is not None:
-            reduced = vector[vectorizer.radius_size :]
+            reduced = vector[lambda_start:]
             if vectorizer.lambda_local_gauge:
                 lifted = np.zeros((stream.active_shape[0], vectorizer.lambda_weights.size))
                 lifted[:, vectorizer.lambda_free_indices] = reduced.reshape(
@@ -783,7 +956,7 @@ def _packed_spline_preconditioner(
                     pivot=vectorizer.lambda_pivot,
                     weights=vectorizer.lambda_weights,
                 )
-            result[vectorizer.radius_size :] = reduced * scales[1]
+            result[lambda_start:] = reduced * scales[block]
         return result
 
     def build_local(matrix_columns: Callable[[np.ndarray], np.ndarray]) -> Any:
@@ -792,7 +965,7 @@ def _packed_spline_preconditioner(
         from scipy.sparse import coo_matrix
         from scipy.sparse.linalg import splu
 
-        size = vectorizer.radius_size + vectorizer.lambda_size
+        size = vectorizer.radius_size + vectorizer.center_size + vectorizer.lambda_size
         row_parts: list[np.ndarray] = []
         column_parts: list[np.ndarray] = []
         value_parts: list[np.ndarray] = []
@@ -821,8 +994,8 @@ def _packed_spline_preconditioner(
                 responses = np.asarray(matrix_columns(directions), dtype=float)
                 for local_index, column in enumerate(columns):
                     axial_neighbors = np.abs(axial - axial[column]) <= 4
-                    if channels[column] == 1:
-                        axial_neighbors = np.where(channels == 1, True, axial_neighbors)
+                    if channels[column] == 3:
+                        axial_neighbors = np.where(channels == 3, True, axial_neighbors)
                     rows = np.flatnonzero(
                         (np.abs(radial - radial[column]) <= 2) & axial_neighbors
                     )
@@ -847,7 +1020,10 @@ def _packed_spline_preconditioner(
         solve.rebuild_each_step = discretization.closed  # type: ignore[attr-defined]
         return solve
 
-    local_builder = build_local if vectorizer.lambda_size else None
+    # Center channels make the frozen closed Hessian nearly dense across
+    # field components. The three separable cyclic blocks avoid compiling
+    # hundreds of colored probes while retaining matrix-free Newton actions.
+    local_builder = build_local if vectorizer.lambda_size and not vectorizer.center_size else None
     if local_builder is not None:
         local_builder.reuse_linearization = discretization.closed  # type: ignore[attr-defined]
     return apply, scales, local_builder
@@ -945,12 +1121,18 @@ def solve_fixed_boundary_cli(
         del state
         packed = evaluate(np.asarray(vector, dtype=float))[1]
         radius = packed[: vectorizer.radius_size]
-        lam = packed[vectorizer.radius_size :]
+        center_start = vectorizer.radius_size
+        lambda_start = center_start + vectorizer.center_size
+        center = packed[center_start:lambda_start]
+        lam = packed[lambda_start:]
+        center_rms = np.sqrt(np.mean(center**2)) if center.size else 0.0
         lambda_rms = np.sqrt(np.mean(lam**2)) if lam.size else 0.0
         return VariationalResidual(
             radius_gradient=jnp.asarray(radius),
+            center_gradient=jnp.asarray(center),
             lambda_gradient=jnp.asarray(lam),
             radius_rms=jnp.asarray(np.sqrt(np.mean(radius**2))),
+            center_rms=jnp.asarray(center_rms),
             lambda_rms=jnp.asarray(lambda_rms),
             maximum=jnp.asarray(np.max(np.abs(packed))),
         )
@@ -964,11 +1146,16 @@ def solve_fixed_boundary_cli(
         )
         packed = vectorizer.pullback_evaluated_gradient(gradient) / energy_scale
         radius = packed[: vectorizer.radius_size]
-        lam = packed[vectorizer.radius_size :]
+        center_start = vectorizer.radius_size
+        lambda_start = center_start + vectorizer.center_size
+        center = packed[center_start:lambda_start]
+        lam = packed[lambda_start:]
         return VariationalResidual(
             radius_gradient=jnp.asarray(radius),
+            center_gradient=jnp.asarray(center),
             lambda_gradient=jnp.asarray(lam),
             radius_rms=jnp.asarray(np.sqrt(np.mean(radius**2))),
+            center_rms=jnp.asarray(np.sqrt(np.mean(center**2)) if center.size else 0.0),
             lambda_rms=jnp.asarray(np.sqrt(np.mean(lam**2)) if lam.size else 0.0),
             maximum=jnp.asarray(np.max(np.abs(packed))),
         )
@@ -1077,7 +1264,7 @@ def solve_fixed_boundary_cli(
 jax.tree_util.register_dataclass(SplineMirrorBoundary, data_fields=["radius_coefficients"], meta_fields=[])
 jax.tree_util.register_dataclass(
     SplineMirrorState,
-    data_fields=["radius_coefficients", "lambda_coefficients"],
+    data_fields=["radius_coefficients", "lambda_coefficients", "center_coefficients"],
     meta_fields=[],
 )
 jax.tree_util.register_dataclass(

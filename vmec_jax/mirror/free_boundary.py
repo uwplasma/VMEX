@@ -799,8 +799,10 @@ def solve_free_boundary_cli(
     lambda_weak = active_weak[vectorizer.state_vectorizer.radius_size :]
     plasma_staggered_weak_force = VariationalResidual(
         radius_gradient=full_weak_force.radius_gradient,
+        center_gradient=full_weak_force.center_gradient,
         lambda_gradient=full_weak_force.lambda_gradient,
         radius_rms=jnp.asarray(np.sqrt(np.mean(radius_weak**2))),
+        center_rms=jnp.asarray(0.0),
         lambda_rms=jnp.asarray(np.sqrt(np.mean(lambda_weak**2)) if lambda_weak.size else 0.0),
         maximum=jnp.asarray(np.max(np.abs(active_weak))),
     )

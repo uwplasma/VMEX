@@ -279,7 +279,6 @@ def _spline_implicit_problem(
         return jax.grad(lambda vector: energy_at(vector, controls).total / energy_scale)(x)
 
     apply_preconditioner, scales, local_builder = _packed_spline_preconditioner(discretization, vectorizer)
-    split = (slice(0, vectorizer.radius_size), slice(vectorizer.radius_size, None))
     return (
         x_star,
         state_at,
@@ -288,7 +287,7 @@ def _spline_implicit_problem(
         apply_preconditioner,
         scales,
         local_builder,
-        split[: 2 if vectorizer.lambda_size else 1],
+        vectorizer.block_slices,
     )
 
 

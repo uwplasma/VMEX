@@ -161,15 +161,19 @@ class MirrorBoundary:
 class MirrorState:
     """Differentiable mirror geometry and field-line state.
 
-    Both arrays have shape ``(ns, ntheta, nxi)``.  ``radius_scale`` defines
+    The first two arrays have shape ``(ns, ntheta, nxi)``. ``radius_scale`` defines
     ``r=sqrt(s)*radius_scale``; storing the regular scale rather than ``r``
     avoids evolving a singular radial derivative at the magnetic axis.
     ``lambda_stream`` is the divergence-free field stream function and uses a
-    zero surface-average gauge in the solver lane.
+    zero surface-average gauge in the solver lane. Closed moving-frame states
+    additionally use ``center_shift`` with shape ``(ns, 2, nxi)`` for the two
+    transverse section-center coordinates. Straight-axis states leave it
+    ``None``.
     """
 
     radius_scale: Array
     lambda_stream: Array
+    center_shift: Array | None = None
 
     @classmethod
     def from_boundary(cls, boundary: MirrorBoundary, grid: "MirrorGrid") -> "MirrorState":
@@ -193,6 +197,10 @@ class MirrorState:
             raise ValueError(f"radius_scale shape {self.radius_scale.shape} does not match {expected}")
         if self.lambda_stream.shape != expected:
             raise ValueError(f"lambda_stream shape {self.lambda_stream.shape} does not match {expected}")
+        if self.center_shift is not None:
+            center_expected = (grid.ns, 2, grid.nxi)
+            if self.center_shift.shape != center_expected:
+                raise ValueError(f"center_shift shape {self.center_shift.shape} does not match {center_expected}")
 
 
 def _regularize_axis_radius(radius_scale: Array) -> Array:
@@ -240,13 +248,17 @@ def project_fixed_boundary_state(
     denominator = jnp.sum(theta_weights) * jnp.sum(xi_weights)
     surface_mean = jnp.einsum("j,k,ijk->i", theta_weights, xi_weights, lam) / denominator
     lam = lam - surface_mean[:, None, None]
-    return MirrorState(radius_scale=radius_scale, lambda_stream=lam)
+    return MirrorState(
+        radius_scale=radius_scale,
+        lambda_stream=lam,
+        center_shift=state.center_shift,
+    )
 
 
 jax.tree_util.register_dataclass(MirrorBoundary, data_fields=["radius_scale"], meta_fields=[])
 jax.tree_util.register_dataclass(
     MirrorState,
-    data_fields=["radius_scale", "lambda_stream"],
+    data_fields=["radius_scale", "lambda_stream", "center_shift"],
     meta_fields=[],
 )
 

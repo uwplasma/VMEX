@@ -541,6 +541,119 @@ def _closed_circular_torus(resolution, *, coefficient_count=8):
     )
 
 
+def test_closed_center_map_preserves_zero_state_and_fixed_boundary() -> None:
+    resolution = MirrorResolution(ns=5, mpol=2, nxi=4)
+    discretization, axis, boundary, base = _closed_circular_torus(resolution)
+    evaluated = discretization.evaluate_state(base)
+    zero_geometry = evaluate_closed_geometry(
+        MirrorState(evaluated.radius_scale, evaluated.lambda_stream),
+        discretization.grid,
+        axis,
+    )
+    materialized_geometry = evaluate_closed_geometry(
+        MirrorState(
+            evaluated.radius_scale,
+            evaluated.lambda_stream,
+            jnp.zeros((resolution.ns, 2, discretization.grid.nxi)),
+        ),
+        discretization.grid,
+        axis,
+    )
+    for name in (
+        "xyz",
+        "sqrt_g",
+        "g_ss",
+        "g_stheta",
+        "g_sxi",
+        "g_thetatheta",
+        "g_thetaxi",
+        "g_xixi",
+    ):
+        np.testing.assert_array_equal(
+            np.asarray(getattr(materialized_geometry, name)),
+            np.asarray(getattr(zero_geometry, name)),
+        )
+
+    radial = jnp.asarray(discretization.grid.s)[:, None]
+    axial = jnp.asarray(discretization.spline.collocation_nodes)[None, :]
+    center = jnp.stack(
+        (
+            0.03 * (1.0 - radial) * jnp.cos(axial),
+            0.02 * (1.0 - radial) ** 2 * jnp.sin(axial),
+        ),
+        axis=1,
+    )
+    projected = discretization.project_fixed_boundary(
+        SplineMirrorState(base.radius_coefficients, base.lambda_coefficients, center),
+        boundary,
+    )
+    shifted = discretization.evaluate_state(projected)
+    shifted_geometry = evaluate_closed_geometry(shifted, discretization.grid, axis)
+
+    np.testing.assert_array_equal(projected.center_coefficients[-1], 0.0)
+    np.testing.assert_allclose(shifted_geometry.xyz[-1], zero_geometry.xyz[-1], atol=0.0)
+    axis_displacement = shifted_geometry.xyz[0] - zero_geometry.xyz[0]
+    np.testing.assert_allclose(axis_displacement - axis_displacement[:1], 0.0, atol=2.0e-15)
+    assert float(jnp.max(jnp.linalg.norm(axis_displacement, axis=-1))) > 0.02
+    assert not bool(shifted_geometry.jacobian_sign_changed)
+
+
+def test_closed_center_coefficients_vectorize_and_transfer() -> None:
+    resolution = MirrorResolution(ns=5, mpol=1, nxi=4)
+    coarse, _, boundary, base = _closed_circular_torus(resolution, coefficient_count=8)
+    radial = jnp.asarray(coarse.grid.s)[:, None]
+    axial = jnp.asarray(coarse.spline.collocation_nodes)[None, :]
+    center = jnp.stack(
+        (
+            0.01 * (1.0 - radial) * jnp.cos(axial),
+            -0.015 * (1.0 - radial) * jnp.sin(2.0 * axial),
+        ),
+        axis=1,
+    )
+    state = coarse.project_fixed_boundary(
+        SplineMirrorState(base.radius_coefficients, base.lambda_coefficients, center),
+        boundary,
+    )
+    vectorizer = _SplineStateVectorizer.build(
+        state,
+        boundary,
+        coarse,
+        axial_flux_derivative=0.03,
+        solve_lambda=True,
+    )
+    restored = vectorizer.unpack(vectorizer.pack())
+    np.testing.assert_allclose(restored.center_coefficients, state.center_coefficients, atol=0.0)
+    assert vectorizer.center_size == (resolution.ns - 1) * 2 * coarse.coefficient_count
+    assert len(vectorizer.block_slices) == 3
+    apply_preconditioner, scales, build_local = _packed_spline_preconditioner(
+        coarse,
+        vectorizer,
+    )
+    probe = np.random.default_rng(42).normal(size=vectorizer.pack().size)
+    preconditioned = apply_preconditioner(probe)
+    assert build_local is None
+    assert scales.shape == (3,)
+    assert preconditioned.shape == probe.shape
+    assert np.all(np.isfinite(preconditioned))
+
+    fine = SplineMirrorDiscretization.build_closed(
+        resolution,
+        coefficient_count=12,
+        quadrature_order=3,
+    )
+    fine_boundary = SplineMirrorBoundary(
+        jnp.full((resolution.ntheta, fine.coefficient_count), 0.25)
+    )
+    transferred = fine.transfer_closed_state(state, coarse, fine_boundary)
+    nodes = jnp.asarray(fine.spline.collocation_nodes)
+    np.testing.assert_allclose(
+        fine.spline.evaluate(transferred.center_coefficients, nodes, axis=-1),
+        coarse.spline.evaluate(state.center_coefficients, nodes, axis=-1),
+        atol=2.0e-16,
+    )
+    np.testing.assert_array_equal(transferred.center_coefficients[-1], 0.0)
+
+
 def test_closed_field_line_recovers_constant_iota_and_derivative() -> None:
     resolution = MirrorResolution(ns=5, mpol=4, nxi=4)
     discretization, axis, _, state = _closed_circular_torus(resolution)
@@ -668,9 +781,19 @@ def test_closed_staggered_first_variation_matches_autodiff() -> None:
     s = jnp.asarray(grid.s)[:, None, None]
     theta = jnp.asarray(grid.theta)[None, :, None]
     xi = jnp.asarray(grid.xi)[None, None, :]
+    center_radial = jnp.asarray(grid.s)[:, None]
+    center_axial = jnp.asarray(grid.xi)[None, :]
+    center = jnp.stack(
+        (
+            0.003 * (1.0 - center_radial) * jnp.cos(center_axial),
+            0.002 * center_radial * jnp.sin(center_axial),
+        ),
+        axis=1,
+    )
     state = MirrorState(
         0.25 * (1.0 + 0.03 * s * jnp.cos(2.0 * theta) + 0.01 * s * jnp.cos(xi)),
         0.004 * s * jnp.sin(theta) * jnp.cos(xi),
+        center,
     )
     kwargs = {
         "axial_flux_derivative": jnp.linspace(0.02, 0.03, resolution.ns),
@@ -690,6 +813,12 @@ def test_closed_staggered_first_variation_matches_autodiff() -> None:
     np.testing.assert_allclose(
         staggered.lambda_stream,
         automatic.lambda_stream,
+        rtol=3.0e-12,
+        atol=1.0e-8,
+    )
+    np.testing.assert_allclose(
+        staggered.center_shift,
+        automatic.center_shift,
         rtol=3.0e-12,
         atol=1.0e-8,
     )
@@ -732,6 +861,49 @@ def test_closed_spline_fixed_boundary_torus_converges_to_ftol() -> None:
     assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
     assert float(result.normalized_divergence_rms) < 1.0e-12
     assert not bool(result.energy.geometry.jacobian_sign_changed)
+
+
+@pytest.mark.full
+def test_displaced_closed_center_map_reconverges_to_ftol() -> None:
+    resolution = MirrorResolution(ns=3, mpol=0, nxi=4)
+    config = MirrorConfig(resolution=resolution, ftol=1.0e-12, max_iterations=100)
+    discretization, axis, boundary, base = _closed_circular_torus(
+        resolution,
+        coefficient_count=4,
+    )
+    radial = jnp.asarray(discretization.grid.s)[:, None]
+    axial = jnp.asarray(discretization.spline.collocation_nodes)[None, :]
+    center = jnp.stack(
+        (
+            0.002 * (1.0 - radial) * jnp.cos(axial),
+            -0.0015 * (1.0 - radial) * jnp.sin(axial),
+        ),
+        axis=1,
+    )
+    initial = initialize_closed_vacuum_stream_function(
+        SplineMirrorState(base.radius_coefficients, base.lambda_coefficients, center),
+        discretization,
+        axis,
+        axial_flux_derivative=0.03,
+    )
+
+    result = solve_spline_fixed_boundary_cli(
+        initial,
+        boundary,
+        discretization,
+        config,
+        axial_flux_derivative=0.03,
+        solve_lambda=True,
+        axis=axis,
+        require_convergence=True,
+    ).evaluated
+
+    assert result.converged
+    assert float(result.variational.maximum) <= config.ftol
+    assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
+    assert result.final_linear_residual < 1.0e-8
+    assert not bool(result.energy.geometry.jacobian_sign_changed)
+    assert result.state.center_shift is not None
 
 
 @pytest.mark.full

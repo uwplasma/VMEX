@@ -326,6 +326,8 @@ def evaluate_geometry(state: "MirrorState", grid: "MirrorGrid") -> MirrorGeometr
     """Evaluate axisymmetric or theta-dependent straight-axis geometry."""
 
     state.validate_shape(grid)
+    if state.center_shift is not None:
+        raise ValueError("straight-axis geometry does not accept a transverse center map")
     a = jnp.asarray(state.radius_scale)
     sqrt_s = jnp.sqrt(jnp.asarray(grid.s))[:, None, None]
     radius = sqrt_s * a
@@ -415,9 +417,10 @@ def evaluate_closed_geometry(
 ) -> MirrorGeometry:
     """Embed a mirror state around a periodic spline centerline.
 
-    The poloidal radius remains ``sqrt(s) * a(s, theta, xi)``. The axis frame
-    carries that cross-section through long straight legs and curved returns;
-    its derivatives include both centerline curvature and periodic frame twist.
+    The poloidal radius remains ``sqrt(s) * a(s, theta, xi)``. The reference
+    frame carries that cross-section through long straight legs and curved
+    returns. Two optional frame components translate interior section centers
+    while the outer boundary remains fixed.
     """
 
     state.validate_shape(grid)
@@ -446,14 +449,39 @@ def evaluate_closed_geometry(
     radial_direction_derivative = jnp.cos(theta) * normal_derivative + jnp.sin(theta) * binormal_derivative
     centerline_derivative = (jnp.asarray(axis.tangent) * jnp.asarray(axis.speed)[:, None])[None, None]
 
-    e_s = r_s[..., None] * radial_direction
+    center = (
+        jnp.zeros((grid.ns, 2, grid.nxi), dtype=a.dtype)
+        if state.center_shift is None
+        else jnp.asarray(state.center_shift)
+    )
+    center_s = radial_derivative(center, ds)
+    center_xi = grid.axial_basis.differentiate(center, axis=2)
+    normal_surface = normal[0]
+    binormal_surface = binormal[0]
+    normal_xi_surface = normal_derivative[0, 0]
+    binormal_xi_surface = binormal_derivative[0, 0]
+    displacement = center[:, 0, :, None] * normal_surface + center[:, 1, :, None] * binormal_surface
+    displacement_s = center_s[:, 0, :, None] * normal_surface + center_s[:, 1, :, None] * binormal_surface
+    displacement_xi = (
+        center_xi[:, 0, :, None] * normal_surface
+        + center_xi[:, 1, :, None] * binormal_surface
+        + center[:, 0, :, None] * normal_xi_surface
+        + center[:, 1, :, None] * binormal_xi_surface
+    )
+
+    e_s = displacement_s[:, None] + r_s[..., None] * radial_direction
     e_theta = d_radius_dtheta[..., None] * radial_direction + radius[..., None] * poloidal_direction
     e_xi = (
         centerline_derivative
+        + displacement_xi[:, None]
         + d_radius_dxi[..., None] * radial_direction
         + radius[..., None] * radial_direction_derivative
     )
-    xyz = jnp.asarray(axis.centerline)[None, None] + radius[..., None] * radial_direction
+    xyz = (
+        jnp.asarray(axis.centerline)[None, None]
+        + displacement[:, None]
+        + radius[..., None] * radial_direction
+    )
 
     g_ss = jnp.sum(e_s * e_s, axis=-1)
     g_stheta = jnp.sum(e_s * e_theta, axis=-1)
@@ -463,6 +491,7 @@ def evaluate_closed_geometry(
     g_xixi = jnp.sum(e_xi * e_xi, axis=-1)
     orientation = jnp.sum(radial_direction * jnp.cross(poloidal_direction, e_xi), axis=-1)
     sqrt_g = r_r_s * orientation
+    sqrt_g += jnp.sum(displacement_s[:, None] * jnp.cross(e_theta, e_xi), axis=-1)
     volume = jnp.einsum(
         "i,j,k,ijk->",
         jnp.asarray(grid.radial_weights),
@@ -517,7 +546,7 @@ def regularize_axis_stream_function(
 
     lam = jnp.asarray(state.lambda_stream)
     if grid.ntheta == 1:
-        return type(state)(state.radius_scale, lam.at[0].set(0.0))
+        return type(state)(state.radius_scale, lam.at[0].set(0.0), state.center_shift)
 
     radius_scale = jnp.asarray(state.radius_scale)
     radial_jacobian = 0.5 * radius_scale[0] ** 2
@@ -529,7 +558,7 @@ def regularize_axis_stream_function(
     safe_modes = jnp.where(modes == 0.0, 1.0, modes)
     inverse = jnp.where(modes == 0.0, 0.0, 1.0 / (1j * safe_modes))
     axis_stream = jnp.fft.ifft(jnp.fft.fft(derivative, axis=0) * inverse, axis=0).real
-    return type(state)(state.radius_scale, lam.at[0].set(axis_stream))
+    return type(state)(state.radius_scale, lam.at[0].set(axis_stream), state.center_shift)
 
 
 def contravariant_field(

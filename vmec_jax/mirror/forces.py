@@ -64,6 +64,8 @@ class _HalfMeshSamples:
     d_radius_scale_ds: Array
     radius: Array
     radius_radius_s: Array
+    center_shift: Array
+    d_center_shift_ds: Array
     jacobian: Array
     d_radius_dtheta: Array
     d_radius_dxi: Array
@@ -96,6 +98,7 @@ class _HalfMeshMetric:
     radial_direction: Array | None = None
     poloidal_direction: Array | None = None
     radial_direction_xi: Array | None = None
+    center_shift_s_xyz: Array | None = None
     orientation: Array | None = None
 
 
@@ -191,6 +194,17 @@ def _half_mesh_samples(
     a_quadrature, da_ds = _interpolate_radius_scale(a, grid, fraction)
     radius = jnp.sqrt(jnp.maximum(s_quadrature * a_quadrature**2, 0.0))
     radius_radius_s = 0.5 * (a_quadrature**2 + 2.0 * s_quadrature * a_quadrature * da_ds)
+    center = (
+        jnp.zeros((grid.ns, 2, grid.nxi), dtype=a.dtype)
+        if state.center_shift is None
+        else jnp.asarray(state.center_shift)
+    )
+    center_left, center_right = center[:-1][None], center[1:][None]
+    center_quadrature = (1.0 - fraction) * center_left + fraction * center_right
+    center_derivative = jnp.broadcast_to(
+        (center_right - center_left) / ds,
+        center_quadrature.shape,
+    )
     jacobian = radius_radius_s * float(grid.dz_dxi)
     d_radius_dtheta = grid.theta_basis.differentiate(radius, axis=2)
     d_radius_dxi = grid.axial_basis.differentiate(radius, axis=3)
@@ -220,12 +234,46 @@ def _half_mesh_samples(
         d_radius_scale_ds=da_ds,
         radius=radius,
         radius_radius_s=radius_radius_s,
+        center_shift=center_quadrature,
+        d_center_shift_ds=center_derivative,
         jacobian=jacobian,
         d_radius_dtheta=d_radius_dtheta,
         d_radius_dxi=d_radius_dxi,
         field_theta_numerator=current_quadrature - grid.axial_basis.differentiate(lambda_quadrature, axis=3),
         field_xi_numerator=psi_quadrature + grid.theta_basis.differentiate(lambda_quadrature, axis=2),
     )
+
+
+def _closed_center_vectors(
+    samples: _HalfMeshSamples,
+    grid: "MirrorGrid",
+    axis: ClosedAxisGeometry,
+) -> tuple[Array, Array, Array]:
+    """Return center displacement and its radial and axial derivatives."""
+
+    center = samples.center_shift
+    center_s = samples.d_center_shift_ds
+    center_xi = grid.axial_basis.differentiate(center, axis=3)
+    normal = jnp.asarray(axis.normal)[None, None, None]
+    binormal = jnp.asarray(axis.binormal)[None, None, None]
+    normal_xi = grid.axial_basis.differentiate(jnp.asarray(axis.normal), axis=0)[
+        None, None, None
+    ]
+    binormal_xi = grid.axial_basis.differentiate(jnp.asarray(axis.binormal), axis=0)[
+        None, None, None
+    ]
+
+    def combine(components: Array, first: Array, second: Array) -> Array:
+        return (
+            components[:, :, 0, :][:, :, None, :, None] * first
+            + components[:, :, 1, :][:, :, None, :, None] * second
+        )
+
+    displacement = combine(center, normal, binormal)
+    displacement_s = combine(center_s, normal, binormal)
+    displacement_xi = combine(center_xi, normal, binormal)
+    displacement_xi += combine(center, normal_xi, binormal_xi)
+    return displacement, displacement_s, displacement_xi
 
 
 def _half_mesh_metric(
@@ -251,11 +299,19 @@ def _half_mesh_metric(
     binormal_xi = grid.axial_basis.differentiate(jnp.asarray(axis.binormal), axis=0)[None, None, None]
     radial_xi = jnp.cos(theta) * normal_xi + jnp.sin(theta) * binormal_xi
     centerline_xi = (jnp.asarray(axis.tangent) * jnp.asarray(axis.speed)[:, None])[None, None, None]
+    _, displacement_s, displacement_xi = _closed_center_vectors(samples, grid, axis)
     e_theta = radius_theta[..., None] * radial + radius[..., None] * poloidal
-    e_xi = centerline_xi + radius_xi[..., None] * radial + radius[..., None] * radial_xi
+    e_xi = (
+        centerline_xi
+        + displacement_xi
+        + radius_xi[..., None] * radial
+        + radius[..., None] * radial_xi
+    )
     orientation = jnp.sum(radial * jnp.cross(poloidal, e_xi), axis=-1)
+    jacobian = samples.radius_radius_s * orientation
+    jacobian += jnp.sum(displacement_s * jnp.cross(e_theta, e_xi), axis=-1)
     return _HalfMeshMetric(
-        samples.radius_radius_s * orientation,
+        jacobian,
         jnp.sum(e_theta * e_theta, axis=-1),
         jnp.sum(e_theta * e_xi, axis=-1),
         jnp.sum(e_xi * e_xi, axis=-1),
@@ -264,6 +320,7 @@ def _half_mesh_metric(
         radial,
         poloidal,
         radial_xi,
+        displacement_s,
         orientation,
     )
 
@@ -436,6 +493,7 @@ def isotropic_staggered_energy_gradient(
         radial_direction = metric.radial_direction
         poloidal_direction = metric.poloidal_direction
         radial_direction_xi = metric.radial_direction_xi
+        center_shift_s_xyz = metric.center_shift_s_xyz
         e_theta_bar = numerator_bar[..., None] * (
             2.0 * field_theta[..., None] ** 2 * e_theta + 2.0 * (field_theta * field_xi)[..., None] * e_xi
         )
@@ -445,6 +503,9 @@ def isotropic_staggered_energy_gradient(
         e_xi_bar += (jacobian_bar * samples.radius_radius_s)[..., None] * jnp.cross(
             radial_direction, poloidal_direction
         )
+        e_theta_bar += jacobian_bar[..., None] * jnp.cross(e_xi, center_shift_s_xyz)
+        e_xi_bar += jacobian_bar[..., None] * jnp.cross(center_shift_s_xyz, e_theta)
+        center_shift_s_bar = jacobian_bar[..., None] * jnp.cross(e_theta, e_xi)
         radius_bar = jnp.sum(e_theta_bar * poloidal_direction, axis=-1)
         radius_bar += jnp.sum(e_xi_bar * radial_direction_xi, axis=-1)
         radius_theta_bar = jnp.sum(e_theta_bar * radial_direction, axis=-1)
@@ -453,17 +514,36 @@ def isotropic_staggered_energy_gradient(
 
     def radial_primitives(trial: MirrorState) -> tuple[Array, ...]:
         trial_samples = _half_mesh_samples(trial, grid, axial_flux_derivative, current_derivative)
-        return (
+        primitives = (
             trial_samples.radius, trial_samples.radius_radius_s,
             trial_samples.d_radius_dtheta, trial_samples.d_radius_dxi,
             trial_samples.field_theta_numerator,
             trial_samples.field_xi_numerator,
         )
+        if axis is not None:
+            _, trial_center_s, trial_center_xi = _closed_center_vectors(
+                trial_samples,
+                grid,
+                axis,
+            )
+            primitives += (trial_center_s, trial_center_xi)
+        return primitives
 
     _, pullback = jax.vjp(radial_primitives, state)
-    return pullback(
-        (radius_bar, radius_radius_s_bar, radius_theta_bar, radius_xi_bar, field_theta_bar, field_xi_bar)
-    )[0]
+    primitive_bars = (
+        radius_bar,
+        radius_radius_s_bar,
+        radius_theta_bar,
+        radius_xi_bar,
+        field_theta_bar,
+        field_xi_bar,
+    )
+    if axis is not None:
+        primitive_bars += (
+            jnp.sum(center_shift_s_bar, axis=2, keepdims=True),
+            jnp.sum(e_xi_bar, axis=2, keepdims=True),
+        )
+    return pullback(primitive_bars)[0]
 
 
 @dataclass(frozen=True)
@@ -505,8 +585,10 @@ class VariationalResidual:
     """Nondimensional generalized forces used for nonlinear convergence."""
 
     radius_gradient: Array
+    center_gradient: Array
     lambda_gradient: Array
     radius_rms: Array
+    center_rms: Array
     lambda_rms: Array
     maximum: Array
 
@@ -757,15 +839,30 @@ def _normalized_variational_residual(
     )
     flux_scale = jnp.maximum(jnp.max(jnp.abs(psi)), jnp.finfo(psi.dtype).tiny)
     lambda_gradient = gradient.lambda_stream * flux_scale / energy_scale
+    center_gradient = (
+        jnp.zeros((0,), dtype=radius_gradient.dtype)
+        if gradient.center_shift is None
+        else gradient.center_shift * radius_scale / energy_scale
+    )
 
     radius_free = radius_gradient[1:-1, :, 1:-1]
+    center_free = center_gradient[:-1] if center_gradient.size else center_gradient
     radius_rms = jnp.sqrt(jnp.mean(radius_free**2))
+    center_rms = (
+        jnp.sqrt(jnp.mean(center_free**2))
+        if center_free.size
+        else jnp.asarray(0.0, dtype=radius_gradient.dtype)
+    )
     lambda_rms = jnp.sqrt(jnp.mean(lambda_gradient**2))
     maximum = jnp.maximum(jnp.max(jnp.abs(radius_free)), jnp.max(jnp.abs(lambda_gradient)))
+    if center_free.size:
+        maximum = jnp.maximum(maximum, jnp.max(jnp.abs(center_free)))
     return VariationalResidual(
         radius_gradient=radius_gradient,
+        center_gradient=center_gradient,
         lambda_gradient=lambda_gradient,
         radius_rms=radius_rms,
+        center_rms=center_rms,
         lambda_rms=lambda_rms,
         maximum=maximum,
     )
