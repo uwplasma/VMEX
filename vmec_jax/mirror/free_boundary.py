@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import Any
+from typing import Any, Callable, Literal
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy.optimize import least_squares
+from scipy.sparse.linalg import LinearOperator, gmres
 
 from .forces import (
     MU0,
@@ -32,16 +33,17 @@ from .exterior_bie import (
 )
 from .model import MirrorBoundary, MirrorConfig, MirrorState, project_fixed_boundary_state
 from .output import FreeBoundaryRestart
-from .solver import _MirrorStateVectorizer
 from .splines import (
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
     SplineMirrorState,
     _SplineStateVectorizer,
+    _packed_spline_preconditioner,
 )
 
 Array = Any
-_MONOLITHIC_JACOBIAN_MAX_SIZE = 80
+_DENSE_JACOBIAN_MAX_SIZE = 32
+_LinearizationMode = Literal["cached", "repeated"]
 
 
 @dataclass(frozen=True, eq=False)
@@ -137,8 +139,10 @@ class _SplineFreeBoundaryVectorizer:
         if vector.ndim != 1 or vector.shape[0] != self.size:
             raise ValueError(f"free-boundary vector shape {vector.shape} must be ({self.size},)")
         indices = tuple(jnp.asarray(index) for index in self.boundary_indices)
-        boundary_coefficients = jnp.asarray(self.base_boundary.radius_coefficients).at[indices].set(
-            vector[: self.boundary_size] * self.boundary_scale
+        boundary_coefficients = (
+            jnp.asarray(self.base_boundary.radius_coefficients)
+            .at[indices]
+            .set(vector[: self.boundary_size] * self.boundary_scale)
         )
         boundary = SplineMirrorBoundary(boundary_coefficients)
         start, stop = self.boundary_size, self.boundary_size + self.state_size
@@ -173,6 +177,170 @@ class _SplineFreeBoundaryVectorizer:
             self.discretization,
         )
         return normalized[self.boundary_indices]
+
+
+@dataclass(frozen=True, eq=False)
+class _FreeEquilibriumProblem:
+    """One coefficient residual shared by the free-boundary solver."""
+
+    vectorizer: _SplineFreeBoundaryVectorizer
+    residual_function: Callable[[Array], Array]
+    jvp_function: Callable[[Array, Array], Array]
+    vjp_function: Callable[[Array, Array], Array]
+    components_function: Callable[[Array], tuple[Any, ...]]
+    plasma_scale: float
+
+    @property
+    def size(self) -> int:
+        return self.vectorizer.size
+
+    def residual(self, vector: Array) -> Array:
+        return self.residual_function(vector)
+
+    def linear_operator(
+        self,
+        vector: np.ndarray,
+        *,
+        mode: _LinearizationMode = "cached",
+    ) -> LinearOperator:
+        """Return exact matrix-free forward and transpose residual actions."""
+
+        point = jnp.asarray(vector)
+        residual = self.residual_function
+        residual_size = int(residual(point).size)
+        if residual_size != self.size:
+            raise ValueError(f"free residual size {residual_size} must equal state size {self.size}")
+
+        if mode == "cached":
+            _, pushforward = jax.linearize(residual, point)
+            pullback = jax.linear_transpose(pushforward, point)
+
+            def matvec(direction: np.ndarray) -> np.ndarray:
+                return np.asarray(pushforward(jnp.asarray(direction).reshape(-1)), dtype=float)
+
+            def rmatvec(cotangent: np.ndarray) -> np.ndarray:
+                return np.asarray(pullback(jnp.asarray(cotangent).reshape(-1))[0], dtype=float)
+
+        elif mode == "repeated":
+
+            def matvec(direction: np.ndarray) -> np.ndarray:
+                return np.asarray(
+                    self.jvp_function(point, jnp.asarray(direction).reshape(-1)),
+                    dtype=float,
+                )
+
+            def rmatvec(cotangent: np.ndarray) -> np.ndarray:
+                return np.asarray(
+                    self.vjp_function(point, jnp.asarray(cotangent).reshape(-1)),
+                    dtype=float,
+                )
+
+        else:
+            raise ValueError(f"unknown linearization mode: {mode!r}")
+        return LinearOperator(
+            (residual_size, self.size),
+            matvec=matvec,
+            rmatvec=rmatvec,
+            dtype=np.dtype(vector.dtype),
+        )
+
+
+def _polish_free_equilibrium(
+    problem: _FreeEquilibriumProblem,
+    x0: np.ndarray,
+    bounds: tuple[np.ndarray, np.ndarray],
+    *,
+    ftol: float,
+    max_steps: int,
+    record: Callable[[np.ndarray], np.ndarray],
+) -> tuple[np.ndarray, int, int, float, bool, str]:
+    """Bounded Newton-GMRES polish with the fixed-solver spline preconditioner."""
+
+    x = np.asarray(x0, dtype=float)
+    lower, upper = bounds
+    nb = problem.vectorizer.boundary_size
+    ns = problem.vectorizer.state_size
+    state_preconditioner, _, _ = _packed_spline_preconditioner(
+        problem.vectorizer.discretization,
+        problem.vectorizer.state_vectorizer,
+    )
+
+    def apply_preconditioner(vector: np.ndarray) -> np.ndarray:
+        output = np.array(vector, dtype=float, copy=True)
+        output[nb : nb + ns] = state_preconditioner(output[nb : nb + ns])
+        return output
+
+    inverse = LinearOperator((problem.size, problem.size), matvec=apply_preconditioner, dtype=float)
+    linear_iterations = 0
+    final_linear_residual = np.inf
+    for step in range(max(0, int(max_steps))):
+        residual = np.asarray(problem.residual(jnp.asarray(x)), dtype=float)
+        residual_max = float(np.max(np.abs(residual)))
+        if residual_max <= ftol:
+            return x, step, linear_iterations, final_linear_residual, True, "Newton-GMRES converged"
+        operator = problem.linear_operator(x, mode="repeated")
+        iteration_counter = 0
+
+        def count_iteration(_residual: float) -> None:
+            nonlocal iteration_counter
+            iteration_counter += 1
+
+        direction, info = gmres(
+            operator,
+            -residual,
+            M=inverse,
+            restart=min(24, problem.size),
+            maxiter=3,
+            rtol=min(1.0e-5, max(1.0e-10, 0.1 * residual_max)),
+            atol=0.0,
+            callback=count_iteration,
+            callback_type="pr_norm",
+        )
+        linear_iterations += iteration_counter
+        linear_error = operator @ direction + residual
+        final_linear_residual = float(
+            np.linalg.norm(linear_error) / max(np.linalg.norm(residual), np.finfo(float).tiny)
+        )
+        if info < 0 or not np.all(np.isfinite(direction)):
+            return x, step, linear_iterations, final_linear_residual, False, "Newton-GMRES breakdown"
+
+        merit = 0.5 * float(np.dot(residual, residual))
+        accepted = False
+        step_length = 1.0
+        for _ in range(20):
+            candidate = np.clip(x + step_length * direction, lower, upper)
+            candidate_residual = np.asarray(problem.residual(jnp.asarray(candidate)), dtype=float)
+            candidate_merit = 0.5 * float(np.dot(candidate_residual, candidate_residual))
+            if np.isfinite(candidate_merit) and candidate_merit < merit:
+                x = candidate
+                record(x)
+                accepted = True
+                break
+            step_length *= 0.5
+        if not accepted:
+            return x, step + 1, linear_iterations, final_linear_residual, False, "Newton line search stalled"
+
+    residual_max = float(np.max(np.abs(np.asarray(problem.residual(jnp.asarray(x)), dtype=float))))
+    converged = residual_max <= ftol
+    return (
+        x,
+        int(max_steps),
+        linear_iterations,
+        final_linear_residual,
+        converged,
+        "Newton-GMRES converged" if converged else "Newton-GMRES iteration limit",
+    )
+
+
+def _build_free_solver_jacobian(
+    problem: _FreeEquilibriumProblem,
+) -> Callable[[np.ndarray], np.ndarray | LinearOperator]:
+    """Select dense differentiation only for explicitly tiny systems."""
+
+    if problem.size > _DENSE_JACOBIAN_MAX_SIZE:
+        return lambda vector: problem.linear_operator(vector, mode="repeated")
+    dense = jax.jit(jax.jacfwd(problem.residual_function))
+    return lambda vector: np.asarray(dense(jnp.asarray(vector)), dtype=float)
 
 
 def _spline_boundary_work(
@@ -225,6 +393,8 @@ def _spline_boundary_work_residual(
 class FreeBoundaryMirrorResult:
     """Joint plasma-boundary-vacuum equilibrium result."""
 
+    coefficient_boundary: SplineMirrorBoundary
+    coefficient_state: SplineMirrorState
     boundary: MirrorBoundary
     plasma_state: MirrorState
     plasma_energy: MirrorEnergy
@@ -240,6 +410,8 @@ class FreeBoundaryMirrorResult:
     history: Array
     variational_max: Array
     iterations: int
+    linear_iterations: int
+    final_linear_residual: float
     converged: bool
     optimizer_success: bool
     message: str
@@ -250,135 +422,77 @@ jax.tree_util.register_dataclass(
     data_fields=[
         field.name
         for field in fields(FreeBoundaryMirrorResult)
-        if field.name not in {"iterations", "converged", "message"}
+        if field.name not in {"iterations", "linear_iterations", "converged", "message"}
     ],
     meta_fields=[
-        field.name for field in fields(FreeBoundaryMirrorResult) if field.name in {"iterations", "converged", "message"}
+        field.name
+        for field in fields(FreeBoundaryMirrorResult)
+        if field.name in {"iterations", "linear_iterations", "converged", "message"}
     ],
 )
 
 
-def solve_free_boundary_cli(
-    initial_boundary: MirrorBoundary,
-    plasma_grid: "MirrorGrid",
-    config: MirrorConfig,
+def _build_free_equilibrium_problem(
+    initial_boundary: SplineMirrorBoundary,
+    initial_state: SplineMirrorState,
+    discretization: SplineMirrorDiscretization,
     external_field: Any,
     *,
     axial_flux_derivative: Array,
-    mass_profile: Array = 0.0,
-    current_derivative: Array = 0.0,
-    solve_lambda: bool | None = None,
-    gamma: float = 5.0 / 3.0,
-    initial_state: MirrorState | None = None,
-    target_central_pressure: float | None = None,
-    initial_mass_scale: float = 1.0,
-    exterior_ntheta: int = 40,
-    exterior_order: int = 8,
-    exterior_spectral_side_density: bool = False,
-    exterior_jacobian_chunk_size: int = 6,
-    require_convergence: bool = False,
-) -> FreeBoundaryMirrorResult:
-    """Jointly solve a mirror plasma boundary and its free-space vacuum.
+    mass_profile: Array,
+    current_derivative: Array,
+    solve_lambda: bool,
+    gamma: float,
+    target_central_pressure: float | None,
+    initial_mass_scale: float,
+    exterior_ntheta: int,
+    exterior_order: int,
+    exterior_spectral_side_density: bool,
+) -> _FreeEquilibriumProblem:
+    """Assemble the square coefficient residual and its physical components."""
 
-    The vacuum field is the unbounded closed-surface Neumann solution and adds
-    no vacuum degrees of freedom to the nonlinear vector. Axisymmetric solves
-    keep the stream function fixed by default. Nonaxisymmetric solves include
-    its gauge-free coefficients unless ``solve_lambda=False`` is requested.
-    """
-
-    if solve_lambda is None:
-        solve_lambda = plasma_grid.ntheta != 1
-    exterior_jacobian_chunk_size = int(exterior_jacobian_chunk_size)
-    if exterior_jacobian_chunk_size < 1:
-        raise ValueError("exterior_jacobian_chunk_size must be positive")
-    if target_central_pressure is not None and target_central_pressure <= 0.0:
-        raise ValueError("target_central_pressure must be positive")
-    if initial_mass_scale <= 0.0:
-        raise ValueError("initial_mass_scale must be positive")
-    initial_boundary_radius = np.asarray(initial_boundary.radius_scale, dtype=float)
-    if initial_boundary_radius.shape != (plasma_grid.ntheta, plasma_grid.nxi):
-        raise ValueError("initial boundary does not match the plasma grid")
-    boundary_scale = float(np.mean(initial_boundary_radius))
-    boundary_mask = np.zeros(initial_boundary_radius.shape, dtype=bool)
-    boundary_mask[:, 1:-1] = True
-    boundary_indices = tuple(np.asarray(index) for index in np.nonzero(boundary_mask))
-    plasma_mask = np.zeros(plasma_grid.shape, dtype=bool)
-    plasma_mask[1:-1, :, 1:-1] = True
-    plasma_indices = tuple(np.asarray(index) for index in np.nonzero(plasma_mask))
-    nb = boundary_indices[0].size
-
-    base_state = MirrorState.from_boundary(initial_boundary, plasma_grid) if initial_state is None else initial_state
-    base_state.validate_shape(plasma_grid)
-    if not np.allclose(np.asarray(base_state.radius_scale[-1]), initial_boundary_radius):
-        raise ValueError("initial_state boundary must match initial_boundary")
-    plasma_vectorizer = _MirrorStateVectorizer.build(
-        base_state,
+    grid = discretization.grid
+    calibrate_pressure = target_central_pressure is not None
+    vectorizer = _SplineFreeBoundaryVectorizer.build(
         initial_boundary,
-        plasma_grid,
+        initial_state,
+        discretization,
         axial_flux_derivative=axial_flux_derivative,
         solve_lambda=solve_lambda,
+        calibrate_pressure=calibrate_pressure,
+        initial_mass_scale=initial_mass_scale,
     )
-    if plasma_vectorizer.radius_size != plasma_indices[0].size:
-        raise ValueError("free-boundary plasma packing does not match the interior radius")
-    np_state = plasma_vectorizer.size
-    calibrate_pressure = target_central_pressure is not None
-    mass_scale_index = nb + np_state
-    x0_parts = [
-        initial_boundary_radius[boundary_indices] / boundary_scale,
-        plasma_vectorizer.pack(),
-    ]
-    if calibrate_pressure:
-        x0_parts.append(np.asarray([initial_mass_scale]))
-    x0 = np.concatenate(x0_parts)
-    geometric_upper = np.inf
-    plasma_lower, plasma_upper = plasma_vectorizer.bounds()
-    plasma_upper[: plasma_vectorizer.radius_size] = geometric_upper
-    lower_parts = [np.full(nb, 0.2), plasma_lower]
-    upper_parts = [np.full(nb, geometric_upper), plasma_upper]
-    if calibrate_pressure:
-        lower_parts.append(np.asarray([np.finfo(float).tiny]))
-        upper_parts.append(np.asarray([np.inf]))
-    lower, upper = np.concatenate(lower_parts), np.concatenate(upper_parts)
 
-    def unpack(vector: Array) -> tuple[MirrorBoundary, MirrorState, Array]:
-        vector = jnp.asarray(vector)
-        boundary_radius = (
-            jnp.asarray(initial_boundary_radius)
-            .at[tuple(jnp.asarray(index) for index in boundary_indices)]
-            .set(vector[:nb] * boundary_scale)
-        )
-        boundary = MirrorBoundary(boundary_radius)
-        packed_state = plasma_vectorizer.unpack(vector[nb : nb + np_state])
-        radius = packed_state.radius_scale
-        radius = radius.at[-1].set(boundary_radius)
-        radius = radius.at[:, :, 0].set(boundary_radius[:, 0])
-        radius = radius.at[:, :, -1].set(boundary_radius[:, -1])
-        radius = radius.at[0].set(radius[1])
-        state = MirrorState(radius, packed_state.lambda_stream)
-        if calibrate_pressure:
-            mass_scale = vector[mass_scale_index]
-        else:
-            mass_scale = jnp.asarray(1.0, dtype=vector.dtype)
-        return boundary, state, mass_scale
-
-    def components(vector: Array):
-        boundary, state, mass_scale = unpack(vector)
+    def plasma_components(vector: Array):
+        coefficient_boundary, coefficient_state, mass_scale = vectorizer.unpack(vector)
+        boundary = discretization.evaluate_boundary(coefficient_boundary)
+        state = discretization.evaluate_state(coefficient_state)
         plasma = mirror_energy(
             state,
-            plasma_grid,
+            grid,
             axial_flux_derivative=axial_flux_derivative,
             mass_profile=jnp.asarray(mass_profile) * mass_scale,
             current_derivative=current_derivative,
             gamma=gamma,
         )
-        plasma_b_squared = plasma.b_squared
-        pressure = jnp.broadcast_to(plasma.pressure[:, None, None], plasma_b_squared.shape)
-        central_pressure = plasma.pressure[0]
-        if plasma_grid.ntheta == 1:
+        pressure = jnp.broadcast_to(plasma.pressure[:, None, None], plasma.b_squared.shape)
+        return coefficient_boundary, coefficient_state, mass_scale, boundary, state, plasma, pressure
+
+    initial_vector = jnp.asarray(vectorizer.pack())
+    plasma_scale = max(abs(float(plasma_components(initial_vector)[5].total)), 1.0)
+
+    def normalized_plasma_energy(vector: Array) -> Array:
+        return plasma_components(vector)[5].total / plasma_scale
+
+    def components(vector: Array):
+        coefficient_boundary, coefficient_state, mass_scale, boundary, state, plasma, pressure = plasma_components(
+            vector
+        )
+        if grid.ntheta == 1:
             vacuum_field = solve_axisymmetric_exterior_vacuum(
                 boundary,
                 plasma.field,
-                plasma_grid,
+                grid,
                 external_field,
                 axisymmetric_ntheta=exterior_ntheta,
                 order=exterior_order,
@@ -389,67 +503,152 @@ def solve_free_boundary_cli(
                 boundary,
                 plasma.field,
                 plasma.geometry,
-                plasma_grid,
+                grid,
                 external_field,
                 order=exterior_order,
                 spectral_side_density=exterior_spectral_side_density,
             )
         return (
+            coefficient_boundary,
+            coefficient_state,
+            mass_scale,
+            boundary,
+            state,
             plasma,
-            plasma_b_squared,
             pressure,
-            central_pressure,
             vacuum_field.surface,
             vacuum_field,
         )
 
-    initial_components = components(jnp.asarray(x0))
-    plasma_scale = max(abs(float(initial_components[0].total)), 1.0)
-
-    def plasma_objective(vector: Array) -> Array:
-        return components(vector)[0].total / plasma_scale
-
     def residual_function(vector: Array) -> Array:
         (
+            coefficient_boundary,
+            _,
+            _,
+            _,
+            _,
             plasma,
-            plasma_b_squared,
             pressure,
-            central_pressure,
             _,
             vacuum_field,
         ) = components(vector)
-        plasma_gradient = jax.grad(plasma_objective)(vector)[nb : nb + np_state]
-        plasma_b_squared = plasma_b_squared[-1, :, 1:-1].reshape(-1)
+        start = vectorizer.boundary_size
+        stop = start + vectorizer.state_size
+        plasma_gradient = jax.grad(normalized_plasma_energy)(vector)[start:stop]
+        plasma_b_squared = plasma.b_squared[-1]
         vacuum_xyz = vacuum_field.lateral_field_xyz
-        if plasma_grid.ntheta == 1:
+        if grid.ntheta == 1:
             vacuum_xyz = vacuum_xyz[None]
-        vacuum_xyz = vacuum_xyz[:, 1:-1].reshape(-1, 3)
         vacuum_b_squared = jnp.sum(vacuum_xyz**2, axis=-1)
-        pressure = pressure[-1, :, 1:-1].reshape(-1)
+        pressure = pressure[-1]
         jump = pressure + plasma_b_squared / (2.0 * MU0) - vacuum_b_squared / (2.0 * MU0)
         stress_scale = jnp.abs(pressure) + plasma_b_squared / (2.0 * MU0) + vacuum_b_squared / (2.0 * MU0)
-        stress = jump / jnp.maximum(stress_scale, jnp.finfo(stress_scale.dtype).tiny)
-        residuals = [stress, plasma_gradient]
+        boundary_work = vectorizer.boundary_work_residual(coefficient_boundary, jump, stress_scale)
+        residuals = [boundary_work, plasma_gradient]
         if calibrate_pressure:
             target = float(target_central_pressure)
-            residuals.append(jnp.asarray([(central_pressure - target) / target]))
+            residuals.append(jnp.asarray([(plasma.pressure[0] - target) / target]))
         return jnp.concatenate(residuals)
 
-    residual_jit = jax.jit(residual_function)
-    jacobian_jit = jax.jit(jax.jacfwd(residual_function))
-    jvp_batch_jit = jax.jit(
-        jax.vmap(
-            lambda primal, tangent: jax.jvp(residual_function, (primal,), (tangent,))[1],
-            in_axes=(None, 0),
-        )
+    residual = jax.jit(residual_function)
+    problem = _FreeEquilibriumProblem(
+        vectorizer=vectorizer,
+        residual_function=residual,
+        jvp_function=jax.jit(lambda primal, tangent: jax.jvp(residual, (primal,), (tangent,))[1]),
+        vjp_function=jax.jit(lambda primal, cotangent: jax.vjp(residual, primal)[1](cotangent)[0]),
+        components_function=components,
+        plasma_scale=plasma_scale,
     )
+    if int(problem.residual(initial_vector).size) != problem.size:
+        raise ValueError("free-boundary coefficient residual must be square")
+    return problem
+
+
+def solve_free_boundary_cli(
+    initial_boundary: SplineMirrorBoundary,
+    discretization: SplineMirrorDiscretization,
+    config: MirrorConfig,
+    external_field: Any,
+    *,
+    axial_flux_derivative: Array,
+    mass_profile: Array = 0.0,
+    current_derivative: Array = 0.0,
+    solve_lambda: bool | None = None,
+    gamma: float = 5.0 / 3.0,
+    initial_state: SplineMirrorState | None = None,
+    target_central_pressure: float | None = None,
+    initial_mass_scale: float = 1.0,
+    exterior_ntheta: int = 40,
+    exterior_order: int = 8,
+    exterior_spectral_side_density: bool = False,
+    require_convergence: bool = False,
+) -> FreeBoundaryMirrorResult:
+    """Solve an open free-boundary mirror in longitudinal B-spline coefficients."""
+
+    grid = discretization.grid
+    if discretization.closed:
+        raise ValueError("free-boundary mirrors require an open spline discretization")
+    if grid.ns != config.resolution.ns or grid.ntheta != config.resolution.ntheta:
+        raise ValueError("spline radial and poloidal resolution must match MirrorConfig")
+    if not np.allclose(np.asarray(grid.xi), np.asarray(config.build_grid().xi), rtol=0.0, atol=2.0e-14):
+        raise ValueError("free-boundary exterior panels require SplineMirrorDiscretization.build_cgl")
+    if solve_lambda is None:
+        solve_lambda = grid.ntheta != 1
+    if target_central_pressure is not None and target_central_pressure <= 0.0:
+        raise ValueError("target_central_pressure must be positive")
+    if initial_mass_scale <= 0.0:
+        raise ValueError("initial_mass_scale must be positive")
+    expected_boundary = (grid.ntheta, discretization.coefficient_count)
+    if tuple(jnp.shape(initial_boundary.radius_coefficients)) != expected_boundary:
+        raise ValueError(f"initial boundary coefficient shape must be {expected_boundary}")
+    if initial_state is None:
+        radius = jnp.broadcast_to(
+            jnp.asarray(initial_boundary.radius_coefficients),
+            (grid.ns,) + expected_boundary,
+        )
+        initial_state = SplineMirrorState(radius, jnp.zeros_like(radius))
+    expected_state = (grid.ns,) + expected_boundary
+    if (
+        tuple(jnp.shape(initial_state.radius_coefficients)) != expected_state
+        or tuple(jnp.shape(initial_state.lambda_coefficients)) != expected_state
+    ):
+        raise ValueError(f"initial state coefficient arrays must have shape {expected_state}")
+    if not np.allclose(
+        np.asarray(initial_state.radius_coefficients[-1]),
+        np.asarray(initial_boundary.radius_coefficients),
+    ):
+        raise ValueError("initial_state boundary must match initial_boundary")
+
+    problem = _build_free_equilibrium_problem(
+        initial_boundary,
+        initial_state,
+        discretization,
+        external_field,
+        axial_flux_derivative=axial_flux_derivative,
+        mass_profile=mass_profile,
+        current_derivative=current_derivative,
+        solve_lambda=bool(solve_lambda),
+        gamma=gamma,
+        target_central_pressure=target_central_pressure,
+        initial_mass_scale=initial_mass_scale,
+        exterior_ntheta=exterior_ntheta,
+        exterior_order=exterior_order,
+        exterior_spectral_side_density=exterior_spectral_side_density,
+    )
+    vectorizer = problem.vectorizer
+    nb = vectorizer.boundary_size
+    np_state = vectorizer.state_size
+    x0 = vectorizer.pack()
+    lower, upper = vectorizer.bounds()
+    matrix_free = problem.size > _DENSE_JACOBIAN_MAX_SIZE
+    solver_jacobian = _build_free_solver_jacobian(problem)
 
     history: list[tuple[float, float, float, float, float]] = []
     last_recorded: np.ndarray | None = None
 
     def residual_host(vector: np.ndarray) -> np.ndarray:
         nonlocal last_recorded
-        residual = np.asarray(residual_jit(jnp.asarray(vector)), dtype=float)
+        residual = np.asarray(problem.residual(jnp.asarray(vector)), dtype=float)
         if last_recorded is None or not np.array_equal(vector, last_recorded):
             history.append(
                 (
@@ -463,22 +662,10 @@ def solve_free_boundary_cli(
             last_recorded = np.array(vector, copy=True)
         return residual
 
-    def jacobian_host(vector: np.ndarray) -> np.ndarray:
-        if vector.size <= _MONOLITHIC_JACOBIAN_MAX_SIZE:
-            return np.asarray(jacobian_jit(jnp.asarray(vector)), dtype=float)
-        size = vector.size
-        columns = []
-        identity = np.eye(size)
-        for start in range(0, size, exterior_jacobian_chunk_size):
-            stop = min(start + exterior_jacobian_chunk_size, size)
-            columns.append(
-                np.asarray(
-                    jvp_batch_jit(jnp.asarray(vector), jnp.asarray(identity[start:stop])),
-                    dtype=float,
-                )
-            )
-        return np.concatenate(columns, axis=0).T
+    def jacobian_host(vector: np.ndarray) -> np.ndarray | LinearOperator:
+        return solver_jacobian(vector)
 
+    trust_region_limit = min(40, config.max_iterations) if matrix_free else config.max_iterations
     solve = least_squares(
         fun=residual_host,
         x0=x0,
@@ -488,44 +675,68 @@ def solve_free_boundary_cli(
         ftol=1.0e-14,
         xtol=1.0e-14,
         gtol=1.0e-14,
-        x_scale="jac",
-        max_nfev=config.max_iterations,
+        x_scale=np.maximum(np.abs(x0), 1.0),
+        tr_solver="lsmr" if matrix_free else None,
+        tr_options=({"atol": 1.0e-6, "btol": 1.0e-6, "maxiter": min(12, problem.size)} if matrix_free else {}),
+        max_nfev=trust_region_limit,
     )
     solution = np.asarray(solve.x)
+    polish_steps = 0
+    linear_iterations = 0
+    final_linear_residual = np.nan
+    polish_success = False
+    polish_message = ""
+    if matrix_free and np.max(np.abs(residual_host(solution))) > config.ftol:
+        (
+            solution,
+            polish_steps,
+            linear_iterations,
+            final_linear_residual,
+            polish_success,
+            polish_message,
+        ) = _polish_free_equilibrium(
+            problem,
+            solution,
+            (lower, upper),
+            ftol=config.ftol,
+            max_steps=min(30, max(0, config.max_iterations - int(solve.nfev))),
+            record=residual_host,
+        )
 
-    boundary, state, mass_scale = unpack(jnp.asarray(solution))
     (
+        coefficient_boundary,
+        coefficient_state,
+        mass_scale,
+        boundary,
+        state,
         plasma,
-        plasma_b_squared_full,
         pressure,
-        _,
         vacuum_geometry,
         vacuum_field,
-    ) = components(jnp.asarray(solution))
+    ) = problem.components_function(jnp.asarray(solution))
+    plasma_b_squared_full = plasma.b_squared
     plasma_b_squared = plasma_b_squared_full[-1]
-    if plasma_grid.ntheta == 1:
+    if grid.ntheta == 1:
         vacuum_b_squared = jnp.sum(vacuum_field.lateral_field_xyz**2, axis=-1)[None, :]
         vacuum_b_normal = vacuum_field.lateral_b_normal[None, :]
     else:
         vacuum_b_squared = jnp.sum(vacuum_field.lateral_field_xyz**2, axis=-1)
         vacuum_b_normal = vacuum_field.lateral_b_normal
-    compatibility_limit = 1.0e-6 if plasma_grid.ntheta == 1 else 2.0e-3
+    compatibility_limit = 1.0e-6 if grid.ntheta == 1 else 2.0e-3
     vacuum_valid = (vacuum_field.neumann_result.compatibility_error <= compatibility_limit) & (
         vacuum_field.neumann_result.condition_number <= 1.0e8
     )
-    active_axial_weights = (
-        jnp.asarray(plasma_grid.axial_basis.weights).at[jnp.asarray([0, plasma_grid.nxi - 1])].set(0.0)
-    )
+    active_axial_weights = jnp.asarray(grid.axial_basis.weights).at[jnp.asarray([0, grid.nxi - 1])].set(0.0)
     interface = interface_residual(
         pressure=pressure[-1],
         plasma_b_squared=plasma_b_squared,
         vacuum_b_squared=vacuum_b_squared,
         plasma_b_normal=jnp.zeros_like(plasma_b_squared),
         vacuum_b_normal=vacuum_b_normal,
-        theta_weights=jnp.asarray(plasma_grid.theta_basis.weights),
+        theta_weights=jnp.asarray(grid.theta_basis.weights),
         axial_weights=active_axial_weights,
     )
-    final_residual = np.asarray(residual_jit(jnp.asarray(solution)), dtype=float)
+    final_residual = np.asarray(problem.residual(jnp.asarray(solution)), dtype=float)
     variational_max = float(np.max(np.abs(final_residual)))
     energy_kwargs = {
         "axial_flux_derivative": axial_flux_derivative,
@@ -535,25 +746,25 @@ def solve_free_boundary_cli(
     }
     plasma_force = isotropic_force_residual(
         plasma,
-        plasma_grid,
+        grid,
         state=state,
         **energy_kwargs,
     )
     full_weak_force = isotropic_staggered_weak_residual(
         state,
         boundary,
-        plasma_grid,
+        grid,
         **energy_kwargs,
     )
     weak_gradient = isotropic_staggered_fixed_boundary_gradient(
         state,
         boundary,
-        plasma_grid,
+        grid,
         **energy_kwargs,
     )
-    active_weak = plasma_vectorizer.pullback_gradient(weak_gradient) / plasma_scale
-    radius_weak = active_weak[: plasma_vectorizer.radius_size]
-    lambda_weak = active_weak[plasma_vectorizer.radius_size :]
+    active_weak = vectorizer.state_vectorizer.pullback_evaluated_gradient(weak_gradient) / problem.plasma_scale
+    radius_weak = active_weak[: vectorizer.state_vectorizer.radius_size]
+    lambda_weak = active_weak[vectorizer.state_vectorizer.radius_size :]
     plasma_staggered_weak_force = VariationalResidual(
         radius_gradient=full_weak_force.radius_gradient,
         lambda_gradient=full_weak_force.lambda_gradient,
@@ -561,11 +772,13 @@ def solve_free_boundary_cli(
         lambda_rms=jnp.asarray(np.sqrt(np.mean(lambda_weak**2)) if lambda_weak.size else 0.0),
         maximum=jnp.asarray(np.max(np.abs(active_weak))),
     )
-    divergence_rms = normalized_divergence_rms(plasma.field, plasma.geometry, plasma_grid)
+    divergence_rms = normalized_divergence_rms(plasma.field, plasma.geometry, grid)
     converged = bool(
         variational_max <= config.ftol and not bool(plasma.geometry.jacobian_sign_changed) and bool(vacuum_valid)
     )
     message = str(solve.message)
+    if polish_message:
+        message += f"; {polish_message}"
     if not converged:
         message += (
             f"; variational force={variational_max:.3e}"
@@ -578,6 +791,8 @@ def solve_free_boundary_cli(
             f"{float(vacuum_field.neumann_result.condition_number):.3e}"
         )
     result = FreeBoundaryMirrorResult(
+        coefficient_boundary=coefficient_boundary,
+        coefficient_state=coefficient_state,
         boundary=boundary,
         plasma_state=state,
         plasma_energy=plasma,
@@ -592,9 +807,11 @@ def solve_free_boundary_cli(
         interface=interface,
         history=jnp.asarray(history),
         variational_max=jnp.asarray(variational_max),
-        iterations=int(solve.nfev),
+        iterations=int(solve.nfev) + polish_steps,
+        linear_iterations=linear_iterations,
+        final_linear_residual=final_linear_residual,
         converged=converged,
-        optimizer_success=bool(solve.success),
+        optimizer_success=bool(solve.success) or polish_success,
         message=message,
     )
     if require_convergence and not converged:
@@ -633,8 +850,8 @@ def interpolate_fixed_boundary_state(
 
 
 def solve_beta_scan_cli(
-    initial_boundary: MirrorBoundary,
-    plasma_grid: "MirrorGrid",
+    initial_boundary: SplineMirrorBoundary,
+    discretization: SplineMirrorDiscretization,
     config: MirrorConfig,
     external_field: Any,
     beta_values: Array,
@@ -648,9 +865,8 @@ def solve_beta_scan_cli(
     exterior_ntheta: int = 40,
     exterior_order: int = 8,
     exterior_spectral_side_density: bool = False,
-    exterior_jacobian_chunk_size: int = 6,
 ) -> tuple[FreeBoundaryMirrorResult, ...]:
-    """Solve an increasing, fully hot-started free-boundary beta scan."""
+    """Continue one coefficient-native free-boundary state through increasing beta."""
 
     beta_values = np.asarray(beta_values, dtype=float)
     if beta_values.ndim != 1 or beta_values.size < 1:
@@ -659,16 +875,22 @@ def solve_beta_scan_cli(
         raise ValueError("beta_values must be nonnegative and increasing")
     if beta_rtol <= 0.0:
         raise ValueError("beta_rtol must be positive")
-    reference_state = MirrorState.from_boundary(initial_boundary, plasma_grid)
+    grid = discretization.grid
+    reference_radius = jnp.broadcast_to(
+        jnp.asarray(initial_boundary.radius_coefficients),
+        (grid.ns, grid.ntheta, discretization.coefficient_count),
+    )
+    reference_coefficients = SplineMirrorState(reference_radius, jnp.zeros_like(reference_radius))
+    reference_state = discretization.evaluate_state(reference_coefficients)
     reference_energy = mirror_energy(
         reference_state,
-        plasma_grid,
+        grid,
         axial_flux_derivative=axial_flux_derivative,
         current_derivative=current_derivative,
     )
-    pressure_shape = 1.0 - jnp.asarray(plasma_grid.s)
+    pressure_shape = 1.0 - jnp.asarray(grid.s)
     boundary = initial_boundary if initial_restart is None else initial_restart.boundary
-    state = None if initial_restart is None else initial_restart.plasma_state
+    state = reference_coefficients if initial_restart is None else initial_restart.plasma_state
     mass_scale = 1.0 if initial_restart is None else initial_restart.mass_scale
     results = []
     for beta in beta_values:
@@ -678,9 +900,9 @@ def solve_beta_scan_cli(
             reference_energy.volume_derivative,
             gamma=gamma,
         )
-        result = solve_axisymmetric_free_boundary_cli(
+        result = solve_free_boundary_cli(
             boundary,
-            plasma_grid,
+            discretization,
             config,
             external_field,
             axial_flux_derivative=axial_flux_derivative,
@@ -692,24 +914,19 @@ def solve_beta_scan_cli(
             exterior_ntheta=exterior_ntheta,
             exterior_order=exterior_order,
             exterior_spectral_side_density=exterior_spectral_side_density,
-            exterior_jacobian_chunk_size=exterior_jacobian_chunk_size,
             target_central_pressure=None if beta == 0.0 else central_pressure,
             require_convergence=True,
         )
         if beta > 0.0:
-            center = int(np.argmin(np.abs(plasma_grid.z)))
+            center = int(np.argmin(np.abs(grid.z)))
             achieved_beta = 2.0 * MU0 * float(result.pressure[0, 0, center]) / float(reference_field) ** 2
             if abs(achieved_beta - float(beta)) / float(beta) > beta_rtol:
                 raise RuntimeError(f"central beta did not reach rtol={beta_rtol:.3e}")
         results.append(result)
-        boundary = result.boundary
-        state = result.plasma_state
+        boundary = result.coefficient_boundary
+        state = result.coefficient_state
         mass_scale = float(result.mass_scale)
     return tuple(results)
-
-
-solve_axisymmetric_free_boundary_cli = solve_free_boundary_cli
-solve_axisymmetric_beta_scan_cli = solve_beta_scan_cli
 
 
 from typing import TYPE_CHECKING

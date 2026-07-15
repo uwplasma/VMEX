@@ -30,11 +30,12 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
+    SplineMirrorDiscretization,
     mout_from_result,
     plot_mout,
+    solve_beta_scan_cli,
     write_mout,
 )
-from vmec_jax.mirror.free_boundary import solve_axisymmetric_beta_scan_cli  # noqa: E402
 from vmec_jax.mirror.output import (  # noqa: E402
     summarize_axisymmetric_beta_scan,
 )
@@ -48,10 +49,10 @@ from vmec_jax.mirror.output import (  # noqa: E402
 BETAS = np.asarray([0.0, 0.01, 0.03, 0.10, 0.25, 0.50])
 NS = 7
 NXI = 13
+SPLINE_ELEMENTS = 7
 EXTERIOR_NTHETA = 12
 EXTERIOR_ORDER = 8
 EXTERIOR_SPECTRAL_SIDE_DENSITY = False  # More accurate, but costlier.
-EXTERIOR_JACOBIAN_CHUNK_SIZE = 6
 FTOL = 1.0e-12
 MAX_ITERATIONS = 2000
 Z_MIN, Z_MAX = -0.8, 0.8
@@ -75,9 +76,7 @@ try:
     from essos.coils import Coils, Curves
     from essos.fields import BiotSavart
 except ModuleNotFoundError as error:
-    raise ModuleNotFoundError(
-        "This example requires ESSOS: pip install -e /path/to/ESSOS"
-    ) from error
+    raise ModuleNotFoundError("This example requires ESSOS: pip install -e /path/to/ESSOS") from error
 
 coils = Coils(
     Curves(jnp.asarray(coil_dofs), n_segments=128, nfp=1, stellsym=False),
@@ -92,6 +91,7 @@ def external_field(points):
     points = jnp.asarray(points)
     return jax.vmap(biot_savart.B)(points.reshape(-1, 3)).reshape(points.shape)
 
+
 config = MirrorConfig(
     resolution=MirrorResolution(ns=NS, mpol=0, nxi=NXI),
     z_min=Z_MIN,
@@ -99,29 +99,30 @@ config = MirrorConfig(
     ftol=FTOL,
     max_iterations=MAX_ITERATIONS,
 )
-grid = config.build_grid()
-initial_restart = None if RESTART_FROM is None else load_free_boundary_restart(RESTART_FROM, grid)
+source_grid = config.build_grid()
+discretization = SplineMirrorDiscretization.build_cgl(config, elements=SPLINE_ELEMENTS)
+grid = discretization.grid
+initial_restart = None if RESTART_FROM is None else load_free_boundary_restart(RESTART_FROM, discretization)
 z = jnp.asarray(grid.z)
 coil_z = 0.5 * COIL_SEPARATION
 vacuum_axis_field = sum(
-    4.0e-7
-    * jnp.pi
-    * COIL_CURRENT
-    * COIL_RADIUS**2
-    / (2.0 * (COIL_RADIUS**2 + (z - position) ** 2) ** 1.5)
+    4.0e-7 * jnp.pi * COIL_CURRENT * COIL_RADIUS**2 / (2.0 * (COIL_RADIUS**2 + (z - position) ** 2) ** 1.5)
     for position in (-coil_z, coil_z)
 )
 center = int(np.argmin(np.abs(grid.z)))
 axial_flux_derivative = 0.5 * vacuum_axis_field[center] * CENTER_RADIUS**2
-initial_boundary = MirrorBoundary.from_axis_field(
-    axial_flux_derivative,
-    vacuum_axis_field,
-    grid,
+initial_boundary = discretization.fit_boundary(
+    MirrorBoundary.from_axis_field(
+        axial_flux_derivative,
+        vacuum_axis_field,
+        grid,
+    ),
+    source_grid,
 )
 print(f"Solving {BETAS.size} beta points at ns={NS}, nxi={NXI}, ftol={FTOL:.0e}")
-results = solve_axisymmetric_beta_scan_cli(
+results = solve_beta_scan_cli(
     initial_boundary,
-    grid,
+    discretization,
     config,
     external_field,
     jnp.asarray(BETAS),
@@ -131,7 +132,6 @@ results = solve_axisymmetric_beta_scan_cli(
     exterior_ntheta=EXTERIOR_NTHETA,
     exterior_order=EXTERIOR_ORDER,
     exterior_spectral_side_density=EXTERIOR_SPECTRAL_SIDE_DENSITY,
-    exterior_jacobian_chunk_size=EXTERIOR_JACOBIAN_CHUNK_SIZE,
 )
 gamma = np.asarray(coils.gamma)
 if SAVE_RESTARTS:

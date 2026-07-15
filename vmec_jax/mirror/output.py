@@ -19,8 +19,10 @@ import numpy as np
 from .forces import MU0, staggered_field_strength
 from .geometry import contravariant_field, evaluate_geometry, magnetic_field_xyz
 from .model import MIRROR_OUTPUT_SCHEMA, MirrorBoundary, MirrorState
+from .splines import SplineMirrorBoundary, SplineMirrorDiscretization, SplineMirrorState
 
-RESTART_SCHEMA = "vmec_jax.mirror.free_boundary_restart/2"
+RESTART_SCHEMA = "vmec_jax.mirror.free_boundary_restart/3"
+_LEGACY_RESTART_SCHEMA = "vmec_jax.mirror.free_boundary_restart/2"
 
 
 @dataclass(frozen=True)
@@ -491,10 +493,10 @@ def read_mout(path: str | Path) -> MoutData:
 
 @dataclass(frozen=True)
 class FreeBoundaryRestart:
-    """Minimal state needed to hot-start another free-boundary solve."""
+    """Coefficient-native state needed to hot-start a free-boundary solve."""
 
-    boundary: MirrorBoundary
-    plasma_state: MirrorState
+    boundary: SplineMirrorBoundary
+    plasma_state: SplineMirrorState
     mass_scale: float
 
     @classmethod
@@ -502,8 +504,8 @@ class FreeBoundaryRestart:
         """Extract restart data from a free-boundary solve result."""
 
         return cls(
-            boundary=result.boundary,
-            plasma_state=result.plasma_state,
+            boundary=result.coefficient_boundary,
+            plasma_state=result.coefficient_state,
             mass_scale=float(result.mass_scale),
         )
 
@@ -527,9 +529,18 @@ def save_free_boundary_restart(path: str | Path, restart: FreeBoundaryRestart | 
         restart = FreeBoundaryRestart.from_result(restart)
 
     arrays = {
-        "boundary_radius": _finite_restart_array(restart.boundary.radius_scale, name="boundary_radius"),
-        "radius_scale": _finite_restart_array(restart.plasma_state.radius_scale, name="radius_scale"),
-        "lambda_stream": _finite_restart_array(restart.plasma_state.lambda_stream, name="lambda_stream"),
+        "boundary_radius_coefficients": _finite_restart_array(
+            restart.boundary.radius_coefficients,
+            name="boundary_radius_coefficients",
+        ),
+        "radius_coefficients": _finite_restart_array(
+            restart.plasma_state.radius_coefficients,
+            name="radius_coefficients",
+        ),
+        "lambda_coefficients": _finite_restart_array(
+            restart.plasma_state.lambda_coefficients,
+            name="lambda_coefficients",
+        ),
         "mass_scale": _finite_restart_array(restart.mass_scale, name="mass_scale"),
     }
     temporary: Path | None = None
@@ -544,31 +555,59 @@ def save_free_boundary_restart(path: str | Path, restart: FreeBoundaryRestart | 
     return path
 
 
-def load_free_boundary_restart(path: str | Path, plasma_grid: Any) -> FreeBoundaryRestart:
-    """Load restart data after strict schema, shape, and finiteness checks."""
+def load_free_boundary_restart(
+    path: str | Path,
+    discretization: SplineMirrorDiscretization,
+    *,
+    legacy_grid: Any | None = None,
+) -> FreeBoundaryRestart:
+    """Load schema 3 coefficients or explicitly migrate one schema 2 file."""
 
     path = Path(path)
     with np.load(path, allow_pickle=False) as data:
         schema = str(np.asarray(data["schema"]).item())
-        if schema != RESTART_SCHEMA:
+        if schema == RESTART_SCHEMA:
+            boundary = SplineMirrorBoundary(
+                _finite_restart_array(
+                    data["boundary_radius_coefficients"],
+                    name="boundary_radius_coefficients",
+                )
+            )
+            state = SplineMirrorState(
+                _finite_restart_array(data["radius_coefficients"], name="radius_coefficients"),
+                _finite_restart_array(data["lambda_coefficients"], name="lambda_coefficients"),
+            )
+        elif schema == _LEGACY_RESTART_SCHEMA:
+            if legacy_grid is None:
+                raise ValueError("schema 2 restart migration requires legacy_grid")
+            boundary = discretization.fit_boundary(
+                MirrorBoundary(_finite_restart_array(data["boundary_radius"], name="boundary_radius")),
+                legacy_grid,
+            )
+            state = discretization.fit_state(
+                MirrorState(
+                    _finite_restart_array(data["radius_scale"], name="radius_scale"),
+                    _finite_restart_array(data["lambda_stream"], name="lambda_stream"),
+                ),
+                legacy_grid,
+            )
+            state = discretization.project_fixed_boundary(state, boundary)
+        else:
             raise ValueError(f"unsupported mirror restart schema: {schema!r}")
-        boundary = _finite_restart_array(data["boundary_radius"], name="boundary_radius")
-        radius = _finite_restart_array(data["radius_scale"], name="radius_scale")
-        lam = _finite_restart_array(data["lambda_stream"], name="lambda_stream")
         mass_scale = float(_finite_restart_array(data["mass_scale"], name="mass_scale"))
 
-    expected_boundary = (plasma_grid.ntheta, plasma_grid.nxi)
-    if boundary.shape != expected_boundary:
-        raise ValueError(f"restart boundary shape {boundary.shape} != {expected_boundary}")
-    if radius.shape != plasma_grid.shape or lam.shape != plasma_grid.shape:
-        raise ValueError("restart plasma state does not match the requested grid")
+    expected_boundary = (discretization.grid.ntheta, discretization.coefficient_count)
+    expected_state = (discretization.grid.ns,) + expected_boundary
+    if tuple(np.shape(boundary.radius_coefficients)) != expected_boundary:
+        raise ValueError("restart boundary coefficients do not match the requested discretization")
+    if (
+        tuple(np.shape(state.radius_coefficients)) != expected_state
+        or tuple(np.shape(state.lambda_coefficients)) != expected_state
+    ):
+        raise ValueError("restart state coefficients do not match the requested discretization")
     if mass_scale <= 0.0:
         raise ValueError("restart mass_scale must be positive")
-    return FreeBoundaryRestart(
-        boundary=MirrorBoundary(boundary),
-        plasma_state=MirrorState(radius, lam),
-        mass_scale=mass_scale,
-    )
+    return FreeBoundaryRestart(boundary=boundary, plasma_state=state, mass_scale=mass_scale)
 
 
 _PLOT_DPI = 110

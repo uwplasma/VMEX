@@ -438,7 +438,7 @@ evaluated-state parity tests, not as a second production state.
 Axisymmetric free-boundary implicit gradients
 ---------------------------------------------
 
-``free_boundary_adjoint`` differentiates the research axisymmetric exterior
+``free_boundary_adjoint`` currently differentiates the research axisymmetric exterior
 equilibrium with respect to a differentiable external-field callable, axial
 flux, pressure profile, and axial current. The physical fixed point
 contains the lateral LCFS and plasma-interior radii. The exterior Neumann BIE
@@ -464,10 +464,11 @@ the corrected ``15x15`` case took 35.2 seconds on CPU and 44.2 seconds on one
 RTX A4000. Energy and force diagnostics agree to numerical precision. Explicit
 ``device=`` arguments and JAX platform environment pins are always honored.
 
-The host CLI remains the forward-performance reference. Derivatives solve the
-linearized converged coefficient residual and never retain or differentiate
-the nonlinear iteration history. They reuse the same frozen sparse structure
-as the primal solve without storing nonlinear iterates.
+The host CLI remains the forward-performance reference. Fixed-boundary
+derivatives solve the linearized converged coefficient residual and never
+retain or differentiate the nonlinear iteration history. The free-boundary
+adjoint still reconstructs the former nodal residual and is not a supported
+gradient until it is migrated to the primal coefficient problem.
 
 Release evidence
 ----------------
@@ -513,8 +514,9 @@ compatibility and BIE condition number for every beta point.
 
 Set ``SAVE_RESTARTS = True`` to write one compressed ``.npz`` hot-start per
 beta point. :func:`vmec_jax.mirror.output.load_free_boundary_restart` checks its
-schema and plasma-grid shape before returning the boundary, plasma state, and
-calibrated mass scale. The BIE potential is recomputed because the moving
+schema and coefficient shapes before returning the boundary, plasma state, and
+calibrated mass scale. Schema 2 migration requires the original nodal grid
+explicitly; schema 3 never guesses it. The BIE potential is recomputed because the moving
 boundary changes at every continuation point.
 Set ``RESTART_FROM`` and trim ``BETAS`` to resume only the unfinished suffix;
 the original beta-zero boundary remains the pressure-profile reference.
@@ -683,13 +685,17 @@ The beta-zero exterior resolution study at ``(ns,nxi,ntheta_panel)`` equal to
 ``1.60e-8 -> 1.02e-9 -> 5.92e-10`` while every force solve remains below
 ``5.8e-15``.
 
-The 120-variable third grid exposed a CLI memory problem in monolithic forward
-AD: it was terminated at 9.67 GB RSS before producing an iteration. The solver
-now keeps the fast monolithic Jacobian through 80 variables and evaluates exact
-forward-mode JVP columns in chunks of six above that point. The same third grid
-then converges in 118.8 seconds at 5.48 GB peak RSS. This closes the first
-three-grid beta-zero physics gate and identifies CPU memory as a performance
-blocker; the GPU result below closes the finite-beta follow-up.
+The coefficient solver uses a dense ``jacfwd`` only through 32 unknowns. Larger
+systems expose exact repeated JVP/VJP actions through a SciPy ``LinearOperator``;
+no identity matrix or coupled Jacobian is materialized. A bounded trust-region
+stage globalizes the solve and the fixed-solver spline preconditioner supplies
+a Newton--GMRES polish. In the T6b CPU audit, a 48-unknown beta-zero case reached
+``2.20e-14`` in 30.6 seconds and 44 nonlinear evaluations at 2.08 GiB peak RSS.
+Without the polish, capped LSMR stalled at ``4.75e-6`` after 200 evaluations.
+Cached ``jax.linearize`` retained more than 3 GiB and was slower than repeated
+actions on the small A/B fixture, so repeated actions are the production path.
+The historical three-grid numbers below predate coefficient boundary work and
+must be regenerated before promotion.
 
 The office RTX A4000 study now continues every grid through 50% beta. On the
 third grid, beta 50% gives center radius ``0.2726602 m``, axis field
@@ -712,8 +718,9 @@ panels remain promotion work.
 The nonaxisymmetric seam is explicit. ``magnetic_field_xyz`` converts the full
 contravariant field without an axisymmetry shortcut, while
 ``plasma_external_neumann`` assembles lateral and cap data on a
-theta-dependent closed surface. ``solve_free_boundary_cli`` now packs the
-interior radius and gauge-free stream function together. Earlier refinement
+theta-dependent closed surface. ``solve_free_boundary_cli`` composes free
+boundary, interior radius, gauge-free stream function, and optional pressure
+scale in one B-spline coefficient map. Earlier refinement
 runs held the stream function fixed; those incomplete-equilibrium rows have
 been removed rather than used as validation evidence.
 
@@ -738,9 +745,9 @@ evidence rather than current equilibria. Compact input, residual, observable,
 runtime, and memory evidence is retained in
 ``benchmarks/mirror_free_boundary_nonaxisymmetric.json``.
 
-``solve_beta_scan_cli`` remains the topology-independent hot-start driver and
-propagates current through its reference and finite-beta solves;
-``solve_axisymmetric_beta_scan_cli`` is a compatibility alias.
+``solve_beta_scan_cli`` is the coefficient-native hot-start driver and
+propagates current through its reference and finite-beta solves. The former
+axisymmetric compatibility aliases have been removed.
 
 Two cheaper boundary-limit approximations were tested and rejected. Inward or
 outward offset collocation produced density-system condition numbers from

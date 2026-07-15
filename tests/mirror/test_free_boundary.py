@@ -16,12 +16,15 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
+    SplineMirrorBoundary,
+    SplineMirrorDiscretization,
+    SplineMirrorState,
     solve_beta_scan_cli,
 )
 import vmec_jax.mirror.free_boundary as continuation  # noqa: E402
 from vmec_jax.mirror.free_boundary import (  # noqa: E402
+    _build_free_equilibrium_problem,
     interpolate_fixed_boundary_state,
-    solve_axisymmetric_beta_scan_cli,
 )
 from vmec_jax.mirror.model import project_fixed_boundary_state  # noqa: E402
 from vmec_jax.mirror.output import (  # noqa: E402
@@ -47,9 +50,11 @@ def _enable_solver_jit():
 
 def test_free_boundary_restart_roundtrip_is_compact_and_grid_checked(tmp_path) -> None:
     config = MirrorConfig(resolution=MirrorResolution(ns=7, mpol=0, nxi=9))
-    plasma_grid = config.build_grid()
-    boundary = MirrorBoundary.from_radius(0.3, plasma_grid)
-    state = MirrorState.from_boundary(boundary, plasma_grid)
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=4)
+    shape = (discretization.grid.ntheta, discretization.coefficient_count)
+    boundary = SplineMirrorBoundary(jnp.full(shape, 0.3))
+    radius = jnp.broadcast_to(boundary.radius_coefficients, (discretization.grid.ns,) + shape)
+    state = SplineMirrorState(radius, jnp.zeros_like(radius))
     restart = FreeBoundaryRestart(
         boundary=boundary,
         plasma_state=state,
@@ -57,18 +62,52 @@ def test_free_boundary_restart_roundtrip_is_compact_and_grid_checked(tmp_path) -
     )
 
     path = save_free_boundary_restart(tmp_path / "beta_003", restart)
-    loaded = load_free_boundary_restart(path, plasma_grid)
+    loaded = load_free_boundary_restart(path, discretization)
 
     assert path.suffix == ".npz"
     assert path.stat().st_size < 4096
-    np.testing.assert_array_equal(loaded.boundary.radius_scale, boundary.radius_scale)
-    np.testing.assert_array_equal(loaded.plasma_state.radius_scale, state.radius_scale)
-    np.testing.assert_array_equal(loaded.plasma_state.lambda_stream, state.lambda_stream)
+    np.testing.assert_array_equal(loaded.boundary.radius_coefficients, boundary.radius_coefficients)
+    np.testing.assert_array_equal(loaded.plasma_state.radius_coefficients, state.radius_coefficients)
+    np.testing.assert_array_equal(loaded.plasma_state.lambda_coefficients, state.lambda_coefficients)
     assert loaded.mass_scale == restart.mass_scale
 
-    mismatched = MirrorConfig(resolution=MirrorResolution(ns=9, mpol=0, nxi=9)).build_grid()
-    with pytest.raises(ValueError, match="plasma state"):
+    mismatched_config = MirrorConfig(resolution=MirrorResolution(ns=9, mpol=0, nxi=9))
+    mismatched = SplineMirrorDiscretization.build_cgl(mismatched_config, elements=4)
+    with pytest.raises(ValueError, match="state coefficients"):
         load_free_boundary_restart(path, mismatched)
+
+
+def test_schema_two_restart_requires_and_uses_explicit_nodal_grid(tmp_path) -> None:
+    config = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=0, nxi=7))
+    legacy_grid = config.build_grid()
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=4)
+    boundary = MirrorBoundary.from_radius(0.3 + 0.01 * jnp.asarray(legacy_grid.xi) ** 2, legacy_grid)
+    state = MirrorState.from_boundary(boundary, legacy_grid)
+    path = tmp_path / "schema_2.npz"
+    np.savez_compressed(
+        path,
+        schema="vmec_jax.mirror.free_boundary_restart/2",
+        boundary_radius=boundary.radius_scale,
+        radius_scale=state.radius_scale,
+        lambda_stream=state.lambda_stream,
+        mass_scale=1.1,
+    )
+
+    with pytest.raises(ValueError, match="requires legacy_grid"):
+        load_free_boundary_restart(path, discretization)
+    migrated = load_free_boundary_restart(path, discretization, legacy_grid=legacy_grid)
+
+    np.testing.assert_allclose(
+        discretization.evaluate_boundary(migrated.boundary).radius_scale,
+        boundary.radius_scale,
+        atol=2.0e-15,
+    )
+    np.testing.assert_allclose(
+        discretization.evaluate_state(migrated.plasma_state).radius_scale,
+        state.radius_scale,
+        atol=2.0e-15,
+    )
+    assert migrated.mass_scale == 1.1
 
 
 def test_boundary_fourier_amplitudes_are_grid_independent() -> None:
@@ -125,6 +164,71 @@ def _nonaxisymmetric_mirror_field(points):
     return field.at[..., 0].add(0.004)
 
 
+def test_free_coefficient_operator_matches_dense_forward_and_transpose() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=0, nxi=7),
+        z_min=-0.8,
+        z_max=0.8,
+    )
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=2, quadrature_order=3)
+    nodes = jnp.asarray(discretization.spline.collocation_nodes)
+    boundary = SplineMirrorBoundary((0.24 * (1.0 - 0.08 * nodes**2))[None])
+    radius = jnp.broadcast_to(
+        boundary.radius_coefficients,
+        (discretization.grid.ns, discretization.grid.ntheta, discretization.coefficient_count),
+    )
+    state = SplineMirrorState(radius, jnp.zeros_like(radius))
+    problem = _build_free_equilibrium_problem(
+        boundary,
+        state,
+        discretization,
+        _external_mirror_field,
+        axial_flux_derivative=0.0024,
+        mass_profile=0.0,
+        current_derivative=0.0,
+        solve_lambda=False,
+        gamma=5.0 / 3.0,
+        target_central_pressure=None,
+        initial_mass_scale=1.0,
+        exterior_ntheta=8,
+        exterior_order=4,
+        exterior_spectral_side_density=True,
+    )
+    point = problem.vectorizer.pack()
+    dense = np.asarray(jax.jacfwd(problem.residual_function)(jnp.asarray(point)))
+    direction = np.linspace(0.1, 0.7, problem.size)
+    cotangent = np.linspace(-0.3, 0.4, problem.size)
+
+    assert problem.residual(point).shape == (problem.size,)
+    assert np.all(np.isfinite(dense))
+    for mode in ("cached", "repeated"):
+        operator = problem.linear_operator(point, mode=mode)
+        np.testing.assert_allclose(operator @ direction, dense @ direction, rtol=2.0e-13, atol=2.0e-13)
+        np.testing.assert_allclose(operator.rmatvec(cotangent), dense.T @ cotangent, rtol=2.0e-13, atol=2.0e-13)
+        np.testing.assert_allclose(
+            np.vdot(operator @ direction, cotangent),
+            np.vdot(direction, operator.rmatvec(cotangent)),
+            rtol=2.0e-13,
+            atol=2.0e-13,
+        )
+
+
+def test_large_free_solver_never_builds_a_dense_coupled_jacobian(monkeypatch) -> None:
+    sentinel = object()
+    problem = SimpleNamespace(
+        size=continuation._DENSE_JACOBIAN_MAX_SIZE + 1,
+        linear_operator=lambda _vector, *, mode: sentinel if mode == "repeated" else None,
+    )
+
+    def reject_dense(*_args, **_kwargs):
+        raise AssertionError("large free solve reached dense jacfwd")
+
+    monkeypatch.setattr(continuation.jax, "jacfwd", reject_dense)
+    jacobian = continuation._build_free_solver_jacobian(problem)
+
+    assert jacobian(np.zeros(problem.size)) is sentinel
+
+
 @pytest.mark.full
 def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
     config = MirrorConfig(
@@ -134,7 +238,9 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
         ftol=1.0e-12,
         max_iterations=200,
     )
-    plasma_grid = config.build_grid()
+    source_grid = config.build_grid()
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=4)
+    plasma_grid = discretization.grid
     on_axis = _on_axis_mirror_field(
         jnp.asarray(plasma_grid.z),
         coil_radius=0.9,
@@ -144,9 +250,10 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
     center = plasma_grid.nxi // 2
     flux = 0.5 * on_axis[center] * 0.25**2
     betas = jnp.asarray([0.0, 0.10, 0.25, 0.50])
-    results = solve_axisymmetric_beta_scan_cli(
-        MirrorBoundary.from_axis_field(flux, on_axis, plasma_grid),
-        plasma_grid,
+    initial_boundary = MirrorBoundary.from_axis_field(flux, on_axis, plasma_grid)
+    results = solve_beta_scan_cli(
+        discretization.fit_boundary(initial_boundary, source_grid),
+        discretization,
         config,
         _external_mirror_field,
         betas,
@@ -178,8 +285,34 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges() -> None:
     assert np.all(np.diff(center_radii) > 0.0)
     assert np.all(np.diff(field_ratios) < 0.0)
     assert center_radii[-1] > 1.07 * center_radii[0]
-    assert field_ratios[-1] < 0.77
+    assert field_ratios[-1] < 0.78
     assert all(np.isfinite(float(item.center_vacuum_side_field)) for item in diagnostics)
+
+    resumed = solve_beta_scan_cli(
+        discretization.fit_boundary(initial_boundary, source_grid),
+        discretization,
+        config,
+        _external_mirror_field,
+        jnp.asarray([0.50]),
+        axial_flux_derivative=flux,
+        reference_field=float(on_axis[center]),
+        initial_restart=FreeBoundaryRestart.from_result(results[-1]),
+        exterior_ntheta=8,
+        exterior_order=6,
+        exterior_spectral_side_density=True,
+    )[0]
+    np.testing.assert_allclose(
+        resumed.coefficient_boundary.radius_coefficients,
+        results[-1].coefficient_boundary.radius_coefficients,
+        rtol=2.0e-11,
+        atol=2.0e-12,
+    )
+    np.testing.assert_allclose(
+        resumed.coefficient_state.radius_coefficients,
+        results[-1].coefficient_state.radius_coefficients,
+        rtol=2.0e-11,
+        atol=2.0e-12,
+    )
 
 
 @pytest.mark.full
@@ -191,7 +324,9 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
         ftol=1.0e-12,
         max_iterations=300,
     )
-    grid = config.build_grid()
+    source_grid = config.build_grid()
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=2)
+    grid = discretization.grid
     on_axis = _on_axis_mirror_field(
         jnp.asarray(grid.z),
         coil_radius=0.9,
@@ -206,8 +341,8 @@ def test_nonaxisymmetric_exterior_free_boundary_equilibrium_converges() -> None:
     )
     betas = jnp.asarray([0.0, 0.50])
     results = solve_beta_scan_cli(
-        boundary,
-        grid,
+        discretization.fit_boundary(boundary, source_grid),
+        discretization,
         config,
         _nonaxisymmetric_mirror_field,
         betas,
@@ -267,7 +402,10 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution() -> None:
             ftol=1.0e-12,
             max_iterations=500,
         )
-        plasma_grid = config.build_grid()
+        source_grid = config.build_grid()
+        elements = {7: 4, 13: 7, 17: 9}[nxi]
+        discretization = SplineMirrorDiscretization.build_cgl(config, elements=elements)
+        plasma_grid = discretization.grid
         on_axis = _on_axis_mirror_field(
             jnp.asarray(plasma_grid.z),
             coil_radius=0.9,
@@ -276,9 +414,10 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution() -> None:
         )
         center = plasma_grid.nxi // 2
         flux = 0.5 * on_axis[center] * 0.25**2
-        results = solve_axisymmetric_beta_scan_cli(
-            MirrorBoundary.from_axis_field(flux, on_axis, plasma_grid),
-            plasma_grid,
+        initial_boundary = MirrorBoundary.from_axis_field(flux, on_axis, plasma_grid)
+        results = solve_beta_scan_cli(
+            discretization.fit_boundary(initial_boundary, source_grid),
+            discretization,
             config,
             _external_mirror_field,
             betas,
@@ -365,10 +504,13 @@ def test_fixed_boundary_state_interpolation_is_differentiable() -> None:
 
 def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
     config = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=0, nxi=5))
-    grid = config.build_grid()
-    reference = MirrorBoundary.from_radius(0.3, grid)
-    restart_boundary = MirrorBoundary.from_radius(0.31, grid)
-    restart_state = MirrorState.from_boundary(restart_boundary, grid)
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=2)
+    grid = discretization.grid
+    shape = (grid.ntheta, discretization.coefficient_count)
+    reference = SplineMirrorBoundary(jnp.full(shape, 0.3))
+    restart_boundary = SplineMirrorBoundary(jnp.full(shape, 0.31))
+    radius = jnp.broadcast_to(restart_boundary.radius_coefficients, (grid.ns,) + shape)
+    restart_state = SplineMirrorState(radius, jnp.zeros_like(radius))
     restart = FreeBoundaryRestart(restart_boundary, restart_state, 2.5)
     received = []
 
@@ -382,15 +524,16 @@ def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
             )
         )
         return SimpleNamespace(
-            boundary=boundary,
-            plasma_state=kwargs["initial_state"],
+            coefficient_boundary=boundary,
+            coefficient_state=kwargs["initial_state"],
             mass_scale=jnp.asarray(kwargs["initial_mass_scale"] + 0.5),
+            pressure=jnp.zeros(grid.shape),
         )
 
-    monkeypatch.setattr(continuation, "solve_axisymmetric_free_boundary_cli", fake_solve)
-    solve_axisymmetric_beta_scan_cli(
+    monkeypatch.setattr(continuation, "solve_free_boundary_cli", fake_solve)
+    solve_beta_scan_cli(
         reference,
-        grid,
+        discretization,
         config,
         object(),
         jnp.asarray([0.0, 0.0]),

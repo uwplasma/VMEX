@@ -272,12 +272,17 @@ def test_free_boundary_field_adjoint_matches_central_difference() -> None:
         ftol=1.0e-12,
         max_iterations=300,
     )
-    grid = config.build_grid()
+    source_grid = config.build_grid()
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=4)
+    grid = discretization.grid
     field = ParaxialMirrorField(jnp.asarray(0.08), jnp.asarray(0.02))
     on_axis = field.center_field + field.curvature * jnp.asarray(grid.z) ** 2
     center = grid.nxi // 2
     flux = 0.5 * on_axis[center] * 0.25**2
-    initial_boundary = MirrorBoundary.from_axis_field(flux, on_axis, grid)
+    initial_boundary = discretization.fit_boundary(
+        MirrorBoundary.from_axis_field(flux, on_axis, grid),
+        source_grid,
+    )
     solve_options = dict(
         axial_flux_derivative=flux,
         exterior_ntheta=8,
@@ -285,7 +290,7 @@ def test_free_boundary_field_adjoint_matches_central_difference() -> None:
         exterior_spectral_side_density=True,
         require_convergence=True,
     )
-    result = solve_free_boundary_cli(initial_boundary, grid, config, field, **solve_options)
+    result = solve_free_boundary_cli(initial_boundary, discretization, config, field, **solve_options)
     parameters = free_boundary_parameters(field, axial_flux_derivative=flux)
 
     def quantity(boundary, _state, _energy, _vacuum):
@@ -317,11 +322,11 @@ def test_free_boundary_field_adjoint_matches_central_difference() -> None:
             field.curvature + sign * epsilon * direction.curvature,
         )
         varied = solve_free_boundary_cli(
-            result.boundary,
-            grid,
+            result.coefficient_boundary,
+            discretization,
             config,
             varied_field,
-            initial_state=result.plasma_state,
+            initial_state=result.coefficient_state,
             **solve_options,
         )
         values.append(float(quantity(varied.boundary, None, None, None)))

@@ -18,6 +18,9 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
+    SplineMirrorBoundary,
+    SplineMirrorDiscretization,
+    SplineMirrorState,
     solve_free_boundary_cli,
 )
 from vmec_jax.mirror.basis import ChebyshevBasis, ThetaBasis  # noqa: E402
@@ -176,9 +179,7 @@ def test_theta_fft_derivative_and_quadrature_resolve_requested_modes() -> None:
 
 
 def _grid(*, ntheta: int = 1, nxi: int = 5):
-    return MirrorConfig(
-        resolution=MirrorResolution(ns=3, mpol=(ntheta - 1) // 2, nxi=nxi)
-    ).build_grid()
+    return MirrorConfig(resolution=MirrorResolution(ns=3, mpol=(ntheta - 1) // 2, nxi=nxi)).build_grid()
 
 
 def test_model_constructors_reject_invalid_static_contracts() -> None:
@@ -270,38 +271,38 @@ def test_beta_diagnostics_evaluate_solved_state(ntheta: int) -> None:
 
 
 def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
-    grid = _grid()
-    boundary = MirrorBoundary.from_radius(0.2, grid)
     config = MirrorConfig(resolution=MirrorResolution(ns=3, nxi=5))
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=2)
+    boundary = SplineMirrorBoundary(jnp.full((1, discretization.coefficient_count), 0.2))
     common = dict(
         initial_boundary=boundary,
-        plasma_grid=grid,
+        discretization=discretization,
         config=config,
         external_field=object(),
         axial_flux_derivative=0.1,
     )
 
-    with pytest.raises(ValueError, match="chunk"):
-        solve_free_boundary_cli(**common, exterior_jacobian_chunk_size=0)
     with pytest.raises(ValueError, match="target_central_pressure"):
         solve_free_boundary_cli(**common, target_central_pressure=0.0)
     with pytest.raises(ValueError, match="initial_mass_scale"):
         solve_free_boundary_cli(**common, initial_mass_scale=0.0)
-    with pytest.raises(ValueError, match="initial boundary"):
-        solve_free_boundary_cli(**{**common, "initial_boundary": MirrorBoundary(jnp.ones((2, 5)))})
+    with pytest.raises(ValueError, match="coefficient shape"):
+        solve_free_boundary_cli(**{**common, "initial_boundary": SplineMirrorBoundary(jnp.ones((2, 5)))})
 
 
 def test_free_boundary_rejects_inconsistent_initial_guesses() -> None:
-    grid = _grid()
-    boundary = MirrorBoundary.from_radius(0.2, grid)
     config = MirrorConfig(resolution=MirrorResolution(ns=3, nxi=5))
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=2)
+    boundary = SplineMirrorBoundary(jnp.full((1, discretization.coefficient_count), 0.2))
     common = dict(
         initial_boundary=boundary,
-        plasma_grid=grid,
+        discretization=discretization,
         config=config,
         external_field=object(),
         axial_flux_derivative=0.1,
     )
-    wrong_boundary = MirrorBoundary.from_radius(0.3, grid)
+    shape = (discretization.grid.ns, 1, discretization.coefficient_count)
+    wrong_radius = jnp.full(shape, 0.3)
+    wrong_boundary = SplineMirrorState(wrong_radius, jnp.zeros_like(wrong_radius))
     with pytest.raises(ValueError, match="initial_state boundary"):
-        solve_free_boundary_cli(**common, initial_state=MirrorState.from_boundary(wrong_boundary, grid))
+        solve_free_boundary_cli(**common, initial_state=wrong_boundary)

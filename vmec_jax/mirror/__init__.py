@@ -18,7 +18,7 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     "MirrorConfig": (".model", "MirrorConfig"),
     "MirrorResolution": (".model", "MirrorResolution"),
     "MirrorState": (".model", "MirrorState"),
-    # Coefficient-native fixed and nodal free-boundary solves.
+    # Coefficient-native fixed- and free-boundary solves.
     "SplineMirrorBoundary": (".splines", "SplineMirrorBoundary"),
     "SplineMirrorDiscretization": (".splines", "SplineMirrorDiscretization"),
     "SplineMirrorSolveResult": (".splines", "SplineMirrorSolveResult"),

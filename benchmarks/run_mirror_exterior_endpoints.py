@@ -17,6 +17,7 @@ from vmec_jax.mirror import (
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
+    SplineMirrorDiscretization,
     solve_beta_scan_cli,
 )
 from vmec_jax.mirror.output import (
@@ -91,7 +92,7 @@ def run(
     ntheta: int,
     nxi: int,
     *,
-    jacobian_chunk_size: int,
+    spline_elements: int,
     axisymmetric: bool,
     beta_values: tuple[float, ...] = (0.0, 0.50),
 ) -> dict:
@@ -111,7 +112,9 @@ def run(
         ftol=1.0e-12,
         max_iterations=1000,
     )
-    grid = config.build_grid()
+    source_grid = config.build_grid()
+    discretization = SplineMirrorDiscretization.build_cgl(config, elements=spline_elements)
+    grid = discretization.grid
     dofs = _two_coil_dofs(axisymmetric=axisymmetric)
     from essos.coils import Coils, Curves
     from essos.fields import BiotSavart
@@ -142,8 +145,8 @@ def run(
     betas = jnp.asarray(beta_values)
     start = time.perf_counter()
     results = solve_beta_scan_cli(
-        boundary,
-        grid,
+        discretization.fit_boundary(boundary, source_grid),
+        discretization,
         config,
         external_field,
         betas,
@@ -153,7 +156,6 @@ def run(
         exterior_ntheta=ntheta,
         exterior_order=6,
         exterior_spectral_side_density=True,
-        exterior_jacobian_chunk_size=jacobian_chunk_size,
     )
     wall = time.perf_counter() - start
     summarize = summarize_axisymmetric_beta_scan if axisymmetric else summarize_nonaxisymmetric_beta_scan
@@ -224,7 +226,7 @@ def run(
         "grid": {"ns": ns, "ntheta": ntheta, "nxi": nxi},
         "axisymmetric": axisymmetric,
         "field_preflight": field_preflight,
-        "jacobian_chunk_size": jacobian_chunk_size,
+        "spline_elements": spline_elements,
         "device": str(jax.devices()[0]),
         "wall_s_pair": wall,
         "peak_rss_mib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
@@ -238,7 +240,7 @@ def main() -> None:
     parser.add_argument("--ns", type=int, required=True)
     parser.add_argument("--ntheta", type=int, required=True)
     parser.add_argument("--nxi", type=int, required=True)
-    parser.add_argument("--jacobian-chunk-size", type=int, default=1)
+    parser.add_argument("--spline-elements", type=int, required=True)
     parser.add_argument("--axisymmetric", action="store_true")
     beta_group = parser.add_mutually_exclusive_group()
     beta_group.add_argument("--beta-zero-only", action="store_true")
@@ -252,7 +254,7 @@ def main() -> None:
         args.ns,
         args.ntheta,
         args.nxi,
-        jacobian_chunk_size=args.jacobian_chunk_size,
+        spline_elements=args.spline_elements,
         axisymmetric=args.axisymmetric,
         beta_values=beta_values,
     )

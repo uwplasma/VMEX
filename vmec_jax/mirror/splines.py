@@ -162,6 +162,26 @@ class SplineMirrorDiscretization:
         return cls(spline, grid, np.asarray(spline.basis_matrix(axial.nodes)), False)
 
     @classmethod
+    def build_cgl(
+        cls,
+        config: MirrorConfig,
+        *,
+        elements: int,
+        quadrature_order: int = 4,
+    ) -> "SplineMirrorDiscretization":
+        """Build coefficients evaluated on the CGL grid used by exterior panels."""
+
+        elements = int(elements)
+        if elements < 1:
+            raise ValueError("spline discretization requires elements >= 1")
+        spline = CubicBSplineBasis.clamped(
+            np.linspace(-1.0, 1.0, elements + 1),
+            quadrature_order=quadrature_order,
+        )
+        grid = config.build_grid()
+        return cls(spline, grid, np.asarray(spline.basis_matrix(grid.xi)), False)
+
+    @classmethod
     def build_closed(
         cls,
         resolution: MirrorResolution,
@@ -293,9 +313,7 @@ def initialize_from_cartesian_field(
     state = discretization.project_fixed_boundary(initial_state, boundary)
     evaluated = discretization.evaluate_state(state)
     geometry = evaluate_geometry(evaluated, discretization.grid)
-    if not isinstance(geometry.jacobian_sign_changed, jax.core.Tracer) and bool(
-        geometry.jacobian_sign_changed
-    ):
+    if not isinstance(geometry.jacobian_sign_changed, jax.core.Tracer) and bool(geometry.jacobian_sign_changed):
         raise ValueError("supplied-field initialization requires a positive Jacobian")
     if callable(field):
         points = geometry.xyz.reshape((-1, 3))
@@ -683,9 +701,7 @@ def _packed_spline_preconditioner(
         axial = np.asarray(vectorizer.radius_indices[2], dtype=int)
         if vectorizer.lambda_size:
             active_axial = vectorizer.lambda_axial_indices.size
-            lambda_axial = vectorizer.lambda_axial_indices[
-                vectorizer.lambda_free_indices % active_axial
-            ]
+            lambda_axial = vectorizer.lambda_axial_indices[vectorizer.lambda_free_indices % active_axial]
             radial = np.concatenate(
                 (
                     radial,
@@ -719,9 +735,7 @@ def _packed_spline_preconditioner(
                     # rank-one coupling across every axial coefficient.
                     axial_neighbors = np.ones(size, dtype=bool)
                 rows = np.flatnonzero(
-                    (channels == channels[column])
-                    & (np.abs(radial - radial[column]) <= 1)
-                    & axial_neighbors
+                    (channels == channels[column]) & (np.abs(radial - radial[column]) <= 1) & axial_neighbors
                 )
                 row_parts.append(rows)
                 column_parts.append(np.full(rows.size, column, dtype=int))
