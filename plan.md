@@ -200,7 +200,7 @@ The initial audit relative to `origin/main` found 137 changed files, 24,370
 added lines, and 4,255 deleted lines. Phase 1 and the current cleanup reduce the
 working diff to 71 files, 18,538 added lines, and 1,633 deleted lines: 66
 unrelated files and about 5,000 added lines are gone. `vmec_jax/mirror` now
-contains 9,059 lines in 15 modules and exposes 23 lazy names. Continuation lives
+contains 8,953 lines in 15 modules and exposes 23 lazy names. Continuation lives
 with the free-boundary workflow, restart/plot/diagnostic output lives in one
 output module, and exterior interpolation lives with the BIE solve. The largest
 files remain `forces.py` (1,098), `solver.py` (1,001), `splines.py` (983), and
@@ -536,19 +536,6 @@ bounded attempt has four ordered gates before any coupled solve is added:
 If the energy, finite-volume, and Maxwell routes do not agree and refine, the
 coefficient-native free boundary is deferred and the promoted nodal free solve
 remains the public path. No third discretization strategy is permitted.
-
-Gate-1 status (2026-07-14): the discrete functional now separates the positive
-exterior correction energy, fixed-source/prescribed-flux work, and the negative
-applied-field energy of the plasma-excluded volume. The signs follow Green's
-identity with the surface normal directed from plasma into vacuum. A decaying
-dipole verifies correction/source/stationary identities and agrees with its
-independent boundary-potential integral within 3.5% when spectral side density
-is enabled; a uniform field recovers the analytic excluded cylinder energy to
-`2e-14` relative. The complete exterior suite reports 29 passed in 77.50 s.
-This is not yet a spline promotion result: finite-volume and Maxwell shape-
-derivative gates 2 and 3 remain open. The formulation follows the coincident-
-boundary Neumann energy discussion in Henneberg et al.:
-https://doi.org/10.1017/S0022377821000257
 
 ### Phase 3: structured solver and preconditioner
 
