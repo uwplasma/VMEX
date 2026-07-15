@@ -4,9 +4,9 @@ Mirror geometry
 ``vmec_jax.mirror`` is the open-field-line equilibrium backend. It uses
 coordinates ``(s, theta, xi)`` with a nonperiodic axial coordinate and
 fixed-flux end cuts. It does not reinterpret a straight mirror as a periodic
-torus. The axisymmetric fixed-boundary lane is supported. Nonaxisymmetric
-fixed boundary, free boundary, and the periodic hybrid remain research lanes
-until their independent strong-force and refinement gates in ``plan.md`` pass.
+torus. Axisymmetric and nonaxisymmetric fixed-boundary lanes are supported.
+Free boundary and the periodic hybrid remain research lanes until their
+independent strong-force and refinement gates in ``plan.md`` pass.
 
 Open topology and end cuts
 --------------------------
@@ -100,8 +100,8 @@ Current capability
 
 The branch currently includes:
 
-* a supported axisymmetric fixed-boundary finite-current solve and a research
-  nonaxisymmetric implementation,
+* supported axisymmetric and nonaxisymmetric fixed-boundary finite-current
+  solves,
 * an isotropic VMEC-style conserved-mass pressure energy with independent
   weak and pointwise force diagnostics,
 * a free-space boundary-integral vacuum model with an ``xyz -> B`` field
@@ -360,18 +360,17 @@ surface at spline collocation nodes before projection, instead of replacing
 only the LCFS and risking crossed surfaces. The optimizer also rejects any
 trial with a changed Jacobian sign, matching the regular VMEC-JAX merit policy.
 
-The 90-degree rotating ellipse reaches variational and independent weak
-residuals below ``8.2e-13`` on three grids, but its all-volume strong force is
-``15.28, 12.54, 12.09`` for ``(ns,mpol,elements)=(5,4,2),(7,6,3),(9,8,4)``.
-The nonzero floor blocks force-balance promotion. Halving its radius on the
-fine grid increases the normalized force to ``24.36`` instead of producing
-the expected paraxial improvement.
-
-The former zero-stream Straight Field Line Mirror continuation has the same
-defect. Its coarse and fine strong-force values are ``59.68`` and ``51.71``;
-the medium continuation crosses its Jacobian, and halving the fine-grid radius
-increases the force to ``103.56``. These runs remain compact negative evidence
-in ``benchmarks/mirror_fixed_boundary.json`` and are no longer the default.
+The old zero-stream continuation produced a nonconvergent strong-force floor
+for both shaped cases. Those runs remain historical negative evidence and are
+not the default. Physical supplied-field initialization changes the result.
+For the 90-degree rotating ellipse, combined refinement
+``(ns,mpol,elements)=(5,4,4),(7,6,6),(9,8,8)`` reduces all-volume strong force
+``6.39e-2 -> 2.41e-2 -> 9.76e-3``. The corresponding SFLM sequence
+``(7,6,6),(9,8,8),(11,10,10)`` reduces it
+``4.18e-2 -> 2.11e-2 -> 1.09e-2``. Zero-limit fits have observed orders
+``2.69`` and ``2.63``; both are consistent with zero. Variational and
+independent weak residuals remain near roundoff, Jacobians stay positive, and
+the bulk strong-force gate is below ``2e-2``.
 
 ``initialize_from_cartesian_field`` now keeps a supplied spline geometry fixed,
 infers :math:`\Psi'(s)` from the surface-averaged axial flux, and obtains the
@@ -391,14 +390,15 @@ continuation stages and writes MOUT plus horizontal 3-D, cross-section,
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
 At its compact demonstration resolution, the rotating ellipse retains central
-bulk/end-collar strong-force values of ``4.06/18.01``. The SFLM continuation
+all-volume strong force above the finest benchmark value; the example is a
+fast workflow demonstration, while the compact benchmark carries promotion
+evidence. The SFLM continuation
 now reprojects the analytic field at each shape stage and infers
 ``Psi'(s)`` instead of using a prescribed scalar. Its final variational and
-staggered residuals are below ``2.9e-14``, normalized ``div(B)`` is below
+staggered residuals are near roundoff, normalized ``div(B)`` is below
 ``8.0e-15``, and mean field-direction cosine exceeds ``0.9999996``. The final
-all-volume strong-force norm is ``3.52e-2``: much smaller than the homothetic
-result, but above the initializer's ``5.12e-3``. This drift is a measured input
-to the fixed-open refinement study, not promoted equilibrium evidence.
+compact all-volume strong-force norm is ``3.52e-2``; the refined benchmark,
+not this compact run, establishes convergence.
 The figures expose both residual histories and show the actual solved nested
 surfaces and cap-to-cap field lines, not the analytic target alone.
 
@@ -415,10 +415,10 @@ fully reconverged equilibria::
 
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
-The current example agrees with centered differences to ``1.09e-9`` relative
-and its true adjoint linear residual is ``7.26e-10``. This passes the derivative
-solver gate, but the derivative remains research evidence until the rotating
-ellipse passes the independent strong-force refinement gates.
+On the fine grid the rotating-ellipse and SFLM volume adjoints agree with
+centered differences to ``1.7e-10`` and ``2.0e-10`` relative. Their transpose
+linear residuals are below ``7.4e-10``. These derivatives now inherit promoted
+fixed-open primal states.
 
 ``spline_fixed_boundary_tangent`` solves the complementary forward system
 ``F_u du = -F_p dp`` with exact residual JVPs and the same preconditioner. On a

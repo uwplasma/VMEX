@@ -960,6 +960,61 @@ def test_supplied_field_initializer_recovers_straight_field_line_mirror() -> Non
     )
 
 
+@pytest.mark.full
+def test_equal_end_axisymmetric_mirror_is_independent_of_cut_location() -> None:
+    from vmec_jax.mirror.analytic import AxisymmetricPolynomialMirror
+
+    fixture = AxisymmetricPolynomialMirror(mirror_strength=0.5)
+    center_radius = []
+    center_axis_field = []
+    for half_length, elements in ((0.6, 6), (0.8, 8), (1.0, 10)):
+        config = MirrorConfig(
+            resolution=MirrorResolution(ns=9, mpol=0, nxi=17),
+            z_min=-half_length,
+            z_max=half_length,
+            ftol=1.0e-12,
+            max_iterations=1000,
+        )
+        discretization = SplineMirrorDiscretization.build(config, elements=elements)
+        boundary_samples = fixture.boundary_radius(
+            0.12,
+            half_length * jnp.asarray(discretization.spline.collocation_nodes),
+        )[None]
+        boundary = SplineMirrorBoundary(
+            discretization.spline.fit(boundary_samples, axis=-1)
+        )
+        radius = jnp.broadcast_to(
+            boundary.radius_coefficients[None],
+            (config.resolution.ns,) + boundary.radius_coefficients.shape,
+        )
+        initialized = initialize_from_cartesian_field(
+            SplineMirrorState(radius, jnp.zeros_like(radius)),
+            boundary,
+            discretization,
+            fixture.field,
+        )
+        result = solve_spline_fixed_boundary_cli(
+            initialized.state,
+            boundary,
+            discretization,
+            config,
+            axial_flux_derivative=initialized.axial_flux_derivative,
+            gradient_tolerance=config.ftol,
+            require_convergence=True,
+        ).evaluated
+        center = int(np.argmin(np.abs(discretization.grid.z)))
+        center_radius.append(float(result.state.radius_scale[-1, 0, center]))
+        center_axis_field.append(float(jnp.sqrt(result.energy.b_squared[0, 0, center])))
+        assert result.final_linear_residual < 2.0e-9
+        assert float(result.variational.maximum) <= config.ftol
+        assert float(result.staggered_weak_force.maximum) <= config.ftol
+        assert float(result.force.normalized_rms) < 6.0e-3
+        assert float(result.force.bulk_normalized_rms) < 2.0e-3
+
+    np.testing.assert_allclose(center_radius, center_radius[0], rtol=3.0e-8)
+    np.testing.assert_allclose(center_axis_field, center_axis_field[0], rtol=2.0e-5)
+
+
 def test_spline_coefficient_preconditioner_inverts_tensor_model() -> None:
     config = MirrorConfig(resolution=MirrorResolution(ns=9, mpol=3, nxi=9))
     discretization = SplineMirrorDiscretization.build(config, elements=8)
@@ -997,17 +1052,24 @@ def test_local_spline_preconditioner_builds_from_bounded_hessian_chunks() -> Non
     _, _, build_local = _packed_spline_preconditioner(discretization, vectorizer)
     size = vectorizer.pack().size
     diagonal = np.linspace(1.0, 3.0, size)
+    matrix = np.diag(diagonal)
+    stream_row = slice(
+        vectorizer.radius_size,
+        vectorizer.radius_size + vectorizer.lambda_free_indices.size,
+    )
+    gauge_coupling = np.linspace(0.01, 0.03, vectorizer.lambda_free_indices.size)
+    matrix[stream_row, stream_row] += np.outer(gauge_coupling, gauge_coupling)
     batch_sizes = []
 
     def matrix_columns(directions):
         batch_sizes.append(directions.shape[0])
-        return directions * diagonal[None]
+        return directions @ matrix.T
 
     assert build_local is not None
     apply = build_local(matrix_columns)
     exact = np.random.default_rng(7).normal(size=size)
 
-    np.testing.assert_allclose(apply(diagonal * exact), exact, rtol=3.0e-14, atol=3.0e-14)
+    np.testing.assert_allclose(apply(matrix @ exact), exact, rtol=3.0e-14, atol=3.0e-14)
     assert max(batch_sizes) <= 32
     assert sum(batch_sizes) >= size
 
@@ -1125,5 +1187,6 @@ def test_knot_refined_rotating_ellipse_uses_matrix_free_rescue() -> None:
 
     assert result is not None
     assert result.evaluated.linear_iterations > 0
+    assert result.evaluated.final_linear_residual < 1.0e-8
     assert float(result.evaluated.variational.maximum) <= config.ftol
     assert float(result.evaluated.staggered_weak_force.maximum) <= config.ftol

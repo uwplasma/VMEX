@@ -47,6 +47,73 @@ def _rotation(angle: Array) -> Array:
 
 
 @dataclass(frozen=True)
+class AxisymmetricPolynomialMirror:
+    """Exact vacuum mirror with symmetric circular end sections.
+
+    The scalar potential is cubic in ``z`` and quadratic in transverse
+    position. Its gradient is exactly curl-free and divergence-free, while
+    the quartic poloidal flux gives an analytic family of nested surfaces.
+    """
+
+    center_field: float = 1.0
+    half_length: float = 1.0
+    mirror_strength: float = 0.5
+
+    def __post_init__(self) -> None:
+        if self.center_field <= 0.0:
+            raise ValueError("center_field must be positive")
+        if self.half_length <= 0.0:
+            raise ValueError("half_length must be positive")
+        if self.mirror_strength < 0.0:
+            raise ValueError("mirror_strength must be nonnegative")
+
+    @property
+    def curvature(self) -> float:
+        """Return the quadratic axial-field coefficient in inverse metres squared."""
+
+        return self.mirror_strength / self.half_length**2
+
+    def potential(self, points: Array) -> Array:
+        """Return the exact scalar magnetic potential."""
+
+        x, y, z = jnp.asarray(points)
+        a = self.curvature
+        return self.center_field * (z + a * z**3 / 3.0 - 0.5 * a * z * (x**2 + y**2))
+
+    def field(self, points: Array) -> Array:
+        """Return ``grad(potential)`` in Cartesian coordinates."""
+
+        return jax.grad(self.potential)(jnp.asarray(points))
+
+    def axis_field(self, z: Array) -> Array:
+        """Return the quadratic on-axis mirror field."""
+
+        return self.center_field * (1.0 + self.curvature * jnp.asarray(z) ** 2)
+
+    def poloidal_flux(self, radius: Array, z: Array) -> Array:
+        """Return the exact axisymmetric flux labeling the nested surfaces."""
+
+        radius_squared = jnp.asarray(radius) ** 2
+        a = self.curvature
+        return self.center_field * (
+            0.5 * (1.0 + a * jnp.asarray(z) ** 2) * radius_squared
+            - 0.125 * a * radius_squared**2
+        )
+
+    def boundary_radius(self, midplane_radius: Array, z: Array) -> Array:
+        """Return the exact flux-surface radius at axial position ``z``."""
+
+        a = self.curvature
+        radius = jnp.asarray(midplane_radius)
+        if a == 0.0:
+            return jnp.broadcast_to(radius, jnp.shape(z))
+        normalized_flux = self.poloidal_flux(radius, 0.0) / self.center_field
+        axial = 1.0 + a * jnp.asarray(z) ** 2
+        discriminant = jnp.sqrt(axial**2 - 2.0 * a * normalized_flux)
+        return jnp.sqrt(4.0 * normalized_flux / (axial + discriminant))
+
+
+@dataclass(frozen=True)
 class RotatingEllipseParaxial:
     """Flux-conserving rotating ellipse from Appendix C of Rodriguez et al.
 
@@ -116,6 +183,21 @@ class RotatingEllipseParaxial:
         xy = jnp.asarray(radius) * (self.section_matrix(z) @ direction)
         axial = jnp.broadcast_to(z, jnp.shape(alpha))
         return jnp.stack((xy[0], xy[1], axial), axis=-1)
+
+    def field(self, points: Array) -> Array:
+        """Return the divergence-free first-order field tangent to the sections.
+
+        Transverse components follow a fixed field-line label through the
+        section matrix. Terms beyond first order in distance from the axis are
+        intentionally omitted, consistent with the paraxial construction.
+        """
+
+        x, y, z = jnp.asarray(points)
+        matrix = self.section_matrix(z)
+        derivative = jax.jacfwd(self.section_matrix)(z)
+        label = jnp.linalg.solve(matrix, jnp.asarray((x, y)))
+        transverse = self.axis_field(z) * (derivative @ label)
+        return jnp.asarray((transverse[0], transverse[1], self.axis_field(z)))
 
     def boundary_radius(self, midplane_radius: Array, theta: Array, z: Array) -> Array:
         """Return the physical polar radius of the rotating elliptical tube."""
@@ -307,6 +389,7 @@ def long_thin_beta_scaling(beta: Array, inverse_aspect_ratio: Array) -> LongThin
 
 
 __all__ = [
+    "AxisymmetricPolynomialMirror",
     "FirstOrderSection",
     "LongThinScaling",
     "QuadrupoleField",

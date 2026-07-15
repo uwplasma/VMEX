@@ -439,7 +439,6 @@ def make_mirror_figure(out: Path) -> None:
     )
     axisymmetric = data["axisymmetric_finite_beta"]["runs"]
     nonaxisymmetric = data["nonaxisymmetric_vacuum"]
-    performance = data["solver_performance"]
 
     fig, axes = plt.subplots(2, 2, figsize=(8.6, 6.3), dpi=160)
     ax = axes[0, 0]
@@ -477,40 +476,44 @@ def make_mirror_figure(out: Path) -> None:
     ax = axes[1, 0]
     rotating = nonaxisymmetric["rotating_ellipse"]
     sflm = nonaxisymmetric["straight_field_line_mirror"]
-    ax.semilogy([run["ns"] for run in rotating["runs"]],
-                [run["strong_force_all"] for run in rotating["runs"]],
+    rotating_columns = {name: index for index, name in enumerate(rotating["combined_columns"])}
+    sflm_columns = {name: index for index, name in enumerate(sflm["combined_columns"])}
+    rotating_runs = np.asarray(rotating["combined_runs"])
+    sflm_runs = np.asarray(sflm["combined_runs"])
+    ax.semilogy(rotating_runs[:, rotating_columns["ns"]],
+                rotating_runs[:, rotating_columns["strong_force"]],
                 "o-", color=RED, lw=1.8, ms=5, label="rotating ellipse")
-    ax.semilogy([sflm["coarse"]["ns"], sflm["fine"]["ns"]],
-                [sflm["coarse"]["strong_force_all"],
-                 sflm["fine"]["strong_force_all"]],
+    ax.semilogy(sflm_runs[:, sflm_columns["ns"]],
+                sflm_runs[:, sflm_columns["strong_force"]],
                 "s-", color=VIOLET, lw=1.8, ms=5, label="SFLM")
-    ax.scatter([rotating["runs"][-1]["ns"]],
+    ax.scatter([rotating_runs[-1, rotating_columns["ns"]]],
                [rotating["half_radius_fine_grid"]["strong_force_all"]],
                marker="x", s=45, color=RED, label="ellipse, half radius")
-    ax.scatter([sflm["fine"]["ns"]],
+    ax.scatter([sflm_runs[-2, sflm_columns["ns"]]],
                [sflm["half_radius_fine_grid"]["strong_force_all"]],
                marker="x", s=45, color=VIOLET, label="SFLM, half radius")
+    ax.axhline(5.0e-2, color=BASELINE, ls="--", lw=1.0, label="release gate")
     ax.set(xlabel="radial surfaces  ns", ylabel="normalized strong force")
-    ax.set_title("Nonaxisymmetric force gate is blocked", loc="left", fontsize=11)
+    ax.set_title("Nonaxisymmetric force convergence", loc="left", fontsize=11)
     ax.grid(True)
     ax.legend(fontsize=7.2, ncols=2)
 
     ax = axes[1, 1]
-    stages = np.arange(len(performance["rotating_ellipse_stage_iterations_after"]))
-    ax.plot(stages, performance["rotating_ellipse_stage_iterations_before"],
-            "o--", color=BASELINE, lw=1.5, ms=4.5, label="previous policy")
-    ax.plot(stages, performance["rotating_ellipse_stage_iterations_after"],
-            "o-", color=BLUE, lw=1.8, ms=4.5, label="matrix-free policy")
-    ax.set_xticks(stages)
-    ax.set(xlabel="shape-continuation stage", ylabel="Krylov iterations")
-    ax.set_title("Matrix-free policy reduces linear work", loc="left", fontsize=11)
+    ax.plot(rotating_runs[:, rotating_columns["ns"]],
+            rotating_runs[:, rotating_columns["linear_iterations"]],
+            "o-", color=RED, lw=1.8, ms=4.5, label="rotating ellipse")
+    ax.plot(sflm_runs[:, sflm_columns["ns"]],
+            sflm_runs[:, sflm_columns["linear_iterations"]],
+            "s-", color=VIOLET, lw=1.8, ms=4.5, label="SFLM")
+    ax.set(xlabel="radial surfaces  ns", ylabel="Krylov iterations")
+    ax.set_title("Structured linear-solve scaling", loc="left", fontsize=11)
     ax.grid(True)
     ax.legend(fontsize=8)
 
     for panel in axes.ravel():
         for side in ("top", "right"):
             panel.spines[side].set_visible(False)
-    fig.suptitle("Fixed-boundary mirror: supported and blocked evidence",
+    fig.suptitle("Fixed-boundary mirror: promoted refinement evidence",
                  x=0.07, ha="left", fontsize=13)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(out, dpi=160, facecolor=SURFACE, transparent=False)

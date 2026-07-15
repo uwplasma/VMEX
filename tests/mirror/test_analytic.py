@@ -10,10 +10,46 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
 
 from vmec_jax.mirror.analytic import (  # noqa: E402
+    AxisymmetricPolynomialMirror,
     RotatingEllipseParaxial,
     StraightFieldLineMirror,
     long_thin_beta_scaling,
 )
+
+
+def test_axisymmetric_polynomial_mirror_is_exact_and_flux_preserving() -> None:
+    fixture = AxisymmetricPolynomialMirror(
+        center_field=0.8,
+        half_length=1.2,
+        mirror_strength=0.6,
+    )
+    point = jnp.asarray([0.13, -0.07, 0.4])
+    jacobian = jax.jacfwd(fixture.field)(point)
+    curl = jnp.asarray(
+        (
+            jacobian[2, 1] - jacobian[1, 2],
+            jacobian[0, 2] - jacobian[2, 0],
+            jacobian[1, 0] - jacobian[0, 1],
+        )
+    )
+    np.testing.assert_allclose(curl, 0.0, atol=2.0e-15)
+    np.testing.assert_allclose(jnp.trace(jacobian), 0.0, atol=2.0e-15)
+
+    z = jnp.linspace(-1.0, 1.0, 21)
+    radius = fixture.boundary_radius(0.12, z)
+    np.testing.assert_allclose(
+        fixture.poloidal_flux(radius, z),
+        fixture.poloidal_flux(0.12, 0.0),
+        rtol=3.0e-15,
+        atol=3.0e-15,
+    )
+    np.testing.assert_allclose(radius[0], radius[-1], atol=2.0e-15)
+    np.testing.assert_allclose(
+        fixture.field(jnp.asarray([0.0, 0.0, 0.4]))[2],
+        fixture.axis_field(0.4),
+    )
+    uniform = AxisymmetricPolynomialMirror(mirror_strength=0.0)
+    np.testing.assert_allclose(uniform.boundary_radius(0.12, z), 0.12)
 
 
 def test_rotating_ellipse_flux_vacuum_identity_and_angle() -> None:
@@ -41,6 +77,25 @@ def test_rotating_ellipse_flux_vacuum_identity_and_angle() -> None:
     np.testing.assert_allclose(expected_angle[-1] - expected_angle[0], 0.45 * jnp.pi, atol=2.0e-15)
     endpoint_turn = fixture.orientation(1.0) - fixture.orientation(-1.0)
     np.testing.assert_allclose(endpoint_turn, 0.5 * jnp.pi, atol=2.0e-15)
+
+
+def test_rotating_ellipse_field_is_solenoidal_and_tangent() -> None:
+    fixture = RotatingEllipseParaxial(elongation=1.7, mirror_strength=0.3)
+    radius, alpha, z = 0.04, 0.7, 0.3
+    point = fixture.section(radius, alpha, z)
+    field = fixture.field(point)
+    tangent = jax.jacfwd(lambda zz: fixture.section(radius, alpha, zz))(z)
+    np.testing.assert_allclose(
+        jnp.cross(field, tangent),
+        0.0,
+        atol=3.0e-15,
+    )
+    jacobian = jax.jacfwd(fixture.field)(point)
+    np.testing.assert_allclose(jnp.trace(jacobian), 0.0, atol=2.0e-14)
+    np.testing.assert_allclose(
+        fixture.field(jnp.asarray([0.0, 0.0, z]))[2],
+        fixture.axis_field(z),
+    )
 
 
 def test_rotating_ellipse_general_and_center_quadrupole_agree() -> None:

@@ -191,11 +191,20 @@ for case in CASES:
     for stage in SHAPE_STAGES:
         final_boundary = discretization.fit_boundary(boundary_for(case, stage), source_grid)
         coefficient_state = discretization.transfer_boundary(coefficient_state, previous_boundary, final_boundary)
-        if case == "straight_field_line" and stage > 0.0:
-            fixture = StraightFieldLineMirror(
-                center_field=1.0,
-                axial_scale=2.5 / stage,
-            )
+        if stage > 0.0:
+            if case == "rotating_ellipse":
+                fixture = RotatingEllipseParaxial(
+                    half_length=1.0,
+                    reference_field=2.0 * AXIAL_FLUX_DERIVATIVE[case] / RADIUS[case] ** 2,
+                    mirror_strength=0.2 * stage,
+                    elongation=1.0 + 0.5 * stage,
+                    rotation=0.5 * jnp.pi * stage,
+                )
+            else:
+                fixture = StraightFieldLineMirror(
+                    center_field=1.0,
+                    axial_scale=2.5 / stage,
+                )
             initialized = initialize_from_cartesian_field(
                 coefficient_state,
                 final_boundary,
@@ -203,7 +212,8 @@ for case in CASES:
                 fixture.field,
             )
             coefficient_state = initialized.state
-            axial_flux_derivative = initialized.axial_flux_derivative
+            if case == "straight_field_line":
+                axial_flux_derivative = initialized.axial_flux_derivative
         spline_result = solve_fixed_boundary_cli(
             coefficient_state,
             final_boundary,
@@ -242,7 +252,7 @@ for case in CASES:
     if case == "rotating_ellipse" and RUN_GRADIENT_CHECK:
         parameters = spline_fixed_boundary_parameters(
             final_boundary,
-            axial_flux_derivative=AXIAL_FLUX_DERIVATIVE[case],
+            axial_flux_derivative=axial_flux_derivative,
         )
         adjoint = spline_fixed_boundary_adjoint(
             spline_result,
@@ -269,7 +279,7 @@ for case in CASES:
                 varied_boundary,
                 discretization,
                 config,
-                axial_flux_derivative=AXIAL_FLUX_DERIVATIVE[case],
+                axial_flux_derivative=axial_flux_derivative,
                 solve_lambda=True,
                 gradient_tolerance=FTOL,
                 require_convergence=True,

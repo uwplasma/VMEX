@@ -713,10 +713,15 @@ def _packed_spline_preconditioner(
             directions[np.arange(columns.size), columns] = 1.0
             responses = np.asarray(matrix_columns(directions), dtype=float)
             for local_index, column in enumerate(columns):
+                axial_neighbors = np.abs(axial - axial[column]) <= 4
+                if channels[column] == 1:
+                    # Eliminating the weighted lambda gauge introduces a
+                    # rank-one coupling across every axial coefficient.
+                    axial_neighbors = np.ones(size, dtype=bool)
                 rows = np.flatnonzero(
                     (channels == channels[column])
                     & (np.abs(radial - radial[column]) <= 1)
-                    & (np.abs(axial - axial[column]) <= 4)
+                    & axial_neighbors
                 )
                 row_parts.append(rows)
                 column_parts.append(np.full(rows.size, column, dtype=int))
