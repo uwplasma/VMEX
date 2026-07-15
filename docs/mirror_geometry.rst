@@ -53,6 +53,44 @@ inconsistent node/mode pair or accidentally introduce a Nyquist mode.
 Exterior angular quadrature remains an independent argument because it
 integrates the vacuum boundary rather than defining plasma unknowns.
 
+Radial location map
+-------------------
+
+The radial mesh follows the VMEC staggering convention, adapted to the
+two-point Gauss energy rule:
+
+* geometry and stream-function unknowns are stored on full surfaces
+  :math:`s_i`;
+* metric terms, :math:`\sqrt{g}B^\theta`, :math:`\sqrt{g}B^\xi`, and magnetic
+  energy are evaluated at two Gauss points inside each radial cell;
+* Gauss averages define cell-centered covariant
+  :math:`B_\theta`, :math:`B_\xi`, Jacobian, and pressure at
+  :math:`s_{i+1/2}`;
+* current and ``J x B - grad(p)`` are reconstructed on interior full surfaces;
+* the magnetic axis, fixed LCFS, and open end cuts are reported separately
+  from the unconstrained physical-volume norm.
+
+In particular, radial curl and pressure terms use conservative cell
+differences,
+
+.. math::
+
+   \sqrt{g}J^\theta_i = \frac{1}{\mu_0}
+   \left[\partial_\xi B_{s,i}
+   - \frac{B_{\xi,i+1/2}-B_{\xi,i-1/2}}{\Delta s}\right],
+
+.. math::
+
+   \sqrt{g}J^\xi_i = \frac{1}{\mu_0}
+   \left[\frac{B_{\theta,i+1/2}-B_{\theta,i-1/2}}{\Delta s}
+   - \partial_\theta B_{s,i}\right], \qquad
+   p'_i = \frac{p_{i+1/2}-p_{i-1/2}}{\Delta s}.
+
+Contravariant field on a full surface is reconstructed by averaging flux
+density and Jacobian separately, rather than averaging their ratio. This is
+the same placement used by VMEC2000 ``jxbforce`` and avoids differentiating an
+unrelated full-mesh reconstruction of the energy field.
+
 Current capability
 ------------------
 

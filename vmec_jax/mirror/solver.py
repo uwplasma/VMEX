@@ -762,8 +762,12 @@ def solve_fixed_boundary_cli(
         return fixed_boundary_variational_residual(state, boundary, grid, **energy_kwargs)
 
     def evaluate_force(state: MirrorState, energy: MirrorEnergy) -> IsotropicForceResidual:
-        del state
-        return isotropic_force_residual(energy, grid)
+        return isotropic_force_residual(
+            energy,
+            grid,
+            state=state,
+            **energy_kwargs,
+        )
 
     initial_energy = evaluate_energy(projected_initial)
     energy_scale = max(abs(float(initial_energy.total)), np.finfo(float).tiny)

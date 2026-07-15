@@ -230,7 +230,16 @@ def test_two_coil_paraxial_tensor_residual_decreases_with_tube_radius() -> None:
         boundary = MirrorBoundary.from_axis_field(flux, bz, grid)
         state = MirrorState.from_boundary(boundary, grid)
         energy = mirror_energy(state, grid, axial_flux_derivative=flux)
-        residuals.append(float(isotropic_force_residual(energy, grid).normalized_rms))
+        residuals.append(
+            float(
+                isotropic_force_residual(
+                    energy,
+                    grid,
+                    state=state,
+                    axial_flux_derivative=flux,
+                ).normalized_rms
+            )
+        )
     assert residuals[0] > residuals[1] > residuals[2]
     np.testing.assert_allclose(
         np.asarray(residuals[:-1]) / np.asarray(residuals[1:]),

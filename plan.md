@@ -5,30 +5,28 @@ original `/Users/rogeriojorge/Downloads/plan_mirror.md` and every earlier
 version of this plan. Do not create parallel roadmaps. Commits, tests, and the
 four compact benchmark JSON files are the execution log.
 
-Audit baseline (2026-07-14, refreshed after the final source review):
+Audit baseline (2026-07-15, refreshed after M1 strong-force acceptance):
 
-- branch `codex/mirror-geometry` at `dac37b42`;
-- base `origin/main` at `ed4ac7ac`, zero commits behind and 307 ahead;
+- branch `codex/mirror-geometry` at `fcc70632` plus the validated M1 worktree;
+- base `origin/main` at `ed4ac7ac`, zero commits behind and 308 ahead;
 - PR #22 is open, draft, and mergeable;
-- diff is 51 files, 16,401 insertions, and 1,608 deletions;
-- committed `vmec_jax/mirror` contains 13 modules, 7,921 lines, and 20 lazy public
+- diff is 51 files, 16,501 insertions, and 1,608 deletions before the M1 commit;
+- `vmec_jax/mirror` contains 13 modules, exactly 8,000 lines, and 20 lazy public
   names;
-- mirror tests contain ten substantive owner-aligned files and 4,241 lines;
-- after the `mpol` migration, the committed mirror suite passed 104 tests and
-  skipped 10 in 303.98 seconds. The audited M1 worktree passes 105 tests and
-  skips 10 in 395.44 seconds; strict Sphinx, Ruff, pre-commit, and
-  `git diff --check` pass; every required pushed CI check is green;
+- mirror tests contain ten substantive owner-aligned files and 4,450 lines;
+- the M1 worktree passes 106 tests and skips 10 in 331.98 seconds; strict
+  Sphinx, changed-file pre-commit, and `git diff --check` pass; every required
+  check on the preceding pushed commit is green;
 - public `ntheta` has been removed. `mpol` denotes the highest retained angular
   Fourier mode and the grid derives `ntheta = 2 * mpol + 1` exactly;
-- M1 work in the uncommitted tree raises the package temporarily to 8,051 lines.
-  Its manufactured cylindrical force test is second order, but the circular
-  hybrid first radial row grows from about `1.00` at `ns=5` to `1.37` at
-  `ns=9`; this work is not accepted until that near-axis defect is resolved.
+- the repaired strong force reconstructs covariant field and pressure from the
+  radial Gauss cells. Its exact cylindrical fixture is second order. On the
+  current-free circular spline torus the first-row normalized residual is
+  `8.19e-6`, `2.04e-6`, and `5.09e-7` for `ns=5,9,17`, respectively.
 
 The branch contains real equilibrium solvers and useful validation, but it is
-not release-ready. The immediate blockers are the independent strong-force
-near-axis reconstruction, stale shaped benchmarks predating the
-axis and `mpol` corrections, duplicate nodal/spline solver paths, dense
+not release-ready. The immediate blockers are stale shaped benchmarks
+predating the axis and `mpol` corrections, duplicate nodal/spline solver paths, dense
 free-boundary Jacobian storage, a preconditioner that omits
 radius--stream-function coupling, and incomplete closed-hybrid limiting cases.
 The milestones below remove those blockers in dependency order.
@@ -461,7 +459,7 @@ substep; inspect CI in batches rather than waiting after every push.
 Exit: one unambiguous resolution API and no benchmark that silently describes
 a different discrete space.
 
-### M1. Repair the independent strong-force diagnostic
+### M1. Repair the independent strong-force diagnostic -- complete
 
 1. Trace VMEC2000's half/full radial mesh placement through `forces.f`,
    `bcovar.f`, `residue.f90`, and `jxbforce.f`.
@@ -651,20 +649,20 @@ Percentages measure promotion evidence, not lines written:
 
 | Lane | Complete | Main remaining evidence |
 | --- | ---: | --- |
-| Fixed open axisymmetric | 88% | repaired strong force and regenerated benchmark |
-| Fixed open nonaxisymmetric | 68% | separate SFLM/rotating-ellipse refinement and force |
+| Fixed open axisymmetric | 92% | regenerate coefficient-native benchmark |
+| Fixed open nonaxisymmetric | 72% | separate SFLM/rotating-ellipse refinement evidence |
 | Open fixed B-spline representation | 74% | become sole production state and remove nodal solve |
 | Free open axisymmetric | 68% | spline coefficient solve, matrix-free coupling, beta refinement |
 | Free open nonaxisymmetric | 28% | conditional three-grid promotion attempt |
 | Fixed closed B-spline hybrid | 48% | VMEC parity, open-leg limit, force, derivatives |
-| Strong-force diagnostic | 60% | closed-axis first-row limit and three-grid order |
+| Strong-force diagnostic | 100% | maintain gates in promoted equilibrium lanes |
 | Coupled preconditioning | 35% | coupled radius--lambda block and A/B gates |
 | Implicit differentiation | 70% | unify coefficient maps; rerun promoted primal lanes |
 | Code/API simplification | 82% | remove duplicate nodal solver and meet budgets |
 | Docs/examples/artifacts | 64% | regenerate evidence and release showcase |
 | ESSOS ownership separation | 100% | preserve boundary; no coil code here |
 
-Weighted completion of the four required release models is approximately 65%.
+Weighted completion of the four required release models is approximately 67%.
 Free closed hybrid and ANIMEC are deferred and excluded from that percentage.
 
 ## 9. Primary references

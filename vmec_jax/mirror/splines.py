@@ -252,13 +252,15 @@ def initialize_closed_vacuum_stream_function(
     *,
     axial_flux_derivative: Array,
 ) -> SplineMirrorState:
-    """Seed a current-free closed solve with the toroidal ``1/R`` field.
+    """Seed the minimum-energy closed field for a prescribed flux profile.
 
     The axial average of ``sqrt(g) / g_uu`` gives the poloidal flux-density
     variation for a field with constant covariant axial component. For
-    concentric circular surfaces this is exactly proportional to ``1/R``.
-    The returned periodic stream function has zero surface mean and is only an
-    initializer; nonaxisymmetric equilibria still solve all lambda coefficients.
+    concentric circular surfaces this is proportional to ``1/R`` on each flux
+    surface. A globally current-free field also requires the supplied flux
+    profile to keep that covariant component constant between surfaces. The
+    returned stream function is only an initializer; nonaxisymmetric
+    equilibria still solve all lambda coefficients.
     """
 
     if not discretization.closed:
@@ -705,12 +707,15 @@ def solve_spline_fixed_boundary_cli(
             maximum=jnp.asarray(np.max(np.abs(packed))),
         )
 
-    def force_residual(energy):
+    def force_residual(state, energy):
         return isotropic_force_residual(
             energy,
             grid,
+            state=state,
+            axis=axis,
             closed=discretization.closed,
             characteristic_length=None if axis is None else axis.arc_length,
+            **energy_kwargs,
         )
 
     history: list[tuple[float, float, float, float, float, float]] = []
@@ -719,7 +724,7 @@ def solve_spline_fixed_boundary_cli(
         state = unpack(jnp.asarray(vector))
         energy = evaluate_energy(state)
         variational = packed_variational(vector, state)
-        force = force_residual(energy)
+        force = force_residual(state, energy)
         history.append(
             (
                 float(iteration),
@@ -776,7 +781,7 @@ def solve_spline_fixed_boundary_cli(
     )
     final_energy = evaluate_energy(final_state)
     final_variational = packed_variational(final_x, final_state)
-    final_force = force_residual(final_energy)
+    final_force = force_residual(final_state, final_energy)
     final_weak = packed_weak(final_state)
     record(iterations, final_x)
     converged = bool(

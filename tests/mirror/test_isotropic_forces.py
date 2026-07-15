@@ -96,7 +96,12 @@ def test_vacuum_cylinder_has_exact_energy_and_negligible_physical_force() -> Non
     np.testing.assert_allclose(energy.magnetic, expected_energy, rtol=3.0e-14, atol=3.0e-9)
     np.testing.assert_allclose(energy.pressure_energy, 0.0)
 
-    residual = isotropic_force_residual(energy, grid)
+    residual = isotropic_force_residual(
+        energy,
+        grid,
+        state=state,
+        axial_flux_derivative=psi_prime,
+    )
     assert float(residual.normalized_rms) < 2.0e-13
     assert float(residual.bulk_normalized_rms) < 2.0e-13
     assert float(residual.axis_normalized_rms) < 2.0e-13
@@ -127,7 +132,18 @@ def test_mass_profile_recovers_reference_isotropic_pressure() -> None:
     np.testing.assert_allclose(finite_beta.pressure, pressure, rtol=2.0e-14, atol=2.0e-10)
     expected = pressure * float(vacuum.volume_derivative[0]) / (5.0 / 3.0 - 1.0)
     np.testing.assert_allclose(finite_beta.pressure_energy, expected, rtol=3.0e-14, atol=3.0e-9)
-    assert float(isotropic_force_residual(finite_beta, grid).normalized_rms) < 2.0e-13
+    assert (
+        float(
+            isotropic_force_residual(
+                finite_beta,
+                grid,
+                state=state,
+                axial_flux_derivative=0.1,
+                mass_profile=mass,
+            ).normalized_rms
+        )
+        < 2.0e-13
+    )
 
 
 def test_manufactured_radial_pressure_balance_converges_second_order() -> None:
@@ -147,16 +163,27 @@ def test_manufactured_radial_pressure_balance_converges_second_order() -> None:
         radial_jacobian = 0.5 * radius**2 * (1.0 + 2.0 * shaping * s)
         field = flux / radial_jacobian
         pressure = 2.0e5 + (field[-1] ** 2 - field**2) / (2.0 * MU0)
+        mass = mass_profile_from_pressure(
+            pressure,
+            vacuum.volume_derivative,
+        )
         energy = mirror_energy(
             state,
             grid,
             axial_flux_derivative=flux,
-            mass_profile=mass_profile_from_pressure(
-                pressure,
-                vacuum.volume_derivative,
-            ),
+            mass_profile=mass,
         )
-        residuals.append(float(isotropic_force_residual(energy, grid).normalized_rms))
+        residuals.append(
+            float(
+                isotropic_force_residual(
+                    energy,
+                    grid,
+                    state=state,
+                    axial_flux_derivative=flux,
+                    mass_profile=mass,
+                ).normalized_rms
+            )
+        )
 
     assert residuals[0] > residuals[1] > residuals[2]
     np.testing.assert_allclose(
@@ -164,6 +191,85 @@ def test_manufactured_radial_pressure_balance_converges_second_order() -> None:
         4.1,
         rtol=0.08,
     )
+
+
+def test_staggered_polynomial_force_converges_with_lambda_current_and_pressure() -> None:
+    """Check every force component against a closed-form cylindrical state."""
+
+    errors = []
+    for ns in (9, 17, 33):
+        radius, half_length, stream_amplitude = 0.31, 1.2, 0.008
+        grid = MirrorConfig(
+            resolution=MirrorResolution(ns=ns, mpol=4, nxi=9),
+            z_min=-half_length,
+            z_max=half_length,
+        ).build_grid()
+        s = jnp.asarray(grid.s)[:, None, None]
+        theta = jnp.asarray(grid.theta)[None, :, None]
+        xi = jnp.asarray(grid.xi)[None, None, :]
+        stream_factor = stream_amplitude * s * (1.0 - s)
+        lam = stream_factor * jnp.cos(2.0 * theta) * (1.0 - xi**2)
+        state = MirrorState(jnp.full(grid.shape, radius), lam)
+        flux_profile = 0.09 + 0.015 * jnp.asarray(grid.s)
+        current_profile = 0.012 + 0.01 * jnp.asarray(grid.s)
+        pressure = 2.0e4 - 3.0e3 * jnp.asarray(grid.s)
+        vacuum = mirror_energy(
+            state,
+            grid,
+            axial_flux_derivative=flux_profile,
+            current_derivative=current_profile,
+        )
+        mass = mass_profile_from_pressure(pressure, vacuum.volume_derivative)
+        energy = mirror_energy(
+            state,
+            grid,
+            axial_flux_derivative=flux_profile,
+            current_derivative=current_profile,
+            mass_profile=mass,
+        )
+        residual = isotropic_force_residual(
+            energy,
+            grid,
+            state=state,
+            axial_flux_derivative=flux_profile,
+            current_derivative=current_profile,
+            mass_profile=mass,
+        )
+
+        jacobian = 0.5 * radius**2 * half_length
+        lambda_xi = -2.0 * stream_factor * jnp.cos(2.0 * theta) * xi
+        lambda_theta = -2.0 * stream_factor * jnp.sin(2.0 * theta) * (1.0 - xi**2)
+        field_theta_numerator = current_profile[:, None, None] - lambda_xi
+        field_xi_numerator = flux_profile[:, None, None] + lambda_theta
+        b_sup_theta = field_theta_numerator / jacobian
+        b_sup_xi = field_xi_numerator / jacobian
+        current_s_numerator = (
+            -4.0 * half_length**2 * stream_factor * jnp.cos(2.0 * theta) * (1.0 - xi**2) / jacobian
+            - 2.0 * radius**2 * s * stream_factor * jnp.cos(2.0 * theta) / jacobian
+        )
+        lambda_theta_s = -2.0 * stream_amplitude * (1.0 - 2.0 * s) * jnp.sin(2.0 * theta) * (1.0 - xi**2)
+        lambda_xi_s = -2.0 * stream_amplitude * (1.0 - 2.0 * s) * jnp.cos(2.0 * theta) * xi
+        current_theta_numerator = -half_length**2 * (0.015 + lambda_theta_s) / jacobian
+        current_xi_numerator = radius**2 * (
+            field_theta_numerator + s * (0.01 - lambda_xi_s)
+        ) / jacobian
+        expected = (
+            (current_theta_numerator * b_sup_xi - current_xi_numerator * b_sup_theta) / MU0 + 3.0e3,
+            -current_s_numerator * b_sup_xi / MU0,
+            current_s_numerator * b_sup_theta / MU0,
+        )
+        numerical = (residual.covariant_s, residual.covariant_theta, residual.covariant_xi)
+        errors.append(
+            [
+                np.sqrt(np.mean((np.asarray(got)[1:-1] - np.asarray(want)[1:-1]) ** 2))
+                / np.sqrt(np.mean(np.asarray(want)[1:-1] ** 2))
+                for got, want in zip(numerical, expected, strict=True)
+            ]
+        )
+
+    errors = np.asarray(errors)
+    np.testing.assert_allclose(errors[:-1] / errors[1:], 4.0, rtol=0.08)
+    assert np.max(errors[-1]) < 3.0e-3
 
 
 def test_nonaxisymmetric_coordinates_recover_uniform_cartesian_field() -> None:
@@ -187,7 +293,12 @@ def test_nonaxisymmetric_coordinates_recover_uniform_cartesian_field() -> None:
         jnp.broadcast_to(stream[None, :, None], grid.shape),
     )
     energy = mirror_energy(state, grid, axial_flux_derivative=axial_flux)
-    residual = isotropic_force_residual(energy, grid)
+    residual = isotropic_force_residual(
+        energy,
+        grid,
+        state=state,
+        axial_flux_derivative=axial_flux,
+    )
 
     np.testing.assert_allclose(energy.b_squared, 1.0, rtol=4.0e-15, atol=4.0e-15)
     assert float(residual.normalized_rms) < 1.0e-12
@@ -367,7 +478,12 @@ def test_flared_tube_manufactured_lorentz_force_converges_spectrally() -> None:
         boundary = MirrorBoundary.from_radius(radius, grid)
         state = MirrorState.from_boundary(boundary, grid)
         flux = 0.1
-        residual = isotropic_force_residual(mirror_energy(state, grid, axial_flux_derivative=flux), grid)
+        residual = isotropic_force_residual(
+            mirror_energy(state, grid, axial_flux_derivative=flux),
+            grid,
+            state=state,
+            axial_flux_derivative=flux,
+        )
 
         radius_z = 0.3 * 0.24 * xi / half_length
         radius_zz = jnp.full_like(xi, 0.3 * 0.24 / half_length**2)
@@ -443,7 +559,12 @@ def test_reference_solver_polishes_perturbed_cylinder_to_physical_ftol() -> None
     xi = jnp.asarray(grid.xi)[None, None, :]
     perturbation = 0.03 * s * (1.0 - s) * (1.0 - xi**2)
     initial = replace(base, radius_scale=base.radius_scale + perturbation)
-    initial_force = isotropic_force_residual(mirror_energy(initial, grid, axial_flux_derivative=0.1), grid)
+    initial_force = isotropic_force_residual(
+        mirror_energy(initial, grid, axial_flux_derivative=0.1),
+        grid,
+        state=initial,
+        axial_flux_derivative=0.1,
+    )
     assert float(initial_force.normalized_rms) > 1.0e-2
 
     result = solve_fixed_boundary_cli(

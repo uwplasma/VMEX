@@ -344,13 +344,18 @@ def solve_free_boundary_cli(
     )
     final_residual = np.asarray(residual_jit(jnp.asarray(solution)), dtype=float)
     variational_max = float(np.max(np.abs(final_residual)))
-    plasma_force = isotropic_force_residual(plasma, plasma_grid)
     energy_kwargs = {
         "axial_flux_derivative": axial_flux_derivative,
         "mass_profile": jnp.asarray(mass_profile) * mass_scale,
         "current_derivative": current_derivative,
         "gamma": gamma,
     }
+    plasma_force = isotropic_force_residual(
+        plasma,
+        plasma_grid,
+        state=state,
+        **energy_kwargs,
+    )
     full_weak_force = isotropic_staggered_weak_residual(
         state,
         boundary,

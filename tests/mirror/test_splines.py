@@ -19,6 +19,7 @@ from vmec_jax.mirror import (  # noqa: E402
     solve_fixed_boundary_cli,
 )
 from vmec_jax.mirror.forces import (  # noqa: E402
+    isotropic_force_residual,
     isotropic_staggered_energy_gradient,
     mirror_energy,
 )
@@ -456,6 +457,55 @@ def test_closed_vacuum_initializer_recovers_one_over_r_field() -> None:
     assert float(zero_spread) > 0.15
     np.testing.assert_allclose(surface_integral, 0.0, atol=2.0e-17)
     assert float(jnp.max(jnp.abs(initialized.lambda_coefficients))) > 1.0e-3
+
+
+def test_closed_vacuum_strong_force_converges_at_axis() -> None:
+    """Refine the physical force for a current-free circular torus."""
+
+    first_row_residuals = []
+    for ns in (5, 9, 17):
+        resolution = MirrorResolution(ns=ns, mpol=5, nxi=12)
+        discretization, axis, _, zero = _closed_circular_torus(
+            resolution,
+            coefficient_count=12,
+        )
+        evaluated_zero = discretization.evaluate_state(zero)
+        geometry = evaluate_closed_geometry(evaluated_zero, discretization.grid, axis)
+        axial_weights = jnp.asarray(discretization.grid.axial_basis.weights)
+        theta_weights = jnp.asarray(discretization.grid.theta_basis.weights)
+        metric_weight = jnp.einsum(
+            "ijk,k->ij",
+            geometry.sqrt_g / geometry.g_xixi,
+            axial_weights,
+        ) / jnp.sum(axial_weights)
+        surface_mean = jnp.einsum("ij,j->i", metric_weight, theta_weights) / jnp.sum(theta_weights)
+        flux = 0.02 * surface_mean / surface_mean[0]
+        initialized = initialize_closed_vacuum_stream_function(
+            zero,
+            discretization,
+            axis,
+            axial_flux_derivative=flux,
+        )
+        state = discretization.evaluate_state(initialized)
+        energy = mirror_energy(
+            state,
+            discretization.grid,
+            axis=axis,
+            axial_flux_derivative=flux,
+        )
+        residual = isotropic_force_residual(
+            energy,
+            discretization.grid,
+            state=state,
+            axis=axis,
+            closed=True,
+            axial_flux_derivative=flux,
+        )
+        first_row_residuals.append(float(residual.first_row_normalized_rms))
+
+    ratios = np.asarray(first_row_residuals[:-1]) / np.asarray(first_row_residuals[1:])
+    np.testing.assert_allclose(ratios, 4.0, rtol=0.03)
+    assert first_row_residuals[-1] < 6.0e-7
 
 
 def test_closed_staggered_first_variation_matches_autodiff() -> None:
