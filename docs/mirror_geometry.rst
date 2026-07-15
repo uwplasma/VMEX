@@ -84,9 +84,14 @@ reconstructed pointwise-force norm improves from ``0.709`` at ``ns=5`` to
 ``0.570`` at ``ns=7`` but is not yet small, so it remains an explicit
 refinement blocker. The finite-current racetrack also solves its stream
 function and its 90-degree ellipse is an actual fixed-boundary equilibrium,
-not a Fourier projection. The closed limiting-case and derivative gates remain
-open, so this is a research implementation and is not yet exported as a
-supported equilibrium model.
+not a Fourier projection. Its variational and staggered-weak residuals reach
+``ftol=1e-12`` and normalized ``div(B)`` is below ``2e-12``. A differentiable
+periodic RK4 tracer follows the solved contravariant field for multiple
+circuits and measures nonzero iota. On the circular analytic fixture it
+recovers ``iota=I'/Psi'`` and its current derivative to ``2e-13`` relative.
+VMEC limit parity, beta refinement, hybrid solver adjoints, and release plots
+remain open, so this is a research implementation and is not yet exported as
+a supported equilibrium model.
 
 Plotting and output scope
 -------------------------

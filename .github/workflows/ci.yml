@@ -95,7 +95,7 @@ jobs:
         run: |
           if [ "${{ matrix.shard }}" = "field" ]; then
             FILES="tests/mirror/test_exterior.py \
-                   tests/mirror/test_vacuum.py \
+                   tests/mirror/test_free_boundary.py \
                    tests/mirror/test_free_boundary_implicit.py"
           elif [ "${{ matrix.shard }}" = "equilibrium" ]; then
             FILES="tests/mirror/test_continuation.py \

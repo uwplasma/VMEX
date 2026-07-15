@@ -39,6 +39,7 @@ from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorState,
     initialize_closed_vacuum_stream_function,
     solve_spline_fixed_boundary_cli,
+    trace_closed_field_line,
 )
 
 
@@ -379,6 +380,35 @@ def _closed_circular_torus(resolution, *, coefficient_count=8):
     )
 
 
+def test_closed_field_line_recovers_constant_iota_and_derivative() -> None:
+    resolution = MirrorResolution(ns=5, mpol=2, ntheta=8, nxi=4)
+    discretization, axis, _, state = _closed_circular_torus(resolution)
+    evaluated = discretization.evaluate_state(state)
+    geometry = evaluate_closed_geometry(evaluated, discretization.grid, axis)
+    flux = 0.02
+
+    def iota(current):
+        field = contravariant_field(
+            evaluated,
+            geometry,
+            discretization.grid,
+            axial_flux_derivative=flux,
+            current_derivative=current,
+        )
+        return trace_closed_field_line(
+            field,
+            discretization,
+            radial_index=2,
+            theta0=0.3,
+            turns=3,
+            steps_per_turn=64,
+        ).iota
+
+    current = 1.0e-3
+    np.testing.assert_allclose(iota(current), current / flux, rtol=2.0e-13)
+    np.testing.assert_allclose(jax.grad(iota)(current), 1.0 / flux, rtol=2.0e-13)
+
+
 def test_closed_vacuum_initializer_recovers_one_over_r_field() -> None:
     resolution = MirrorResolution(ns=7, mpol=3, ntheta=12, nxi=4)
     discretization, axis, _, zero = _closed_circular_torus(resolution)
@@ -496,9 +526,7 @@ def test_closed_spline_fixed_boundary_torus_converges_to_ftol() -> None:
     assert result.iterations < 50
     assert float(result.variational.maximum) <= config.ftol
     assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
-    # The Clebsch field is analytically solenoidal; two independently applied
-    # mixed derivative matrices leave an x64 commutator floor near 1e-12.
-    assert float(result.normalized_divergence_rms) < 2.0e-12
+    assert float(result.normalized_divergence_rms) < 1.0e-12
     assert not bool(result.energy.geometry.jacobian_sign_changed)
 
 
@@ -557,9 +585,21 @@ def test_closed_racetrack_finite_current_and_lambda_converge() -> None:
     assert result.iterations < 100
     assert float(result.variational.maximum) <= config.ftol
     assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
-    assert float(result.normalized_divergence_rms) < 1.0e-12
+    # The Clebsch field is analytically solenoidal; two independently applied
+    # mixed derivative matrices leave an x64 commutator floor near 1e-12.
+    assert float(result.normalized_divergence_rms) < 2.0e-12
     assert float(jnp.max(jnp.abs(result.state.lambda_stream))) > 1.0e-3
     assert not bool(result.energy.geometry.jacobian_sign_changed)
+    field_line = trace_closed_field_line(
+        result.energy.field,
+        discretization,
+        radial_index=resolution.ns - 1,
+        theta0=0.2,
+        turns=3,
+        steps_per_turn=64,
+    )
+    assert abs(float(field_line.iota)) > 1.0e-3
+    assert np.all(np.isfinite(field_line.theta))
 
 
 def _spline_polynomial_state():

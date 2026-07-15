@@ -694,8 +694,8 @@ Percentages measure accepted promotion evidence, not code written.
 | Axisymmetric free mirror | 84% | exterior observable refinement and scaling |
 | Nonaxisymmetric fixed mirror | 82% | amplitude, forward tangent, preconditioned refinement |
 | Nonaxisymmetric free mirror | 55% | structured-solver retry and local-mode convergence |
-| Open native B-splines | 78% | fixed-boundary release evidence; free boundary deferred |
-| Fixed closed B-spline hybrid | 40% | pointwise refinement, limits, iota, derivatives |
+| Open native B-splines | 82% | fixed-boundary release evidence; free boundary deferred |
+| Fixed closed B-spline hybrid | 58% | limiting cases, beta refinement, derivatives, release evidence |
 | Free closed hybrid | 10% | conditional after fixed promotion |
 | Preconditioning | 45% | periodic blocks and bounded Krylov scaling |
 | Implicit derivatives | 74% | spline forward tangent, hybrid and retained free lanes |
