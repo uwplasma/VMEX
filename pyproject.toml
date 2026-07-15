@@ -31,7 +31,6 @@ dependencies = [
   "packaging",
   "booz_xform_jax",
   "solvax>=0.2.0",
-  "virtual-casing-jax>=0.0.2",
   "tomli; python_version < '3.11'",
 ]
 
@@ -48,15 +47,15 @@ Changelog = "https://github.com/uwplasma/vmec_jax/releases"
 
 [project.optional-dependencies]
 # Differentiable free boundary via virtual casing (plan.md R15.3 + R19).
-# The low-level kernels are a core dependency above. The higher-level extender
-# API required by this optional lane currently lives on
-# uwplasma/virtual_casing_jax's
-# ``feature/jax-vmec-extender`` branch, not in the PyPI 0.0.2 release. Install
-# commit 195c425 from that branch editable alongside vmec_jax before using this lane:
+# ``virtual_casing_jax`` is a uwplasma package (https://github.com/uwplasma/
+# virtual_casing_jax); it is NOT yet on PyPI, so ``pip install vmec-jax[freeb]``
+# will not resolve it from an index — install it editable alongside vmec_jax:
 #   pip install -e /path/to/virtual_casing_jax
 # The ``vmec_jax.core.freeboundary_diff`` module and its tests are gated behind an
-# API check so normal installs stay independent of this experimental dependency.
-freeb = []
+# ``importorskip`` so CI stays green when the dependency is absent.
+freeb = [
+  "virtual_casing_jax",
+]
 docs = [
   "sphinx",
   "sphinx-copybutton",
@@ -88,10 +87,12 @@ markers = [
 ]
 
 [tool.coverage.run]
-# freeboundary_diff.py requires the unreleased virtual-casing extender API.
-# Its FD-validated gradient tests use a capability gate and skip in core CI,
-# so the module is excluded from the core >=95% coverage gate. It is exercised
-# in an editable checkout of the extender branch (R15.3/R19 follow-up).
+# freeboundary_diff.py is optional (vmec-jax[freeb]) and requires
+# virtual_casing_jax, a uwplasma package not on PyPI; its FD-validated
+# gradient tests are importorskip-gated and skip in the core CI, so the module
+# is excluded from the core >=95% coverage gate.  It IS exercised when the
+# freeb extra is installed (locally / a dedicated freeb CI lane — R15.3/R19
+# follow-up).
 omit = ["*/freeboundary_diff.py", "*/turbulence.py"]
 
 [tool.coverage.report]

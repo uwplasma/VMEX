@@ -24,6 +24,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytest.importorskip("virtual_casing_jax")
+
 import jax  # noqa: E402
 import jax.numpy as jnp  # noqa: E402
 
@@ -32,9 +34,6 @@ from vmec_jax.core import freeboundary_diff as FBD  # noqa: E402
 from vmec_jax.core import implicit as im  # noqa: E402
 from vmec_jax.core.mgrid import MgridField, read_mgrid  # noqa: E402
 from vmec_jax.core.wout import wout_from_state  # noqa: E402
-
-if not FBD.have_virtual_casing_jax():
-    pytest.skip("requires the virtual_casing_jax extender API", allow_module_level=True)
 
 DATA = Path(__file__).resolve().parents[1] / "examples" / "data"
 INPUT = DATA / "input.cth_like_free_bdy"

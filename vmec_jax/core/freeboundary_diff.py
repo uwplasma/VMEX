@@ -45,10 +45,9 @@ implicit adjoint (boundary) and virtual casing (coils) at once.  See
 ``examples/single_stage_simultaneous_opt.py`` and the *True single-stage*
 section of ``docs/optimization.rst``.
 
-This lane requires the unreleased virtual-casing extender API. Install commit
-``195c425`` from ``uwplasma/virtual_casing_jax``'s
-``feature/jax-vmec-extender`` branch editable alongside vmec_jax. Importing the
-module remains safe when only the lower-level PyPI package is installed.
+``virtual_casing_jax`` is an optional dependency (``pip install vmec-jax[freeb]``
+or ``pip install -e /path/to/virtual_casing_jax``).  Importing this module raises
+a clear error if it is missing.
 """
 
 from __future__ import annotations
@@ -91,7 +90,7 @@ __all__ = [
 
 
 def have_virtual_casing_jax() -> bool:
-    """Return whether the required virtual-casing extender API is available."""
+    """Return ``True`` iff ``virtual_casing_jax`` is importable."""
 
     return _HAVE_VCJ
 
@@ -99,9 +98,9 @@ def have_virtual_casing_jax() -> bool:
 def _require_vcj() -> None:
     if not _HAVE_VCJ:  # pragma: no cover - dependency-guard branch
         raise ImportError(
-            "vmec_jax.core.freeboundary_diff requires the unreleased "
-            "virtual_casing_jax extender API. Install commit 195c425 from "
-            "the feature/jax-vmec-extender branch editable alongside vmec_jax."
+            "vmec_jax.core.freeboundary_diff requires the optional dependency "
+            "'virtual_casing_jax' (uwplasma). Install it with "
+            "`pip install vmec-jax[freeb]` or `pip install -e /path/to/virtual_casing_jax`."
         ) from _IMPORT_ERROR
 
 
