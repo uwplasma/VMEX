@@ -16,7 +16,6 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
-    solve_fixed_boundary_cli,
 )
 from vmec_jax.mirror.forces import (  # noqa: E402
     isotropic_force_residual,
@@ -33,7 +32,10 @@ from vmec_jax.mirror.geometry import (  # noqa: E402
     magnetic_field_xyz,
     racetrack_centerline_coefficients,
 )
-from vmec_jax.mirror.solver import SeparableMirrorPreconditioner  # noqa: E402
+from vmec_jax.mirror.solver import (  # noqa: E402
+    SeparableMirrorPreconditioner,
+    _solve_nodal_fixed_boundary_cli as solve_fixed_boundary_cli,
+)
 from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
@@ -41,7 +43,7 @@ from vmec_jax.mirror.splines import (  # noqa: E402
     _SplineStateVectorizer,
     _packed_spline_preconditioner,
     initialize_closed_vacuum_stream_function,
-    solve_spline_fixed_boundary_cli,
+    solve_fixed_boundary_cli as solve_spline_fixed_boundary_cli,
     trace_closed_field_line,
 )
 

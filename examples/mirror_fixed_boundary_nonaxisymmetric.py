@@ -18,8 +18,11 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
+    SplineMirrorBoundary,
+    SplineMirrorDiscretization,
     mout_from_result,
     plot_mout,
+    solve_fixed_boundary_cli,
     spline_fixed_boundary_adjoint,
     write_mout,
 )
@@ -30,11 +33,6 @@ from vmec_jax.mirror.analytic import (  # noqa: E402
 from vmec_jax.mirror.forces import staggered_field_strength  # noqa: E402
 from vmec_jax.mirror.geometry import magnetic_field_xyz  # noqa: E402
 from vmec_jax.mirror.implicit import spline_fixed_boundary_parameters  # noqa: E402
-from vmec_jax.mirror.splines import (  # noqa: E402
-    SplineMirrorBoundary,
-    SplineMirrorDiscretization,
-    solve_spline_fixed_boundary_cli,
-)
 
 # Inputs: edit these constants, then run this file directly.
 CASES = ("rotating_ellipse", "straight_field_line")
@@ -112,7 +110,19 @@ def plot_validation(case: str, result, coefficient_state, boundary_state, path: 
     axes[0].legend()
 
     history = np.asarray(result.history)
-    axes[1].semilogy(history[:, 0], np.maximum(history[:, 4], 1.0e-18), "o-", color="#0072B2")
+    axes[1].semilogy(
+        history[:, 0],
+        np.maximum(history[:, 4], 1.0e-18),
+        "o-",
+        color="#0072B2",
+        label="Variational",
+    )
+    axes[1].semilogy(
+        history[:, 0],
+        np.maximum(history[:, 5], 1.0e-18),
+        color="#D55E00",
+        label="Strong force",
+    )
     axes[1].axhline(FTOL, color="0.25", ls="--", label="ftol")
     axes[1].set(title="Final-stage convergence", xlabel="Iteration", ylabel="Maximum residual")
     axes[1].legend()
@@ -169,7 +179,7 @@ for case in CASES:
     for stage in SHAPE_STAGES:
         final_boundary = discretization.fit_boundary(boundary_for(case, stage), source_grid)
         coefficient_state = discretization.transfer_boundary(coefficient_state, previous_boundary, final_boundary)
-        spline_result = solve_spline_fixed_boundary_cli(
+        spline_result = solve_fixed_boundary_cli(
             coefficient_state,
             final_boundary,
             discretization,
@@ -224,7 +234,7 @@ for case in CASES:
             varied_boundary = SplineMirrorBoundary(
                 final_boundary.radius_coefficients + sign * FINITE_DIFFERENCE_STEP * direction
             )
-            varied = solve_spline_fixed_boundary_cli(
+            varied = solve_fixed_boundary_cli(
                 discretization.transfer_boundary(
                     spline_result.coefficient_state,
                     final_boundary,
@@ -248,6 +258,11 @@ for case in CASES:
         "stage_iterations": stage_iterations,
         "variational_max": float(result.variational.maximum),
         "staggered_weak_max": float(result.staggered_weak_force.maximum),
+        "strong_force_normalized_rms": float(result.force.normalized_rms),
+        "strong_force_axis_rms": float(result.force.axis_normalized_rms),
+        "strong_force_first_row_rms": float(result.force.first_row_normalized_rms),
+        "strong_force_bulk_rms": float(result.force.bulk_normalized_rms),
+        "strong_force_end_collar_rms": float(result.force.end_collar_normalized_rms),
         "normalized_divergence_rms": float(result.normalized_divergence_rms),
         **validation,
     }

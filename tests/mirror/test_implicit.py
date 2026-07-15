@@ -15,27 +15,27 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorConfig,
     MirrorResolution,
     MirrorState,
-    fixed_boundary_adjoint,
     free_boundary_adjoint,
-    solve_fixed_boundary_cli,
-    solve_fixed_boundary_implicit,
     solve_free_boundary_cli,
     spline_fixed_boundary_adjoint,
     spline_fixed_boundary_tangent,
 )
 from vmec_jax.mirror.implicit import (  # noqa: E402
     FreeBoundaryAdjointConfig,
+    fixed_boundary_adjoint,
     fixed_boundary_parameters,
     free_boundary_parameters,
     make_fixed_boundary_implicit_config,
+    solve_fixed_boundary_implicit,
     spline_fixed_boundary_parameters,
 )
 from vmec_jax.mirror.model import project_fixed_boundary_state  # noqa: E402
 from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
-    solve_spline_fixed_boundary_cli,
+    solve_fixed_boundary_cli as solve_spline_fixed_boundary_cli,
 )
+from vmec_jax.mirror.solver import _solve_nodal_fixed_boundary_cli as solve_fixed_boundary_cli  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

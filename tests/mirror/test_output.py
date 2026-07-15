@@ -16,7 +16,6 @@ pytest.importorskip("netCDF4")
 
 from vmec_jax.core import cli
 from vmec_jax.mirror import (
-    MoutData,
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
@@ -26,7 +25,7 @@ from vmec_jax.mirror import (
     write_mout,
 )
 from vmec_jax.mirror.forces import mirror_energy
-from vmec_jax.mirror.output import _theta_samples
+from vmec_jax.mirror.output import MoutData, _theta_samples
 
 
 REPO = Path(__file__).resolve().parents[2]

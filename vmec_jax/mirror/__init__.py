@@ -18,19 +18,17 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     "MirrorConfig": (".model", "MirrorConfig"),
     "MirrorResolution": (".model", "MirrorResolution"),
     "MirrorState": (".model", "MirrorState"),
-    # Fixed and free-boundary solves.
-    "MirrorSolveResult": (".solver", "MirrorSolveResult"),
-    "solve_fixed_boundary_cli": (".solver", "solve_fixed_boundary_cli"),
+    # Coefficient-native fixed and nodal free-boundary solves.
+    "SplineMirrorBoundary": (".splines", "SplineMirrorBoundary"),
+    "SplineMirrorDiscretization": (".splines", "SplineMirrorDiscretization"),
+    "SplineMirrorSolveResult": (".splines", "SplineMirrorSolveResult"),
+    "SplineMirrorState": (".splines", "SplineMirrorState"),
+    "solve_fixed_boundary_cli": (".splines", "solve_fixed_boundary_cli"),
     "FreeBoundaryMirrorResult": (".free_boundary", "FreeBoundaryMirrorResult"),
     "solve_free_boundary_cli": (".free_boundary", "solve_free_boundary_cli"),
     # Continuation.
     "solve_beta_scan_cli": (".free_boundary", "solve_beta_scan_cli"),
     # Implicit differentiation.
-    "fixed_boundary_adjoint": (".implicit", "fixed_boundary_adjoint"),
-    "solve_fixed_boundary_implicit": (
-        ".implicit",
-        "solve_fixed_boundary_implicit",
-    ),
     "spline_fixed_boundary_adjoint": (
         ".implicit",
         "spline_fixed_boundary_adjoint",
@@ -44,7 +42,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
         "free_boundary_adjoint",
     ),
     # MOUT and plots.
-    "MoutData": (".output", "MoutData"),
     "mout_from_result": (".output", "mout_from_result"),
     "read_mout": (".output", "read_mout"),
     "write_mout": (".output", "write_mout"),

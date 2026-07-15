@@ -23,7 +23,7 @@ from .model import MirrorBoundary, MirrorState, project_fixed_boundary_state
 from .solver import (
     _MirrorStateVectorizer,
     _packed_preconditioner,
-    solve_fixed_boundary_cli,
+    _solve_nodal_fixed_boundary_cli,
 )
 
 Array = Any
@@ -614,7 +614,7 @@ def _host_fixed_boundary_solve(config: FixedBoundaryImplicitConfig, parameters: 
         gradient_tolerance=config.gradient_tolerance,
         require_convergence=True,
     )
-    result = solve_fixed_boundary_cli(
+    result = _solve_nodal_fixed_boundary_cli(
         initial,
         boundary,
         config.grid,

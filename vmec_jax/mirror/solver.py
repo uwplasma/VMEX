@@ -685,7 +685,7 @@ def _optimize_fixed_boundary(
     )
 
 
-def solve_fixed_boundary_cli(
+def _solve_nodal_fixed_boundary_cli(
     initial_state: MirrorState,
     boundary: MirrorBoundary,
     grid: "MirrorGrid",
@@ -712,7 +712,7 @@ def solve_fixed_boundary_cli(
         resolved = resolve_device(device, config.resolution)
         if resolved is not None:
             with jax.default_device(resolved):
-                return solve_fixed_boundary_cli(
+                return _solve_nodal_fixed_boundary_cli(
                     initial_state,
                     boundary,
                     grid,

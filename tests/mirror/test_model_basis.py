@@ -39,10 +39,12 @@ def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
     required = {
         "MirrorConfig",
         "MirrorState",
+        "SplineMirrorBoundary",
+        "SplineMirrorDiscretization",
+        "SplineMirrorState",
         "solve_fixed_boundary_cli",
         "solve_free_boundary_cli",
         "solve_beta_scan_cli",
-        "solve_fixed_boundary_implicit",
         "spline_fixed_boundary_adjoint",
         "spline_fixed_boundary_tangent",
         "write_mout",
@@ -57,6 +59,7 @@ def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
     assert required <= set(mirror_api.__all__)
     assert internal.isdisjoint(mirror_api.__all__)
     assert len(mirror_api.__all__) == 20
+    assert mirror_api.solve_fixed_boundary_cli.__module__ == "vmec_jax.mirror.splines"
 
 
 def test_mirror_config_freezes_supported_end_and_convergence_contract() -> None:

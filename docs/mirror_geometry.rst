@@ -286,10 +286,10 @@ evaluation nodes versus 41 Chebyshev nodes; volume agrees to roundoff, total
 energy agrees to ``5.0e-13`` relative, and an energy directional derivative
 agrees with finite differences to ``1.9e-8`` relative.
 
-``solve_spline_fixed_boundary_cli`` now minimizes the same scalar-pressure
+The public ``solve_fixed_boundary_cli`` now minimizes the scalar-pressure
 energy directly in the active spline coefficients. It fixes the side and end
 coefficients, eliminates the weighted stream-function gauge, and uses the same
-host L-BFGS plus residual-Newton policy as the Chebyshev solve. The independent
+host L-BFGS plus residual-Newton policy as the CGL reference solve. The independent
 staggered first variation is assembled on the quadrature grid and pulled back
 through the spline evaluation matrix rather than reused from autodiff.
 
@@ -386,68 +386,31 @@ continuation stages and writes MOUT plus horizontal 3-D, cross-section,
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
 At its compact demonstration resolution, the rotating ellipse reaches a
-variational/staggered-weak residual of ``7.91e-17/7.71e-17``, normalized
-``div(B)=7.37e-15``, and forbidden ``m=1`` amplitude below ``5e-15``. The SFLM
-reaches ``9.68e-17/9.69e-17`` and ``div(B)=7.86e-15``; its mean field-direction
-cosine remains above ``0.9974`` including the fixed-flux end cuts. The figures
-show the actual solved nested surfaces and field lines, not the analytic target
-alone.
+variational/staggered-weak residual of ``1.84e-16/1.49e-16`` and normalized
+``div(B)=1.03e-14``. The SFLM reaches ``2.10e-14/2.10e-14`` and
+``div(B)=1.13e-14``; its mean field-direction cosine remains above ``0.9979``
+including the fixed-flux end cuts. The figures show the actual solved nested
+surfaces and field lines, not the analytic target alone. Promotion additionally
+requires the independent strong-force refinement recorded below.
 
-Fixed-boundary implicit gradients
----------------------------------
+Coefficient fixed-boundary gradients
+------------------------------------
 
-``fixed_boundary_adjoint`` differentiates a scalar diagnostic through the
-converged isotropic fixed-boundary equilibrium. Its residual is the packed
-energy gradient after eliminating fixed side/end geometry and the lambda
-gauge. The transpose Hessian action is exact JAX reverse AD, while GMRES uses
-the same separable radial, poloidal, and axial preconditioner as the primal
-Newton polish. Nonlinear iteration histories are not differentiated or saved.
-
-The returned gradient covers boundary radius, axial flux derivative,
-mass/pressure profile, and axial current derivative in one reverse solve. The
-root nonaxisymmetric example differentiates the rotating-ellipse volume with
-respect to a native spline boundary coefficient and checks it against two
-fully reconverged finite-difference equilibria::
+``spline_fixed_boundary_adjoint`` differentiates a scalar diagnostic through
+the converged coefficient residual. Boundary spline coefficients, flux,
+conserved mass, and current remain differentiable. The transpose Hessian
+action uses exact JAX reverse AD and the nonlinear iteration history is never
+differentiated or stored. The root example differentiates rotating-ellipse
+volume with respect to a native boundary coefficient and checks it against two
+fully reconverged equilibria::
 
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
-For the finite-pressure, finite-current flared tube, the primal reaches
-``ftol=1e-12``. The adjoint converges in four iterations to relative linear
-residual ``8.85e-16`` and the combined directional derivative agrees with
-central differences to ``1.10e-7`` relative. The example writes mirror-native
-MOUT and horizontal 3D, ``|B|``, cross-section, pressure, residual, and
-sensitivity figures. Above the dense-reference threshold, an ``ns=17,
-nxi=41`` case with 585 active unknowns takes 3.41 seconds and 171 adjoint
-iterations to reach ``9.23e-10`` relative residual; its primal polish takes
-8.61 seconds and 951 linear iterations. Compact evidence is in the
-``implicit_derivatives`` section of ``benchmarks/mirror_fixed_boundary.json``.
-A three-color radial block
-factorization reaches ``2.69e-15`` without a GMRES correction, but costs 4.79
-seconds for this one right-hand side. Unlike a many-column forward Jacobian,
-the scalar reverse adjoint cannot amortize its assembly, so preconditioned
-GMRES remains the default and block mode is an opt-in verification path.
-``solve_fixed_boundary_implicit`` exposes the same converged state directly
-to JAX objectives. Its static context keeps the host solver out of the AD tape::
+The current example agrees with centered differences to ``9.11e-10`` relative,
+but its reported linear residual is ``1.34e-7`` and therefore does not pass the
+``1e-8`` promotion gate. This is assigned to the coupled-preconditioner
+milestone rather than being presented as a promoted derivative.
 
-   implicit_config = make_fixed_boundary_implicit_config(
-       initial_state, grid, config, solve_lambda=True
-   )
-   state = solve_fixed_boundary_implicit(parameters, implicit_config)
-   gradient = jax.grad(
-       lambda controls: solve_fixed_boundary_implicit(
-           controls, implicit_config
-       ).radius_scale[1, 0, grid.nxi // 2]
-   )(parameters)
-
-The custom VJP matches the explicit isotropic adjoint. The supported
-free-boundary field derivative follows.
-
-``spline_fixed_boundary_adjoint`` uses that same transpose-solve implementation
-on the coefficient-native residual. Boundary spline coefficients, flux,
-conserved mass, and current remain differentiable; neither the host iterations
-nor spline evaluation history is stored. A combined axisymmetric direction and
-a nonaxisymmetric ``solve_lambda=True`` boundary direction agree with two
-independently reconverged equilibria to ``3.92e-10`` and ``3.20e-10`` relative.
 ``spline_fixed_boundary_tangent`` solves the complementary forward system
 ``F_u du = -F_p dp`` with exact residual JVPs and the same preconditioner. On a
 nonaxisymmetric finite-current ``solve_lambda=True`` case, both radius and
@@ -455,6 +418,13 @@ stream-function tangents agree with two fully reconverged centered differences
 within ``2e-4`` in relative state norm, with linear residual below ``1e-8``.
 This establishes both open-spline derivative directions. Closed-axis and
 centerline-control derivatives remain part of fixed-hybrid promotion.
+
+The former public CGL fixed solve and its custom-VJP wrapper are now internal
+migration references. Public fixed-boundary inputs are
+``SplineMirrorBoundary``, ``SplineMirrorState``, and
+``SplineMirrorDiscretization``; public ``solve_fixed_boundary_cli`` returns a
+``SplineMirrorSolveResult``. CGL values remain available for quadrature and
+parity tests, not as a second production state.
 
 Axisymmetric free-boundary implicit gradients
 ---------------------------------------------

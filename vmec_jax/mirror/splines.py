@@ -587,7 +587,7 @@ def _packed_spline_preconditioner(
     return apply, scales
 
 
-def solve_spline_fixed_boundary_cli(
+def solve_fixed_boundary_cli(
     initial_state: SplineMirrorState,
     boundary: SplineMirrorBoundary,
     discretization: SplineMirrorDiscretization,
@@ -834,7 +834,7 @@ __all__ = [
     "SplineMirrorDiscretization",
     "SplineMirrorSolveResult",
     "SplineMirrorState",
-    "solve_spline_fixed_boundary_cli",
+    "solve_fixed_boundary_cli",
     "trace_closed_field_line",
 ]
 

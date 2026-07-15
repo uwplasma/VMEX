@@ -7,11 +7,11 @@ four compact benchmark JSON files are the execution log.
 
 Audit baseline (2026-07-15, refreshed after M1 strong-force acceptance):
 
-- branch `codex/mirror-geometry` at `fcc70632` plus the validated M1 worktree;
-- base `origin/main` at `ed4ac7ac`, zero commits behind and 308 ahead;
+- branch `codex/mirror-geometry` at `d0c97b25` plus the validated M2 API worktree;
+- base `origin/main` at `ed4ac7ac`, zero commits behind and 309 ahead;
 - PR #22 is open, draft, and mergeable;
 - diff is 51 files, 16,501 insertions, and 1,608 deletions before the M1 commit;
-- `vmec_jax/mirror` contains 13 modules, exactly 8,000 lines, and 20 lazy public
+- `vmec_jax/mirror` contains 13 modules, 7,997 lines, and 20 lazy public
   names;
 - mirror tests contain ten substantive owner-aligned files and 4,450 lines;
 - the M1 worktree passes 106 tests and skips 10 in 331.98 seconds; strict
@@ -23,6 +23,10 @@ Audit baseline (2026-07-15, refreshed after M1 strong-force acceptance):
   radial Gauss cells. Its exact cylindrical fixture is second order. On the
   current-free circular spline torus the first-row normalized residual is
   `8.19e-6`, `2.04e-6`, and `5.09e-7` for `ns=5,9,17`, respectively.
+- public ``solve_fixed_boundary_cli`` and its public state, boundary, and
+  result types are now coefficient-native clamped splines. The CGL fixed solve
+  and its custom-VJP wrapper are internal migration references pending M3
+  deletion.
 
 The branch contains real equilibrium solvers and useful validation, but it is
 not release-ready. The immediate blockers are stale shaped benchmarks
@@ -650,15 +654,15 @@ Percentages measure promotion evidence, not lines written:
 | Lane | Complete | Main remaining evidence |
 | --- | ---: | --- |
 | Fixed open axisymmetric | 92% | regenerate coefficient-native benchmark |
-| Fixed open nonaxisymmetric | 72% | separate SFLM/rotating-ellipse refinement evidence |
-| Open fixed B-spline representation | 74% | become sole production state and remove nodal solve |
+| Fixed open nonaxisymmetric | 68% | resolve large strong-force residual under refinement |
+| Open fixed B-spline representation | 86% | regenerate evidence and remove nodal internals in M3 |
 | Free open axisymmetric | 68% | spline coefficient solve, matrix-free coupling, beta refinement |
 | Free open nonaxisymmetric | 28% | conditional three-grid promotion attempt |
 | Fixed closed B-spline hybrid | 48% | VMEC parity, open-leg limit, force, derivatives |
 | Strong-force diagnostic | 100% | maintain gates in promoted equilibrium lanes |
 | Coupled preconditioning | 35% | coupled radius--lambda block and A/B gates |
 | Implicit differentiation | 70% | unify coefficient maps; rerun promoted primal lanes |
-| Code/API simplification | 82% | remove duplicate nodal solver and meet budgets |
+| Code/API simplification | 84% | remove duplicate nodal solver and reach merge line target |
 | Docs/examples/artifacts | 64% | regenerate evidence and release showcase |
 | ESSOS ownership separation | 100% | preserve boundary; no coil code here |
 
