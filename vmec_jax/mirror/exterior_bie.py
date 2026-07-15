@@ -9,23 +9,6 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-try:
-    from virtual_casing_jax import laplace_dx_u_eval, laplace_fx_u, laplace_fxd_u_eval
-except ModuleNotFoundError as _vcj_error:  # optional research acceleration
-    if _vcj_error.name != "virtual_casing_jax":
-        raise
-    _VCJ_ERROR = _vcj_error
-
-    def _missing_virtual_casing(*_args, **_kwargs):
-        raise ModuleNotFoundError(
-            "The free-space mirror boundary-integral backend requires "
-            "virtual_casing_jax. Install its pinned optional dependency to use it."
-        ) from _VCJ_ERROR
-
-    laplace_dx_u_eval = _missing_virtual_casing
-    laplace_fx_u = _missing_virtual_casing
-    laplace_fxd_u_eval = _missing_virtual_casing
-
 from .exterior import ClosedMirrorSurface, build_closed_mirror_surface
 from .exterior_mesh import panel_green_boundary_residual, panel_green_gradient_off_surface
 from .geometry import magnetic_field_xyz
@@ -70,8 +53,8 @@ class LaplaceNeumannResult:
 
 
 @dataclass(frozen=True)
-class AxisymmetricExteriorVacuum:
-    """Solved free-space vacuum field on an axisymmetric mirror boundary."""
+class ExteriorVacuum:
+    """Solved free-space vacuum field on a mirror boundary."""
 
     surface: ClosedMirrorSurface
     neumann: Array
@@ -80,15 +63,8 @@ class AxisymmetricExteriorVacuum:
     lateral_b_normal: Array
 
 
-@dataclass(frozen=True)
-class NonaxisymmetricExteriorVacuum:
-    """Solved free-space vacuum field on a theta-dependent mirror boundary."""
-
-    surface: ClosedMirrorSurface
-    neumann: Array
-    neumann_result: LaplaceNeumannResult
-    lateral_field_xyz: Array
-    lateral_b_normal: Array
+AxisymmetricExteriorVacuum = ExteriorVacuum
+NonaxisymmetricExteriorVacuum = ExteriorVacuum
 
 
 jax.tree_util.register_dataclass(
@@ -97,13 +73,8 @@ jax.tree_util.register_dataclass(
     meta_fields=[],
 )
 jax.tree_util.register_dataclass(
-    NonaxisymmetricExteriorVacuum,
-    data_fields=[field.name for field in fields(NonaxisymmetricExteriorVacuum)],
-    meta_fields=[],
-)
-jax.tree_util.register_dataclass(
-    AxisymmetricExteriorVacuum,
-    data_fields=[field.name for field in fields(AxisymmetricExteriorVacuum)],
+    ExteriorVacuum,
+    data_fields=[field.name for field in fields(ExteriorVacuum)],
     meta_fields=[],
 )
 
@@ -440,146 +411,6 @@ def solve_nonaxisymmetric_exterior_vacuum(
     )
 
 
-def laplace_double_layer_off_surface(
-    surface: ClosedMirrorSurface,
-    density: Array,
-    targets: Array,
-    *,
-    chunk_size: int = 1024,
-) -> Array:
-    """Evaluate a Laplace double layer away from the source surface."""
-
-    density, targets = _validate_off_surface_inputs(surface, density, targets)
-    value = laplace_dx_u_eval(
-        surface.xyz.T,
-        surface.normals.T,
-        targets.T,
-        density,
-        surface.quadrature_weights,
-        chunk_size=chunk_size,
-    )
-    return value.reshape(-1)
-
-
-def laplace_single_layer_gradient_off_surface(
-    surface: ClosedMirrorSurface,
-    density: Array,
-    targets: Array,
-    *,
-    chunk_size: int = 1024,
-) -> Array:
-    """Evaluate ``grad integral G density dA`` away from the surface."""
-
-    density, targets = _validate_off_surface_inputs(surface, density, targets)
-    value = laplace_fxd_u_eval(
-        surface.xyz.T,
-        targets.T,
-        density,
-        surface.quadrature_weights,
-        chunk_size=chunk_size,
-    )
-    return value.T
-
-
-def laplace_single_layer_off_surface(
-    surface: ClosedMirrorSurface, density: Array, targets: Array
-) -> Array:
-    """Evaluate ``integral G density dA`` away from the surface."""
-
-    density, targets = _validate_off_surface_inputs(surface, density, targets)
-    displacement = targets[:, None, :] - surface.xyz[None, :, :]
-    weighted_density = density * surface.quadrature_weights
-    return jnp.sum(laplace_fx_u(displacement, weighted_density[None, :]), axis=1)
-
-
-def laplace_green_representation_off_surface(
-    surface: ClosedMirrorSurface,
-    dirichlet: Array,
-    neumann: Array,
-    targets: Array,
-) -> Array:
-    """Evaluate Green's representation inside and outside the surface."""
-
-    return laplace_single_layer_off_surface(surface, neumann, targets) + (
-        laplace_double_layer_off_surface(surface, dirichlet, targets)
-    )
-
-
-def laplace_green_gradient_off_surface(
-    surface: ClosedMirrorSurface,
-    dirichlet: Array,
-    neumann: Array,
-    targets: Array,
-) -> Array:
-    """Evaluate the analytic gradient of Green's representation."""
-
-    dirichlet, targets = _validate_off_surface_inputs(surface, dirichlet, targets)
-    neumann = jnp.asarray(neumann)
-    if neumann.shape != dirichlet.shape:
-        raise ValueError(f"neumann shape {neumann.shape} must be {dirichlet.shape}")
-    single_gradient = laplace_single_layer_gradient_off_surface(
-        surface, neumann, targets
-    )
-    displacement = targets[:, None, :] - surface.xyz[None, :, :]
-    radius_squared = jnp.sum(displacement**2, axis=-1)
-    inverse_radius = jax.lax.rsqrt(radius_squared)
-    inverse_radius3 = inverse_radius**3
-    normal_displacement = jnp.einsum(
-        "si,tsi->ts", surface.normals, displacement
-    )
-    weighted_dirichlet = dirichlet * surface.quadrature_weights
-    double_gradient = (
-        -surface.normals[None, :, :] * inverse_radius3[..., None]
-        + 3.0
-        * normal_displacement[..., None]
-        * displacement
-        * (inverse_radius3 / radius_squared)[..., None]
-    ) * weighted_dirichlet[None, :, None] / (4.0 * jnp.pi)
-    return single_gradient + jnp.sum(double_gradient, axis=1)
-
-
-def laplace_reduced_green_gradient_off_surface(
-    surface: ClosedMirrorSurface,
-    dirichlet: Array,
-    neumann: Array,
-    targets: Array,
-    *,
-    order: int = 8,
-    spectral_side_density: bool = False,
-) -> Array:
-    """Evaluate a reduced solution with Duffy panel quadrature."""
-
-    return panel_green_gradient_off_surface(
-        surface.collocation_xyz,
-        np.asarray(surface.triangle_connectivity),
-        surface.expand_reduced_values(dirichlet),
-        surface.expand_reduced_values(neumann),
-        targets,
-        order=order,
-        lateral_shape=surface.lateral_xyz.shape[:2],
-        spectral_side_density=spectral_side_density,
-        axisymmetric_side=surface.reduced_size < surface.collocation_xyz.shape[0],
-    )
-
-
-def laplace_green_boundary_residual(
-    surface: ClosedMirrorSurface,
-    dirichlet: Array,
-    neumann: Array,
-    *,
-    order: int = 8,
-) -> Array:
-    """Evaluate the singular Green identity on unique boundary nodes."""
-
-    return panel_green_boundary_residual(
-        surface.collocation_xyz,
-        surface.triangles,
-        dirichlet,
-        neumann,
-        order=order,
-    )
-
-
 def laplace_reduced_green_boundary_residual(
     surface: ClosedMirrorSurface,
     dirichlet: Array,
@@ -603,7 +434,7 @@ def laplace_reduced_green_boundary_residual(
     )
 
 
-def laplace_reduced_exterior_boundary_residual(
+def _exterior_boundary_residual(
     surface: ClosedMirrorSurface,
     dirichlet: Array,
     neumann: Array,
@@ -634,31 +465,16 @@ def laplace_reduced_exterior_gradient_off_surface(
 ) -> Array:
     """Gradient of the decaying exterior representation."""
 
-    return -laplace_reduced_green_gradient_off_surface(
-        surface,
-        dirichlet,
-        neumann,
+    return -panel_green_gradient_off_surface(
+        surface.collocation_xyz,
+        np.asarray(surface.triangle_connectivity),
+        surface.expand_reduced_values(dirichlet),
+        surface.expand_reduced_values(neumann),
         targets,
         order=order,
+        lateral_shape=surface.lateral_xyz.shape[:2],
         spectral_side_density=spectral_side_density,
-    )
-
-
-def solve_reduced_interior_laplace_neumann(
-    surface: ClosedMirrorSurface,
-    neumann: Array,
-    *,
-    order: int = 8,
-    spectral_side_density: bool = False,
-) -> LaplaceNeumannResult:
-    """Solve the interior Neumann problem with a zero-mean gauge."""
-
-    return _solve_reduced_laplace_neumann(
-        surface,
-        neumann,
-        order=order,
-        exterior=False,
-        spectral_side_density=spectral_side_density,
+        axisymmetric_side=surface.reduced_size < surface.collocation_xyz.shape[0],
     )
 
 
@@ -671,25 +487,6 @@ def solve_reduced_exterior_laplace_neumann(
 ) -> LaplaceNeumannResult:
     """Solve for the unique harmonic potential decaying in the exterior."""
 
-    return _solve_reduced_laplace_neumann(
-        surface,
-        neumann,
-        order=order,
-        exterior=True,
-        spectral_side_density=spectral_side_density,
-    )
-
-
-def _solve_reduced_laplace_neumann(
-    surface: ClosedMirrorSurface,
-    neumann: Array,
-    *,
-    order: int,
-    exterior: bool,
-    spectral_side_density: bool,
-) -> LaplaceNeumannResult:
-    """Shared dense differentiable solve for the two Calderon limits."""
-
     neumann = jnp.asarray(neumann)
     expected = (surface.reduced_size,)
     if neumann.shape != expected:
@@ -697,15 +494,7 @@ def _solve_reduced_laplace_neumann(
     zero = jnp.zeros_like(neumann)
 
     def dirichlet_operator(values: Array) -> Array:
-        if exterior:
-            return laplace_reduced_exterior_boundary_residual(
-                surface,
-                values,
-                zero,
-                order=order,
-                spectral_side_density=spectral_side_density,
-            )
-        return laplace_reduced_green_boundary_residual(
+        return _exterior_boundary_residual(
             surface,
             values,
             zero,
@@ -714,41 +503,14 @@ def _solve_reduced_laplace_neumann(
         )
 
     matrix = jax.jacfwd(dirichlet_operator)(zero)
-    residual_function = (
-        laplace_reduced_exterior_boundary_residual
-        if exterior
-        else laplace_reduced_green_boundary_residual
-    )
-    right_hand_side = -residual_function(
+    right_hand_side = -_exterior_boundary_residual(
         surface,
         zero,
         neumann,
         order=order,
         spectral_side_density=spectral_side_density,
     )
-    quadrature_to_reduced = surface.collocation_to_reduced[
-        surface.quadrature_to_collocation
-    ]
-    reduced_weights = jnp.zeros(surface.reduced_size).at[
-        quadrature_to_reduced
-    ].add(surface.quadrature_weights)
-    reduced_weights /= jnp.sum(reduced_weights)
-    if exterior:
-        solve_matrix = matrix
-        potential = jnp.linalg.solve(matrix, right_hand_side)
-        gauge_error = jnp.asarray(0.0, dtype=matrix.dtype)
-    else:
-        solve_matrix = jnp.block(
-            [
-                [matrix, reduced_weights[:, None]],
-                [reduced_weights[None, :], jnp.zeros((1, 1), dtype=matrix.dtype)],
-            ]
-        )
-        solution = jnp.linalg.solve(
-            solve_matrix, jnp.concatenate([right_hand_side, jnp.zeros(1)])
-        )
-        potential = solution[:-1]
-        gauge_error = jnp.abs(reduced_weights @ potential)
+    potential = jnp.linalg.solve(matrix, right_hand_side)
     residual = matrix @ potential - right_hand_side
 
     full_neumann = surface.expand_reduced_values(neumann)
@@ -761,23 +523,9 @@ def _solve_reduced_laplace_neumann(
         boundary_potential=potential,
         residual=residual,
         compatibility_error=jnp.abs(net_flux) / flux_scale,
-        condition_number=jnp.linalg.cond(solve_matrix),
-        gauge_error=gauge_error,
+        condition_number=jnp.linalg.cond(matrix),
+        gauge_error=jnp.asarray(0.0, dtype=matrix.dtype),
     )
-
-
-def _validate_off_surface_inputs(
-    surface: ClosedMirrorSurface, density: Array, targets: Array
-) -> tuple[Array, Array]:
-    density = jnp.asarray(density)
-    targets = jnp.asarray(targets)
-    if density.shape != (surface.xyz.shape[0],):
-        raise ValueError(
-            f"density shape {density.shape} must be ({surface.xyz.shape[0]},)"
-        )
-    if targets.ndim != 2 or targets.shape[1] != 3:
-        raise ValueError("targets must have shape (n, 3)")
-    return density, targets
 
 
 from typing import TYPE_CHECKING

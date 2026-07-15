@@ -228,15 +228,16 @@ their owning module and are not flattened into `vmec_jax.mirror`.
 
 The initial audit relative to `origin/main` found 137 changed files, 24,370
 added lines, and 4,255 deleted lines. Phase 1 and the current cleanup reduce the
-working diff to 67 files, 17,730 added lines, and 1,633 deleted lines: 70
+working diff to 67 files, 17,430 added lines, and 1,632 deleted lines: 70
 unrelated files and about 6,600 added lines are gone. `vmec_jax/mirror` now
-contains 9,033 lines in 15 modules and exposes 23 lazy names. Continuation lives
+contains 8,781 lines in 15 modules and exposes 23 lazy names. Continuation lives
 with the free-boundary workflow, restart/plot/diagnostic output lives in one
 output module, and exterior interpolation lives with the BIE solve. The largest
-files remain `forces.py` (1,098), `solver.py` (1,001), `splines.py` (983), and
+files remain `forces.py` (1,098), `splines.py` (1,063), `solver.py` (1,001), and
 `output.py` (912), so the module-count gate is met but the line and oversized-
-file gates are not. There are 139 collected mirror tests; the removed tests
-exercised only the deleted finite-cylinder model.
+file gates are not. There are 131 collected mirror tests; the removed tests
+exercised only deleted finite-cylinder, generic interior-Laplace, or full-node
+virtual-casing paths.
 
 The earlier QI, direct-coil, optimization, and core-refactor work is restored to
 `origin/main`. Only the mirror package, mirror evidence, and small CLI, device,
@@ -578,9 +579,13 @@ interpolation, and scalar diagnostics are now colocated with their owning
 workflows. The finite-cylinder annulus, its grid/potential/restart contracts,
 and its model-specific tests are deleted after the free-space isotropic,
 anisotropic, tabulated-pressure, and restart tests passed. This reduces the
-package to 15 modules; the closed tracer brings the current count to 9,033
-lines. The source-line and oversized-file gates remain active. The bounded
-reduction order is: remove unused generic BIE entry points, share open/closed
+package to 15 modules. The first bounded reduction removed generic full-node
+virtual-casing adapters, the unused interior Neumann solve, and duplicate
+axisymmetric/nonaxisymmetric result records. The retained reduced exterior
+operator passes its analytic dipole, singular identity, spectral-density,
+axisymmetric/nonaxisymmetric coupling, and shape-JVP tests. This removes 252
+production lines and leaves 8,781 lines. The source-line and oversized-file
+gates remain active. The bounded reduction order is: share open/closed
 staggered magnetic assembly, share primal/adjoint packing and linear-solve
 diagnostics, then simplify output serialization. Do not split a large file
 merely to satisfy the file-size target. If ANIMEC is deferred in Phase 6,

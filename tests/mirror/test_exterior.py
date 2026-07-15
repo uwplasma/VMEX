@@ -2,19 +2,12 @@
 
 from __future__ import annotations
 
-import importlib.util
-
 import numpy as np
 import pytest
 
 jax = pytest.importorskip("jax")
 jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
-
-requires_virtual_casing = pytest.mark.skipif(
-    importlib.util.find_spec("virtual_casing_jax") is None,
-    reason="off-surface Laplace kernels require virtual_casing_jax",
-)
 
 from vmec_jax.mirror.exterior_mesh import (  # noqa: E402
     _spectral_side_density_samples,
@@ -31,17 +24,10 @@ from vmec_jax.mirror.exterior import build_closed_mirror_surface  # noqa: E402
 from vmec_jax.mirror.exterior_bie import (  # noqa: E402
     axisymmetric_plasma_external_neumann,
     axisymmetric_exterior_lateral_field,
-    laplace_double_layer_off_surface,
-    laplace_green_boundary_residual,
-    laplace_green_gradient_off_surface,
-    laplace_green_representation_off_surface,
     laplace_reduced_green_boundary_residual,
     laplace_reduced_exterior_gradient_off_surface,
-    laplace_reduced_green_gradient_off_surface,
-    laplace_single_layer_gradient_off_surface,
     plasma_external_neumann,
     solve_reduced_exterior_laplace_neumann,
-    solve_reduced_interior_laplace_neumann,
     solve_axisymmetric_exterior_vacuum,
     solve_nonaxisymmetric_exterior_vacuum,
 )
@@ -152,21 +138,6 @@ def test_axisymmetric_reduction_preserves_ring_values() -> None:
     )
     np.testing.assert_allclose(residual, 0.0, atol=2.0e-15)
 
-    full_dirichlet = surface.collocation_xyz[:, 2]
-    full_neumann = surface.collocation_normals[:, 2]
-    full = laplace_green_boundary_residual(surface, full_dirichlet, full_neumann)
-    reduced = laplace_reduced_green_boundary_residual(
-        surface,
-        surface.reduce_collocation_values(full_dirichlet),
-        surface.reduce_collocation_values(full_neumann),
-    )
-    np.testing.assert_allclose(
-        reduced,
-        surface.reduce_collocation_values(full),
-        rtol=2.0e-12,
-        atol=2.0e-13,
-    )
-
 
 def test_cap_grading_clusters_rim_without_changing_cylinder_integrals() -> None:
     grid = _grid(ns=13, nxi=17)
@@ -177,47 +148,6 @@ def test_cap_grading_clusters_rim_without_changing_cylinder_integrals() -> None:
     assert radii[-1] - radii[-2] < 0.1 * (radii[1] - radii[0])
     np.testing.assert_allclose(graded.area, uniform.area, rtol=3.0e-14)
     np.testing.assert_allclose(graded.volume, uniform.volume, rtol=3.0e-14)
-
-
-def test_reduced_neumann_solve_recovers_linear_harmonic() -> None:
-    grid = _grid(ns=13, nxi=21)
-    surface = build_closed_mirror_surface(
-        MirrorBoundary.from_radius(0.37, grid),
-        grid,
-        axisymmetric_ntheta=24,
-        cap_rim_grade=3.5,
-    )
-    exact = surface.reduce_collocation_values(surface.collocation_xyz[:, 2])
-    neumann = surface.reduce_collocation_values(surface.collocation_normals[:, 2])
-    result = solve_reduced_interior_laplace_neumann(surface, neumann)
-    exact -= jnp.mean(exact)
-    recovered = result.boundary_potential - jnp.mean(result.boundary_potential)
-    relative_error = jnp.linalg.norm(recovered - exact) / jnp.linalg.norm(exact)
-
-    assert float(relative_error) < 3.0e-4
-    assert float(jnp.linalg.norm(result.residual)) < 2.0e-8
-    assert float(result.compatibility_error) < 2.0e-14
-    assert float(result.condition_number) < 25.0
-    assert float(result.gauge_error) < 2.0e-14
-
-
-def test_reduced_neumann_solve_is_forward_differentiable() -> None:
-    grid = _grid(ns=7, nxi=9)
-    surface = build_closed_mirror_surface(
-        MirrorBoundary.from_radius(0.37, grid),
-        grid,
-        axisymmetric_ntheta=8,
-        cap_rim_grade=3.0,
-    )
-    neumann = surface.reduce_collocation_values(surface.collocation_normals[:, 2])
-    direction = jnp.sin(jnp.arange(surface.reduced_size, dtype=neumann.dtype))
-    _, tangent = jax.jvp(
-        lambda data: solve_reduced_interior_laplace_neumann(surface, data, order=6).boundary_potential,
-        (neumann,),
-        (direction,),
-    )
-    assert np.all(np.isfinite(np.asarray(tangent)))
-    assert float(jnp.linalg.norm(tangent)) > 0.0
 
 
 def test_reduced_exterior_neumann_solve_recovers_decaying_dipole() -> None:
@@ -469,108 +399,6 @@ def test_closed_surface_volume_is_differentiable() -> None:
     jax.make_jaxpr(volume)(radius)
 
 
-@requires_virtual_casing
-def test_constant_double_layer_distinguishes_inside_and_outside() -> None:
-    """The closed-surface solid angle is one inside and zero outside."""
-
-    values = []
-    for ns, nxi in ((17, 25), (33, 49)):
-        grid = _grid(ns=ns, nxi=nxi)
-        surface = build_closed_mirror_surface(MirrorBoundary.from_radius(0.37, grid), grid)
-        density = jnp.ones(surface.xyz.shape[0])
-        targets = jnp.asarray([[0.0, 0.0, 0.0], [0.0, 0.0, 4.0]])
-        values.append(np.asarray(laplace_double_layer_off_surface(surface, density, targets)))
-
-    assert abs(values[1][0] - 1.0) < abs(values[0][0] - 1.0)
-    assert abs(values[1][1]) < abs(values[0][1])
-    np.testing.assert_allclose(values[1], [1.0, 0.0], atol=2.0e-5)
-
-
-@requires_virtual_casing
-def test_single_layer_gradient_has_far_field_monopole_limit() -> None:
-    grid = _grid(ns=25, nxi=41)
-    surface = build_closed_mirror_surface(MirrorBoundary.from_radius(0.31, grid), grid)
-    density = jnp.ones(surface.xyz.shape[0])
-    targets = jnp.asarray([[0.0, 0.0, 10.0], [0.0, 0.0, 20.0]])
-    field = laplace_single_layer_gradient_off_surface(surface, density, targets)
-    charge = surface.area
-    reference = -targets * charge / (4.0 * jnp.pi * jnp.linalg.norm(targets, axis=1)[:, None] ** 3)
-    relative_error = jnp.linalg.norm(field - reference, axis=1) / jnp.linalg.norm(reference, axis=1)
-
-    assert float(relative_error[1]) < 0.3 * float(relative_error[0])
-    np.testing.assert_allclose(field[:, :2], 0.0, atol=2.0e-16)
-
-
-@requires_virtual_casing
-def test_green_gradient_matches_finite_difference_on_axis() -> None:
-    grid = _grid(ns=13, nxi=21)
-    surface = build_closed_mirror_surface(MirrorBoundary.from_radius(0.31, grid), grid, cap_rim_grade=2.0)
-    dirichlet = surface.xyz[:, 2]
-    neumann = surface.normals[:, 2]
-    targets = jnp.asarray([[0.0, 0.0, 0.0], [0.0, 0.0, 0.3]])
-    gradient = laplace_green_gradient_off_surface(surface, dirichlet, neumann, targets)
-    epsilon = 1.0e-5
-    offset = jnp.asarray([0.0, 0.0, epsilon])
-    finite_difference = (
-        laplace_green_representation_off_surface(surface, dirichlet, neumann, targets + offset)
-        - laplace_green_representation_off_surface(surface, dirichlet, neumann, targets - offset)
-    ) / (2.0 * epsilon)
-
-    assert np.all(np.isfinite(np.asarray(gradient)))
-    np.testing.assert_allclose(gradient[:, 2], finite_difference, rtol=2.0e-8)
-    np.testing.assert_allclose(gradient[:, :2], 0.0, atol=3.0e-15)
-
-
-def test_panel_green_gradient_recovers_linear_harmonic_near_cap() -> None:
-    grid = _grid(ns=13, nxi=21)
-    surface = build_closed_mirror_surface(
-        MirrorBoundary.from_radius(0.31, grid),
-        grid,
-        axisymmetric_ntheta=24,
-        cap_rim_grade=3.5,
-    )
-    dirichlet = surface.reduce_collocation_values(surface.collocation_xyz[:, 2])
-    neumann = surface.reduce_collocation_values(surface.collocation_normals[:, 2])
-    targets = jnp.asarray([[0.0, 0.0, 0.0], [0.0, 0.0, 1.2]])
-    gradient = laplace_reduced_green_gradient_off_surface(surface, dirichlet, neumann, targets)
-
-    np.testing.assert_allclose(gradient, [[0.0, 0.0, 1.0], [0.0, 0.0, 1.0]], rtol=2.0e-4, atol=2.0e-4)
-
-
-def test_external_field_neumann_reconstruction_converges_near_caps() -> None:
-    target_bz = jnp.asarray(0.08)
-    targets = jnp.asarray([[0.0, 0.0, -0.4], [0.0, 0.0, 0.0], [0.0, 0.0, 0.4]])
-    errors = []
-    for ns, nxi, ntheta in ((9, 13, 16), (13, 21, 24)):
-        grid = MirrorConfig(
-            resolution=MirrorResolution(ns=ns, mpol=0, ntheta=1, nxi=nxi),
-            z_min=-0.6,
-            z_max=0.6,
-        ).build_grid()
-        surface = build_closed_mirror_surface(
-            MirrorBoundary.from_radius(0.3, grid),
-            grid,
-            axisymmetric_ntheta=ntheta,
-            cap_rim_grade=3.5,
-        )
-        external = _paraxial_field(surface.collocation_xyz)
-        target_field = jnp.asarray([0.0, 0.0, target_bz])
-        neumann = surface.reduce_collocation_values(
-            jnp.sum((target_field - external) * surface.collocation_normals, axis=1)
-        )
-        result = solve_reduced_interior_laplace_neumann(surface, neumann)
-        total_field = _paraxial_field(targets) + (
-            laplace_reduced_green_gradient_off_surface(surface, result.boundary_potential, neumann, targets)
-        )
-        errors.append(float(jnp.max(jnp.abs(total_field[:, 2] - target_bz)) / target_bz))
-        np.testing.assert_allclose(total_field[:, :2], 0.0, atol=2.0e-14)
-        assert float(result.compatibility_error) < 2.0e-14
-        assert float(result.condition_number) < 10.0
-
-    assert errors[1] < 0.7 * errors[0]
-    assert errors[1] < 6.0e-3
-
-
 def test_plasma_external_neumann_adapter_matches_uniform_field_data() -> None:
     grid = MirrorConfig(
         resolution=MirrorResolution(ns=13, mpol=0, ntheta=1, nxi=21),
@@ -751,40 +579,7 @@ def test_nonaxisymmetric_exterior_vacuum_is_shape_differentiable() -> None:
     assert float(jnp.linalg.norm(tangent)) > 0.0
 
 
-@requires_virtual_casing
-def test_green_representation_converges_for_harmonic_polynomials() -> None:
-    targets = jnp.asarray([[0.1, 0.05, 0.2], [0.0, 0.0, 4.0]])
-    errors = []
-    for ns, nxi, ntheta in ((17, 25, 16), (33, 49, 32)):
-        grid = _grid(ns=ns, nxi=nxi)
-        surface = build_closed_mirror_surface(
-            MirrorBoundary.from_radius(0.37, grid),
-            grid,
-            axisymmetric_ntheta=ntheta,
-        )
-        xyz = surface.xyz
-        normal = surface.normals
-        cases = (
-            (jnp.ones(xyz.shape[0]), jnp.zeros(xyz.shape[0]), 1.0),
-            (xyz[:, 0], normal[:, 0], targets[0, 0]),
-            (xyz[:, 2], normal[:, 2], targets[0, 2]),
-            (
-                xyz[:, 0] ** 2 - xyz[:, 1] ** 2,
-                2.0 * (xyz[:, 0] * normal[:, 0] - xyz[:, 1] * normal[:, 1]),
-                targets[0, 0] ** 2 - targets[0, 1] ** 2,
-            ),
-        )
-        case_errors = []
-        for dirichlet, neumann, interior_value in cases:
-            represented = laplace_green_representation_off_surface(surface, dirichlet, neumann, targets)
-            case_errors.append(float(jnp.max(jnp.abs(represented - jnp.asarray([interior_value, 0.0])))))
-        errors.append(max(case_errors))
-
-    assert errors[1] < 0.4 * errors[0]
-    assert errors[1] < 2.0e-5
-
-
-def test_singular_boundary_green_identity_converges_for_linear_harmonics() -> None:
+def test_singular_boundary_green_identity_converges_for_axial_harmonic() -> None:
     errors = []
     for ns, nxi, ntheta, order in ((7, 9, 8, 6), (13, 21, 20, 8)):
         grid = _grid(ns=ns, nxi=nxi)
@@ -795,15 +590,18 @@ def test_singular_boundary_green_identity_converges_for_linear_harmonics() -> No
         )
         xyz = surface.collocation_xyz
         normal = surface.collocation_normals
-        case_errors = []
-        for dirichlet, neumann in (
-            (xyz[:, 0], normal[:, 0]),
-            (xyz[:, 2], normal[:, 2]),
-        ):
-            residual = laplace_green_boundary_residual(surface, dirichlet, neumann, order=order)
-            scale = jnp.sqrt(jnp.mean(dirichlet**2) + surface.area * jnp.mean(neumann**2))
-            case_errors.append(float(jnp.sqrt(jnp.mean(residual**2)) / scale))
-        errors.append(max(case_errors))
+        dirichlet = xyz[:, 2]
+        neumann = normal[:, 2]
+        residual = laplace_reduced_green_boundary_residual(
+            surface,
+            surface.reduce_collocation_values(dirichlet),
+            surface.reduce_collocation_values(neumann),
+            order=order,
+        )
+        scale = jnp.sqrt(
+            jnp.mean(dirichlet**2) + surface.area * jnp.mean(neumann**2)
+        )
+        errors.append(float(jnp.sqrt(jnp.mean(residual**2)) / scale))
 
     assert errors[1] < errors[0]
     assert errors[1] < 2.0e-3

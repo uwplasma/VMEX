@@ -538,13 +538,6 @@ square, interpolates density linearly, and is differentiable in panel geometry
 and density. On a right triangle, orders ``2,4,8,16`` converge monotonically;
 order 16 matches the analytic constant-density single-layer integral within
 ``1.4e-14`` and the linear ``x+y`` density gives exactly half that value.
-The interior Calderon identity uses
-``S(q) + K(u-u_target) = 0``. Target subtraction preserves the constant
-nullspace and absorbs the local solid-angle coefficient, including at cap
-rims. For the independent harmonic fields ``u=x`` and ``u=z``, the worst
-normalized residual falls from ``3.47e-3`` on a 154-node mesh to ``1.78e-3``
-on an 862-node mesh. Raising Duffy order from 8 to 10 does not change the
-error, identifying linear-panel/rim resolution as the next limiter.
 For axisymmetric M6 data, angular panel nodes remain fully resolved as sources
 but one target is evaluated per rotational orbit. The density dimension is
 ``nxi + 2(ns-1)``. At 57 unknowns and 1,762 panel vertices this representative-
@@ -555,11 +548,8 @@ Power grading in the cap radius resolves the edge density without changing
 closed-surface area or volume. At 45 reduced unknowns, ``u=z`` recovery improves
 from 4.39% ungraded to 0.222%, 0.0589%, and 0.0264% at grades 2, 2.5, and 3;
 grade 3.5 gives 0.0216% with condition number 17.0. The differentiable
-area-weighted saddle solve reports net-flux compatibility, gauge error,
-condition number, and its full equation residual. In this case compatibility
-and gauge close near roundoff, while the panel-discrete equation residual is
-``8.9e-9``; it is not an exterior discretization claim.
-The decaying exterior equation is distinct:
+exterior solve reports net-flux compatibility, condition number, and its full
+equation residual. The decaying exterior equation is
 ``S(q) + K(u-u_target) + u = 0``. It has no constant gauge freedom, and its
 off-surface representation has the opposite sign. A zero-flux dipole MMS
 closes this equation to ``3e-14`` with condition number below 5. Boundary
@@ -645,30 +635,15 @@ condition 3.23. All nonlinear residuals through the scan remain below
 ``4.2e-3`` in field, and ``4.7e-3`` in volume beta. The ``full`` regression
 therefore preserves the ``5e-4`` low-beta gate and uses a separate ``5e-3``
 high-beta gate. Higher-order panels and lower CPU memory remain M5/M10 work.
-An analytic Green-gradient evaluator avoids differentiating safe-distance
-branches on the symmetry axis. Duffy panel evaluation also controls near-cap
-targets in the interior validation: for two circular coils outside a
-radius-0.3 m, length-1.2 m cylinder, the reconstructed uniform on-axis field
-error at ``z=-0.4,0,0.4`` decreases
-``0.998% -> 0.573% -> 0.369%`` across the measured meshes. The first two grids
-are a regular regression and require roundoff flux compatibility, condition
-number below 10, zero transverse axis field, and decreasing error.
-
 Tests require exact cylinder area and volume, zero integrated normal, the full
 tensor divergence theorem on a theta-shaped flared tube, cap/side ring
-continuity, and a JAX shape derivative. The off-surface double-layer and
-single-layer-gradient adapters call the released ``virtual_casing_jax>=0.0.2``
-kernels; a constant double layer converges to one inside and zero outside, and
-the single layer reaches its far-field monopole limit. Green's representation
-converges jointly under disk-radial, axial, and angular refinement for the
-harmonic manufactured fields ``1``, ``x``, ``z``, and ``x^2-y^2`` while
-returning zero at exterior targets.
-
-The off-surface functions reject malformed source and target arrays. M5 now has
-separately tested interior and decaying-exterior reduced Neumann solves plus an
-opt-in axisymmetric nonlinear coupling. It still needs broader shaped and
-near-singular references and higher-order side panels before the finite outer
-cylinder can be removed as the default backend.
+continuity, and a JAX shape derivative. The reduced decaying-exterior solve is
+tested against an analytic dipole at boundary and off-surface targets, including
+refinement, spectral side density, compatibility, conditioning, and shape JVPs.
+Generic interior and full-node virtual-casing adapters are intentionally left
+to virtual-casing-jax; vmec_jax retains only the operator used by mirror
+equilibria. Broader shaped and near-singular references and higher-order side
+panels remain promotion work.
 
 The nonaxisymmetric seam is explicit. ``magnetic_field_xyz`` converts the full
 contravariant field without an axisymmetry shortcut, while

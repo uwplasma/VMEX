@@ -40,11 +40,11 @@ def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
         "ChebyshevBasis",
         "SeparableMirrorPreconditioner",
         "isotropic_force_residual",
-        "laplace_green_gradient_off_surface",
+        "solve_reduced_exterior_laplace_neumann",
     }
     assert required <= set(mirror_api.__all__)
     assert internal.isdisjoint(mirror_api.__all__)
-    assert len(mirror_api.__all__) == 24
+    assert len(mirror_api.__all__) == 23
 
 
 def test_mirror_config_freezes_supported_end_and_convergence_contract() -> None:
