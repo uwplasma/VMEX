@@ -228,14 +228,14 @@ their owning module and are not flattened into `vmec_jax.mirror`.
 
 The initial audit relative to `origin/main` found 137 changed files, 24,370
 added lines, and 4,255 deleted lines. Phase 1 and the current cleanup reduce the
-working diff to 67 files, 17,430 added lines, and 1,632 deleted lines: 70
+working diff to 67 files, 17,673 added lines, and 1,632 deleted lines: 70
 unrelated files and about 6,600 added lines are gone. `vmec_jax/mirror` now
-contains 8,781 lines in 15 modules and exposes 23 lazy names. Continuation lives
+contains 8,824 lines in 15 modules and exposes 23 lazy names. Continuation lives
 with the free-boundary workflow, restart/plot/diagnostic output lives in one
 output module, and exterior interpolation lives with the BIE solve. The largest
 files remain `forces.py` (1,098), `splines.py` (1,063), `solver.py` (1,001), and
 `output.py` (912), so the module-count gate is met but the line and oversized-
-file gates are not. There are 131 collected mirror tests; the removed tests
+file gates are not. There are 133 collected mirror tests; the removed tests
 exercised only deleted finite-cylinder, generic interior-Laplace, or full-node
 virtual-casing paths.
 
@@ -584,8 +584,10 @@ virtual-casing adapters, the unused interior Neumann solve, and duplicate
 axisymmetric/nonaxisymmetric result records. The retained reduced exterior
 operator passes its analytic dipole, singular identity, spectral-density,
 axisymmetric/nonaxisymmetric coupling, and shape-JVP tests. This removes 252
-production lines and leaves 8,781 lines. The source-line and oversized-file
-gates remain active. The bounded reduction order is: share open/closed
+production lines and left 8,781 lines before the next feature. The explicit
+raw/corrected Neumann diagnostics subsequently bring the current count to
+8,824. The source-line and oversized-file gates remain active. The bounded
+reduction order is: share open/closed
 staggered magnetic assembly, share primal/adjoint packing and linear-solve
 diagnostics, then simplify output serialization. Do not split a large file
 merely to satisfy the file-size target. If ANIMEC is deferred in Phase 6,
@@ -630,6 +632,26 @@ Gates:
 - nonaxisymmetric fixed: field direction, ellipse angle, flux determinant,
   quadrupole phase, energy, volume, pitch, and weak residual converge;
 - all promoted residual and geometry contracts in Section 1 pass.
+
+Execution status (2026-07-14): the required open fixed-boundary representation
+parity gate is complete. Independent finite-pressure/current solves at
+`(ns,nxi)=(5,9),(7,13),(9,17)` use 7, 9, and 11 spline coefficients. Energy,
+volume, sampled radius, Cartesian-field, and `|B|` errors all decrease; finest
+errors are `5.60e-8`, `1.04e-6`, `2.94e-5`, `7.02e-4`, and `3.05e-4`,
+respectively. Both representations remain below `1.3e-15` in variational and
+independent weak residuals. The full test evaluates spline coefficients on the
+nodal grid and gates physical fields rather than a relative error in the
+near-zero gauge stream function.
+
+The first six-beta exterior rerun exposed a hidden acceptance failure despite
+`6e-15` force residual: raw cap-flux quadrature defects were `3.03e-5` and
+`2.18e-6` on the first two grids. The exterior solve now applies the standard
+Neumann compatibility projection only on artificial cap data, preserving all
+lateral LCFS values. It reports corrected compatibility separately from
+`raw_compatibility_error`; the former gates solvability and the latter must
+decrease and reach `1e-6` on the finest promotion grid. Manufactured dipole,
+axisymmetric/nonaxisymmetric adapter, and cap-only projection tests pass. The
+exact six-beta GPU rerun is the next active gate.
 
 Execution note (2026-07-14): the first native free-boundary spline attempt
 reused the fixed coefficient vectorizer and the existing exterior solve. Both

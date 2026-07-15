@@ -226,9 +226,20 @@ For an ``ns=5`` finite-pressure, finite-current flared tube, both paths converge
 in 59 iterations below ``ftol=1e-12``. Seven spline coefficients replace nine
 Chebyshev axial nodes and reduce active variables from 45 to 31. Relative
 differences are ``5.1e-7`` in energy, ``5.9e-6`` in volume, and ``3.2e-4`` in
-center radius. Larger knot studies and a coefficient-space preconditioner are
-still required before splines become the public default. Compact evidence is
-in ``benchmarks/mirror_spline_fixed_boundary.json``.
+center radius.
+
+Independent solves at ``(ns,nxi)=(5,9),(7,13),(9,17)`` pair 7, 9, and 11
+spline coefficients with the nodal grids. Energy error decreases
+``5.12e-7 -> 1.46e-7 -> 5.60e-8``, volume error decreases
+``5.91e-6 -> 2.57e-6 -> 1.04e-6``, and sampled radius RMS error decreases
+``2.40e-4 -> 6.49e-5 -> 2.94e-5``. On the finest grid the Cartesian field and
+``|B|`` differ by ``7.02e-4`` and ``3.05e-4`` RMS. A relative coefficient
+test is deliberately not applied to the near-zero gauge stream function; the
+physical field is the invariant comparison. Splines use roughly half the
+active radius variables and take 3.27, 3.19, and 5.00 seconds versus 5.24,
+8.09, and 11.47 seconds for the local nodal solves. All variational and
+independent weak residuals remain below ``1.3e-15``. Compact evidence is in
+``benchmarks/mirror_spline_fixed_boundary.json``.
 
 Above the dense-reference threshold, a 585-variable ``mpol=1`` cylinder uses
 the same radial/Fourier tensor preconditioner with the spline Galerkin axial
@@ -606,16 +617,19 @@ the four-grid dipole study above still limits its quantitative promotion.
 Restart files contain only the plasma state, boundary, and pressure scale; the
 BIE potential is solved into ``result.vacuum_field.neumann_result`` rather than
 hot-started.
-The nonlinear validity gate requires relative closed-surface flux compatibility
-below ``1e-6`` and condition number below ``1e8``. Compatibility is reported
-separately and must decrease under refinement; it is not conflated with the
+The exterior solve applies the standard Neumann compatibility projection only
+on the artificial end caps, leaving every lateral LCFS datum unchanged. The
+corrected compatibility must close near roundoff and the condition number must
+remain below ``1e8``. ``raw_compatibility_error`` reports the relative cap
+correction before projection; it must decrease under refinement and fall below
+``1e-6`` on the finest promotion grid. Neither quantity is conflated with the
 ``1e-12`` force and interface-stress convergence contract.
 
 The beta-zero exterior resolution study at ``(ns,nxi,ntheta_panel)`` equal to
 ``(5,7,8)``, ``(7,13,12)``, and ``(9,17,16)`` gives center radii
 ``0.2525753, 0.2531506, 0.2531155`` m and axis fields
 ``0.0840027, 0.0835434, 0.0835623`` T. The last two grids agree within
-``1.39e-4`` and ``2.26e-4`` relative. Flux compatibility improves
+``1.39e-4`` and ``2.26e-4`` relative. Raw flux compatibility improves
 ``1.60e-8 -> 1.02e-9 -> 5.92e-10`` while every force solve remains below
 ``5.8e-15``.
 
