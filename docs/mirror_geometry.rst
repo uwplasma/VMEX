@@ -118,8 +118,9 @@ The branch currently includes:
 * a closed-surface Neumann solve on the lateral LCFS and both end disks,
 * component-wise nonlinear convergence checks at a requested ``ftol=1e-12``.
 
-The axisymmetric free-boundary path has completed unbounded-exterior studies
-through 50% requested beta. The nonaxisymmetric free-boundary path is a
+The axisymmetric free-boundary path is supported through 10% requested beta
+and retains 25% and 50% as explicitly labeled research scans. The
+nonaxisymmetric free-boundary path is a
 deferred research lane because its point observables were not monotone under
 spatial refinement. A native periodic
 B-spline hybrid geometry and fixed-boundary research solve now exist. The
@@ -189,17 +190,16 @@ field-line direction. Plots resample the uniformly spaced poloidal data with
 their resolved Fourier modes, so low-order ellipses are not displayed as
 polygons.
 
-The compact six-point isotropic research data are recorded in
+The compact six-point isotropic data are recorded in
 ``benchmarks/mirror_free_boundary_axisymmetric.json`` with
-``promotion_status=research_blocked``. At 50% requested and
-achieved central beta, the solve reaches variational and staggered-weak
-residuals of ``5.38e-15`` and ``7.08e-16`` in 10 iterations. The center radius
-increases by 7.64% and the
-on-axis field decreases by 24.91%; the solved field ratio is 0.7509 versus
-the paraxial ``sqrt(1-beta)=0.7071`` reference. The three-resolution scan took
-137 seconds and peaked at 12.1 GiB RSS; ``(9,17)`` remained in dense Jacobian
-assembly after five minutes. These measurements make free-boundary Jacobian
-memory and runtime explicit optimization targets.
+``promotion_status=supported_through_beta_0.10_research_through_beta_0.50``.
+The nested-cut GPU matrix contains independent radial, axial,
+exterior-angular, exterior-order, and combined refinements. At 10%, the fine
+all-volume/core forces are ``1.44e-2``/``1.62e-3`` and every independent fine
+force is below ``2.47e-2``. At 25%, one independent force is ``5.70e-2`` and
+fails the ``5e-2`` gate. The 50% fine force is ``6.69e-2`` and its
+medium-to-fine center-field change is ``1.02%``. Small variational residuals
+do not override those independent failures.
 
 Fixed-boundary 3D solver
 ------------------------
@@ -229,11 +229,12 @@ they do not promote shaped solved states whose pointwise force remains large.
 The first corrected rotating-ellipse audit also exposed a missing axis
 condition: the old state varied ``|B|`` by 9--20% over theta at ``s=0`` even
 though those samples are one physical point. That freedom has been removed;
-all earlier shaped pointwise-force values must be regenerated before use.
+the canonical fixed-open and circular-periodic records have since been
+regenerated with the regular axis, while older shaped values remain invalid.
 
 Historical shaped records with inconsistent ``mpol`` and ``ntheta`` semantics
 were removed from the compact benchmark rather than labeled as current
-evidence. Schema v3 retains only results generated under
+evidence. Schema v4 retains only results generated under
 ``ntheta = 2*mpol + 1`` and keeps failed strong-force studies explicitly.
 
 Independent nonaxisymmetric analytic fixtures
@@ -519,7 +520,10 @@ figures under ``results/mirror_free_boundary_beta_scan/``. The figures include h
 ``z`` geometry, LCFS displacement, on-axis and LCFS ``|B|``, pressure balance,
 coils, cap-to-cap field lines, field arrows, and coupled residual histories.
 Generated results are ignored by git. CSV rows include closed-surface
-compatibility and BIE condition number for every beta point.
+compatibility and BIE condition number for every beta point. Values through
+10% exercise the supported lane; 25% and 50% are research continuation points
+and must not be presented as promoted merely because the nonlinear solve ends.
+The CSV ``supported_lane`` column and plot labels carry that distinction.
 
 Set ``SAVE_RESTARTS = True`` to write one compressed ``.npz`` hot-start per
 beta point. :func:`vmec_jax.mirror.output.load_free_boundary_restart` checks its
@@ -551,24 +555,24 @@ not imply a 10% edge-pressure jump or volume beta.
 * diamagnetic field ratio, and
 * error against the paraxial estimate ``B/B_vac = sqrt(1-beta)``.
 
-At ``(ns,nxi,nrho)=(7,13,7)``, the default 10% request reaches 10% central
-beta and 3.37% volume beta. The center radius expands by 1.21%, while the
-central field falls by 4.78%; the field ratio is within 0.37% relative of the
-paraxial estimate. Thus field depression is the more sensitive validation
-observable for this zero-edge-pressure profile.
+At the fine combined grid ``(ns,nxi,ntheta_panel)=(9,17,16)``, the default 10%
+request reaches 10% central beta and 3.39% volume beta. The center radius
+expands by 1.21%, while the central field falls by 4.38%. Thus field depression
+is the more sensitive validation observable for this zero-edge-pressure
+profile.
 
-On the unbounded exterior grid ``(ns,nxi,ntheta_panel)=(9,17,16)``, the 50%
-point reaches center radius ``0.272660 m``, field ratio ``0.747645``, and
-volume beta ``0.219148`` with nonlinear residual ``7.7e-15``. The paraxial
-small-beta estimate is intentionally shown but is no longer an accuracy
-reference at 50%; the solved nonlinear pressure balance is the governing gate.
+On that grid, the 50% research point reaches center radius ``0.272554 m``,
+field ratio ``0.762687``, and volume beta ``0.216984`` with nonlinear residual
+``8.31e-13``. The paraxial small-beta estimate is intentionally shown but is
+not an accuracy reference at 50%; the failed strong-force and refinement gates
+control its status.
 
 The finite-beta mirror trend follows the WHAM/Pleiades discussion in Frank et
 al., `Confinement performance predictions for a high field axisymmetric tandem
 mirror <https://doi.org/10.1017/S002237782510055X>`_. A checked Pleiades
 Green-function reference at upstream commit ``0161abb3`` gives a 10% field
 ratio of 0.952754 on a 51 by 101 grid. The production mixed-truncation
-``vmec_jax`` solve gives 0.952176, a 0.061% relative difference. Boundary
+``vmec_jax`` solve gives 0.956197, a 0.36% relative difference. Boundary
 independent-reference curves remain promotion gates rather than being replaced
 by this scalar comparison.
 That study reports robust Pleiades equilibria for ``beta < 1`` and the expected
@@ -703,17 +707,16 @@ a Newton--GMRES polish. In the T6b CPU audit, a 48-unknown beta-zero case reache
 Without the polish, capped LSMR stalled at ``4.75e-6`` after 200 evaluations.
 Cached ``jax.linearize`` retained more than 3 GiB and was slower than repeated
 actions on the small A/B fixture, so repeated actions are the production path.
-The historical three-grid numbers below predate coefficient boundary work and
-must be regenerated before promotion.
+The schema-5 nested-cut matrix below was regenerated with coefficient boundary
+work and the accepted strong-force reconstruction.
 
-The office RTX A4000 study now continues every grid through 50% beta. On the
-third grid, beta 50% gives center radius ``0.2726602 m``, axis field
-``0.0624749 T``, volume beta ``0.219148``, compatibility ``2.09e-9``, and
-condition 3.23. All nonlinear residuals through the scan remain below
-``8.1e-15``. Medium-to-fine relative changes at 50% are ``7.4e-4`` in radius,
-``4.2e-3`` in field, and ``4.7e-3`` in volume beta. The ``full`` regression
-therefore preserves the ``5e-4`` low-beta gate and uses a separate ``5e-3``
-high-beta gate. Higher-order panels and lower CPU memory remain M5/M10 work.
+The office RTX A4000 study continues every grid through 50% beta. On the fine
+grid, beta 50% gives center radius ``0.272554 m``, axis field ``0.063578 T``,
+volume beta ``0.216984``, and all-volume/core force
+``6.69e-2``/``1.50e-2``. Medium-to-fine relative changes are ``0.137%`` in
+radius and ``1.02%`` in center field. The point remains research-only. The
+same matrix promotes 10%, where all independent force and observable gates
+pass. Higher-order panels and lower runtime remain later optimization work.
 Tests require exact cylinder area and volume, zero integrated normal, the full
 tensor divergence theorem on a theta-shaped flared tube, cap/side ring
 continuity, and a JAX shape derivative. The reduced decaying-exterior solve is

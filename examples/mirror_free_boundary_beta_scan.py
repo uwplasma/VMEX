@@ -4,10 +4,11 @@ Run from the repository root with::
 
     python examples/mirror_free_boundary_beta_scan.py
 
-The first four points are the 0--10% validation scan.  The last two expose
-the higher-beta diamagnetic trend.  Every curve and surface comes from a
-coupled plasma-boundary-vacuum equilibrium solve with residual tolerance
-``FTOL``; no prescribed finite-beta boundary is plotted.
+The first four points are the supported 0--10% validation scan.  The last two
+are research continuation states whose independent force/refinement gates do
+not pass.  Every curve and surface comes from a coupled
+plasma-boundary-vacuum equilibrium solve with residual tolerance ``FTOL``; no
+prescribed finite-beta boundary is plotted.
 """
 
 from pathlib import Path
@@ -47,6 +48,7 @@ from vmec_jax.mirror.output import (  # noqa: E402
 
 # Inputs: edit these values, then run the file directly.
 BETAS = np.asarray([0.0, 0.01, 0.03, 0.10, 0.25, 0.50])
+SUPPORTED_BETA_MAX = 0.10
 NS = 7
 NXI = 13
 SPLINE_ELEMENTS = 7
@@ -157,6 +159,13 @@ diagnostics = summarize_axisymmetric_beta_scan(
     reference_field=float(vacuum_axis_field[center]),
 )
 
+
+def beta_label(beta):
+    """Label points above the validated ceiling as research results."""
+
+    suffix = "" if beta <= SUPPORTED_BETA_MAX else " (research)"
+    return f"{100 * beta:g}%{suffix}"
+
 summary = np.asarray(
     [
         [
@@ -178,6 +187,7 @@ summary = np.asarray(
             float(result.iterations),
             float(result.vacuum_field.neumann_result.compatibility_error),
             float(result.vacuum_field.neumann_result.condition_number),
+            float(item.requested_beta <= SUPPORTED_BETA_MAX),
         ]
         for item, result in zip(diagnostics, results, strict=True)
     ]
@@ -187,7 +197,7 @@ header = (
     "center_axis_field_T,diamagnetic_field_ratio,paraxial_field_ratio,"
     "paraxial_relative_error,variational_max,staggered_weak_max,pointwise_force_rms,"
     "normalized_divergence_rms,normal_stress_rms,bnormal_rms_normalized,"
-    "mass_scale,iterations,exterior_compatibility,exterior_condition_number"
+    "mass_scale,iterations,exterior_compatibility,exterior_condition_number,supported_lane"
 )
 np.savetxt(OUTPUT_DIR / "beta_scan.csv", summary, delimiter=",", header=header, comments="")
 
@@ -200,7 +210,7 @@ for beta, result, color in zip(BETAS, results, colors_beta, strict=True):
     radius = display_matrix @ np.asarray(result.boundary.radius_scale[0])
     b_axis = display_matrix @ np.sqrt(np.asarray(result.plasma_b_squared[0, 0]))
     b_lcfs = display_matrix @ np.sqrt(np.asarray(result.plasma_b_squared[-1, 0]))
-    axes[0, 0].plot(z, radius, color=color, lw=2, label=f"{100 * beta:g}%")
+    axes[0, 0].plot(z, radius, color=color, lw=2, label=beta_label(beta))
     baseline_radius = display_matrix @ np.asarray(results[0].boundary.radius_scale[0])
     axes[0, 1].plot(z, 1e3 * (radius - baseline_radius), color=color, lw=2)
     axes[0, 2].plot(z, b_axis, color=color, lw=2)
@@ -231,7 +241,13 @@ axes[1, 1].legend(fontsize=8)
 
 for beta, result, color in zip(BETAS, results, colors_beta, strict=True):
     history = np.asarray(result.history)
-    axes[1, 2].semilogy(history[:, 0], np.maximum(history[:, -1], 1e-18), color=color, lw=1.5, label=f"{100 * beta:g}%")
+    axes[1, 2].semilogy(
+        history[:, 0],
+        np.maximum(history[:, -1], 1e-18),
+        color=color,
+        lw=1.5,
+        label=beta_label(beta),
+    )
 axes[1, 2].axhline(FTOL, color="0.25", ls="--", lw=1, label="ftol")
 axes[1, 2].set(title="Coupled residual history", xlabel="Residual evaluation", ylabel="Maximum normalized residual")
 axes[1, 2].legend(ncol=2, fontsize=8)
@@ -249,7 +265,7 @@ for index in display_indices:
     pressure = np.asarray(result.pressure[:, 0, center])
     magnetic_pressure = np.asarray(result.plasma_b_squared[:, 0, center]) / (2.0 * 4.0e-7 * np.pi)
     color = colors_beta[index]
-    label = f"{100 * BETAS[index]:g}%"
+    label = beta_label(BETAS[index])
     axes[0].plot(radial_coordinate, pressure / 1e3, "o-", color=color, lw=2, label=label)
     axes[1].plot(radial_coordinate, magnetic_pressure / 1e3, "o-", color=color, lw=2, label=label)
     axes[1].plot(radial_coordinate, (pressure + magnetic_pressure) / 1e3, "--", color=color, lw=1.5)
@@ -315,7 +331,7 @@ for panel, index in enumerate(display_indices, start=1):
             linewidth=1.0,
             arrow_length_ratio=0.32,
         )
-    ax.set(title=f"beta={100 * BETAS[index]:g}%", xlabel="z [m]", ylabel="x [m]", zlabel="y [m]")
+    ax.set(title=beta_label(BETAS[index]), xlabel="z [m]", ylabel="x [m]", zlabel="y [m]")
     ax.set_xlim(-1.15, 1.15)
     ax.set_ylim(-1.0, 1.0)
     ax.set_zlim(-1.0, 1.0)

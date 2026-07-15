@@ -175,17 +175,19 @@ reconverged central differences before MOUT and the standard plots are written.
 .. literalinclude:: ../examples/mirror_fixed_boundary_nonaxisymmetric.py
    :language: python
 
-Free-boundary mirror through 50% beta
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Free-boundary mirror beta scan
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Two circular end coils drive an open-field equilibrium whose lateral LCFS is
-solved jointly with the exterior vacuum. Every accepted beta point is a
-converged equilibrium, and the endpoint plots include the horizontal mirror,
-coils, cap-to-cap field lines, ``|B|``, pressure, cross-sections, and force
-history. The default exterior solve is intentionally a full/nightly workflow.
+solved jointly with the exterior vacuum. The model is supported through 10%;
+the 25% and 50% endpoints are converged but remain research evidence because
+their independent force/refinement gates fail. The plots include the
+horizontal mirror, coils, cap-to-cap field lines, ``|B|``, pressure,
+cross-sections, and force history. The default exterior solve is intentionally
+a full/nightly workflow.
 
 .. image:: _static/figures/mirror_free_boundary_beta50_summary.png
-   :alt: Solved 50 percent beta mirror boundary, field, pressure, and convergence
+   :alt: Free-boundary mirror refinement, field response, and force support gates
    :width: 95%
 
 .. literalinclude:: ../examples/mirror_free_boundary_beta_scan.py

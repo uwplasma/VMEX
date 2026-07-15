@@ -58,6 +58,17 @@ def test_canonical_benchmarks_declare_provenance_and_promotion_status() -> None:
         assert record["provenance"]["promotion_status"] != "supported", path.name
 
 
+def test_axisymmetric_free_boundary_benchmark_declares_supported_beta_ceiling() -> None:
+    path = REPO / "benchmarks" / "mirror_free_boundary_axisymmetric.json"
+    record = json.loads(path.read_text())
+    assessment = record["refinement_assessment"]
+
+    assert record["schema"] == "vmec_jax.benchmark.mirror_free_boundary_axisymmetric/5"
+    assert record["case"]["supported_beta_max"] == pytest.approx(0.10)
+    assert [row["beta"] for row in assessment if row["promotion_gate_passed"]] == [0.0, 0.01, 0.03, 0.10]
+    assert [row["beta"] for row in assessment if not row["promotion_gate_passed"]] == [0.25, 0.50]
+
+
 def _sample_mout() -> MoutData:
     ns, ntheta, nxi = 3, 5, 7
     s = np.linspace(0.0, 1.0, ns)

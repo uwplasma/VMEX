@@ -28,7 +28,8 @@ All runnable examples live under this single `examples/` tree.
   - `take_free_boundary_gradients.py` — differentiate a free-boundary field
     diagnostic through the virtual-casing vacuum field.
   - `mirror_free_boundary_beta_scan.py` — solve a straight-axis two-coil
-    free-boundary mirror through 50% beta and render the solved LCFS, coils,
+    free-boundary mirror supported through 10% beta, continue research states
+    through 50%, and render the solved LCFS, coils,
     cap-to-cap field lines, `|B|`, pressure, cross-sections, and residuals.
   - `mirror_fixed_boundary_nonaxisymmetric.py` — solve native-spline rotating
     ellipse and field-projected Straight Field Line Mirror cases, validate an
