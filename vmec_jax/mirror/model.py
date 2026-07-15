@@ -55,10 +55,7 @@ class MirrorResolution:
             raise ValueError("mirror nxi must be >= 2")
         minimum_theta = 1 if self.mpol == 0 else 2 * self.mpol + 1
         if self.ntheta < minimum_theta:
-            raise ValueError(
-                f"ntheta={self.ntheta} cannot resolve mpol={self.mpol}; "
-                f"use ntheta >= {minimum_theta}"
-            )
+            raise ValueError(f"ntheta={self.ntheta} cannot resolve mpol={self.mpol}; use ntheta >= {minimum_theta}")
         if self.mpol == 0 and self.ntheta != 1:
             raise ValueError("axisymmetric mirror resolution uses mpol=0 and ntheta=1")
 
@@ -129,8 +126,7 @@ class MirrorBoundary:
             value = jnp.broadcast_to(value[None, :], (grid.ntheta, grid.nxi))
         elif value.shape != (grid.ntheta, grid.nxi):
             raise ValueError(
-                f"boundary radius shape {value.shape} must be scalar, "
-                f"({grid.nxi},), or ({grid.ntheta}, {grid.nxi})"
+                f"boundary radius shape {value.shape} must be scalar, ({grid.nxi},), or ({grid.ntheta}, {grid.nxi})"
             )
         return cls(radius_scale=value)
 

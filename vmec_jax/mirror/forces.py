@@ -188,15 +188,8 @@ def closed_staggered_magnetic_terms(
     centerline_xi = (jnp.asarray(axis.tangent) * jnp.asarray(axis.speed)[:, None])[None, None, None]
 
     radius = samples.radius
-    e_theta = (
-        samples.d_radius_dtheta[..., None] * radial_direction
-        + radius[..., None] * poloidal_direction
-    )
-    e_xi = (
-        centerline_xi
-        + samples.d_radius_dxi[..., None] * radial_direction
-        + radius[..., None] * radial_direction_xi
-    )
+    e_theta = samples.d_radius_dtheta[..., None] * radial_direction + radius[..., None] * poloidal_direction
+    e_xi = centerline_xi + samples.d_radius_dxi[..., None] * radial_direction + radius[..., None] * radial_direction_xi
     jacobian = samples.radius_radius_s * jnp.sum(
         radial_direction * jnp.cross(poloidal_direction, e_xi),
         axis=-1,
@@ -206,11 +199,7 @@ def closed_staggered_magnetic_terms(
     g_xixi = jnp.sum(e_xi * e_xi, axis=-1)
     b_theta = samples.field_theta_numerator / jacobian
     b_xi = samples.field_xi_numerator / jacobian
-    b_squared = (
-        g_thetatheta * b_theta**2
-        + 2.0 * g_thetaxi * b_theta * b_xi
-        + g_xixi * b_xi**2
-    )
+    b_squared = g_thetatheta * b_theta**2 + 2.0 * g_thetaxi * b_theta * b_xi + g_xixi * b_xi**2
     jacobian_cell = jnp.mean(jacobian, axis=0)
     magnetic_density_cell = jnp.mean(b_squared * jacobian, axis=0)
     return magnetic_density_cell / jacobian_cell, jacobian_cell
@@ -322,26 +311,20 @@ def isotropic_staggered_energy_gradient(
     if axis is None:
         radius_bar = numerator_bar * (2.0 * radius * field_theta**2)
         radius_theta_bar = numerator_bar * (
-            2.0 * radius_theta * field_theta**2
-            + 2.0 * radius_xi * field_theta * field_xi
+            2.0 * radius_theta * field_theta**2 + 2.0 * radius_xi * field_theta * field_xi
         )
-        radius_xi_bar = numerator_bar * (
-            2.0 * radius_theta * field_theta * field_xi
-            + 2.0 * radius_xi * field_xi**2
-        )
+        radius_xi_bar = numerator_bar * (2.0 * radius_theta * field_theta * field_xi + 2.0 * radius_xi * field_xi**2)
         radius_radius_s_bar = jacobian_bar * float(grid.dz_dxi)
     else:
         e_theta_bar = numerator_bar[..., None] * (
-            2.0 * field_theta[..., None] ** 2 * e_theta
-            + 2.0 * (field_theta * field_xi)[..., None] * e_xi
+            2.0 * field_theta[..., None] ** 2 * e_theta + 2.0 * (field_theta * field_xi)[..., None] * e_xi
         )
         e_xi_bar = numerator_bar[..., None] * (
-            2.0 * field_xi[..., None] ** 2 * e_xi
-            + 2.0 * (field_theta * field_xi)[..., None] * e_theta
+            2.0 * field_xi[..., None] ** 2 * e_xi + 2.0 * (field_theta * field_xi)[..., None] * e_theta
         )
-        e_xi_bar += (
-            jacobian_bar * samples.radius_radius_s
-        )[..., None] * jnp.cross(radial_direction, poloidal_direction)
+        e_xi_bar += (jacobian_bar * samples.radius_radius_s)[..., None] * jnp.cross(
+            radial_direction, poloidal_direction
+        )
         radius_bar = jnp.sum(e_theta_bar * poloidal_direction, axis=-1)
         radius_bar += jnp.sum(e_xi_bar * radial_direction_xi, axis=-1)
         radius_theta_bar = jnp.sum(e_theta_bar * radial_direction, axis=-1)

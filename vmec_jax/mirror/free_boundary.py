@@ -189,9 +189,7 @@ def solve_free_boundary_cli(
             gamma=gamma,
         )
         plasma_b_squared = plasma.b_squared
-        pressure = jnp.broadcast_to(
-            plasma.pressure[:, None, None], plasma_b_squared.shape
-        )
+        pressure = jnp.broadcast_to(plasma.pressure[:, None, None], plasma_b_squared.shape)
         central_pressure = plasma.pressure[0]
         if plasma_grid.ntheta == 1:
             vacuum_field = solve_axisymmetric_exterior_vacuum(
@@ -372,18 +370,12 @@ def solve_free_boundary_cli(
         radius_gradient=full_weak_force.radius_gradient,
         lambda_gradient=full_weak_force.lambda_gradient,
         radius_rms=jnp.asarray(np.sqrt(np.mean(radius_weak**2))),
-        lambda_rms=jnp.asarray(
-            np.sqrt(np.mean(lambda_weak**2)) if lambda_weak.size else 0.0
-        ),
+        lambda_rms=jnp.asarray(np.sqrt(np.mean(lambda_weak**2)) if lambda_weak.size else 0.0),
         maximum=jnp.asarray(np.max(np.abs(active_weak))),
     )
-    divergence_rms = normalized_divergence_rms(
-        plasma.field, plasma.geometry, plasma_grid
-    )
+    divergence_rms = normalized_divergence_rms(plasma.field, plasma.geometry, plasma_grid)
     converged = bool(
-        variational_max <= config.ftol
-        and not bool(plasma.geometry.jacobian_sign_changed)
-        and bool(vacuum_valid)
+        variational_max <= config.ftol and not bool(plasma.geometry.jacobian_sign_changed) and bool(vacuum_valid)
     )
     message = str(solve.message)
     if not converged:
@@ -433,9 +425,7 @@ def interpolate_fixed_boundary_state(
     state.validate_shape(source_grid)
     expected = (target_grid.ntheta, target_grid.nxi)
     if tuple(jnp.shape(boundary.radius_scale)) != expected:
-        raise ValueError(
-            f"boundary shape {jnp.shape(boundary.radius_scale)} must be {expected}"
-        )
+        raise ValueError(f"boundary shape {jnp.shape(boundary.radius_scale)} must be {expected}")
     if source_grid.ntheta != target_grid.ntheta or not np.allclose(
         source_grid.theta, target_grid.theta, rtol=0.0, atol=2.0e-14
     ):
@@ -444,9 +434,7 @@ def interpolate_fixed_boundary_state(
     def interpolate(values: Array) -> Array:
         axial = source_grid.axial_basis.interpolate(values, target_grid.xi, axis=2)
         columns = axial.reshape(source_grid.ns, -1).T
-        radial = jax.vmap(
-            lambda column: jnp.interp(target_grid.s, source_grid.s, column)
-        )(columns)
+        radial = jax.vmap(lambda column: jnp.interp(target_grid.s, source_grid.s, column))(columns)
         return radial.T.reshape(target_grid.shape)
 
     candidate = MirrorState(
@@ -522,16 +510,9 @@ def solve_beta_scan_cli(
         )
         if beta > 0.0:
             center = int(np.argmin(np.abs(plasma_grid.z)))
-            achieved_beta = (
-                2.0
-                * MU0
-                * float(result.pressure[0, 0, center])
-                / float(reference_field) ** 2
-            )
+            achieved_beta = 2.0 * MU0 * float(result.pressure[0, 0, center]) / float(reference_field) ** 2
             if abs(achieved_beta - float(beta)) / float(beta) > beta_rtol:
-                raise RuntimeError(
-                    f"central beta did not reach rtol={beta_rtol:.3e}"
-                )
+                raise RuntimeError(f"central beta did not reach rtol={beta_rtol:.3e}")
         results.append(result)
         boundary = result.boundary
         state = result.plasma_state

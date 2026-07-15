@@ -198,9 +198,7 @@ def _solve_implicit_system(
         response = apply_preconditioner(matrix_vector(direction))
         denominator = abs(float(np.dot(direction, response)))
         if denominator > np.finfo(float).tiny:
-            scales[block] = np.clip(
-                np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8
-            )
+            scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
 
     operator = LinearOperator((size, size), matvec=matrix_vector, dtype=float)
     inverse = LinearOperator((size, size), matvec=apply_preconditioner, dtype=float)
@@ -209,8 +207,7 @@ def _solve_implicit_system(
     else:
         initial_error = matrix_vector(initial) - right_hand_side
         initial_relative_residual = float(
-            np.linalg.norm(initial_error)
-            / max(np.linalg.norm(right_hand_side), np.finfo(float).tiny)
+            np.linalg.norm(initial_error) / max(np.linalg.norm(right_hand_side), np.finfo(float).tiny)
         )
     iterations = 0
 
@@ -234,13 +231,8 @@ def _solve_implicit_system(
             callback_type="pr_norm",
         )
     linear_error = matrix_vector(solution) - right_hand_side
-    relative_residual = float(
-        np.linalg.norm(linear_error)
-        / max(np.linalg.norm(right_hand_side), np.finfo(float).tiny)
-    )
-    converged = bool(
-        info == 0 and relative_residual <= max(10.0 * rtol, 1.0e-12)
-    )
+    relative_residual = float(np.linalg.norm(linear_error) / max(np.linalg.norm(right_hand_side), np.finfo(float).tiny))
+    converged = bool(info == 0 and relative_residual <= max(10.0 * rtol, 1.0e-12))
     return solution, iterations, relative_residual, converged
 
 
@@ -259,9 +251,7 @@ def _implicit_adjoint(
 ) -> MirrorAdjointResult:
     """Solve one implicit transpose system shared by nodal and spline states."""
 
-    value, (quantity_x, quantity_parameters) = jax.value_and_grad(
-        evaluate_quantity, argnums=(0, 1)
-    )(x_star, parameters)
+    value, (quantity_x, quantity_parameters) = jax.value_and_grad(evaluate_quantity, argnums=(0, 1))(x_star, parameters)
     _, transpose = jax.vjp(lambda x: residual(x, parameters), x_star)
     transpose_action = jax.jit(lambda vector: transpose(vector)[0])
 
@@ -270,9 +260,7 @@ def _implicit_adjoint(
 
     right_hand_side = np.asarray(quantity_x, dtype=float)
     initial_adjoint, solver_used = (
-        (None, "gmres")
-        if initializer is None
-        else initializer(transpose_action, right_hand_side)
+        (None, "gmres") if initializer is None else initializer(transpose_action, right_hand_side)
     )
     adjoint, iterations, relative_residual, converged = _solve_implicit_system(
         matrix_vector,
@@ -340,9 +328,7 @@ def fixed_boundary_adjoint(
     energy_scale = max(abs(float(result.energy.total)), np.finfo(float).tiny)
 
     def state_at(x: Array, controls: FixedBoundaryParameters) -> MirrorState:
-        return project_fixed_boundary_state(
-            vectorizer.unpack(x), MirrorBoundary(controls.boundary_radius), grid
-        )
+        return project_fixed_boundary_state(vectorizer.unpack(x), MirrorBoundary(controls.boundary_radius), grid)
 
     def energy_at(x: Array, controls: FixedBoundaryParameters) -> MirrorEnergy:
         state = state_at(x, controls)
@@ -380,25 +366,18 @@ def fixed_boundary_adjoint(
         columns = jnp.tile(jnp.arange(block_size), 3)
         active_rows = jnp.arange(radial_blocks)[None, :] % 3 == colors[:, None]
         probes = (
-            active_rows[:, :, None]
-            * jax.nn.one_hot(columns, block_size, dtype=x_star.dtype)[:, None, :]
+            active_rows[:, :, None] * jax.nn.one_hot(columns, block_size, dtype=x_star.dtype)[:, None, :]
         ).reshape(3 * block_size, x_star.size)
-        responses = jax.jit(jax.vmap(transpose_action))(probes).reshape(
-            3, block_size, radial_blocks, block_size
-        )
+        responses = jax.jit(jax.vmap(transpose_action))(probes).reshape(3, block_size, radial_blocks, block_size)
         radial_index = jnp.arange(radial_blocks)
 
         def band(offset: int) -> Array:
-            values = responses[
-                (radial_index + offset) % 3, :, radial_index, :
-            ]
+            values = responses[(radial_index + offset) % 3, :, radial_index, :]
             return jnp.swapaxes(values, 1, 2)
 
         factors = block_thomas_factor(band(-1), band(0), band(1))
         initial_adjoint = np.asarray(
-            block_thomas_solve(
-                factors, jnp.asarray(right_hand_side).reshape(radial_blocks, block_size)
-            )
+            block_thomas_solve(factors, jnp.asarray(right_hand_side).reshape(radial_blocks, block_size))
         ).reshape(-1)
         return initial_adjoint, "block+gmres"
 
@@ -412,11 +391,7 @@ def fixed_boundary_adjoint(
         split[: 2 if vectorizer.lambda_size else 1],
         rtol=rtol,
         max_restarts=max_restarts,
-        initializer=(
-            block_initializer
-            if linear_solver == "block" and not vectorizer.lambda_size
-            else None
-        ),
+        initializer=(block_initializer if linear_solver == "block" and not vectorizer.lambda_size else None),
     )
 
 
@@ -472,9 +447,7 @@ def _spline_implicit_problem(
     def residual(x: Array, controls: SplineFixedBoundaryParameters) -> Array:
         return jax.grad(lambda vector: energy_at(vector, controls).total / energy_scale)(x)
 
-    apply_preconditioner, scales = _packed_spline_preconditioner(
-        discretization, vectorizer
-    )
+    apply_preconditioner, scales = _packed_spline_preconditioner(discretization, vectorizer)
     split = (slice(0, vectorizer.radius_size), slice(vectorizer.radius_size, None))
     return (
         x_star,
@@ -585,16 +558,14 @@ def spline_fixed_boundary_tangent(
     def matrix_vector(vector: np.ndarray) -> np.ndarray:
         return np.asarray(tangent_action(jnp.asarray(vector)), dtype=float)
 
-    packed_tangent, iterations, relative_residual, converged = (
-        _solve_implicit_system(
-            matrix_vector,
-            -np.asarray(residual_tangent, dtype=float),
-            apply_preconditioner,
-            scales,
-            split,
-            rtol=rtol,
-            max_restarts=max_restarts,
-        )
+    packed_tangent, iterations, relative_residual, converged = _solve_implicit_system(
+        matrix_vector,
+        -np.asarray(residual_tangent, dtype=float),
+        apply_preconditioner,
+        scales,
+        split,
+        rtol=rtol,
+        max_restarts=max_restarts,
     )
     state_tangent = jax.jvp(
         state_at,
@@ -616,14 +587,10 @@ def _state_shape(config: FixedBoundaryImplicitConfig) -> MirrorState:
 
 
 def _parameter_shape(parameters: FixedBoundaryParameters) -> FixedBoundaryParameters:
-    return jax.tree.map(
-        lambda value: jax.ShapeDtypeStruct(value.shape, value.dtype), parameters
-    )
+    return jax.tree.map(lambda value: jax.ShapeDtypeStruct(value.shape, value.dtype), parameters)
 
 
-def _host_fixed_boundary_solve(
-    config: FixedBoundaryImplicitConfig, parameters: FixedBoundaryParameters
-) -> MirrorState:
+def _host_fixed_boundary_solve(config: FixedBoundaryImplicitConfig, parameters: FixedBoundaryParameters) -> MirrorState:
     parameters = jax.tree.map(jnp.asarray, parameters)
     boundary = MirrorBoundary(parameters.boundary_radius)
     initial = project_fixed_boundary_state(config.initial_state, boundary, config.grid)
@@ -688,9 +655,7 @@ def _host_fixed_boundary_pullback(config, parameters, state, cotangent):
     def cotangent_quantity(candidate, _energy):
         return sum(
             jnp.vdot(value, weight)
-            for value, weight in zip(
-                jax.tree.leaves(candidate), jax.tree.leaves(cotangent), strict=True
-            )
+            for value, weight in zip(jax.tree.leaves(candidate), jax.tree.leaves(cotangent), strict=True)
         )
 
     result = SimpleNamespace(converged=True, state=state, energy=energy)
@@ -705,9 +670,7 @@ def _host_fixed_boundary_pullback(config, parameters, state, cotangent):
         max_restarts=config.adjoint_max_restarts,
     )
     if not adjoint.converged:
-        raise RuntimeError(
-            f"fixed-boundary adjoint failed at residual {adjoint.relative_residual:.3e}"
-        )
+        raise RuntimeError(f"fixed-boundary adjoint failed at residual {adjoint.relative_residual:.3e}")
     return jax.tree.map(lambda value: np.asarray(value, dtype=np.float64), adjoint.gradient)
 
 
@@ -723,9 +686,7 @@ def _solve_fixed_boundary_implicit_bwd(config, residual, cotangent):
     return (gradient,)
 
 
-solve_fixed_boundary_implicit.defvjp(
-    _solve_fixed_boundary_implicit_fwd, _solve_fixed_boundary_implicit_bwd
-)
+solve_fixed_boundary_implicit.defvjp(_solve_fixed_boundary_implicit_fwd, _solve_fixed_boundary_implicit_bwd)
 
 
 FreeBoundaryQuantity = Callable[[MirrorBoundary, MirrorState, MirrorEnergy, Any], Array]
@@ -830,13 +791,9 @@ def free_boundary_adjoint(
     energy_scale = max(abs(float(result.plasma_energy.total)), 1.0)
 
     def unpack(vector: Array) -> tuple[MirrorBoundary, MirrorState]:
-        boundary_radius = fixed_boundary.at[boundary_indices].set(
-            vector[:boundary_size]
-        )
+        boundary_radius = fixed_boundary.at[boundary_indices].set(vector[:boundary_size])
         boundary = MirrorBoundary(boundary_radius)
-        radius = base_state.radius_scale.at[plasma_indices].set(
-            vector[boundary_size:]
-        )
+        radius = base_state.radius_scale.at[plasma_indices].set(vector[boundary_size:])
         radius = radius.at[-1].set(boundary_radius)
         radius = radius.at[:, :, 0].set(boundary_radius[:, 0])
         radius = radius.at[:, :, -1].set(boundary_radius[:, -1])
@@ -853,16 +810,12 @@ def free_boundary_adjoint(
             current_derivative=controls.current_derivative,
             gamma=config.gamma,
         )
-        pressure = jnp.broadcast_to(
-            plasma.pressure[:, None, None], plasma.b_squared.shape
-        )
+        pressure = jnp.broadcast_to(plasma.pressure[:, None, None], plasma.b_squared.shape)
         plasma_b_squared = magnetic_field_squared(plasma.field, plasma.geometry)
         return boundary, state, plasma, pressure, plasma_b_squared
 
     def components(vector: Array, controls: FreeBoundaryParameters):
-        boundary, state, plasma, pressure, plasma_b_squared = plasma_components(
-            vector, controls
-        )
+        boundary, state, plasma, pressure, plasma_b_squared = plasma_components(vector, controls)
         vacuum = solve_axisymmetric_exterior_vacuum(
             boundary,
             plasma.field,
@@ -874,28 +827,18 @@ def free_boundary_adjoint(
         )
         return boundary, state, plasma, pressure, plasma_b_squared, vacuum
 
-    def normalized_plasma_energy(
-        vector: Array, controls: FreeBoundaryParameters
-    ) -> Array:
+    def normalized_plasma_energy(vector: Array, controls: FreeBoundaryParameters) -> Array:
         return plasma_components(vector, controls)[2].total / energy_scale
 
     def residual(vector: Array, controls: FreeBoundaryParameters) -> Array:
         _, _, _, pressure, plasma_b_squared, vacuum = components(vector, controls)
-        plasma_gradient = jax.grad(normalized_plasma_energy, argnums=0)(
-            vector, controls
-        )[boundary_size:]
+        plasma_gradient = jax.grad(normalized_plasma_energy, argnums=0)(vector, controls)[boundary_size:]
         plasma_side = plasma_b_squared[-1, 0, 1:-1]
         vacuum_side = jnp.sum(vacuum.lateral_field_xyz[1:-1] ** 2, axis=-1)
         pressure_side = pressure[-1, 0, 1:-1]
         jump = pressure_side + (plasma_side - vacuum_side) / (2.0 * MU0)
-        stress_scale = (
-            jnp.abs(pressure_side)
-            + plasma_side / (2.0 * MU0)
-            + vacuum_side / (2.0 * MU0)
-        )
-        stress = jump / jnp.maximum(
-            stress_scale, jnp.finfo(stress_scale.dtype).tiny
-        )
+        stress_scale = jnp.abs(pressure_side) + plasma_side / (2.0 * MU0) + vacuum_side / (2.0 * MU0)
+        stress = jump / jnp.maximum(stress_scale, jnp.finfo(stress_scale.dtype).tiny)
         return jnp.concatenate([stress, plasma_gradient])
 
     def evaluate_quantity(vector: Array, controls: FreeBoundaryParameters) -> Array:
@@ -906,13 +849,9 @@ def free_boundary_adjoint(
         return value
 
     equilibrium_residual = np.asarray(residual(x_star, parameters), dtype=float)
-    if np.max(np.abs(equilibrium_residual)) > 10.0 * max(
-        float(result.variational_max), 1.0e-12
-    ):
+    if np.max(np.abs(equilibrium_residual)) > 10.0 * max(float(result.variational_max), 1.0e-12):
         raise ValueError("reconstructed free-boundary residual does not match result")
-    value, (quantity_x, quantity_parameters) = jax.value_and_grad(
-        evaluate_quantity, argnums=(0, 1)
-    )(x_star, parameters)
+    value, (quantity_x, quantity_parameters) = jax.value_and_grad(evaluate_quantity, argnums=(0, 1))(x_star, parameters)
     _, transpose = jax.vjp(lambda vector: residual(vector, parameters), x_star)
     transpose_action = jax.jit(lambda vector: transpose(vector)[0])
 
@@ -928,18 +867,15 @@ def free_boundary_adjoint(
     )
     if vectorizer.radius_size != plasma_size:
         raise ValueError("free-boundary plasma packing does not match primal packing")
-    plasma_preconditioner, _ = _packed_preconditioner(
-        plasma_grid, vectorizer
-    )
+    plasma_preconditioner, _ = _packed_preconditioner(plasma_grid, vectorizer)
     scales = np.ones(2)
 
     def apply_preconditioner(vector: np.ndarray) -> np.ndarray:
         output = np.array(vector, dtype=float, copy=True)
         output[:boundary_size] *= scales[0]
-        output[boundary_size:] = (
-            scales[1] * plasma_preconditioner(vector[boundary_size:])
-        )
+        output[boundary_size:] = scales[1] * plasma_preconditioner(vector[boundary_size:])
         return output
+
     right_hand_side = np.asarray(quantity_x, dtype=float)
     adjoint, iterations, relative_residual, converged = _solve_implicit_system(
         matrix_vector,
@@ -950,9 +886,7 @@ def free_boundary_adjoint(
         rtol=config.rtol,
         max_restarts=config.max_restarts,
     )
-    _, parameter_pullback = jax.vjp(
-        lambda controls: residual(x_star, controls), parameters
-    )
+    _, parameter_pullback = jax.vjp(lambda controls: residual(x_star, controls), parameters)
     residual_parameter_gradient = parameter_pullback(jnp.asarray(adjoint))[0]
     total_gradient = jax.tree.map(
         lambda direct, implicit: direct - implicit,

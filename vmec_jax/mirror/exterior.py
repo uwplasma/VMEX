@@ -153,9 +153,7 @@ class ClosedMirrorSurface:
         """Signed volume of the outward-oriented panel mesh."""
 
         vertices = self.triangle_xyz
-        return jnp.sum(
-            jnp.einsum("ij,ij->i", vertices[:, 0], jnp.cross(vertices[:, 1], vertices[:, 2]))
-        ) / 6.0
+        return jnp.sum(jnp.einsum("ij,ij->i", vertices[:, 0], jnp.cross(vertices[:, 1], vertices[:, 2]))) / 6.0
 
 
 jax.tree_util.register_dataclass(
@@ -163,8 +161,7 @@ jax.tree_util.register_dataclass(
     data_fields=[
         field.name
         for field in fields(ClosedMirrorSurface)
-        if field.name
-        not in {"n_reduced", "reduced_representatives", "triangle_connectivity"}
+        if field.name not in {"n_reduced", "reduced_representatives", "triangle_connectivity"}
     ],
     meta_fields=["n_reduced", "reduced_representatives", "triangle_connectivity"],
 )
@@ -197,9 +194,7 @@ def build_closed_mirror_surface(
         axisymmetric_ntheta = int(axisymmetric_ntheta)
         if axisymmetric_ntheta < 4:
             raise ValueError("axisymmetric_ntheta must be at least 4")
-        theta = jnp.asarray(
-            np.linspace(0.0, 2.0 * np.pi, axisymmetric_ntheta, endpoint=False)
-        )
+        theta = jnp.asarray(np.linspace(0.0, 2.0 * np.pi, axisymmetric_ntheta, endpoint=False))
         theta_weights_1d = jnp.full(theta.shape, 2.0 * jnp.pi / theta.size)
         radius = jnp.broadcast_to(radius, (theta.size, grid.nxi))
         d_radius_dtheta = jnp.zeros_like(radius)
@@ -229,16 +224,9 @@ def build_closed_mirror_surface(
         ],
         axis=-1,
     )
-    lateral_area_vectors = lateral_area_vectors.at[..., 0].add(
-        d_radius_dtheta * dz_dxi * sine[:, None]
-    )
-    lateral_area_vectors = lateral_area_vectors.at[..., 1].add(
-        -d_radius_dtheta * dz_dxi * cosine[:, None]
-    )
-    lateral_weights = (
-        theta_weights_1d[:, None]
-        * jnp.asarray(grid.axial_basis.weights)[None, :]
-    )
+    lateral_area_vectors = lateral_area_vectors.at[..., 0].add(d_radius_dtheta * dz_dxi * sine[:, None])
+    lateral_area_vectors = lateral_area_vectors.at[..., 1].add(-d_radius_dtheta * dz_dxi * cosine[:, None])
+    lateral_weights = theta_weights_1d[:, None] * jnp.asarray(grid.axial_basis.weights)[None, :]
     lateral_weighted_normals = lateral_area_vectors * lateral_weights[..., None]
 
     cap_rim_grade = float(cap_rim_grade)
@@ -250,9 +238,7 @@ def build_closed_mirror_surface(
     cap_radial_weights = np.empty_like(cap_area_nodes)
     cap_radial_weights[0] = 0.5 * (cap_area_nodes[1] - cap_area_nodes[0])
     cap_radial_weights[-1] = 0.5 * (cap_area_nodes[-1] - cap_area_nodes[-2])
-    cap_radial_weights[1:-1] = 0.5 * (
-        cap_area_nodes[2:] - cap_area_nodes[:-2]
-    )
+    cap_radial_weights[1:-1] = 0.5 * (cap_area_nodes[2:] - cap_area_nodes[:-2])
     cap_radius_nodes = jnp.asarray(cap_radius_nodes)[:, None]
     radial_weights = jnp.asarray(cap_radial_weights)[:, None]
     theta_weights = theta_weights_1d[None, :]
@@ -288,9 +274,7 @@ def build_closed_mirror_surface(
         mapping[0] = next_index
         next_index += 1
         interior_size = max(0, grid.ns - 2) * ntheta
-        mapping[1:-1] = np.arange(next_index, next_index + interior_size).reshape(
-            grid.ns - 2, ntheta
-        )
+        mapping[1:-1] = np.arange(next_index, next_index + interior_size).reshape(grid.ns - 2, ntheta)
         next_index += interior_size
         mapping[-1] = lateral_map[:, endpoint]
         return mapping, next_index
@@ -301,20 +285,12 @@ def build_closed_mirror_surface(
         np.concatenate([lateral_map.reshape(-1), lower_map.reshape(-1), upper_map.reshape(-1)])
     )
 
-    lateral_normals = lateral_area_vectors / jnp.linalg.norm(
-        lateral_area_vectors, axis=-1, keepdims=True
-    )
-    lower_collocation_xyz = jnp.concatenate(
-        [lower_xyz[0, :1], lower_xyz[1:-1].reshape(-1, 3)], axis=0
-    )
-    upper_collocation_xyz = jnp.concatenate(
-        [upper_xyz[0, :1], upper_xyz[1:-1].reshape(-1, 3)], axis=0
-    )
+    lateral_normals = lateral_area_vectors / jnp.linalg.norm(lateral_area_vectors, axis=-1, keepdims=True)
+    lower_collocation_xyz = jnp.concatenate([lower_xyz[0, :1], lower_xyz[1:-1].reshape(-1, 3)], axis=0)
+    upper_collocation_xyz = jnp.concatenate([upper_xyz[0, :1], upper_xyz[1:-1].reshape(-1, 3)], axis=0)
     lower_collocation_normals = jnp.zeros_like(lower_collocation_xyz).at[:, 2].set(-1.0)
     upper_collocation_normals = jnp.zeros_like(upper_collocation_xyz).at[:, 2].set(1.0)
-    collocation_xyz = jnp.concatenate(
-        [lateral_xyz.reshape(-1, 3), lower_collocation_xyz, upper_collocation_xyz]
-    )
+    collocation_xyz = jnp.concatenate([lateral_xyz.reshape(-1, 3), lower_collocation_xyz, upper_collocation_xyz])
     collocation_normals = jnp.concatenate(
         [
             lateral_normals.reshape(-1, 3),
@@ -330,15 +306,11 @@ def build_closed_mirror_surface(
             nonlocal next_reduced
             center = np.asarray([next_reduced])
             next_reduced += 1
-            rings = np.repeat(
-                np.arange(next_reduced, next_reduced + grid.ns - 2), ntheta
-            )
+            rings = np.repeat(np.arange(next_reduced, next_reduced + grid.ns - 2), ntheta)
             next_reduced += grid.ns - 2
             return np.concatenate([center, rings])
 
-        collocation_to_reduced = np.concatenate(
-            [lateral_reduced, cap_reduced(), cap_reduced()]
-        )
+        collocation_to_reduced = np.concatenate([lateral_reduced, cap_reduced(), cap_reduced()])
     else:
         collocation_to_reduced = np.arange(collocation_xyz.shape[0])
     triangle_array = closed_surface_triangles(lateral_map, lower_map, upper_map)
@@ -356,20 +328,14 @@ def build_closed_mirror_surface(
         collocation_to_reduced=jnp.asarray(collocation_to_reduced),
         triangles=triangles,
         n_reduced=int(np.max(collocation_to_reduced)) + 1,
-        reduced_representatives=tuple(
-            int(index)
-            for index in np.unique(collocation_to_reduced, return_index=True)[1]
-        ),
+        reduced_representatives=tuple(int(index) for index in np.unique(collocation_to_reduced, return_index=True)[1]),
         triangle_connectivity=tuple(
-            (int(triangle[0]), int(triangle[1]), int(triangle[2]))
-            for triangle in triangle_array
+            (int(triangle[0]), int(triangle[1]), int(triangle[2])) for triangle in triangle_array
         ),
     )
 
 
-def _normalized_interpolation_weights(
-    nodes: Array, barycentric: Array, targets: Array
-) -> Array:
+def _normalized_interpolation_weights(nodes: Array, barycentric: Array, targets: Array) -> Array:
     """Normalize barycentric weights, including targets at source nodes."""
 
     targets = jnp.asarray(targets)
@@ -798,6 +764,7 @@ def panel_green_boundary_residual(
             )
         )
     return jnp.stack(residual)
+
 
 from typing import TYPE_CHECKING
 

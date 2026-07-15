@@ -488,12 +488,8 @@ def normalized_divergence_rms(
     weight_sum = jnp.sum(weights)
     divergence_rms = jnp.sqrt(jnp.sum(weights * divergence**2) / weight_sum)
     length = float(grid.z[-1] - grid.z[0])
-    field_gradient_rms = jnp.sqrt(
-        jnp.sum(weights * b_squared / length**2) / weight_sum
-    )
-    return divergence_rms / jnp.maximum(
-        field_gradient_rms, jnp.finfo(divergence_rms.dtype).tiny
-    )
+    field_gradient_rms = jnp.sqrt(jnp.sum(weights * b_squared / length**2) / weight_sum)
+    return divergence_rms / jnp.maximum(field_gradient_rms, jnp.finfo(divergence_rms.dtype).tiny)
 
 
 def magnetic_field_squared(field: ContravariantField, geometry: MirrorGeometry) -> Array:

@@ -95,27 +95,17 @@ def boundary_fourier_norms(
             raise ValueError("central_fraction must lie strictly between zero and one")
         nodes, weights = np.polynomial.legendre.leggauss(grid.nxi)
         quadrature_nodes = central_fraction * nodes
-        quadrature_radius = grid.axial_basis.interpolate(
-            radius, quadrature_nodes, axis=1
-        )
-        amplitudes = boundary_fourier_amplitudes(
-            boundary.__class__(quadrature_radius)
-        )
+        quadrature_radius = grid.axial_basis.interpolate(radius, quadrature_nodes, axis=1)
+        amplitudes = boundary_fourier_amplitudes(boundary.__class__(quadrature_radius))
         extrema_nodes = np.linspace(-central_fraction, central_fraction, 257)
-        extrema_radius = grid.axial_basis.interpolate(
-            radius, extrema_nodes, axis=1
-        )
-        maximum = jnp.max(
-            boundary_fourier_amplitudes(boundary.__class__(extrema_radius)), axis=1
-        )
+        extrema_radius = grid.axial_basis.interpolate(radius, extrema_nodes, axis=1)
+        maximum = jnp.max(boundary_fourier_amplitudes(boundary.__class__(extrema_radius)), axis=1)
         weights = jnp.asarray(weights)
     else:
         amplitudes = boundary_fourier_amplitudes(boundary)
         weights = jnp.asarray(grid.axial_basis.weights)
         maximum = jnp.max(amplitudes, axis=1)
-    l2 = jnp.sqrt(
-        jnp.sum(amplitudes**2 * weights[None, :], axis=1) / jnp.sum(weights)
-    )
+    l2 = jnp.sqrt(jnp.sum(amplitudes**2 * weights[None, :], axis=1) / jnp.sum(weights))
     return l2, maximum
 
 
@@ -202,9 +192,7 @@ def summarize_axisymmetric_beta_scan(
         else:
             vacuum_xyz = result.vacuum_field.total_xyz[0, 0, center]
         vacuum_side_field = jnp.linalg.norm(vacuum_xyz)
-        achieved_beta = (
-            2.0 * MU0 * pressure[0, 0, center] / reference_field_squared
-        )
+        achieved_beta = 2.0 * MU0 * pressure[0, 0, center] / reference_field_squared
         local_beta = 2.0 * MU0 * pressure[0, 0, center] / axis_field**2
         average_pressure = _volume_average(pressure, result, grid)
         average_b_squared = _volume_average(result.plasma_b_squared, result, grid)
@@ -253,28 +241,19 @@ def summarize_nonaxisymmetric_beta_scan(
         center_field = jnp.sqrt(result.plasma_b_squared[0, :, center])
         boundary_modes = boundary_fourier_amplitudes(result.boundary)
         mode_l2, mode_max = boundary_fourier_norms(result.boundary, grid)
-        core_l2, core_max = boundary_fourier_norms(
-            result.boundary, grid, central_fraction=0.75
-        )
+        core_l2, core_max = boundary_fourier_norms(result.boundary, grid, central_fraction=0.75)
         measure = _integration_measure(result, grid)
         summaries.append(
             NonaxisymmetricBetaDiagnostics(
                 requested_beta=requested_beta,
-                achieved_reference_beta=(
-                    2.0
-                    * MU0
-                    * jnp.mean(pressure[0, :, center])
-                    / reference_field_squared
-                ),
+                achieved_reference_beta=(2.0 * MU0 * jnp.mean(pressure[0, :, center]) / reference_field_squared),
                 volume_averaged_beta=(
                     2.0
                     * MU0
                     * _volume_average(pressure, result, grid)
                     / _volume_average(result.plasma_b_squared, result, grid)
                 ),
-                center_mean_radius=jnp.mean(
-                    result.boundary.radius_scale[:, center]
-                ),
+                center_mean_radius=jnp.mean(result.boundary.radius_scale[:, center]),
                 center_mean_field=jnp.mean(center_field),
                 center_boundary_modes=boundary_modes[:, center],
                 boundary_mode_l2=mode_l2,
@@ -333,9 +312,7 @@ def mout_from_result(
     if pressure is None:
         energy = getattr(result, "plasma_energy", getattr(result, "energy", None))
         if energy is not None and hasattr(energy, "pressure"):
-            pressure = np.broadcast_to(
-                np.asarray(energy.pressure)[:, None, None], shape
-            )
+            pressure = np.broadcast_to(np.asarray(energy.pressure)[:, None, None], shape)
     pressure = np.full(shape, np.nan) if pressure is None else np.asarray(pressure)
     if pressure.shape != shape:
         raise ValueError("pressure must match the solved state")
@@ -538,9 +515,7 @@ def _finite_restart_array(value: Any, *, name: str) -> np.ndarray:
     return array
 
 
-def save_free_boundary_restart(
-    path: str | Path, restart: FreeBoundaryRestart | Any
-) -> Path:
+def save_free_boundary_restart(path: str | Path, restart: FreeBoundaryRestart | Any) -> Path:
     """Atomically write a compressed, data-only free-boundary restart."""
 
     path = Path(path)
@@ -552,22 +527,14 @@ def save_free_boundary_restart(
         restart = FreeBoundaryRestart.from_result(restart)
 
     arrays = {
-        "boundary_radius": _finite_restart_array(
-            restart.boundary.radius_scale, name="boundary_radius"
-        ),
-        "radius_scale": _finite_restart_array(
-            restart.plasma_state.radius_scale, name="radius_scale"
-        ),
-        "lambda_stream": _finite_restart_array(
-            restart.plasma_state.lambda_stream, name="lambda_stream"
-        ),
+        "boundary_radius": _finite_restart_array(restart.boundary.radius_scale, name="boundary_radius"),
+        "radius_scale": _finite_restart_array(restart.plasma_state.radius_scale, name="radius_scale"),
+        "lambda_stream": _finite_restart_array(restart.plasma_state.lambda_stream, name="lambda_stream"),
         "mass_scale": _finite_restart_array(restart.mass_scale, name="mass_scale"),
     }
     temporary: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile(
-            mode="wb", suffix=".npz", dir=path.parent, delete=False
-        ) as stream:
+        with tempfile.NamedTemporaryFile(mode="wb", suffix=".npz", dir=path.parent, delete=False) as stream:
             temporary = Path(stream.name)
             np.savez_compressed(stream, schema=RESTART_SCHEMA, **arrays)
         os.replace(temporary, path)
@@ -577,9 +544,7 @@ def save_free_boundary_restart(
     return path
 
 
-def load_free_boundary_restart(
-    path: str | Path, plasma_grid: Any
-) -> FreeBoundaryRestart:
+def load_free_boundary_restart(path: str | Path, plasma_grid: Any) -> FreeBoundaryRestart:
     """Load restart data after strict schema, shape, and finiteness checks."""
 
     path = Path(path)
@@ -587,20 +552,14 @@ def load_free_boundary_restart(
         schema = str(np.asarray(data["schema"]).item())
         if schema != RESTART_SCHEMA:
             raise ValueError(f"unsupported mirror restart schema: {schema!r}")
-        boundary = _finite_restart_array(
-            data["boundary_radius"], name="boundary_radius"
-        )
+        boundary = _finite_restart_array(data["boundary_radius"], name="boundary_radius")
         radius = _finite_restart_array(data["radius_scale"], name="radius_scale")
         lam = _finite_restart_array(data["lambda_stream"], name="lambda_stream")
-        mass_scale = float(
-            _finite_restart_array(data["mass_scale"], name="mass_scale")
-        )
+        mass_scale = float(_finite_restart_array(data["mass_scale"], name="mass_scale"))
 
     expected_boundary = (plasma_grid.ntheta, plasma_grid.nxi)
     if boundary.shape != expected_boundary:
-        raise ValueError(
-            f"restart boundary shape {boundary.shape} != {expected_boundary}"
-        )
+        raise ValueError(f"restart boundary shape {boundary.shape} != {expected_boundary}")
     if radius.shape != plasma_grid.shape or lam.shape != plasma_grid.shape:
         raise ValueError("restart plasma state does not match the requested grid")
     if mass_scale <= 0.0:
@@ -646,11 +605,7 @@ def _theta_samples(data, values, theta_dense):
     if np.allclose(np.diff(np.r_[theta, theta[0] + 2.0 * np.pi]), spacing):
         modes = np.fft.fftfreq(theta.size, d=1.0 / theta.size)
         coefficients = np.fft.fft(table, axis=0) / theta.size
-        phase = np.exp(
-            1j
-            * (np.asarray(theta_dense)[:, None] - theta[0])
-            * modes[None, :]
-        )
+        phase = np.exp(1j * (np.asarray(theta_dense)[:, None] - theta[0]) * modes[None, :])
         return np.real(phase @ coefficients)
     theta_extended = np.concatenate([theta, [theta[0] + 2.0 * np.pi]])
     table_extended = np.concatenate([table, table[:1]], axis=0)
@@ -672,9 +627,7 @@ def _field_line(data, radial_index: int, theta0: float, z_order):
 
     z = np.asarray(data.z, dtype=float)[z_order]
     theta_nodes = np.asarray(data.theta, dtype=float)
-    b_xyz = np.take(
-        np.asarray(data.b_xyz, dtype=float)[radial_index], z_order, axis=1
-    )
+    b_xyz = np.take(np.asarray(data.b_xyz, dtype=float)[radial_index], z_order, axis=1)
     radius = np.sqrt(float(np.asarray(data.s)[radial_index])) * np.take(
         np.asarray(data.radius_scale)[radial_index], z_order, axis=1
     )
@@ -706,9 +659,7 @@ def _field_line(data, radial_index: int, theta0: float, z_order):
         denominator = local_radius * vector[2]
         pitch = 0.0 if abs(denominator) < 1.0e-14 else b_theta / denominator
         angles[iz + 1] = angle + (z[iz + 1] - z[iz]) * pitch
-    radius_table = np.take(
-        np.asarray(data.radius_scale)[radial_index], z_order, axis=1
-    )
+    radius_table = np.take(np.asarray(data.radius_scale)[radial_index], z_order, axis=1)
     radius_samples = _theta_samples(data, radius_table, angles)
     radius_line = radius_samples[np.arange(z.size), np.arange(z.size)] * np.sqrt(
         float(np.asarray(data.s)[radial_index])
@@ -747,15 +698,9 @@ def plot_mout(
         color="#0072B2",
         alpha=0.2,
     )
-    axes[0, 0].set(
-        title="Solved LCFS", xlabel="Axial position z [m]", ylabel="Radius [m]"
-    )
-    axes[0, 1].plot(
-        z, np.mean(mod_b[0], axis=0), label="axis", color="#009E73", lw=2
-    )
-    axes[0, 1].plot(
-        z, np.mean(mod_b[-1], axis=0), label="LCFS", color="#D55E00", lw=2
-    )
+    axes[0, 0].set(title="Solved LCFS", xlabel="Axial position z [m]", ylabel="Radius [m]")
+    axes[0, 1].plot(z, np.mean(mod_b[0], axis=0), label="axis", color="#009E73", lw=2)
+    axes[0, 1].plot(z, np.mean(mod_b[-1], axis=0), label="LCFS", color="#D55E00", lw=2)
     axes[0, 1].set(
         title="Magnetic-field strength",
         xlabel="Axial position z [m]",
@@ -775,12 +720,8 @@ def plot_mout(
     )
     history = np.asarray(data.history)
     if history.size:
-        axes[1, 1].semilogy(
-            history[:, 0], np.maximum(history[:, -1], 1.0e-18), color="#0072B2"
-        )
-    axes[1, 1].axhline(
-        float(data.ftol), color="0.25", ls="--", lw=1, label="ftol"
-    )
+        axes[1, 1].semilogy(history[:, 0], np.maximum(history[:, -1], 1.0e-18), color="#0072B2")
+    axes[1, 1].axhline(float(data.ftol), color="0.25", ls="--", lw=1, label="ftol")
     axes[1, 1].set(
         title=f"Convergence ({int(data.iterations)} iterations)",
         xlabel="Residual evaluation",
@@ -799,19 +740,10 @@ def plot_mout(
     radial_indices = np.unique(np.round(np.linspace(0, len(s) - 1, 7)).astype(int))
     for axis, iz in zip(axes.flat, indices, strict=False):
         for radial_index in radial_indices:
-            table = np.take(
-                np.asarray(data.radius_scale)[radial_index], z_order, axis=1
-            )
-            radius = (
-                np.sqrt(s[radial_index])
-                * _theta_samples(data, table, theta_dense)[:, iz]
-            )
-            axis.plot(
-                radius * np.cos(theta_dense), radius * np.sin(theta_dense), lw=0.9
-            )
-        axis.set(
-            title=f"z = {z[iz]:.3g} m", xlabel="x [m]", ylabel="y [m]", aspect="equal"
-        )
+            table = np.take(np.asarray(data.radius_scale)[radial_index], z_order, axis=1)
+            radius = np.sqrt(s[radial_index]) * _theta_samples(data, table, theta_dense)[:, iz]
+            axis.plot(radius * np.cos(theta_dense), radius * np.sin(theta_dense), lw=0.9)
+        axis.set(title=f"z = {z[iz]:.3g} m", xlabel="x [m]", ylabel="y [m]", aspect="equal")
     for axis in axes.flat[len(indices) :]:
         axis.set_visible(False)
     paths["cross_sections"] = outdir / f"{label}_cross_sections.png"
@@ -820,9 +752,7 @@ def plot_mout(
 
     boundary_b = _theta_samples(data, mod_b[-1], theta_dense)
     fig, axis = plt.subplots(figsize=(10.5, 4.2), constrained_layout=True)
-    contour = axis.contour(
-        z, theta_dense, boundary_b, 18, cmap="viridis", linewidths=0.9
-    )
+    contour = axis.contour(z, theta_dense, boundary_b, 18, cmap="viridis", linewidths=0.9)
     axis.clabel(contour, inline=True, fontsize=7, fmt="%.3g")
     fig.colorbar(contour, ax=axis, label="LCFS |B| [T]")
     axis.set(
@@ -854,9 +784,7 @@ def plot_mout(
     for theta0 in np.linspace(0.0, 2.0 * np.pi, 8, endpoint=False):
         line_z, line_x, line_y = _field_line(data, len(s) - 1, theta0, z_order)
         axis.plot(line_z, 1.01 * line_x, 1.01 * line_y, color="black", lw=3.2)
-        axis.plot(
-            line_z, 1.01 * line_x, 1.01 * line_y, color="#00BFC4", lw=1.5
-        )
+        axis.plot(line_z, 1.01 * line_x, 1.01 * line_y, color="#00BFC4", lw=1.5)
     fig.colorbar(
         plt.cm.ScalarMappable(norm=norm, cmap="viridis"),
         ax=axis,

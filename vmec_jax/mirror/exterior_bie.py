@@ -36,18 +36,12 @@ def _external_field_xyz(source: Any, points_xyz: Array) -> Array:
     if callable(source):
         field = jnp.asarray(source(points_xyz))
         if field.shape != points_xyz.shape:
-            raise ValueError(
-                f"external field returned shape {field.shape}; expected {points_xyz.shape}"
-            )
+            raise ValueError(f"external field returned shape {field.shape}; expected {points_xyz.shape}")
         return field
-    raise TypeError(
-        "external field must provide b_cyl or be a vectorized xyz -> B callable"
-    )
+    raise TypeError("external field must provide b_cyl or be a vectorized xyz -> B callable")
 
 
-def _balance_neumann_on_caps(
-    surface: ClosedMirrorSurface, neumann: Array, lateral_size: int
-) -> Array:
+def _balance_neumann_on_caps(surface: ClosedMirrorSurface, neumann: Array, lateral_size: int) -> Array:
     """Enforce discrete Neumann compatibility without changing LCFS data."""
 
     weights = _reduced_quadrature_weights(surface)
@@ -57,22 +51,14 @@ def _balance_neumann_on_caps(
 
 
 def _reduced_quadrature_weights(surface: ClosedMirrorSurface) -> Array:
-    quadrature_to_reduced = surface.collocation_to_reduced[
-        surface.quadrature_to_collocation
-    ]
-    return jnp.zeros(surface.reduced_size).at[quadrature_to_reduced].add(
-        surface.quadrature_weights
-    )
+    quadrature_to_reduced = surface.collocation_to_reduced[surface.quadrature_to_collocation]
+    return jnp.zeros(surface.reduced_size).at[quadrature_to_reduced].add(surface.quadrature_weights)
 
 
-def _neumann_compatibility_error(
-    surface: ClosedMirrorSurface, neumann: Array
-) -> Array:
+def _neumann_compatibility_error(surface: ClosedMirrorSurface, neumann: Array) -> Array:
     weights = _reduced_quadrature_weights(surface)
     net_flux = jnp.sum(weights * neumann)
-    scale = surface.area * jnp.maximum(
-        jnp.sqrt(jnp.mean(neumann**2)), jnp.finfo(neumann.dtype).tiny
-    )
+    scale = surface.area * jnp.maximum(jnp.sqrt(jnp.mean(neumann**2)), jnp.finfo(neumann.dtype).tiny)
     return jnp.abs(net_flux) / scale
 
 
@@ -136,15 +122,13 @@ def plasma_external_neumann(
     if ntheta != plasma_grid.ntheta or nxi != plasma_grid.nxi:
         raise ValueError("surface and plasma grid have incompatible lateral nodes")
     external_normal = jnp.sum(
-        _external_field_xyz(external_field, surface.collocation_xyz)
-        * surface.collocation_normals,
+        _external_field_xyz(external_field, surface.collocation_xyz) * surface.collocation_normals,
         axis=1,
     )
     field_xyz = magnetic_field_xyz(plasma_field, plasma_geometry)
     lateral_count = ntheta * nxi
     lateral_normal = jnp.sum(
-        field_xyz[-1].reshape(-1, 3)
-        * surface.collocation_normals[:lateral_count],
+        field_xyz[-1].reshape(-1, 3) * surface.collocation_normals[:lateral_count],
         axis=1,
     )
 
@@ -153,15 +137,10 @@ def plasma_external_neumann(
         cap_s = jnp.sum(cap_xyz[..., :2] ** 2, axis=-1) / boundary_radius[None, :] ** 2
         source_bz = field_xyz[:, :, endpoint, 2]
         interpolated = jnp.stack(
-            [
-                jnp.interp(cap_s[:, index], jnp.asarray(plasma_grid.s), source_bz[:, index])
-                for index in range(ntheta)
-            ],
+            [jnp.interp(cap_s[:, index], jnp.asarray(plasma_grid.s), source_bz[:, index]) for index in range(ntheta)],
             axis=1,
         )
-        return orientation * jnp.concatenate(
-            [jnp.mean(interpolated[0])[None], interpolated[1:-1].reshape(-1)]
-        )
+        return orientation * jnp.concatenate([jnp.mean(interpolated[0])[None], interpolated[1:-1].reshape(-1)])
 
     plasma_normal = jnp.concatenate(
         [
@@ -185,12 +164,9 @@ def axisymmetric_plasma_external_neumann(
         raise ValueError("axisymmetric Neumann data requires ntheta=1")
     expected_size = plasma_grid.nxi + 2 * (plasma_grid.ns - 1)
     if surface.reduced_size != expected_size:
-        raise ValueError(
-            f"surface reduced size {surface.reduced_size} must be {expected_size}"
-        )
+        raise ValueError(f"surface reduced size {surface.reduced_size} must be {expected_size}")
     external_normal = jnp.sum(
-        _external_field_xyz(external_field, surface.collocation_xyz)
-        * surface.collocation_normals,
+        _external_field_xyz(external_field, surface.collocation_xyz) * surface.collocation_normals,
         axis=1,
     )
     neumann = -surface.reduce_collocation_values(external_normal)
@@ -200,12 +176,8 @@ def axisymmetric_plasma_external_neumann(
     cap_size = plasma_grid.ns - 1
     lower = slice(nxi, nxi + cap_size)
     upper = slice(nxi + cap_size, nxi + 2 * cap_size)
-    lower_s = jnp.sum(points[lower, :2] ** 2, axis=1) / jnp.sum(
-        surface.lateral_xyz[0, 0, :2] ** 2
-    )
-    upper_s = jnp.sum(points[upper, :2] ** 2, axis=1) / jnp.sum(
-        surface.lateral_xyz[0, -1, :2] ** 2
-    )
+    lower_s = jnp.sum(points[lower, :2] ** 2, axis=1) / jnp.sum(surface.lateral_xyz[0, 0, :2] ** 2)
+    upper_s = jnp.sum(points[upper, :2] ** 2, axis=1) / jnp.sum(surface.lateral_xyz[0, -1, :2] ** 2)
     lower_bz = jnp.interp(
         lower_s,
         jnp.asarray(plasma_grid.s),
@@ -251,21 +223,19 @@ def axisymmetric_exterior_lateral_field(
     )
     arc_xi = jnp.linalg.norm(tangent, axis=1)
     tangent_hat = tangent / arc_xi[:, None]
-    normal_hat = jnp.stack(
-        [
-            jnp.full_like(radius_xi, plasma_grid.dz_dxi),
-            jnp.zeros_like(radius_xi),
-            -radius_xi,
-        ],
-        axis=1,
-    ) / arc_xi[:, None]
-    potential_xi = plasma_grid.axial_basis.differentiate(
-        boundary_potential[: plasma_grid.nxi]
+    normal_hat = (
+        jnp.stack(
+            [
+                jnp.full_like(radius_xi, plasma_grid.dz_dxi),
+                jnp.zeros_like(radius_xi),
+                -radius_xi,
+            ],
+            axis=1,
+        )
+        / arc_xi[:, None]
     )
-    correction = (
-        neumann[: plasma_grid.nxi, None] * normal_hat
-        + (potential_xi / arc_xi)[:, None] * tangent_hat
-    )
+    potential_xi = plasma_grid.axial_basis.differentiate(boundary_potential[: plasma_grid.nxi])
+    correction = neumann[: plasma_grid.nxi, None] * normal_hat + (potential_xi / arc_xi)[:, None] * tangent_hat
     return external_xyz + correction
 
 
@@ -322,15 +292,9 @@ def nonaxisymmetric_exterior_lateral_field(
     determinant = gtt * gxx - gtx**2
     coefficient_theta = (gxx * potential_theta - gtx * potential_xi) / determinant
     coefficient_xi = (gtt * potential_xi - gtx * potential_theta) / determinant
-    tangential = (
-        coefficient_theta[..., None] * e_theta
-        + coefficient_xi[..., None] * e_xi
-    )
+    tangential = coefficient_theta[..., None] * e_theta + coefficient_xi[..., None] * e_xi
     normals = surface.collocation_normals[:lateral_size].reshape(ntheta, nxi, 3)
-    correction = (
-        neumann[:lateral_size].reshape(ntheta, nxi)[..., None] * normals
-        + tangential
-    )
+    correction = neumann[:lateral_size].reshape(ntheta, nxi)[..., None] * normals + tangential
     return external_xyz + correction
 
 
@@ -360,9 +324,7 @@ def solve_axisymmetric_exterior_vacuum(
         axisymmetric_ntheta=axisymmetric_ntheta,
         cap_rim_grade=cap_rim_grade,
     )
-    neumann = axisymmetric_plasma_external_neumann(
-        surface, plasma_field, plasma_grid, external_field
-    )
+    neumann = axisymmetric_plasma_external_neumann(surface, plasma_field, plasma_grid, external_field)
     result = solve_reduced_exterior_laplace_neumann(
         surface,
         neumann,
@@ -381,9 +343,7 @@ def solve_axisymmetric_exterior_vacuum(
         axis=1,
     )
     normal /= jnp.linalg.norm(normal, axis=1)[:, None]
-    physical_neumann = neumann.at[: plasma_grid.nxi].set(
-        -jnp.sum(external * normal, axis=1)
-    )
+    physical_neumann = neumann.at[: plasma_grid.nxi].set(-jnp.sum(external * normal, axis=1))
     lateral = axisymmetric_exterior_lateral_field(
         surface,
         result.boundary_potential,
@@ -420,9 +380,7 @@ def solve_nonaxisymmetric_exterior_vacuum(
         plasma_grid,
         cap_rim_grade=cap_rim_grade,
     )
-    neumann = plasma_external_neumann(
-        surface, plasma_field, plasma_geometry, plasma_grid, external_field
-    )
+    neumann = plasma_external_neumann(surface, plasma_field, plasma_geometry, plasma_grid, external_field)
     result = solve_reduced_exterior_laplace_neumann(
         surface,
         neumann,
@@ -438,9 +396,7 @@ def solve_nonaxisymmetric_exterior_vacuum(
         external,
     )
     lateral_size = plasma_grid.ntheta * plasma_grid.nxi
-    normals = surface.collocation_normals[:lateral_size].reshape(
-        plasma_grid.ntheta, plasma_grid.nxi, 3
-    )
+    normals = surface.collocation_normals[:lateral_size].reshape(plasma_grid.ntheta, plasma_grid.nxi, 3)
     return NonaxisymmetricExteriorVacuum(
         surface=surface,
         neumann=neumann,
@@ -532,9 +488,7 @@ def solve_reduced_exterior_laplace_neumann(
         raise ValueError(f"neumann shape {neumann.shape} must be {expected}")
     raw_compatibility_error = _neumann_compatibility_error(surface, neumann)
     full_lateral_size = int(np.prod(surface.lateral_xyz.shape[:2]))
-    lateral_size = int(
-        np.sum(np.asarray(surface.reduced_representatives) < full_lateral_size)
-    )
+    lateral_size = int(np.sum(np.asarray(surface.reduced_representatives) < full_lateral_size))
     neumann = _balance_neumann_on_caps(surface, neumann, lateral_size)
     zero = jnp.zeros_like(neumann)
 

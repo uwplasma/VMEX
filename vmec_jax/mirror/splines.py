@@ -14,226 +14,10 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from .basis import MirrorGrid, ThetaBasis
+from .basis import CubicBSplineBasis, MirrorGrid, ThetaBasis
 from .model import MirrorBoundary, MirrorConfig, MirrorResolution, MirrorState
 
 Array = Any
-_DEGREE = 3
-
-
-def _validate_breakpoints(breakpoints: Array) -> np.ndarray:
-    values = np.asarray(breakpoints, dtype=float)
-    if values.ndim != 1 or values.size < 2:
-        raise ValueError("breakpoints must be a one-dimensional array of length >= 2")
-    if not np.all(np.isfinite(values)) or not np.all(np.diff(values) > 0.0):
-        raise ValueError("breakpoints must be finite and strictly increasing")
-    return values
-
-
-def _basis_levels(knots: Array, points: Array, degree: int) -> list[Array]:
-    """Return Cox-de Boor basis levels from degree zero through ``degree``."""
-
-    knots = jnp.asarray(knots)
-    points = jnp.asarray(points).reshape(-1)
-    evaluation_points = jnp.where(points == knots[-1], jnp.nextafter(knots[-1], -jnp.inf), points)
-    level = ((evaluation_points[:, None] >= knots[:-1]) & (evaluation_points[:, None] < knots[1:])).astype(points.dtype)
-    levels = [level]
-    for order in range(1, degree + 1):
-        count = knots.size - order - 1
-        left_denominator = knots[order : order + count] - knots[:count]
-        right_denominator = knots[order + 1 : order + count + 1] - knots[1 : count + 1]
-        left = jnp.where(
-            left_denominator > 0.0,
-            (evaluation_points[:, None] - knots[:count]) / jnp.where(left_denominator > 0.0, left_denominator, 1.0),
-            0.0,
-        )
-        right = jnp.where(
-            right_denominator > 0.0,
-            (knots[order + 1 : order + count + 1] - evaluation_points[:, None])
-            / jnp.where(right_denominator > 0.0, right_denominator, 1.0),
-            0.0,
-        )
-        level = left * level[:, :count] + right * level[:, 1 : count + 1]
-        levels.append(level)
-    if degree > 0:
-        endpoint = points == knots[-1]
-        levels[-1] = levels[-1].at[:, -1].set(jnp.where(endpoint, 1.0, levels[-1][:, -1]))
-        levels[-1] = levels[-1].at[:, :-1].set(jnp.where(endpoint[:, None], 0.0, levels[-1][:, :-1]))
-    return levels
-
-
-def _basis_matrix(knots: Array, points: Array, degree: int, derivative: int = 0) -> Array:
-    levels = _basis_levels(knots, points, degree)
-    if derivative == 0:
-        return levels[degree]
-    count = jnp.asarray(knots).size - degree - 1
-    knots = jnp.asarray(knots)
-    lower = levels[degree - 1]
-    left_denominator = knots[degree : degree + count] - knots[:count]
-    right_denominator = knots[degree + 1 : degree + count + 1] - knots[1 : count + 1]
-    left_scale = jnp.where(left_denominator > 0.0, degree / left_denominator, 0.0)
-    right_scale = jnp.where(right_denominator > 0.0, degree / right_denominator, 0.0)
-    first = left_scale * lower[:, :count] - right_scale * lower[:, 1 : count + 1]
-    if derivative == 1:
-        return first
-    if derivative != 2:
-        raise ValueError("only derivatives 0, 1, and 2 are supported")
-    lower_count = count + 1
-    degree_minus_one = degree - 1
-    base = levels[degree - 2]
-    lower_left_denominator = knots[degree_minus_one : degree_minus_one + lower_count] - knots[:lower_count]
-    lower_right_denominator = (
-        knots[degree_minus_one + 1 : degree_minus_one + lower_count + 1] - knots[1 : lower_count + 1]
-    )
-    lower_first = (
-        jnp.where(lower_left_denominator > 0.0, degree_minus_one / lower_left_denominator, 0.0) * base[:, :lower_count]
-        - jnp.where(lower_right_denominator > 0.0, degree_minus_one / lower_right_denominator, 0.0)
-        * base[:, 1 : lower_count + 1]
-    )
-    return left_scale * lower_first[:, :count] - right_scale * lower_first[:, 1 : count + 1]
-
-
-def _span_quadrature(breakpoints: np.ndarray, order: int) -> tuple[np.ndarray, np.ndarray]:
-    if order < 1:
-        raise ValueError("quadrature order must be positive")
-    nodes, weights = np.polynomial.legendre.leggauss(order)
-    centers = 0.5 * (breakpoints[:-1] + breakpoints[1:])
-    scales = 0.5 * np.diff(breakpoints)
-    return (
-        (centers[:, None] + scales[:, None] * nodes[None, :]).reshape(-1),
-        (scales[:, None] * weights[None, :]).reshape(-1),
-    )
-
-
-@dataclass(frozen=True, eq=False)
-class CubicBSplineBasis:
-    """Static clamped or periodic cubic basis with JAX evaluation."""
-
-    knots: np.ndarray
-    breakpoints: np.ndarray
-    periodic: bool
-    size: int
-    collocation_nodes: np.ndarray
-    quadrature_nodes: np.ndarray
-    quadrature_weights: np.ndarray
-
-    @classmethod
-    def clamped(cls, breakpoints: Array, *, quadrature_order: int = 4) -> "CubicBSplineBasis":
-        """Build an open cubic basis with repeated endpoint knots."""
-
-        breaks = _validate_breakpoints(breakpoints)
-        knots = np.concatenate((np.repeat(breaks[0], _DEGREE + 1), breaks[1:-1], np.repeat(breaks[-1], _DEGREE + 1)))
-        size = knots.size - _DEGREE - 1
-        collocation = np.asarray([np.mean(knots[index + 1 : index + _DEGREE + 1]) for index in range(size)])
-        quadrature_nodes, quadrature_weights = _span_quadrature(breaks, quadrature_order)
-        return cls(knots, breaks, False, size, collocation, quadrature_nodes, quadrature_weights)
-
-    @classmethod
-    def periodic_uniform(
-        cls,
-        size: int,
-        domain: tuple[float, float] = (0.0, 2.0 * np.pi),
-        *,
-        quadrature_order: int = 4,
-    ) -> "CubicBSplineBasis":
-        """Build ``size`` folded uniform cubic splines on a periodic interval."""
-
-        size = int(size)
-        start, stop = map(float, domain)
-        if size < _DEGREE + 1:
-            raise ValueError("periodic cubic basis requires size >= 4")
-        if not stop > start:
-            raise ValueError("periodic domain must have stop > start")
-        spacing = (stop - start) / size
-        knots = start + spacing * np.arange(-_DEGREE, size + _DEGREE + 1)
-        breaks = np.linspace(start, stop, size + 1)
-        collocation = breaks[:-1]
-        quadrature_nodes, quadrature_weights = _span_quadrature(breaks, quadrature_order)
-        return cls(knots, breaks, True, size, collocation, quadrature_nodes, quadrature_weights)
-
-    @property
-    def domain(self) -> tuple[float, float]:
-        """Return the open or fundamental periodic interval."""
-
-        return float(self.breakpoints[0]), float(self.breakpoints[-1])
-
-    def basis_matrix(self, points: Array, *, derivative: int = 0) -> Array:
-        """Evaluate basis values or derivatives at one-dimensional ``points``."""
-
-        points = jnp.asarray(points)
-        original_shape = points.shape
-        evaluation_points = points.reshape(-1)
-        if self.periodic:
-            start, stop = self.domain
-            period = stop - start
-            evaluation_points = jnp.mod(evaluation_points - start, period) + start
-            raw = _basis_matrix(self.knots, evaluation_points, _DEGREE, derivative)
-            folded = jnp.zeros((evaluation_points.size, self.size), dtype=raw.dtype)
-            for column in range(raw.shape[1]):
-                folded = folded.at[:, (column - _DEGREE) % self.size].add(raw[:, column])
-            matrix = folded
-        else:
-            matrix = _basis_matrix(self.knots, evaluation_points, _DEGREE, derivative)
-        return matrix.reshape(original_shape + (self.size,))
-
-    def evaluate(self, coefficients: Array, points: Array, *, derivative: int = 0, axis: int = -1) -> Array:
-        """Evaluate spline coefficients along ``axis`` at arbitrary points."""
-
-        coefficients = jnp.asarray(coefficients)
-        if coefficients.shape[axis] != self.size:
-            raise ValueError(f"coefficient axis has size {coefficients.shape[axis]}; expected {self.size}")
-        moved = jnp.moveaxis(coefficients, axis, -1)
-        values = jnp.tensordot(moved, self.basis_matrix(points, derivative=derivative), axes=((-1,), (-1,)))
-        point_axes = tuple(range(values.ndim - jnp.ndim(points), values.ndim))
-        target = tuple(range(axis % coefficients.ndim, axis % coefficients.ndim + len(point_axes)))
-        return jnp.moveaxis(values, point_axes, target) if point_axes else values
-
-    def fit(self, values: Array, *, nodes: Array | None = None, axis: int = -1) -> Array:
-        """Interpolate nodal values to coefficients with a square collocation solve."""
-
-        sample_nodes = self.collocation_nodes if nodes is None else jnp.asarray(nodes)
-        matrix = self.basis_matrix(sample_nodes)
-        if matrix.shape[0] != self.size:
-            raise ValueError("fit requires exactly one independent sample per coefficient")
-        values = jnp.asarray(values)
-        moved = jnp.moveaxis(values, axis, 0)
-        coefficients = jnp.linalg.solve(matrix, moved.reshape((self.size, -1)))
-        coefficients = coefficients.reshape((self.size,) + moved.shape[1:])
-        return jnp.moveaxis(coefficients, 0, axis)
-
-    def integrate(self, coefficients: Array, *, axis: int = -1) -> Array:
-        """Integrate a spline using per-span Gauss-Legendre quadrature."""
-
-        values = self.evaluate(coefficients, self.quadrature_nodes, axis=axis)
-        return jnp.tensordot(values, jnp.asarray(self.quadrature_weights), axes=((axis,), (0,)))
-
-    def insert_knot(self, coefficients: Array, knot: float, *, axis: int = -1) -> tuple["CubicBSplineBasis", Array]:
-        """Insert one open knot exactly with the Boehm coefficient update."""
-
-        if self.periodic:
-            raise ValueError("periodic knot insertion is not supported; refine the uniform basis")
-        knot = float(knot)
-        start, stop = self.domain
-        if not start < knot < stop:
-            raise ValueError("inserted knot must lie strictly inside the domain")
-        if np.any(np.isclose(self.breakpoints, knot, rtol=0.0, atol=1.0e-14)):
-            raise ValueError("inserted knot must be new; repeated-knot refinement is unsupported")
-        span = int(np.searchsorted(self.knots, knot, side="right") - 1)
-        multiplicity = int(np.count_nonzero(np.isclose(self.knots, knot, rtol=0.0, atol=1.0e-14)))
-        values = jnp.moveaxis(jnp.asarray(coefficients), axis, 0)
-        if values.shape[0] != self.size:
-            raise ValueError(f"coefficient axis has size {values.shape[0]}; expected {self.size}")
-        updated = jnp.zeros((self.size + 1,) + values.shape[1:], dtype=values.dtype)
-        updated = updated.at[: span - _DEGREE + 1].set(values[: span - _DEGREE + 1])
-        updated = updated.at[span - multiplicity + 1 :].set(values[span - multiplicity :])
-        for index in range(span - _DEGREE + 1, span - multiplicity + 1):
-            alpha = (knot - self.knots[index]) / (self.knots[index + _DEGREE] - self.knots[index])
-            updated = updated.at[index].set(alpha * values[index] + (1.0 - alpha) * values[index - 1])
-        new_breakpoints = np.sort(np.append(self.breakpoints, knot))
-        refined = CubicBSplineBasis.clamped(
-            new_breakpoints, quadrature_order=self.quadrature_weights.size // (self.breakpoints.size - 1)
-        )
-        return refined, jnp.moveaxis(updated, 0, axis)
 
 
 @dataclass(frozen=True, eq=False)
@@ -488,9 +272,7 @@ def initialize_closed_vacuum_stream_function(
     if flux.ndim == 0:
         flux = jnp.broadcast_to(flux, (discretization.grid.ns,))
     if flux.shape != (discretization.grid.ns,):
-        raise ValueError(
-            "axial_flux_derivative must be scalar or have one value per radial surface"
-        )
+        raise ValueError("axial_flux_derivative must be scalar or have one value per radial surface")
 
     axial_weights = jnp.asarray(discretization.grid.axial_basis.weights)
     theta_weights = jnp.asarray(discretization.grid.theta_basis.weights)
@@ -499,13 +281,9 @@ def initialize_closed_vacuum_stream_function(
     metric_weight /= jnp.sum(axial_weights)
     theta_mean = jnp.einsum("ij,j->i", metric_weight, theta_weights)
     theta_mean /= jnp.sum(theta_weights)
-    if not np.all(np.isfinite(np.asarray(theta_mean))) or np.any(
-        np.asarray(theta_mean) <= 0.0
-    ):
+    if not np.all(np.isfinite(np.asarray(theta_mean))) or np.any(np.asarray(theta_mean) <= 0.0):
         raise ValueError("the closed vacuum metric weight must be positive and finite")
-    target_derivative = flux[:, None] * (
-        metric_weight / theta_mean[:, None] - 1.0
-    )
+    target_derivative = flux[:, None] * (metric_weight / theta_mean[:, None] - 1.0)
 
     ntheta = discretization.grid.ntheta
     if ntheta == 1:
@@ -518,8 +296,7 @@ def initialize_closed_vacuum_stream_function(
         if ntheta % 2 == 0:
             inverse_derivative[ntheta // 2] = 0.0
         lam = jnp.fft.ifft(
-            jnp.fft.fft(target_derivative, axis=1)
-            * jnp.asarray(inverse_derivative)[None],
+            jnp.fft.fft(target_derivative, axis=1) * jnp.asarray(inverse_derivative)[None],
             axis=1,
         ).real
     surface_mean = jnp.einsum("ij,j->i", lam, theta_weights)
@@ -572,22 +349,16 @@ def trace_closed_field_line(
 
     denominator = field.jac_b_xi[radial_index]
     tiny = jnp.finfo(denominator.dtype).tiny
-    ratio = field.jac_b_theta[radial_index] / jnp.where(
-        jnp.abs(denominator) > tiny, denominator, jnp.inf
-    )
+    ratio = field.jac_b_theta[radial_index] / jnp.where(jnp.abs(denominator) > tiny, denominator, jnp.inf)
     recovery = jnp.asarray(discretization.grid.axial_basis.recovery_matrix)
     axial_coefficients = jnp.tensordot(ratio, recovery.T, axes=((-1,), (0,)))
-    modes = jnp.asarray(
-        np.fft.fftfreq(discretization.grid.ntheta, d=1.0 / discretization.grid.ntheta)
-    )
+    modes = jnp.asarray(np.fft.fftfreq(discretization.grid.ntheta, d=1.0 / discretization.grid.ntheta))
     start, stop = discretization.spline.domain
     period = float(stop - start)
     step = period / steps_per_turn
 
     def pitch(theta, axial_parameter):
-        samples = discretization.spline.evaluate(
-            axial_coefficients, axial_parameter
-        )
+        samples = discretization.spline.evaluate(axial_coefficients, axial_parameter)
         coefficients = jnp.fft.fft(samples) / discretization.grid.ntheta
         return jnp.real(jnp.sum(coefficients * jnp.exp(1j * modes * theta)))
 
@@ -667,8 +438,7 @@ class _SplineStateVectorizer:
         endpoint_weights = np.zeros((shape[1], shape[2]))
         if not discretization.closed:
             endpoint_weights[:, [0, -1]] = (
-                np.asarray(discretization.grid.theta_basis.weights)[:, None]
-                * coefficient_weights[None, [0, -1]]
+                np.asarray(discretization.grid.theta_basis.weights)[:, None] * coefficient_weights[None, [0, -1]]
             )
         fixed_sum = np.einsum("jk,ijk->i", endpoint_weights, np.asarray(base.lambda_coefficients)[1:])
         return cls(

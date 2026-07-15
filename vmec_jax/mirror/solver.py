@@ -612,10 +612,7 @@ def _optimize_fixed_boundary(
         nonlocal newton_steps, linear_iterations, final_linear_residual
         remaining = max(
             1,
-            int(config.max_iterations)
-            - lbfgs_iterations
-            - polish_evaluations
-            - newton_steps,
+            int(config.max_iterations) - lbfgs_iterations - polish_evaluations - newton_steps,
         )
 
         def record_newton(x: np.ndarray) -> None:
@@ -675,11 +672,7 @@ def _optimize_fixed_boundary(
     # Medium systems normally finish on the fast host reference. If that
     # polish stalls just above physical ftol, use the scalable Newton path as
     # a rescue rather than accepting a tolerance-dependent size cliff.
-    if (
-        float(candidate_variational.maximum) > config.ftol
-        and not use_matrix_free
-        and matrix_free_context is not None
-    ):
+    if float(candidate_variational.maximum) > config.ftol and not use_matrix_free and matrix_free_context is not None:
         run_matrix_free_polish()
 
     return _OptimizationOutcome(
@@ -768,9 +761,7 @@ def solve_fixed_boundary_cli(
     def evaluate_variational(state: MirrorState) -> VariationalResidual:
         return fixed_boundary_variational_residual(state, boundary, grid, **energy_kwargs)
 
-    def evaluate_force(
-        state: MirrorState, energy: MirrorEnergy
-    ) -> IsotropicForceResidual:
+    def evaluate_force(state: MirrorState, energy: MirrorEnergy) -> IsotropicForceResidual:
         del state
         return isotropic_force_residual(energy, grid)
 
