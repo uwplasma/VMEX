@@ -95,6 +95,7 @@ def run(
     spline_elements: int,
     axisymmetric: bool,
     center_radius: float | None = None,
+    exterior_order: int = 6,
     beta_values: tuple[float, ...] = (0.0, 0.50),
 ) -> dict:
     """Run one beta sequence and return machine-readable diagnostics."""
@@ -105,6 +106,8 @@ def run(
         center_radius = 0.25 if axisymmetric else 0.2
     if center_radius <= 0.0:
         raise ValueError("center_radius must be positive")
+    if exterior_order < 2:
+        raise ValueError("exterior_order must be at least two")
 
     config = MirrorConfig(
         resolution=MirrorResolution(
@@ -159,7 +162,7 @@ def run(
         reference_field=float(on_axis[center]),
         current_derivative=(0.0 if axisymmetric else 1.0e-3 * jnp.asarray(grid.s)),
         exterior_ntheta=ntheta,
-        exterior_order=6,
+        exterior_order=exterior_order,
         exterior_spectral_side_density=True,
     )
     wall = time.perf_counter() - start
@@ -232,6 +235,7 @@ def run(
         "axisymmetric": axisymmetric,
         "field_preflight": field_preflight,
         "initial_center_radius_m": center_radius,
+        "exterior_order": exterior_order,
         "spline_elements": spline_elements,
         "device": str(jax.devices()[0]),
         "wall_s_pair": wall,
@@ -249,6 +253,7 @@ def main() -> None:
     parser.add_argument("--spline-elements", type=int, required=True)
     parser.add_argument("--axisymmetric", action="store_true")
     parser.add_argument("--center-radius", type=float)
+    parser.add_argument("--exterior-order", type=int, default=6)
     beta_group = parser.add_mutually_exclusive_group()
     beta_group.add_argument("--beta-zero-only", action="store_true")
     beta_group.add_argument("--beta-values", nargs="+", type=float)
@@ -264,6 +269,7 @@ def main() -> None:
         spline_elements=args.spline_elements,
         axisymmetric=args.axisymmetric,
         center_radius=args.center_radius,
+        exterior_order=args.exterior_order,
         beta_values=beta_values,
     )
     text = json.dumps(result, indent=2)
