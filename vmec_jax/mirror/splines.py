@@ -630,8 +630,8 @@ class _SplineStateVectorizer:
 def _packed_spline_preconditioner(
     discretization: SplineMirrorDiscretization,
     vectorizer: _SplineStateVectorizer,
-) -> tuple[Any, np.ndarray]:
-    """Build the existing tensor preconditioner on spline coefficients."""
+) -> tuple[Any, np.ndarray, Any]:
+    """Build tensor fallback and optional local sparse Hessian factor."""
 
     from .solver import SeparableMirrorPreconditioner
 
@@ -667,7 +667,73 @@ def _packed_spline_preconditioner(
             )
         return result
 
-    return apply, scales
+    def build_local(matrix_columns: Callable[[np.ndarray], np.ndarray]) -> Any:
+        """Factor a frozen sparse Hessian from chunked matrix-free columns."""
+
+        from scipy.sparse import coo_matrix
+        from scipy.sparse.linalg import splu
+
+        channels = np.concatenate(
+            (
+                np.zeros(vectorizer.radius_size, dtype=int),
+                np.ones(vectorizer.lambda_size, dtype=int),
+            )
+        )
+        radial = np.asarray(vectorizer.radius_indices[0], dtype=int)
+        axial = np.asarray(vectorizer.radius_indices[2], dtype=int)
+        if vectorizer.lambda_size:
+            active_axial = vectorizer.lambda_axial_indices.size
+            lambda_axial = vectorizer.lambda_axial_indices[
+                vectorizer.lambda_free_indices % active_axial
+            ]
+            radial = np.concatenate(
+                (
+                    radial,
+                    np.repeat(
+                        np.arange(1, discretization.grid.ns),
+                        vectorizer.lambda_free_indices.size,
+                    ),
+                )
+            )
+            axial = np.concatenate(
+                (
+                    axial,
+                    np.tile(lambda_axial, discretization.grid.ns - 1),
+                )
+            )
+
+        size = vectorizer.radius_size + vectorizer.lambda_size
+        row_parts: list[np.ndarray] = []
+        column_parts: list[np.ndarray] = []
+        value_parts: list[np.ndarray] = []
+        chunk_size = min(32, size)
+        for start in range(0, size, chunk_size):
+            columns = np.arange(start, min(start + chunk_size, size))
+            directions = np.zeros((chunk_size, size))
+            directions[np.arange(columns.size), columns] = 1.0
+            responses = np.asarray(matrix_columns(directions), dtype=float)
+            for local_index, column in enumerate(columns):
+                rows = np.flatnonzero(
+                    (channels == channels[column])
+                    & (np.abs(radial - radial[column]) <= 1)
+                    & (np.abs(axial - axial[column]) <= 4)
+                )
+                row_parts.append(rows)
+                column_parts.append(np.full(rows.size, column, dtype=int))
+                value_parts.append(responses[local_index, rows])
+        matrix = coo_matrix(
+            (
+                np.concatenate(value_parts),
+                (np.concatenate(row_parts), np.concatenate(column_parts)),
+            ),
+            shape=(size, size),
+        ).tocsc()
+        matrix = 0.5 * (matrix + matrix.T)
+        factor = splu(matrix)
+        return factor.solve
+
+    local_builder = build_local if vectorizer.lambda_size and not discretization.closed else None
+    return apply, scales, local_builder
 
 
 def solve_fixed_boundary_cli(

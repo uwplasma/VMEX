@@ -980,6 +980,38 @@ def test_spline_coefficient_preconditioner_inverts_tensor_model() -> None:
     )
 
 
+def test_local_spline_preconditioner_builds_from_bounded_hessian_chunks() -> None:
+    config = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=2, nxi=9))
+    grid = config.build_grid()
+    boundary = MirrorBoundary.from_radius(0.3, grid)
+    discretization = SplineMirrorDiscretization.build(config, elements=4)
+    spline_boundary = discretization.fit_boundary(boundary, grid)
+    state = discretization.fit_state(MirrorState.from_boundary(boundary, grid), grid)
+    vectorizer = _SplineStateVectorizer.build(
+        state,
+        spline_boundary,
+        discretization,
+        axial_flux_derivative=0.1,
+        solve_lambda=True,
+    )
+    _, _, build_local = _packed_spline_preconditioner(discretization, vectorizer)
+    size = vectorizer.pack().size
+    diagonal = np.linspace(1.0, 3.0, size)
+    batch_sizes = []
+
+    def matrix_columns(directions):
+        batch_sizes.append(directions.shape[0])
+        return directions * diagonal[None]
+
+    assert build_local is not None
+    apply = build_local(matrix_columns)
+    exact = np.random.default_rng(7).normal(size=size)
+
+    np.testing.assert_allclose(apply(diagonal * exact), exact, rtol=3.0e-14, atol=3.0e-14)
+    assert max(batch_sizes) <= 32
+    assert sum(batch_sizes) >= size
+
+
 def test_periodic_spline_preconditioner_uses_all_gauge_free_coefficients() -> None:
     resolution = MirrorResolution(ns=5, mpol=4, nxi=4)
     discretization, _, boundary, state = _closed_circular_torus(
@@ -992,7 +1024,7 @@ def test_periodic_spline_preconditioner_uses_all_gauge_free_coefficients() -> No
         axial_flux_derivative=0.03,
         solve_lambda=True,
     )
-    apply, _ = _packed_spline_preconditioner(discretization, vectorizer)
+    apply, _, build_local = _packed_spline_preconditioner(discretization, vectorizer)
     direction = np.random.default_rng(91).normal(size=vectorizer.pack().size)
     result = apply(direction)
 
@@ -1002,6 +1034,7 @@ def test_periodic_spline_preconditioner_uses_all_gauge_free_coefficients() -> No
     )
     assert result.shape == direction.shape
     assert np.all(np.isfinite(result))
+    assert build_local is None
     np.testing.assert_allclose(
         apply(1.7 * direction), 1.7 * result, rtol=3.0e-13, atol=3.0e-13
     )

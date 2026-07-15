@@ -282,6 +282,8 @@ for case in CASES:
         validation["adjoint_relative_residual"] = adjoint.relative_residual
     summaries[case] = {
         "stage_iterations": stage_iterations,
+        "linear_iterations": result.linear_iterations,
+        "final_linear_residual": result.final_linear_residual,
         "variational_max": float(result.variational.maximum),
         "staggered_weak_max": float(result.staggered_weak_force.maximum),
         "strong_force_normalized_rms": float(result.force.normalized_rms),

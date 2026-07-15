@@ -101,6 +101,8 @@ def _solve_implicit_system(
     scales: np.ndarray,
     block_slices: tuple[slice, ...],
     *,
+    local_builder: Any | None = None,
+    matrix_columns: Callable[[np.ndarray], np.ndarray] | None = None,
     rtol: float,
     max_restarts: int,
     initial: np.ndarray | None = None,
@@ -108,17 +110,24 @@ def _solve_implicit_system(
     """Solve one preconditioned implicit linear system on the host."""
 
     size = right_hand_side.size
-    probe = np.random.default_rng(0).choice((-1.0, 1.0), size=size)
-    for block, active in enumerate(block_slices):
-        direction = np.zeros_like(probe)
-        direction[active] = probe[active]
-        response = apply_preconditioner(matrix_vector(direction))
-        denominator = abs(float(np.dot(direction, response)))
-        if denominator > np.finfo(float).tiny:
-            scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
+    active_preconditioner = apply_preconditioner
+    if local_builder is not None and matrix_columns is not None:
+        try:
+            active_preconditioner = local_builder(matrix_columns)
+        except RuntimeError:
+            pass
+    if active_preconditioner is apply_preconditioner:
+        probe = np.random.default_rng(0).choice((-1.0, 1.0), size=size)
+        for block, active in enumerate(block_slices):
+            direction = np.zeros_like(probe)
+            direction[active] = probe[active]
+            response = apply_preconditioner(matrix_vector(direction))
+            denominator = abs(float(np.dot(direction, response)))
+            if denominator > np.finfo(float).tiny:
+                scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
 
     operator = LinearOperator((size, size), matvec=matrix_vector, dtype=float)
-    inverse = LinearOperator((size, size), matvec=apply_preconditioner, dtype=float)
+    inverse = LinearOperator((size, size), matvec=active_preconditioner, dtype=float)
     if initial is None:
         initial_relative_residual = np.inf
     else:
@@ -140,7 +149,7 @@ def _solve_implicit_system(
             right_hand_side,
             x0=initial,
             M=inverse,
-            restart=min(50, size),
+            restart=min(100, size),
             maxiter=min(3, max_restarts) if initial is not None else max_restarts,
             rtol=rtol,
             atol=0.0,
@@ -162,6 +171,7 @@ def _implicit_adjoint(
     scales: np.ndarray,
     block_slices: tuple[slice, ...],
     *,
+    local_builder: Any | None = None,
     rtol: float,
     max_restarts: int,
     initializer: Callable[[Callable[[Array], Array], np.ndarray], tuple[np.ndarray, str]] | None = None,
@@ -175,6 +185,11 @@ def _implicit_adjoint(
     def matrix_vector(vector: np.ndarray) -> np.ndarray:
         return np.asarray(transpose_action(jnp.asarray(vector)), dtype=float)
 
+    transpose_columns = jax.jit(jax.vmap(transpose_action))
+
+    def matrix_columns(directions: np.ndarray) -> np.ndarray:
+        return np.asarray(transpose_columns(jnp.asarray(directions)), dtype=float)
+
     right_hand_side = np.asarray(quantity_x, dtype=float)
     initial_adjoint, solver_used = (
         (None, "gmres") if initializer is None else initializer(transpose_action, right_hand_side)
@@ -185,6 +200,8 @@ def _implicit_adjoint(
         apply_preconditioner,
         scales,
         block_slices,
+        local_builder=local_builder,
+        matrix_columns=matrix_columns,
         rtol=rtol,
         max_restarts=max_restarts,
         initial=initial_adjoint,
@@ -262,7 +279,7 @@ def _spline_implicit_problem(
     def residual(x: Array, controls: SplineFixedBoundaryParameters) -> Array:
         return jax.grad(lambda vector: energy_at(vector, controls).total / energy_scale)(x)
 
-    apply_preconditioner, scales = _packed_spline_preconditioner(discretization, vectorizer)
+    apply_preconditioner, scales, local_builder = _packed_spline_preconditioner(discretization, vectorizer)
     split = (slice(0, vectorizer.radius_size), slice(vectorizer.radius_size, None))
     return (
         x_star,
@@ -271,6 +288,7 @@ def _spline_implicit_problem(
         residual,
         apply_preconditioner,
         scales,
+        local_builder,
         split[: 2 if vectorizer.lambda_size else 1],
     )
 
@@ -297,6 +315,7 @@ def spline_fixed_boundary_adjoint(
         residual,
         apply_preconditioner,
         scales,
+        local_builder,
         split,
     ) = _spline_implicit_problem(
         result,
@@ -321,6 +340,7 @@ def spline_fixed_boundary_adjoint(
         apply_preconditioner,
         scales,
         split,
+        local_builder=local_builder,
         rtol=rtol,
         max_restarts=max_restarts,
     )
@@ -348,6 +368,7 @@ def spline_fixed_boundary_tangent(
         residual,
         apply_preconditioner,
         scales,
+        local_builder,
         split,
     ) = _spline_implicit_problem(
         result,
@@ -373,12 +394,19 @@ def spline_fixed_boundary_tangent(
     def matrix_vector(vector: np.ndarray) -> np.ndarray:
         return np.asarray(tangent_action(jnp.asarray(vector)), dtype=float)
 
+    tangent_columns = jax.jit(jax.vmap(tangent_action))
+
+    def matrix_columns(directions: np.ndarray) -> np.ndarray:
+        return np.asarray(tangent_columns(jnp.asarray(directions)), dtype=float)
+
     packed_tangent, iterations, relative_residual, converged = _solve_implicit_system(
         matrix_vector,
         -np.asarray(residual_tangent, dtype=float),
         apply_preconditioner,
         scales,
         split,
+        local_builder=local_builder,
+        matrix_columns=matrix_columns,
         rtol=rtol,
         max_restarts=max_restarts,
     )

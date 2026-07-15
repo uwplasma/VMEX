@@ -407,7 +407,7 @@ def _matrix_free_newton_polish(
     gradient_function: Any,
     objective_function: Any,
     vectorizer: Any,
-    preconditioner: tuple[Any, np.ndarray],
+    preconditioner: tuple[Any, np.ndarray, Any],
     *,
     ftol: float,
     max_steps: int,
@@ -418,12 +418,18 @@ def _matrix_free_newton_polish(
     """Damped Newton-GMRES polish using exact JAX Hessian products."""
 
     x = np.asarray(x0, dtype=float)
-    apply_preconditioner, block_scales = preconditioner
+    apply_preconditioner, block_scales, build_local = preconditioner
 
     hessian_vector = jax.jit(lambda point, direction: jax.jvp(gradient_function, (point,), (direction,))[1])
+    hessian_columns = jax.jit(
+        lambda point, directions: jax.vmap(
+            lambda direction: jax.jvp(gradient_function, (point,), (direction,))[1]
+        )(directions)
+    )
     linear_iterations = 0
     final_linear_residual = np.inf
     damping = 1.0e-8
+    local_preconditioner = None
 
     for step_index in range(max(0, int(max_steps))):
         gradient = np.asarray(gradient_function(jnp.asarray(x)), dtype=float)
@@ -435,21 +441,37 @@ def _matrix_free_newton_polish(
             product = np.asarray(hessian_vector(jnp.asarray(x), jnp.asarray(direction)), dtype=float)
             return product + damping * np.asarray(direction)
 
-        # Match each model block to the exact local Hessian scale. This keeps
-        # geometry and lambda units from dominating one another in GMRES.
-        block_scales[:] = 1.0
-        probe = np.random.default_rng(0).choice((-1.0, 1.0), size=x.size)
-        split = (slice(0, vectorizer.radius_size), slice(vectorizer.radius_size, None))
-        for block, active in enumerate(split[: 2 if vectorizer.lambda_size else 1]):
-            direction = np.zeros_like(probe)
-            direction[active] = probe[active]
-            response = apply_preconditioner(matrix_vector(direction))
-            denominator = abs(float(np.dot(direction, response)))
-            if denominator > np.finfo(float).tiny:
-                block_scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
+        if local_preconditioner is None and build_local is not None:
+            def matrix_columns(directions: np.ndarray) -> np.ndarray:
+                directions = np.asarray(directions, dtype=float)
+                products = hessian_columns(jnp.asarray(x), jnp.asarray(directions))
+                return np.asarray(products, dtype=float) + damping * directions
+
+            try:
+                local_preconditioner = build_local(matrix_columns)
+            except RuntimeError:
+                local_preconditioner = False
+        elif build_local is None:
+            local_preconditioner = False
+
+        if local_preconditioner is False:
+            # Match the fallback tensor blocks to the local Hessian scale.
+            block_scales[:] = 1.0
+            probe = np.random.default_rng(0).choice((-1.0, 1.0), size=x.size)
+            split = (slice(0, vectorizer.radius_size), slice(vectorizer.radius_size, None))
+            for block, active in enumerate(split[: 2 if vectorizer.lambda_size else 1]):
+                direction = np.zeros_like(probe)
+                direction[active] = probe[active]
+                response = apply_preconditioner(matrix_vector(direction))
+                denominator = abs(float(np.dot(direction, response)))
+                if denominator > np.finfo(float).tiny:
+                    block_scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
+            active_preconditioner = apply_preconditioner
+        else:
+            active_preconditioner = local_preconditioner
 
         operator = LinearOperator((x.size, x.size), matvec=matrix_vector, dtype=float)
-        inverse = LinearOperator((x.size, x.size), matvec=apply_preconditioner, dtype=float)
+        inverse = LinearOperator((x.size, x.size), matvec=active_preconditioner, dtype=float)
         iteration_counter = 0
 
         def count_iteration(_residual: float) -> None:
@@ -460,7 +482,7 @@ def _matrix_free_newton_polish(
             operator,
             -gradient,
             M=inverse,
-            restart=min(50, x.size),
+            restart=min(100, x.size),
             maxiter=10,
             rtol=min(1.0e-3, max(1.0e-10, 0.1 * gradient_max)),
             atol=0.0,
@@ -475,7 +497,7 @@ def _matrix_free_newton_polish(
         if info < 0 or not np.all(np.isfinite(direction)):
             return x, step_index, linear_iterations, final_linear_residual, False, "GMRES breakdown"
         if float(np.dot(gradient, direction)) >= 0.0:
-            direction = -apply_preconditioner(gradient)
+            direction = -active_preconditioner(gradient)
 
         value = float(objective_function(jnp.asarray(x)))
         slope = float(np.dot(gradient, direction))
@@ -532,7 +554,7 @@ def _optimize_fixed_boundary(
     record: Any,
     config: MirrorConfig,
     gradient_tolerance: float,
-    matrix_free_context: tuple[Any, tuple[Any, np.ndarray]] | None,
+    matrix_free_context: tuple[Any, tuple[Any, np.ndarray, Any]] | None,
     start_with_residual_newton: bool = False,
 ) -> _OptimizationOutcome:
     """Run the common host L-BFGS and residual-Newton solve policy.

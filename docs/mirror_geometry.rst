@@ -316,11 +316,23 @@ independent weak residuals remain below ``1.3e-15``. Compact evidence is in
 the ``axisymmetric_finite_beta`` section of
 ``benchmarks/mirror_fixed_boundary.json``.
 
-Open fixed-boundary systems use the radial/Fourier/axial tensor preconditioner
-and matrix-free Newton at every size. The medium regression reaches physical
-``ftol=1e-12`` with true linear residual below ``1e-8``. Its 441 Krylov
-iterations establish the operator path but also motivate the coupled
-radius--stream preconditioner in the next milestone.
+Open fixed-boundary systems use exact JAX Hessian-vector products and
+matrix-free Newton at every size. Radius-only systems retain the inexpensive
+radial/Fourier/axial tensor inverse. Finite-current nonaxisymmetric systems
+freeze a sparse local Hessian at the start of Newton: columns are evaluated in
+batches of at most 32, only same-field-channel terms with neighboring radial
+rows and axial coefficient distance at most four are stored, and all poloidal
+coupling is retained. Sparse LU is reused for every Newton step; no dense
+Hessian is stored.
+
+On the 591-variable analytic-seeded SFLM, the tensor baseline takes 2,000
+Krylov iterations and ends at true relative residual ``7.83e-2`` in 4.53
+seconds. The frozen local factor reaches ``9.18e-11`` in 660 iterations and
+4.14 seconds, with the same final energy and strong force. An isolated
+current-main SOLVAX right-preconditioned FGMRES trial follows the same
+iteration curve, so the host CLI remains on SciPy GMRES. The same sparse builder is used by
+forward tangent and reverse adjoint systems; closed periodic systems retain
+their existing path until cyclic locality is validated.
 
 The periodic coefficient block uses every cyclic B-spline coefficient and
 passes its gauge-free shape and linearity tests. It is not enabled for closed
@@ -386,7 +398,7 @@ staggered residuals are below ``2.9e-14``, normalized ``div(B)`` is below
 ``8.0e-15``, and mean field-direction cosine exceeds ``0.9999996``. The final
 all-volume strong-force norm is ``3.52e-2``: much smaller than the homothetic
 result, but above the initializer's ``5.12e-3``. This drift is a measured input
-to the coupled-preconditioner milestone, not promoted equilibrium evidence.
+to the fixed-open refinement study, not promoted equilibrium evidence.
 The figures expose both residual histories and show the actual solved nested
 surfaces and cap-to-cap field lines, not the analytic target alone.
 
@@ -403,10 +415,10 @@ fully reconverged equilibria::
 
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
-The current example agrees with centered differences to ``1.92e-9`` relative,
-but its reported linear residual is ``8.49e-8`` and therefore does not pass the
-``1e-8`` promotion gate. This is assigned to the coupled-preconditioner
-milestone rather than being presented as a promoted derivative.
+The current example agrees with centered differences to ``1.09e-9`` relative
+and its true adjoint linear residual is ``7.26e-10``. This passes the derivative
+solver gate, but the derivative remains research evidence until the rotating
+ellipse passes the independent strong-force refinement gates.
 
 ``spline_fixed_boundary_tangent`` solves the complementary forward system
 ``F_u du = -F_p dp`` with exact residual JVPs and the same preconditioner. On a
@@ -454,8 +466,8 @@ RTX A4000. Energy and force diagnostics agree to numerical precision. Explicit
 
 The host CLI remains the forward-performance reference. Derivatives solve the
 linearized converged coefficient residual and never retain or differentiate
-the nonlinear iteration history. Runtime and memory comparisons are
-regenerated after the coupled preconditioner is fixed.
+the nonlinear iteration history. They reuse the same frozen sparse structure
+as the primal solve without storing nonlinear iterates.
 
 Release evidence
 ----------------

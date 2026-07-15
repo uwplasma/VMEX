@@ -5,16 +5,19 @@ original `/Users/rogeriojorge/Downloads/plan_mirror.md` and every earlier
 version of this plan. Do not create parallel roadmaps. Commits, tests, and the
 four compact benchmark JSON files are the execution log.
 
-Audit baseline (2026-07-14 CDT / 2026-07-15 UTC, final source review):
+Audit baseline (2026-07-15 CDT, final source/literature review):
 
-- audit started from branch `codex/mirror-geometry` at `43832c0d`, with four
-  active evidence, documentation, plan, and solver-policy edits;
+- audit started from branch `codex/mirror-geometry` at `978666dc`, with the T4
+  sparse-local-preconditioner, evidence, documentation, example, and test edits
+  active in the worktree;
 - base `origin/main` at `ed4ac7ac`, zero commits behind and 311 ahead;
 - PR #22 is open, draft, and mergeable;
-- pushed diff is 51 files, 16,795 insertions, and 1,608 deletions;
-- `vmec_jax/mirror` contains 13 modules, exactly 8,000 lines, and 20 lazy public
-  names;
-- mirror tests contain ten substantive owner-aligned files and 4,456 lines;
+- pushed diff is 50 files, 15,528 insertions, and 1,608 deletions; the final T4
+  worktree has 15,821 insertions and the same deletions;
+- `vmec_jax/mirror` contains 13 modules, 7,613 physical lines, and 20 lazy
+  public names;
+- mirror tests contain ten substantive owner-aligned files and 4,004 physical
+  lines;
 - the coefficient-API worktree passes 106 tests and skips 10 in 321.53 seconds;
   the later regional-force change passes its focused tests; strict Sphinx,
   changed-file pre-commit, and `git diff --check` pass;
@@ -44,25 +47,59 @@ Audit baseline (2026-07-14 CDT / 2026-07-15 UTC, final source review):
   from `51.7` to `4.08e-2`, but the final linear residual is `0.842`. This
   isolates initialization and preconditioning as the next blockers rather
   than disproving the field representation or strong-force kernel.
-- the environment currently uses SOLVAX `0.7.3`; released `0.8.3` adds pytree
-  GMRES, matrix-free Newton--Krylov, cyclic tridiagonal solves, and additive
-  preconditioners. These are candidates for measured reuse, not an automatic
-  dependency upgrade.
+- the environment currently uses SOLVAX `0.7.3`. SOLVAX current `main` at
+  `255d280` was tested in isolation; its right-preconditioned FGMRES follows
+  the same mirror iteration curve, so no dependency upgrade is justified by
+  T4. A `release/0.8.4` branch exists at `4808695`, but no `v0.8.4` tag exists
+  in the remote as of this audit.
+- PR #22 remains open, draft, and mergeable. All latest checks except the
+  mirror-equilibrium shard pass. That shard names the T2-deleted
+  `tests/mirror/test_fixed_boundary_3d.py`, so it exits with "no tests ran";
+  T4 updates the workflow to the owner-aligned files before it is committed.
 
 Execution update (2026-07-15): T1 enforced the matrix-free open policy and
 compacted its evidence; T2 removed the nodal fixed solver, custom VJP, and
 duplicate tests; T3 added and validated the differentiable supplied-field
-initializer and made it the default SFLM path. The tree now contains 7,497
-mirror source lines, 3,970 mirror-test lines, and 20 lazy public names. T4 is
-the active tranche.
+initializer and made it the default SFLM path. T4 identifies poloidal mode
+coupling, not radius--stream cross terms, as the linear bottleneck and adds a
+chunked frozen sparse factor shared by primal and implicit solves. Its final
+gate passes 100 mirror tests with 6 expected skips in 310.04 seconds, the
+repaired 29-test equilibrium CI shard, changed-file pre-commit, strict Sphinx,
+and JSON validation. T4 is complete; T5 is the next active tranche after this
+evidence is committed.
 
 The branch contains real equilibrium solvers and useful validation, but it is
 not release-ready. The immediate blockers are dense free-boundary Jacobian
-storage, a preconditioner that omits radius--stream-function coupling, stale
-shaped benchmarks, the artificial open-end collars, and incomplete
-closed-hybrid limiting cases. The milestones below remove those blockers in
-dependency order and define explicit stop conditions so this PR has a finite
-end.
+storage, stale shaped benchmarks, the artificial open-end collars, and
+incomplete closed-hybrid limiting cases. The milestones below remove those
+blockers in dependency order and define explicit stop conditions so this PR
+has a finite end.
+
+### Final technical decisions
+
+This audit converts the literature and source review into six implementation
+decisions. They are constraints on the milestones, not optional alternatives.
+
+| Topic | Decision | Evidence and consequence |
+| --- | --- | --- |
+| Open longitudinal representation | Keep coefficient-native clamped cubic B-splines | Local support, exact endpoint constraints, and knot refinement fit a long straight mirror better than axial Fourier modes. Chebyshev remains independent quadrature/validation, not an optimized state. |
+| Closed hybrid representation | Keep periodic cubic B-splines along a smooth racetrack axis and Fourier only around each section | A transported frame represents long straight legs and rotating elliptical returns with few section modes. VMEC-like longitudinal Fourier projection is used only for circular-limit parity, never as the production hybrid state. |
+| Primal CLI solver | Keep SciPy host L-BFGS/least-squares, GMRES, and sparse LU where measured faster | The CLI is explicitly nondifferentiable. T4 reduces the SFLM true linear residual from `7.83e-2` to `9.18e-11`, cuts Krylov work from 2,000 to 660, and reduces wall time from 4.53 s to 4.14 s. |
+| Differentiation | Differentiate only the converged coefficient residual with exact JVP/VJP actions | Forward implicit tangents serve few controls; reverse adjoints serve scalar outputs/many controls. Unrolled solver AD and derivatives of unconverged states are rejected. |
+| Generic solver ownership | Use SOLVAX only when a tagged release removes local generic code and passes the same benchmark gates | Current-main FGMRES gives no iteration benefit. Mirror geometry, gauges, residuals, continuation, and sparsity remain in `vmec_jax`; generic Krylov/direct wrappers may move to SOLVAX later. Do not add JAXopt, Lineax, Optimistix, Optax, or Equinox in this PR. |
+| Physics scope | Finish scalar-pressure fixed open, axisymmetric free open, and fixed closed hybrid; bound the 3D free-open attempt; defer ANIMEC | ANIMEC changes the energy, pressure closure, effective current, interface stress, and stability constraints. It is not a second pressure array and cannot be added safely inside this PR. |
+
+The go/no-go outcomes are therefore explicit:
+
+- **go**: axisymmetric and nonaxisymmetric fixed open mirrors, axisymmetric
+  free open mirrors through the highest passing beta, and the fixed closed
+  spline hybrid;
+- **bounded attempt**: nonaxisymmetric free open mirrors, with promotion or
+  deletion of public scaffolding at M6;
+- **defer**: free-boundary hybrid, arbitrary curved open axes, anisotropic
+  ANIMEC physics, kinetic closures, stability, and mirror Boozer output;
+- **remove**: coil construction, Biot--Savart formulas, ESSOS-owned runners,
+  stale shaped records, and any solver path that misses its measured gate.
 
 ## 1. Release contract
 
@@ -306,8 +343,9 @@ an incompatible discretization.
   reconstruction error is `3.42e-4`, tangency RMS is `1.33e-4`, and strong
   force is `5.12e-3`. The compact nonlinear continuation reaches force
   `3.52e-2`, field-direction cosine above `0.9999996`, and strict variational
-  tolerance, but drifts away from the better physical seed. The representation
-  and initializer are viable; the coupled preconditioner is not yet viable.
+  tolerance, but drifts away from the better physical seed. The representation,
+  initializer, and linear solve are viable; T5 must determine whether the
+  variational solution passes strong-force refinement.
 - The periodic preconditioner stalled at 3,000 GMRES iterations with linear
   residual about 0.136. CG/MINRES reached only about 0.016. The scalable closed
   primal path therefore remains disabled.
@@ -323,9 +361,32 @@ reason and rerunning all comparison grids.
 
 ## 4. Conclusions from external sources
 
+### 4.0 Reproducible source-review ledger
+
+The final review used source, tests, and branch history rather than project
+descriptions alone:
+
+| Source | Revision reviewed | Adopt | Reject or defer |
+| --- | --- | --- | --- |
+| `vmec_jax` main | `ed4ac7ac`; mirror branch is 0 behind | existing VMEC residual separation, continuation diagnostics, exact JVP actions, SOLVAX-backed toroidal Krylov patterns | forcing open topology through toroidal Fourier/WOUT conventions |
+| VMEC2000/ANIMEC in STELLOPT | local `512375ce3582`; `forces.f`, `residue.f90`, `bcovar.f`, `fbal.f`, `jxbforce.f`, `precon2d.f` | radial staggering, separate raw/preconditioned diagnostics, neighboring-radial block physics, explicit one-sided axis/edge handling | VMEC closed-LCFS boundary conditions on open cuts; partial ANIMEC closure |
+| DESC master | `24aa7b9dc` | released continuation, matrix-free JVP memory lessons, and closed-interface boundary-condition separation | importing another optimizer/objective stack into this PR |
+| DESC `mirror` | `0dba071da` | Chebyshev--Zernike formulas and the need for explicit cap constraints as review material | direct code transfer: 2,255-line equilibrium and 1,393-line objective modules, placeholder end-cap helpers, assertion-free cap test, disabled upstream tests |
+| DESC `mirror_anisotropy` | `805b77fc0` | confirms that mirror anisotropy is a distinct closure problem | treating branch results as validated ANIMEC parity |
+| DESC `dd/cylindrical` | `6f85f50ae` | double-nonperiodic-Chebyshev/Fourier basis formulas | changing basis: branch has initial basis tests but no mirror solve, cap, axis, force, or free-boundary evidence |
+| DESC finite-element branches | `829e2db0f`, `fb90e65ab` | none required | incomplete JAX integration, debugging artifacts, and no validated mirror equilibrium |
+| SOLVAX | installed `0.7.3`; main `255d280`; release branch `4808695` | generic JAX Krylov/direct/implicit wrappers when benchmarked and tagged | dependency upgrade for feature count alone; current-main FGMRES has no SFLM benefit |
+| GVEC/G-frame work | arXiv:2410.17595 and current docs | transported-frame geometry, independent quadrature, compact section coordinates | claiming its radial B-splines validate longitudinal splines directly |
+| VEPEC report | UCRL-53099 | divergence-preserving potential variables and spline interpolation precedent | numerical parity without reproducible inputs/code |
+
+The review also inspected the current mirror modules, tests, examples, four
+benchmark records, documentation, complete plan history, draft PR metadata,
+and latest CI. External formulas become tests only after their assumptions,
+normalization, and reproducible input are recorded.
+
 ### 4.1 VMEC2000, VMEC++, and ANIMEC
 
-VMEC2000 source at local commit `728af8bd6c79` was reviewed through
+VMEC2000 source at local STELLOPT commit `512375ce3582` was reviewed through
 `forces.f`, `residue.f90`, `bcovar.f`, `fbal.f`, `jxbforce.f`, `precon2d.f`,
 and the block-tridiagonal solvers. It separates raw force assembly from
 preconditioned residuals and uses radial staggering consistently.
@@ -394,6 +455,16 @@ remains separate.
 
 ### 4.3 Mirror and numerical literature
 
+The literature does not provide a general closed-form three-dimensional,
+finite-beta, free-boundary open-mirror equilibrium that can serve as a single
+gold file. Validation must therefore be triangular: exact vacuum/manufactured
+solutions, paraxial asymptotics in their ordering, and an independent
+axisymmetric code. For scalar-pressure open field lines, `B dot grad(p)=0`
+requires pressure to be a flux function and the truncated-domain problem must
+prescribe compatible end data. This supports the fixed-cut formulation but
+makes cut-location independence a mandatory physics test, not a plotting
+choice.
+
 Ågren and Savenko's straight-field-line-mirror construction supplies exact
 paraxial fixtures already represented in `analytic.py`:
 
@@ -417,6 +488,12 @@ and inverse aspect ratio and predicts additional quadrupole/diamond distortion;
 that supplies section-shape observables at low beta and thin radius. The
 rotating ellipse must first match its own vacuum paraxial limit as minor radius
 and beta approach zero, then be tested away from that limit.
+
+The Goodman--Freidberg--Lane comparison to VEPEC is especially useful because
+it predicts both beta scaling and non-elliptical section distortion. The gate
+must compare fitted quadrupole/diamond moments, not only a mean radius. No
+paraxial formula is used as an accuracy target at beta 50%; that endpoint tests
+the numerical scalar-pressure model and continuation only.
 
 The linked-mirror configuration of Feng et al. supports the closed topology:
 two straight mirror sections joined by two half-tori, with nonparallel
@@ -458,20 +535,26 @@ not a claim of a diamagnetic-bubble model.
 
 ### 4.4 SOLVAX and differentiation
 
-The branch currently runs with SOLVAX `v0.7.3`. Released `v0.8.3`
-(`a904ac20`, 2026-07-14) additionally provides pytree GMRES, matrix-free
-Newton--Krylov, cyclic tridiagonal solves, symmetric additive
-preconditioners, and elliptic helpers. `vmec_jax` already uses SOLVAX block
-Thomas in the toroidal and mirror paths. Generic linear algebra belongs in
-SOLVAX, but mirror-specific geometry, residuals, gauges, coefficient maps,
-continuation, and physics preconditioners stay here.
+The branch currently runs with SOLVAX `v0.7.3`. SOLVAX current `main`
+(`255d280`, 2026-07-15) and the untagged `release/0.8.4` branch (`4808695`)
+add pytree GMRES, matrix-free Newton--Krylov, cyclic tridiagonal solves,
+symmetric additive and Galerkin preconditioners, elliptic helpers, host
+SuperLU wrappers, independent transpose solvers, and extended diagnostics.
+`vmec_jax` already uses SOLVAX block Thomas in the toroidal path. Generic
+linear algebra belongs in SOLVAX, but mirror-specific geometry, residuals,
+gauges, coefficient maps, continuation, and physics sparsity stay here.
 
-Do not depend on unpublished local SOLVAX commits. Evaluate `v0.8.3` in a
-temporary environment against the existing mirror operator before changing the
-project requirement. A prior direct replacement of the host GMRES path did not
-meet runtime/residual gates. Adopt a released primitive only after a
-reproducible A/B benchmark shows equal state, lower memory or runtime, and no
-loss in true linear residual. Otherwise retain the current narrow calls.
+The T4 isolated trial applied current-main SOLVAX right-preconditioned FGMRES to the
+same 591-variable SFLM Hessian and tensor inverse. Its true-residual iteration
+curve matches SciPy's host GMRES and does not justify a dependency upgrade.
+The nondifferentiable CLI therefore keeps faster host sparse LU and GMRES;
+exact JAX JVP/VJP actions retain differentiability in the implicit layer.
+
+Once a compatible SOLVAX release is tagged, T11 may replace local generic
+host-factor and implicit-linear wrappers only if the change is a net deletion,
+preserves auxiliary convergence diagnostics, supports an independent
+transpose solver, and passes the same primal/tangent/adjoint A/B records. The
+mirror sparse pattern builder is physics-specific and remains here.
 
 The production derivative strategy remains:
 
@@ -519,15 +602,15 @@ The largest avoidable duplication is now explicit. `_MirrorStateVectorizer`
 and `_SplineStateVectorizer`, their packed preconditioners, and their
 primal/implicit Krylov drivers implement the same constraints twice. Preserve
 small representation-specific coefficient maps, but use one solver vector
-contract, one radius--lambda block preconditioner, and one SOLVAX-backed linear
-solve. Once coefficient-native open fixed and free parity passes, remove the
-nodal production solve and its compatibility paths; keep only nodal evaluation
-fixtures.
+contract, one radius--lambda preconditioner builder, one host linear driver,
+and one JAX implicit-linear driver. Once coefficient-native open fixed and free
+parity passes, remove the remaining nodal free-production path and its
+compatibility aliases; keep only nodal evaluation fixtures.
 
 The source audit identifies the exact reductions:
 
-- delete the 244-line private nodal fixed solve and the nodal fixed custom-VJP,
-  configuration, adjoint, and duplicate tests in `solver.py` and `implicit.py`;
+- T2 already deleted the 244-line private nodal fixed solve, nodal fixed
+  custom-VJP, configuration, adjoint, and duplicate tests; do not restore them;
 - keep `_MirrorStateVectorizer` only until free boundary is coefficient-native,
   then replace it with the spline coefficient map and delete it;
 - split the 342-line free-boundary workflow into residual assembly, operator
@@ -546,8 +629,8 @@ The source audit identifies the exact reductions:
 Concrete branch budgets at merge:
 
 - no more than 46 changed files and 13 mirror source modules;
-- no increase above 8,000 mirror source lines at any accepted milestone, with
-  a merge target below 7,200;
+- no increase above 8,000 mirror source lines at any accepted milestone; the
+  current 7,613-line worktree must return below 7,200 before merge;
 - fewer than 4,000 mirror test lines after duplicate nodal tests are removed;
 - no mirror source file above 1,000 lines;
 - no more than 18 public mirror names, with removals preferred;
@@ -610,7 +693,7 @@ a different discrete space.
 Exit: manufactured order is established and the physical strong force
 decreases on three grids for accepted fixed equilibria.
 
-### M2. Finish the coefficient path and physical initialization -- steps 1--5 complete
+### M2. Finish the coefficient path and physical initialization -- steps 1--5 complete; step 6 is T5's first gate
 
 1. Commit the compact current fixed-boundary evidence only after JSON, focused
    tests, strict docs, and the complete mirror suite pass on the active solver
@@ -633,17 +716,17 @@ decreases on three grids for accepted fixed equilibria.
 Exit: one public coefficient-native fixed solver remains; the analytic SFLM
 initializer is a binary regression test; source and test line counts decrease.
 
-### M3. Build the coupled solver and promote fixed open mirrors
+### M3. Build the structured solver and promote fixed open mirrors
 
 1. Define one coefficient map used by fixed/free primal, tangent, and adjoint
    solves. Radius, stream function, gauge, fixed ends, and scaling are explicit
    blocks rather than unrelated flat slices.
-2. Freeze a local approximate Hessian retaining radius--stream `2 x 2` blocks,
-   neighboring radial coupling, local axial B-spline support, and Fourier-mode
-   coupling required by nonaxisymmetric geometry. Use a block-Jacobi or
-   block-tridiagonal factorization as the first implementation; add a more
-   elaborate multilevel method only if the measured spectrum requires it.
-3. A/B test the current SciPy/SOLVAX `0.7.3` path and released SOLVAX `0.8.3`
+2. Freeze a local approximate Hessian retaining neighboring radial coupling,
+   axial B-spline support, and the poloidal-mode coupling required by
+   nonaxisymmetric geometry. The T4 oracle shows that radius--stream cross
+   blocks do not improve convergence, while full poloidal coupling is
+   decisive; omit the cross blocks and retain separate sparse field channels.
+3. A/B test the current SciPy/SOLVAX `0.7.3` path and current-main SOLVAX
    pytree GMRES/Newton--Krylov in an isolated environment. Keep SciPy's host
    optimizer for the nondifferentiable CLI when faster. Upgrade the dependency
    only if the release gates improve.
@@ -651,12 +734,19 @@ initializer is a binary regression test; source and test line counts decrease.
    for Newton, forward tangent, and reverse adjoint solves. Apply gauges and
    fixed-end constraints before factorization.
 5. A/B test no preconditioner, the current separable preconditioner, and the
-   coupled preconditioner on axisymmetric open, analytic-seeded SFLM, rotating
+   frozen local preconditioner on axisymmetric open, analytic-seeded SFLM, rotating
    ellipse, and circular periodic cases. Record cold/warm runtime, peak memory,
    nonlinear iterations, Krylov iterations, and true linear residual.
 6. Rerun SFLM and rotating-ellipse studies with independent refinement of
    `ns`, `mpol`, axial knots, and quadrature, followed by a three-grid combined
    refinement and half-radius paraxial study.
+   Begin with the equal-axisymmetric-end/cut-location fixture from M2. At each
+   shaped grid record the projected analytic seed and the converged state
+   separately. Compare production energy gradient, independent staggered weak
+   variation, and reconstructed pointwise force. If the first two disagree,
+   repair the discretization; if they agree while strong force extrapolates to
+   a nonzero limit, stop and amend the open variational model rather than tune
+   the optimizer.
 7. Require finite current and lambda, positive Jacobian, nestedness, axis
    regularity, weak residual, repaired strong force, section matrix,
    ellipticity/orientation, axis field, and field-line slope gates.
@@ -666,9 +756,9 @@ initializer is a binary regression test; source and test line counts decrease.
 
 Exit gates: both axisymmetric and nonaxisymmetric fixed open mirrors satisfy
 section 1.1; true linear residual is at most `1e-8`; Krylov growth is bounded;
-the coupled path is at least 2x faster or enables a previously blocked case;
-and the milestone has a net source-line reduction. Remove any new solver path
-that cannot meet these gates.
+the structured path is at least 2x faster or enables a previously blocked
+case; and M3 ends within the repository budgets in section 5. Remove any new
+solver path that cannot meet these gates.
 
 ### M4. Promote axisymmetric open free boundary through beta 50%
 
@@ -676,8 +766,12 @@ that cannot meet these gates.
    axial spline coefficients used by fixed boundary. Evaluate them on the
    existing CGL/panel nodes and differentiate through that linear map.
 2. Replace `_MirrorStateVectorizer` and materialized full free-boundary
-   Jacobian columns with the shared coefficient map and JVP/VJP operator
-   actions; keep a dense path only for tiny test systems.
+   Jacobian columns with the shared coefficient map and a SciPy
+   `LinearOperator`: `matvec` is an exact JAX JVP and `rmatvec` is an exact JAX
+   VJP. Use the trust-region iterative least-squares path for production and
+   keep a dense Jacobian only below the tiny-test threshold. Gate peak memory
+   with resident-set measurements; chunking a full identity is not
+   matrix-free and does not pass this step.
 3. Preserve the one cap-aware exterior BIE and separately monitor lateral
    tangency, pressure jump, raw/corrected cap compatibility, cap-rim continuity,
    equal symmetric end data, endpoint shape constraints, cut-location
@@ -697,6 +791,8 @@ that cannot meet these gates.
    interpolation before changing geometry.
 8. Revalidate derivatives with respect to pressure amplitude and external-field
    scale; regenerate the free-boundary benchmark and example figures.
+   The derivative residual must use the same coefficient map and transpose
+   operator as the primal solve; do not retain a second nodal adjoint path.
 
 Exit: all beta states satisfy variational, weak, strong-force, interface,
 geometry, and three-grid observable gates, or the first failing beta becomes
@@ -715,10 +811,17 @@ are labeled scalar-pressure equilibria, not ANIMEC or kinetic predictions.
 3. Validate periodic spline position and first/second derivatives, Bishop
    frame and holonomy correction, section Jacobian, clearance, up--down and
    leg-exchange coefficient symmetries, and join smoothness.
+   Frame closure and derivatives must converge when only the axis quadrature is
+   refined; otherwise the discrete transport is part of the geometry error and
+   the equilibrium study does not start.
 4. Continue from circular torus to a racetrack with two curved returns, then
    lengthen both straight legs, and finally impose the rotating-ellipse
    stellarator shaping in the returns. At least half of each straight leg must
    remain below the declared curvature tolerance.
+   Before this continuation, extend the T4 local factor with periodic axial
+   distance and cyclic support. Reject dense periodic Newton above the tiny
+   threshold and require a true linear residual at most `1e-8` on the circular
+   case.
 5. Compare a central long-leg window with the promoted fixed open B-spline
    mirror as curvature approaches zero.
 6. Demonstrate nonzero rotational transform and circuit-spanning field lines
@@ -788,8 +891,8 @@ recorded as compact negative evidence.
 | T1 (complete) | Validate and commit the active force-region, compact benchmark, docs, and matrix-free policy edits | full mirror suite, strict Sphinx, Ruff, JSON schema |
 | T2 (complete) | Delete nodal fixed solve/custom-VJP and redundant tests | public API/import tests; axisymmetric spline parity unchanged; net line reduction |
 | T3 (complete) | Add supplied-field-to-Clebsch spline initializer and use it for SFLM | analytic field error `<5e-4`; force `<6e-3`; example smoke |
-| T4 | Implement and A/B the coupled radius--stream preconditioner, including SOLVAX `0.8.3` trial | true linear residual `<=1e-8`; bounded Krylov growth; measured benefit |
-| T5 | Regenerate rotating-ellipse and SFLM fixed-boundary evidence | all section 1.1 fixed-open gates on three grids and half-radius study |
+| T4 (complete) | Implement and A/B the frozen local spline preconditioner, including current-main SOLVAX trial and stale-CI-path repair | 100 passed/6 skipped; strict docs; true linear residual `9.18e-11`; Krylov work 2,000 to 660 |
+| T5 (next) | Regenerate rotating-ellipse and SFLM fixed-boundary evidence | all section 1.1 fixed-open gates on three grids, half-radius, and cut-location studies |
 | T6 | Move free boundary to the shared spline coefficient map and operator Jacobian | dense tiny-case parity; no full Jacobian above threshold; lower peak memory |
 | T7 | Regenerate the axisymmetric beta scan through 50% | three-grid physics, interface, force, Pleiades, and trend gates |
 | T8 | Establish circular hybrid parity and long-leg/open limit | ordinary VMEC-JAX and VMEC2000 parity; force refinement |
@@ -844,7 +947,7 @@ Percentages measure promotion evidence, not lines written:
 | Free open nonaxisymmetric | 25% | conditional three-grid promotion attempt after M4 |
 | Fixed closed B-spline hybrid | 45% | current-semantics VMEC parity, open-leg limit, force, derivatives |
 | Strong-force diagnostic | 100% | maintain gates in promoted equilibrium lanes |
-| Coupled preconditioning | 35% | coupled radius--lambda block and A/B gates |
+| Structured preconditioning | 85% | retain gates through T5 and add cyclic structure in T9 |
 | Implicit differentiation | 72% | unify coefficient maps; rerun promoted primal lanes |
 | Code/API simplification | 82% | reach source-line and public-API budgets in T6/T11 |
 | Docs/examples/artifacts | 65% | regenerate remaining release showcase artifacts |
@@ -859,12 +962,16 @@ Free closed hybrid and ANIMEC are deferred and excluded from that percentage.
 - VMEC++ paper: <https://arxiv.org/abs/2502.04374>
 - DESC source and experimental branches: <https://github.com/PlasmaControl/DESC>
 - DESC mirror branch: <https://github.com/PlasmaControl/DESC/tree/mirror>
+- DESC mirror-anisotropy branch:
+  <https://github.com/PlasmaControl/DESC/tree/mirror_anisotropy>
 - DESC cylindrical/Chebyshev branch:
   <https://github.com/PlasmaControl/DESC/tree/dd/cylindrical>
 - DESC experimental finite-element branch:
   <https://github.com/PlasmaControl/DESC/tree/finite_element_basis>
 - DESC free-boundary formulation: <https://arxiv.org/abs/2412.05680>
 - SOLVAX: <https://github.com/uwplasma/SOLVAX>
+- SOLVAX untagged 0.8.4 release branch:
+  <https://github.com/uwplasma/SOLVAX/tree/release/0.8.4>
 - GVEC G-frame paper: <https://arxiv.org/abs/2410.17595>
 - GVEC documentation: <https://gvec.readthedocs.io/>
 - Pleiades: <https://github.com/eepeterson/pleiades>
@@ -879,6 +986,8 @@ Free closed hybrid and ANIMEC are deferred and excluded from that percentage.
   <https://doi.org/10.1016/j.cpc.2009.04.006>
 - Asahi et al., *MHD equilibrium analysis with anisotropic pressure in LHD*:
   <https://www.jstage.jst.go.jp/article/pfr/6/0/6_0_2403123/_article>
+- EPFL ANIMEC code description:
+  <https://www.epfl.ch/research/domains/swiss-plasma-center/research/theory/codes/animec/>
 - Rodríguez, Helander, and Goodman, *The maximum-J property in
   quasi-isodynamic stellarators*: <https://doi.org/10.1017/S0022377824000345>
 - Feng et al., linked mirror concept: <https://arxiv.org/abs/2103.09457>
@@ -895,9 +1004,13 @@ Free closed hybrid and ANIMEC are deferred and excluded from that percentage.
   <https://arxiv.org/abs/1606.05454>
 - JAX custom derivative and implicit-iteration guide:
   <https://docs.jax.dev/en/latest/notebooks/Custom_derivative_rules_for_Python_code.html>
+- JAX `custom_root` and `custom_linear_solve`:
+  <https://docs.jax.dev/en/latest/_autosummary/jax.lax.custom_root.html>,
+  <https://docs.jax.dev/en/latest/_autosummary/jax.lax.custom_linear_solve.html>
 - JAXopt implicit root differentiation:
   <https://jaxopt.github.io/stable/_autosummary/jaxopt.implicit_diff.custom_root.html>
 - Lineax operators and transpose-aware solvers: <https://docs.kidger.site/lineax/>
+- Optimistix implicit adjoints: <https://docs.kidger.site/optimistix/api/adjoints/>
 
 The reference list supports decisions; only reproduced tests and compact
 benchmark records count as release evidence.

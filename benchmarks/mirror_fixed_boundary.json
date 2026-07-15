@@ -202,20 +202,36 @@
   },
   "implicit_derivative": {
     "case": "rotating-ellipse volume versus one boundary coefficient",
-    "adjoint": 1.5422515667777208e-4,
-    "reconverged_centered_difference": 1.5422515697253308e-4,
-    "relative_error": 1.91622e-9,
-    "linear_relative_residual": 8.49355e-8,
-    "status": "derivative value passes; linear residual remains above the 1e-8 promotion gate"
+    "adjoint": 1.54225156737804e-4,
+    "reconverged_centered_difference": 1.5422515656920988e-4,
+    "relative_error": 1.0931687099451618e-9,
+    "linear_relative_residual": 7.256211635509917e-10,
+    "status": "passes value and true linear-residual gates with the frozen local factor"
   },
   "solver_performance": {
-    "status": "matrix-free policy improves runtime but the separable preconditioner remains incomplete",
-    "compact_example_wall_s_after": 62.93,
+    "status": "frozen sparse local Hessian passes the open nonaxisymmetric linear gate",
+    "compact_example_wall_s_after": 39.32,
     "rotating_ellipse_stage_iterations_before": [0, 805, 805, 806, 806],
     "rotating_ellipse_stage_iterations_after": [0, 481, 482, 485, 502],
     "fine_axisymmetric_wall_s_before": 4.139,
     "fine_axisymmetric_wall_s_after": 2.55,
     "fine_axisymmetric_energy_change_relative": 1.2e-16,
-    "fine_axisymmetric_linear_residual": 2.55859e-10
+    "fine_axisymmetric_linear_residual": 2.55859e-10,
+    "t4_sflm_ab": {
+      "ns": 5,
+      "mpol": 8,
+      "spline_elements": 4,
+      "variables": 591,
+      "hessian_chunk_columns": 32,
+      "retained_structure": "same field channel, neighboring radial rows, all poloidal nodes, axial coefficient distance <= 4",
+      "separable_wall_s": 4.534955374896526,
+      "separable_krylov_iterations": 2000,
+      "separable_true_linear_residual": 0.07832498108531187,
+      "local_wall_s": 4.141819959040731,
+      "local_krylov_iterations": 660,
+      "local_true_linear_residual": 9.179796729810529e-11,
+      "energy_state_parity": "same final variational and strong-force state",
+      "solvax_current_main_trial": "revision 255d280 right-preconditioned FGMRES matched the iteration curve and did not justify an upgrade"
+    }
   }
 }

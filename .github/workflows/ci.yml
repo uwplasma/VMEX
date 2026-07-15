@@ -98,8 +98,7 @@ jobs:
                    tests/mirror/test_free_boundary.py \
                    tests/mirror/test_geometry_fields.py"
           elif [ "${{ matrix.shard }}" = "equilibrium" ]; then
-            FILES="tests/mirror/test_fixed_boundary_3d.py \
-                   tests/mirror/test_implicit.py \
+            FILES="tests/mirror/test_implicit.py \
                    tests/mirror/test_isotropic_forces.py \
                    tests/mirror/test_model_basis.py"
           else
