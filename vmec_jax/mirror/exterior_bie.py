@@ -28,6 +28,7 @@ except ModuleNotFoundError as _vcj_error:  # optional research acceleration
 
 from .exterior import ClosedMirrorSurface, build_closed_mirror_surface
 from .exterior_mesh import panel_green_boundary_residual, panel_green_gradient_off_surface
+from .forces import MU0
 from .geometry import magnetic_field_xyz
 
 Array = Any
@@ -91,11 +92,116 @@ class NonaxisymmetricExteriorVacuum:
     lateral_b_normal: Array
 
 
+@dataclass(frozen=True)
+class ExteriorNeumannEnergy:
+    """Energy terms of a solved exterior Neumann correction.
+
+    ``correction`` is the positive field energy of ``grad(phi)``. ``source_work``
+    is the work that imposes the total normal flux at fixed external currents.
+    Their sum is the stationary potential functional; the shape-dependent
+    background-field volume term is deliberately separate.
+    """
+
+    correction: Array
+    source_work: Array
+    stationary: Array
+
+
 jax.tree_util.register_dataclass(
     LaplaceNeumannResult,
     data_fields=[field.name for field in fields(LaplaceNeumannResult)],
     meta_fields=[],
 )
+jax.tree_util.register_dataclass(
+    ExteriorNeumannEnergy,
+    data_fields=[field.name for field in fields(ExteriorNeumannEnergy)],
+    meta_fields=[],
+)
+
+
+def exterior_neumann_energy(
+    surface: ClosedMirrorSurface,
+    solution: LaplaceNeumannResult,
+    neumann: Array,
+    *,
+    mu0: float = float(MU0),
+) -> ExteriorNeumannEnergy:
+    """Return the solved exterior-potential energy and fixed-source work.
+
+    The normal derivative uses the surface normal pointing from plasma into
+    vacuum. Green's identity in the exterior therefore gives
+    ``integral |grad(phi)|^2 dV = -integral phi dphi/dn dA``. At the Neumann
+    stationary point, the applied-field and prescribed-flux terms together
+    equal ``integral phi dphi/dn dA / mu0``.
+    """
+
+    potential = surface.expand_collocation_values(
+        surface.expand_reduced_values(solution.boundary_potential)
+    )
+    normal_derivative = surface.expand_collocation_values(
+        surface.expand_reduced_values(neumann)
+    )
+    pairing = jnp.sum(
+        potential * normal_derivative * surface.quadrature_weights
+    ) / float(mu0)
+    correction = -0.5 * pairing
+    source_work = pairing
+    return ExteriorNeumannEnergy(
+        correction=correction,
+        source_work=source_work,
+        stationary=correction + source_work,
+    )
+
+
+def excluded_external_field_energy(
+    geometry: "MirrorGeometry",
+    grid: "MirrorGrid",
+    external_field: Any,
+    *,
+    mu0: float = float(MU0),
+) -> Array:
+    """Return the applied-field energy removed by the plasma volume.
+
+    The constant all-space energy of fixed external currents is omitted. As
+    the plasma boundary moves, the remaining shape-dependent background term
+    is the negative integral of ``|B_external|^2 / (2 mu0)`` over the plasma.
+    """
+
+    external_squared = jnp.sum(
+        _external_field_xyz(external_field, geometry.xyz) ** 2, axis=-1
+    )
+    weights = (
+        jnp.asarray(grid.radial_weights)[:, None, None]
+        * jnp.asarray(grid.theta_basis.weights)[None, :, None]
+        * jnp.asarray(grid.axial_basis.weights)[None, None, :]
+    )
+    return -jnp.sum(weights * geometry.sqrt_g * external_squared) / (
+        2.0 * float(mu0)
+    )
+
+
+def relative_exterior_magnetic_energy(
+    vacuum: AxisymmetricExteriorVacuum | NonaxisymmetricExteriorVacuum,
+    geometry: "MirrorGeometry",
+    grid: "MirrorGrid",
+    external_field: Any,
+    *,
+    mu0: float = float(MU0),
+) -> Array:
+    """Return the shape-dependent vacuum energy at fixed external currents."""
+
+    potential = exterior_neumann_energy(
+        vacuum.surface,
+        vacuum.neumann_result,
+        vacuum.neumann,
+        mu0=mu0,
+    )
+    background = excluded_external_field_energy(
+        geometry, grid, external_field, mu0=mu0
+    )
+    return potential.stationary + background
+
+
 jax.tree_util.register_dataclass(
     NonaxisymmetricExteriorVacuum,
     data_fields=[field.name for field in fields(NonaxisymmetricExteriorVacuum)],

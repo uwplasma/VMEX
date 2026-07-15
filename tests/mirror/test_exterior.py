@@ -31,6 +31,8 @@ from vmec_jax.mirror.exterior import build_closed_mirror_surface  # noqa: E402
 from vmec_jax.mirror.exterior_bie import (  # noqa: E402
     axisymmetric_plasma_external_neumann,
     axisymmetric_exterior_lateral_field,
+    excluded_external_field_energy,
+    exterior_neumann_energy,
     laplace_double_layer_off_surface,
     laplace_green_boundary_residual,
     laplace_green_gradient_off_surface,
@@ -45,6 +47,7 @@ from vmec_jax.mirror.exterior_bie import (  # noqa: E402
     solve_axisymmetric_exterior_vacuum,
     solve_nonaxisymmetric_exterior_vacuum,
 )
+from vmec_jax.mirror.forces import MU0  # noqa: E402
 from vmec_jax.mirror.geometry import (  # noqa: E402
     contravariant_field,
     evaluate_geometry,
@@ -333,6 +336,63 @@ def test_spectral_side_density_improves_exterior_dipole() -> None:
 
     assert errors[1][0] < 0.3 * errors[0][0]
     assert errors[1][1] < 0.7 * errors[0][1]
+
+
+def test_exterior_neumann_energy_has_consistent_signs_for_dipole() -> None:
+    grid = _grid(ns=13, nxi=21)
+    surface = build_closed_mirror_surface(
+        MirrorBoundary.from_radius(0.37, grid),
+        grid,
+        axisymmetric_ntheta=24,
+    )
+    xyz = surface.collocation_xyz
+    radius_squared = jnp.sum(xyz**2, axis=1)
+    exact_potential = xyz[:, 2] / radius_squared**1.5
+    exact_gradient = jnp.stack(
+        [
+            -3.0 * xyz[:, 2] * xyz[:, 0] / radius_squared**2.5,
+            -3.0 * xyz[:, 2] * xyz[:, 1] / radius_squared**2.5,
+            1.0 / radius_squared**1.5
+            - 3.0 * xyz[:, 2] ** 2 / radius_squared**2.5,
+        ],
+        axis=1,
+    )
+    neumann = surface.reduce_collocation_values(
+        jnp.sum(exact_gradient * surface.collocation_normals, axis=1)
+    )
+    result = solve_reduced_exterior_laplace_neumann(
+        surface, neumann, spectral_side_density=True
+    )
+    energy = exterior_neumann_energy(surface, result, neumann)
+
+    exact_quadrature = surface.expand_collocation_values(exact_potential)
+    neumann_quadrature = surface.expand_collocation_values(
+        surface.expand_reduced_values(neumann)
+    )
+    exact_correction = -0.5 * jnp.sum(
+        exact_quadrature * neumann_quadrature * surface.quadrature_weights
+    ) / MU0
+    assert float(energy.correction) > 0.0
+    np.testing.assert_allclose(energy.source_work, -2.0 * energy.correction)
+    np.testing.assert_allclose(energy.stationary, -energy.correction)
+    np.testing.assert_allclose(energy.correction, exact_correction, rtol=3.5e-2)
+
+
+def test_excluded_uniform_field_energy_matches_cylinder_volume() -> None:
+    grid = _grid(ns=9, nxi=13)
+    radius = 0.37
+    boundary = MirrorBoundary.from_radius(radius, grid)
+    geometry = evaluate_geometry(MirrorState.from_boundary(boundary, grid), grid)
+    field_strength = 0.08
+
+    def uniform_field(points):
+        return jnp.broadcast_to(
+            jnp.asarray([0.0, 0.0, field_strength]), jnp.shape(points)
+        )
+
+    energy = excluded_external_field_energy(geometry, grid, uniform_field)
+    exact = -field_strength**2 * geometry.volume / (2.0 * MU0)
+    np.testing.assert_allclose(energy, exact, rtol=2.0e-14)
 
 
 def test_panel_mesh_is_watertight_oriented_and_convergent() -> None:
