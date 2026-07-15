@@ -72,6 +72,16 @@
       {"elements": 8, "coefficients": 11, "active_dofs": 59, "energy_relative_error": 5.1387e-8, "volume_relative_error": 2.1794e-6, "variational_max": 5.4311e-16, "staggered_weak_max": 5.7782e-16}
     ]
   },
+  "three_grid_parity": {
+    "case": "finite-pressure, finite-current flared tube solved independently in both representations",
+    "runs": [
+      {"ns": 5, "chebyshev_nxi": 9, "spline_coefficients": 7, "chebyshev_active_radius_dofs": 27, "spline_active_radius_dofs": 15, "chebyshev_wall_s": 5.2360, "spline_wall_s": 3.2679, "energy_relative_error": 5.1243e-7, "volume_relative_error": 5.9136e-6, "radius_relative_rms": 2.4031e-4},
+      {"ns": 7, "chebyshev_nxi": 13, "spline_coefficients": 9, "chebyshev_active_radius_dofs": 65, "spline_active_radius_dofs": 35, "chebyshev_wall_s": 8.0915, "spline_wall_s": 3.1914, "energy_relative_error": 1.4604e-7, "volume_relative_error": 2.5661e-6, "radius_relative_rms": 6.4853e-5},
+      {"ns": 9, "chebyshev_nxi": 17, "spline_coefficients": 11, "chebyshev_active_radius_dofs": 119, "spline_active_radius_dofs": 63, "chebyshev_wall_s": 11.4682, "spline_wall_s": 4.9957, "energy_relative_error": 5.5999e-8, "volume_relative_error": 1.0366e-6, "radius_relative_rms": 2.9383e-5, "field_vector_relative_rms": 7.0241e-4, "field_strength_relative_rms": 3.0532e-4}
+    ],
+    "test": "all observable and physical-field errors decrease monotonically; both variational residuals and independent weak residuals remain below 1e-14",
+    "timing_note": "sequential local JAX-enabled cold timings; representation evidence, not steady-state benchmarking"
+  },
   "closed_circular_torus": {
     "case": {
       "mpol": 1,

@@ -916,3 +916,105 @@ def test_finite_beta_spline_knot_refinement_converges_to_chebyshev() -> None:
     assert np.all(np.diff(volume_errors) < 0.0)
     assert energy_errors[-1] < 1.0e-7
     assert volume_errors[-1] < 3.0e-6
+
+
+@pytest.mark.full
+def test_open_spline_and_chebyshev_states_converge_across_grids() -> None:
+    energy_errors = []
+    volume_errors = []
+    radius_errors = []
+    field_errors = []
+    strength_errors = []
+    for ns, nxi, elements in ((5, 9, 4), (7, 13, 6), (9, 17, 8)):
+        config = MirrorConfig(
+            resolution=MirrorResolution(ns=ns, mpol=0, ntheta=1, nxi=nxi),
+            ftol=1.0e-12,
+            max_iterations=1000,
+        )
+        grid = config.build_grid()
+        s = jnp.asarray(grid.s)
+        xi = jnp.asarray(grid.xi)
+        boundary = MirrorBoundary.from_radius(
+            0.3 * (1.0 + 0.12 * (1.0 - xi**2)), grid
+        )
+        initial = MirrorState.from_boundary(boundary, grid)
+        energy_kwargs = {
+            "axial_flux_derivative": 0.1,
+            "mass_profile": 2.0e3 * (1.0 - s),
+            "current_derivative": 3.0e-2 * s,
+        }
+        solve_kwargs = {
+            **energy_kwargs,
+            "solve_lambda": True,
+            "gradient_tolerance": 1.0e-12,
+            "require_convergence": True,
+        }
+        nodal = solve_fixed_boundary_cli(
+            initial, boundary, grid, config, **solve_kwargs
+        )
+        discretization = SplineMirrorDiscretization.build(config, elements=elements)
+        spline = solve_spline_fixed_boundary_cli(
+            discretization.fit_state(initial, grid),
+            discretization.fit_boundary(boundary, grid),
+            discretization,
+            config,
+            **solve_kwargs,
+        )
+        sampled = MirrorState(
+            discretization.spline.evaluate(
+                spline.coefficient_state.radius_coefficients, xi, axis=-1
+            ),
+            discretization.spline.evaluate(
+                spline.coefficient_state.lambda_coefficients, xi, axis=-1
+            ),
+        )
+        sampled_energy = mirror_energy(sampled, grid, **energy_kwargs)
+        nodal_field = magnetic_field_xyz(nodal.energy.field, nodal.energy.geometry)
+        spline_field = magnetic_field_xyz(
+            sampled_energy.field, sampled_energy.geometry
+        )
+        nodal_strength = jnp.linalg.norm(nodal_field, axis=-1)
+        spline_strength = jnp.linalg.norm(spline_field, axis=-1)
+
+        energy_errors.append(
+            abs(float(spline.evaluated.energy.total / nodal.energy.total) - 1.0)
+        )
+        volume_errors.append(
+            abs(
+                float(
+                    spline.evaluated.energy.geometry.volume
+                    / nodal.energy.geometry.volume
+                )
+                - 1.0
+            )
+        )
+        radius_errors.append(
+            float(jnp.sqrt(jnp.mean((sampled.radius_scale - nodal.state.radius_scale) ** 2)))
+            / float(jnp.sqrt(jnp.mean(nodal.state.radius_scale**2)))
+        )
+        field_errors.append(
+            float(jnp.sqrt(jnp.mean((spline_field - nodal_field) ** 2)))
+            / float(jnp.sqrt(jnp.mean(nodal_field**2)))
+        )
+        strength_errors.append(
+            float(jnp.sqrt(jnp.mean((spline_strength - nodal_strength) ** 2)))
+            / float(jnp.sqrt(jnp.mean(nodal_strength**2)))
+        )
+        assert float(nodal.variational.maximum) < 1.0e-14
+        assert float(spline.evaluated.variational.maximum) < 1.0e-14
+        assert float(nodal.staggered_weak_force.maximum) < 1.0e-14
+        assert float(spline.evaluated.staggered_weak_force.maximum) < 1.0e-14
+
+    for errors in (
+        energy_errors,
+        volume_errors,
+        radius_errors,
+        field_errors,
+        strength_errors,
+    ):
+        assert np.all(np.diff(errors) < 0.0)
+    assert energy_errors[-1] < 1.0e-7
+    assert volume_errors[-1] < 2.0e-6
+    assert radius_errors[-1] < 5.0e-5
+    assert field_errors[-1] < 1.0e-3
+    assert strength_errors[-1] < 5.0e-4
