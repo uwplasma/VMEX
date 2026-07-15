@@ -237,7 +237,7 @@ physical field is the invariant comparison. Splines use roughly half the
 active radius variables and take 3.27, 3.19, and 5.00 seconds versus 5.24,
 8.09, and 11.47 seconds for the local nodal solves. All variational and
 independent weak residuals remain below ``1.3e-15``. Compact evidence is in
-``benchmarks/mirror_spline_fixed_boundary.json``.
+the ``open_spline`` section of ``benchmarks/mirror_fixed_boundary.json``.
 
 Above the dense-reference threshold, a 585-variable ``mpol=1`` cylinder uses
 the same radial/Fourier tensor preconditioner with the spline Galerkin axial
@@ -287,7 +287,8 @@ scalar potential. Halving the radius improves these to ``0.999988`` and
 ``0.999810``, consistent with paraxial directional convergence. Full-mesh
 field magnitude does not converge under the same study, so magnitude promotion
 awaits a staggered comparison. Compact positive and negative evidence is in
-``benchmarks/mirror_spline_nonaxisymmetric.json``.
+the ``nonaxisymmetric_validation`` section of
+``benchmarks/mirror_fixed_boundary.json``.
 
 A fixed-boundary pressure continuation calibrates conserved mass from the
 vacuum geometry and reaches achieved reference beta ``0.0969``. The center
@@ -330,10 +331,11 @@ Newton polish. Nonlinear iteration histories are not differentiated or saved.
 
 The returned gradient covers boundary radius, axial flux derivative,
 mass/pressure profile, and axial current derivative in one reverse solve. The
-root example validates all four controls simultaneously against two fully
-reconverged finite-difference equilibria::
+root nonaxisymmetric example differentiates the rotating-ellipse volume with
+respect to a native spline boundary coefficient and checks it against two
+fully reconverged finite-difference equilibria::
 
-   python examples/mirror_fixed_boundary_gradients.py
+   python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
 For the finite-pressure, finite-current flared tube, the primal reaches
 ``ftol=1e-12``. The adjoint converges in four iterations to relative linear
@@ -343,8 +345,9 @@ MOUT and horizontal 3D, ``|B|``, cross-section, pressure, residual, and
 sensitivity figures. Above the dense-reference threshold, an ``ns=17,
 nxi=41`` case with 585 active unknowns takes 3.41 seconds and 171 adjoint
 iterations to reach ``9.23e-10`` relative residual; its primal polish takes
-8.61 seconds and 951 linear iterations. Compact evidence is in
-``benchmarks/mirror_fixed_boundary_implicit.json``. A three-color radial block
+8.61 seconds and 951 linear iterations. Compact evidence is in the
+``implicit_derivatives`` section of ``benchmarks/mirror_fixed_boundary.json``.
+A three-color radial block
 factorization reaches ``2.69e-15`` without a GMRES correction, but costs 4.79
 seconds for this one right-hand side. Unlike a many-column forward Jacobian,
 the scalar reverse adjoint cannot amortize its assembly, so preconditioned
@@ -411,15 +414,15 @@ the office-CPU CLI takes ``16.28/3.75 s`` cold/warm. The custom-VJP forward
 takes ``18.65/4.04 s``, or 14.6% cold and 7.7% warm overhead, with a 5.6%
 peak-RSS increase. The CLI therefore remains the fastest forward interface;
 the differentiable lane pays a bounded callback cost and supplies the
-iteration-independent reverse solve. Complete scaling values are in
-``benchmarks/mirror_performance.json``.
+iteration-independent reverse solve. Complete scaling values are in the
+``performance`` section of ``benchmarks/mirror_fixed_boundary.json``.
 
 .. image:: _static/figures/mirror_performance.png
    :alt: Mirror CLI and differentiable timing, CPU and GPU timing, and 3D scaling
    :width: 100%
 
-Mirror release audit
---------------------
+Release evidence
+----------------
 
 Coverage must run without ``--source=vmec_jax.mirror``; that coverage option
 pre-imports the package and can trigger a duplicate NumPy extension import on
@@ -430,15 +433,14 @@ after execution::
    PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 coverage run -m pytest \
        tests/mirror -m "not full" -q
    RUN_FULL=1 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 coverage run --append \
-       -m pytest tests/mirror/test_implicit.py \
-       tests/mirror/test_implicit.py -q
+       -m pytest tests/mirror/test_implicit.py -q
    coverage report --include="*/vmec_jax/mirror/*" --fail-under=95
 
-The completed audit covers 3,269 statements with 157 misses, or 95%.
-The tracked checkout is 6.4 MiB; generated MOUT files and figures remain
-ignored, while three compressed mirror documentation figures are tracked.
-Source, test, and repository measurements are recorded in
-``benchmarks/mirror_m10_audit.json``.
+The release audit is rerun from the final branch rather than copied from an
+intermediate repository snapshot. Generated MOUT files, field-line traces, and
+figures remain ignored. Four compact JSON files retain numerical evidence for
+fixed open, free axisymmetric, deferred free nonaxisymmetric, and fixed hybrid
+ownership; repository-shape and promotion gates are maintained in ``plan.md``.
 
 .. image:: _static/figures/mirror_fixed_boundary_3d.png
    :alt: Fixed-boundary helical mirror refinement, force residuals, and CPU/GPU timing

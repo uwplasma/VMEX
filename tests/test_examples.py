@@ -142,19 +142,6 @@ def test_free_boundary_beta_scan(tmp_path):
     assert len(betas) == 3 and betas[-1] > 1e-2, f"beta should reach finite values: {betas}"
 
 
-def test_mirror_fixed_boundary_gradients_example(tmp_path):
-    out = _run_example(
-        EXAMPLES / "mirror_fixed_boundary_gradients.py", tmp_path, timeout=900
-    )
-    summary = re.search(r'"relative_error": ([0-9.eE+-]+)', out)
-    assert summary is not None and float(summary.group(1)) < 1.0e-4
-    outdir = tmp_path / "results" / "mirror_fixed_boundary_gradients"
-    assert (outdir / "mout_mirror_fixed_gradient.nc").exists()
-    assert (outdir / "mirror_fixed_gradient_3d.png").exists()
-    assert (outdir / "mirror_fixed_gradient_modB.png").exists()
-    assert (outdir / "mirror_fixed_gradient_sensitivity.png").exists()
-
-
 @pytest.mark.full
 def test_mirror_fixed_boundary_nonaxisymmetric_example(tmp_path):
     _run_example(
@@ -166,6 +153,8 @@ def test_mirror_fixed_boundary_nonaxisymmetric_example(tmp_path):
     summary = json.loads((outdir / "summary.json").read_text())
     assert summary["rotating_ellipse"]["variational_max"] < 1.0e-12
     assert summary["rotating_ellipse"]["forbidden_m1_max"] < 1.0e-12
+    assert summary["rotating_ellipse"]["boundary_gradient_relative_error"] < 1.0e-4
+    assert summary["rotating_ellipse"]["adjoint_relative_residual"] < 1.0e-8
     assert summary["straight_field_line"]["variational_max"] < 1.0e-12
     assert summary["straight_field_line"]["minimum_mean_direction_cosine"] > 0.997
 

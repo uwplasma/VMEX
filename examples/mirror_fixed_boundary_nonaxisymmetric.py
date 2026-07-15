@@ -20,6 +20,7 @@ from vmec_jax.mirror import (  # noqa: E402
     MirrorState,
     mout_from_result,
     plot_mout,
+    spline_fixed_boundary_adjoint,
     write_mout,
 )
 from vmec_jax.mirror.analytic import (  # noqa: E402
@@ -28,7 +29,9 @@ from vmec_jax.mirror.analytic import (  # noqa: E402
 )
 from vmec_jax.mirror.forces import staggered_field_strength  # noqa: E402
 from vmec_jax.mirror.geometry import magnetic_field_xyz  # noqa: E402
+from vmec_jax.mirror.implicit import spline_fixed_boundary_parameters  # noqa: E402
 from vmec_jax.mirror.splines import (  # noqa: E402
+    SplineMirrorBoundary,
     SplineMirrorDiscretization,
     solve_spline_fixed_boundary_cli,
 )
@@ -40,6 +43,8 @@ SPLINE_ELEMENTS = 4
 SHAPE_STAGES = (0.0, 0.25, 0.5, 0.75, 1.0)
 FTOL = 1.0e-12
 MAX_ITERATIONS = 1000
+RUN_GRADIENT_CHECK = True
+FINITE_DIFFERENCE_STEP = 2.0e-4
 OUTPUT_DIR = Path("results/mirror_fixed_boundary_nonaxisymmetric")
 
 RADIUS = {"rotating_ellipse": 0.05, "straight_field_line": 0.03}
@@ -95,8 +100,7 @@ def plot_validation(case: str, result, coefficient_state, boundary_state, path: 
     ):
         polar_samples = np.asarray(boundary[:, axial_index])
         polar = np.real(
-            np.exp(1j * theta_dense[:, None] * poloidal_modes[None, :])
-            @ (np.fft.fft(polar_samples) / grid.ntheta)
+            np.exp(1j * theta_dense[:, None] * poloidal_modes[None, :]) @ (np.fft.fft(polar_samples) / grid.ntheta)
         )
         axes[0].plot(
             polar * np.cos(theta_dense),
@@ -199,6 +203,47 @@ for case in CASES:
         final_boundary,
         OUTPUT_DIR / f"{case}_validation.png",
     )
+    if case == "rotating_ellipse" and RUN_GRADIENT_CHECK:
+        parameters = spline_fixed_boundary_parameters(
+            final_boundary,
+            axial_flux_derivative=AXIAL_FLUX_DERIVATIVE[case],
+        )
+        adjoint = spline_fixed_boundary_adjoint(
+            spline_result,
+            parameters,
+            discretization,
+            lambda _state, energy: energy.geometry.volume,
+            solve_lambda=True,
+            rtol=1.0e-9,
+        )
+        direction = jnp.zeros_like(final_boundary.radius_coefficients)
+        direction = direction.at[:, direction.shape[1] // 2].set(1.0e-3)
+        predicted = float(jnp.vdot(adjoint.gradient.boundary_coefficients, direction))
+        values = []
+        for sign in (-1.0, 1.0):
+            varied_boundary = SplineMirrorBoundary(
+                final_boundary.radius_coefficients + sign * FINITE_DIFFERENCE_STEP * direction
+            )
+            varied = solve_spline_fixed_boundary_cli(
+                discretization.transfer_boundary(
+                    spline_result.coefficient_state,
+                    final_boundary,
+                    varied_boundary,
+                ),
+                varied_boundary,
+                discretization,
+                config,
+                axial_flux_derivative=AXIAL_FLUX_DERIVATIVE[case],
+                solve_lambda=True,
+                gradient_tolerance=FTOL,
+                require_convergence=True,
+            )
+            values.append(float(varied.evaluated.energy.geometry.volume))
+        finite_difference = (values[1] - values[0]) / (2.0 * FINITE_DIFFERENCE_STEP)
+        validation["boundary_gradient_adjoint"] = predicted
+        validation["boundary_gradient_finite_difference"] = finite_difference
+        validation["boundary_gradient_relative_error"] = abs(predicted - finite_difference) / abs(finite_difference)
+        validation["adjoint_relative_residual"] = adjoint.relative_residual
     summaries[case] = {
         "stage_iterations": stage_iterations,
         "variational_max": float(result.variational.maximum),

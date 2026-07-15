@@ -5,23 +5,30 @@
     "axial_current_derivative": "1e-3 * s",
     "plasma_state": "radius plus gauge-free lambda",
     "vacuum_backend": "exterior, spectral side density, linear caps",
-    "betas": [0.0, 0.5],
+    "betas": [
+      0.0,
+      0.5
+    ],
     "ftol": 1e-12,
     "device": "office RTX A4000"
   },
   "coarse": {
-    "grid": {"ns": 5, "ntheta": 3, "nxi": 5},
+    "grid": {
+      "ns": 5,
+      "ntheta": 3,
+      "nxi": 5
+    },
     "wall_s_pair_warm": 71.406,
     "peak_rss_mib": 2201.96,
     "beta0": {
       "iterations": 26,
       "variational_max": 4.571e-15,
-      "staggered_weak_max": 5.750e-16,
+      "staggered_weak_max": 5.75e-16,
       "normal_stress_rms": 2.122e-15,
       "vacuum_b_normal_rms": 3.731e-17,
       "normalized_divb": 2.841e-16,
-      "lambda_max": 2.723e-4,
-      "compatibility": 9.505e-4,
+      "lambda_max": 0.0002723,
+      "compatibility": 0.0009505,
       "center_radius_m": 0.2014018783,
       "center_field_T": 0.0838655345,
       "center_m1_m": 0.0024869107,
@@ -35,8 +42,8 @@
       "normal_stress_rms": 1.569e-15,
       "vacuum_b_normal_rms": 4.449e-17,
       "normalized_divb": 2.967e-16,
-      "lambda_max": 2.697e-4,
-      "compatibility": 8.984e-4,
+      "lambda_max": 0.0002697,
+      "compatibility": 0.0008984,
       "center_radius_m": 0.2168913152,
       "center_field_T": 0.0630597155,
       "center_m1_m": 0.0031770992,
@@ -45,7 +52,11 @@
     }
   },
   "medium": {
-    "grid": {"ns": 7, "ntheta": 5, "nxi": 7},
+    "grid": {
+      "ns": 7,
+      "ntheta": 5,
+      "nxi": 7
+    },
     "wall_s_pair": 800.733,
     "peak_rss_mib": 4249.73,
     "beta0": {
@@ -55,12 +66,12 @@
       "normal_stress_rms": 3.291e-15,
       "vacuum_b_normal_rms": 2.697e-17,
       "normalized_divb": 9.602e-16,
-      "lambda_max": 4.107e-4,
-      "compatibility": 1.407e-5,
+      "lambda_max": 0.0004107,
+      "compatibility": 1.407e-05,
       "center_radius_m": 0.2014399571,
       "center_field_T": 0.0841332019,
       "center_m1_m": 0.0004639745,
-      "volume_m3": 0.1645469340,
+      "volume_m3": 0.164546934,
       "energy_J": 714.0342608
     },
     "beta50": {
@@ -68,10 +79,10 @@
       "variational_max": 5.641e-15,
       "staggered_weak_max": 3.927e-16,
       "normal_stress_rms": 2.629e-15,
-      "vacuum_b_normal_rms": 2.550e-17,
-      "normalized_divb": 9.500e-16,
-      "lambda_max": 4.129e-4,
-      "compatibility": 1.358e-5,
+      "vacuum_b_normal_rms": 2.55e-17,
+      "normalized_divb": 9.5e-16,
+      "lambda_max": 0.0004129,
+      "compatibility": 1.358e-05,
       "center_radius_m": 0.2177834999,
       "center_field_T": 0.0624543569,
       "center_m1_m": 0.0008679221,
@@ -80,13 +91,55 @@
     }
   },
   "coarse_to_medium_relative_change": {
-    "beta0": {"center_radius": 1.891e-4, "center_field": 3.192e-3, "volume": 3.372e-3, "energy": 4.252e-3, "center_m1": 0.8134},
-    "beta50": {"center_radius": 4.114e-3, "center_field": 9.600e-3, "volume": 3.158e-3, "energy": 6.269e-3, "center_m1": 0.7268}
+    "beta0": {
+      "center_radius": 0.0001891,
+      "center_field": 0.003192,
+      "volume": 0.003372,
+      "energy": 0.004252,
+      "center_m1": 0.8134
+    },
+    "beta50": {
+      "center_radius": 0.004114,
+      "center_field": 0.0096,
+      "volume": 0.003158,
+      "energy": 0.006269,
+      "center_m1": 0.7268
+    }
   },
   "bounded_alternative": {
     "method": "high-order cap panels, four-beta coarse scan",
     "terminated_after_s": 690.7,
     "result": "did not complete the bounded test"
   },
-  "assessment": "The full radius-plus-lambda MHD residual converges through beta 0.50 with weak force, div(B), stress, and B.n near roundoff. Global coarse-to-medium observables change by at most 0.96%, but local m=1 changes by 73-81% and the medium pair costs 13.3 minutes. Keep the lane research-only until structured Jacobian solves make a third level practical and local modes converge. All earlier radius-only benchmark rows were removed as incomplete equilibria."
+  "assessment": "The full radius-plus-lambda MHD residual converges through beta 0.50 with weak force, div(B), stress, and B.n near roundoff. Global coarse-to-medium observables change by at most 0.96%, but local m=1 changes by 73-81% and the medium pair costs 13.3 minutes. Keep the lane research-only until structured Jacobian solves make a third level practical and local modes converge. All earlier radius-only benchmark rows were removed as incomplete equilibria.",
+  "performance": {
+    "grid_family": [
+      [
+        5,
+        3,
+        5
+      ],
+      [
+        7,
+        5,
+        7
+      ],
+      [
+        9,
+        7,
+        9
+      ]
+    ],
+    "office_a4000_pair_wall_s": [
+      292.699,
+      943.944,
+      2994.901
+    ],
+    "peak_rss_mib": [
+      2807.38,
+      4677.04,
+      7524.89
+    ],
+    "assessment": "Dense host Jacobian scaling is prohibitive and the local-mode gate fails; this lane is deferred."
+  }
 }

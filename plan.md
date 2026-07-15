@@ -26,6 +26,7 @@ update):
 - mirror package: 13 modules, 7,826 source lines, 20 public lazy names, and no
   source file above 931 lines;
 - mirror tests: ten substantive owner-aligned files;
+- benchmark evidence: four compact owner-aligned JSON files;
 - unsupported ANIMEC implementation and tests removed; scalar pressure is the
   only retained equilibrium model;
 - exterior mesh ownership is consolidated in `exterior.py`, and fixed/free
@@ -463,7 +464,7 @@ new physics lane is introduced before these packages finish.
 Gate: the direct-coil benchmark is actually axisymmetric, exactly reproducible,
 and all stored claims identify their field model and grid.
 
-### WP1 - Remove unsupported breadth and simplify (source/test targets complete)
+### WP1 - Remove unsupported breadth and simplify (source/test/artifact targets complete)
 
 1. Delete public ANIMEC, bi-Maxwellian, tabulated `(s,B)` closure, anisotropic
    solve, anisotropic benchmarks, and research-only tests. Retain a short docs
@@ -622,7 +623,7 @@ Percentages estimate accepted promotion evidence, not code volume.
 | Free closed hybrid | 10% | one conditional attempt after fixed promotion |
 | Structured preconditioning | 48% | one coupled radius/lambda block attempt |
 | Implicit derivatives | 82% | unsupported closure branches removed; closed-axis controls remain |
-| Source/API simplification | 96% | source/module/test/API ceilings met; consolidate artifacts/examples |
+| Source/API simplification | 98% | all ceilings met; fold gradient root example before hybrid example lands |
 | Documentation/examples | 74% | isotropic docs current; README showcases and hybrid example remain |
 | ESSOS ownership | 100% | retain callable/MGRID interchange only |
 

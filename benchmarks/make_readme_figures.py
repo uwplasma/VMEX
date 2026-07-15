@@ -435,8 +435,8 @@ def make_convergence_figure(out: Path) -> None:
 
 def make_mirror_figure(out: Path) -> None:
     data = json.loads(
-        (REPO / "benchmarks" / "mirror_fixed_boundary_3d.json").read_text()
-    )
+        (REPO / "benchmarks" / "mirror_fixed_boundary.json").read_text()
+    )["nodal_3d"]
     runs = data["radial_runs"]
     profiles = data["profile_comparison"]
     s = np.asarray(profiles["s"])

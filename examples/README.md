@@ -30,11 +30,9 @@ All runnable examples live under this single `examples/` tree.
   - `mirror_free_boundary_beta_scan.py` — solve a straight-axis two-coil
     free-boundary mirror through 50% beta and render the solved LCFS, coils,
     cap-to-cap field lines, `|B|`, pressure, cross-sections, and residuals.
-  - `mirror_fixed_boundary_gradients.py` — solve and implicitly differentiate
-    a finite-pressure, finite-current fixed-boundary mirror, validate against
-    reconverged finite differences, and write mirror-native MOUT plus plots.
   - `mirror_fixed_boundary_nonaxisymmetric.py` — solve native-spline rotating
-    ellipse and Straight Field Line Mirror validation cases.
+    ellipse and Straight Field Line Mirror cases, validate an implicit boundary
+    gradient against reconverged finite differences, and write MOUT plus plots.
   - `single_stage_free_boundary_opt.py` — optimize coil currents to confine a
     target plasma by minimizing <(B.n)^2> with the exact virtual-casing gradient.
 - `optimization/`: precise QA/QH/QP/QI from a circular torus — one file each,

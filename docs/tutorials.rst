@@ -160,19 +160,19 @@ against it — calibrating ``PRES_SCALE`` per step so the converged wout
 Straight mirrors
 ----------------
 
-Fixed-boundary mirror gradients
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Fixed-boundary nonaxisymmetric mirrors and gradients
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Solve a finite-pressure, finite-current flared mirror at ``ftol=1e-12`` and
-differentiate an interior radius with the mirror implicit adjoint. Boundary,
-flux, pressure, and current derivatives are checked against independently
+Solve rotating-ellipse and Straight Field Line Mirror cases with native axial
+B-splines at ``ftol=1e-12``. The rotating-ellipse volume derivative with
+respect to a spline boundary coefficient is checked against independently
 reconverged central differences before MOUT and the standard plots are written.
 
 .. image:: _static/figures/mirror_fixed_boundary_3d.png
    :alt: Fixed-boundary mirror geometry and magnetic field
    :width: 82%
 
-.. literalinclude:: ../examples/mirror_fixed_boundary_gradients.py
+.. literalinclude:: ../examples/mirror_fixed_boundary_nonaxisymmetric.py
    :language: python
 
 Free-boundary mirror through 50% beta

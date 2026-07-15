@@ -1,0 +1,64 @@
+{
+  "schema": "vmec_jax.benchmark.mirror_hybrid_fixed_boundary/1",
+  "periodic_preconditioner_attempt": {
+    "case": "892-variable finite-current rotating-ellipse racetrack at 16 periodic coefficients",
+    "dense_reference": {
+      "wall_s": 8.7107,
+      "variational_max": 2.7917e-14,
+      "energy": 1641053.444989587
+    },
+    "gmres": {
+      "wall_s": 5.8097,
+      "krylov_iterations": 3000,
+      "final_linear_residual": 0.13591,
+      "variational_max": 2.9974e-13
+    },
+    "cg": {
+      "wall_s": 4.1957,
+      "krylov_iterations": 2000,
+      "final_linear_residual": 0.016706,
+      "variational_max": 2.4766e-13
+    },
+    "minres": {
+      "wall_s": 4.0389,
+      "krylov_iterations": 1852,
+      "final_linear_residual": 0.015838,
+      "variational_max": 3.0629e-14
+    },
+    "parity": {
+      "gmres_energy_relative_difference": 3.3307e-16,
+      "gmres_radius_relative_rms": 9.4677e-11
+    },
+    "peak_rss_mib": 2454.7,
+    "decision": "periodic tensor block is dimensionally correct but fails the linear-residual and Krylov-growth gates; retain it for adjoint research, keep closed primal solves below the dense threshold"
+  },
+  "closed_circular_torus": {
+    "case": {
+      "mpol": 1,
+      "ntheta": 6,
+      "periodic_spline_coefficients": 8,
+      "major_radius": 2.5,
+      "minor_radius": 0.25,
+      "axial_flux_derivative": 0.03,
+      "solve_lambda": true,
+      "ftol": 1e-12
+    },
+    "initializer": "axial average of sqrt(g)/g_xixi; circular limit gives B proportional to 1/R",
+    "ns5": {
+      "iterations": 27,
+      "variational_max": 1.8839e-15,
+      "staggered_weak_max": 1.8332e-15,
+      "normalized_divb": 4.6389e-15,
+      "pointwise_force_normalized_rms": 0.70902
+    },
+    "ns7": {
+      "iterations": 90,
+      "variational_max": 1.9003e-15,
+      "staggered_weak_max": 2.9977e-15,
+      "normalized_divb": 1.9024e-14,
+      "pointwise_force_normalized_rms": 0.57024
+    },
+    "status": "complete radius-plus-stream-function equilibrium; discrete and weak residuals pass, while pointwise force still requires radial refinement"
+  },
+  "assessment": "The periodic geometry and dense bounded solve are retained research evidence. Pointwise force, scalable preconditioning, circular VMEC parity, and open-leg convergence remain promotion gates."
+}
