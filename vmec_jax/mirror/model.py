@@ -36,9 +36,9 @@ class EndCondition(str, Enum):
 class MirrorResolution:
     """Static resolution for ``(s, theta, xi)`` mirror coordinates.
 
-    ``mpol`` is the largest retained theta Fourier mode.  Axisymmetry uses
-    ``mpol=0, ntheta=1``.  Three-dimensional grids require at least
-    ``2*mpol+1`` points so the highest represented mode is not a Nyquist mode.
+    ``mpol`` is the largest retained theta Fourier mode. Axisymmetry uses
+    ``mpol=0, ntheta=1``; three-dimensional collocation uses exactly
+    ``ntheta=2*mpol+1`` so no undeclared or Nyquist mode enters the state.
     """
 
     ns: int = 17
@@ -54,10 +54,11 @@ class MirrorResolution:
         if self.nxi < 2:
             raise ValueError("mirror nxi must be >= 2")
         minimum_theta = 1 if self.mpol == 0 else 2 * self.mpol + 1
-        if self.ntheta < minimum_theta:
-            raise ValueError(f"ntheta={self.ntheta} cannot resolve mpol={self.mpol}; use ntheta >= {minimum_theta}")
-        if self.mpol == 0 and self.ntheta != 1:
-            raise ValueError("axisymmetric mirror resolution uses mpol=0 and ntheta=1")
+        if self.ntheta != minimum_theta:
+            raise ValueError(
+                f"mirror collocation requires ntheta=2*mpol+1; got "
+                f"mpol={self.mpol}, ntheta={self.ntheta}"
+            )
 
     @property
     def axisymmetric(self) -> bool:

@@ -60,7 +60,7 @@ def _cylinder(*, ns: int = 11, nxi: int = 21, radius: float = 0.3, half_length: 
 
 
 def test_fixed_boundary_projection_enforces_geometry_and_lambda_gauge() -> None:
-    grid = MirrorConfig(resolution=MirrorResolution(ns=7, mpol=2, ntheta=7, nxi=13)).build_grid()
+    grid = MirrorConfig(resolution=MirrorResolution(ns=7, mpol=3, ntheta=7, nxi=13)).build_grid()
     theta = jnp.asarray(grid.theta)[:, None]
     xi = jnp.asarray(grid.xi)[None, :]
     boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.05 * jnp.cos(2.0 * theta) * xi**2), grid)
@@ -170,7 +170,7 @@ def test_nonaxisymmetric_coordinates_recover_uniform_cartesian_field() -> None:
     """A shaped self-similar tube must not create a spurious Lorentz force."""
 
     config = MirrorConfig(
-        resolution=MirrorResolution(ns=9, mpol=2, ntheta=9, nxi=9),
+        resolution=MirrorResolution(ns=9, mpol=4, ntheta=9, nxi=9),
     )
     grid = config.build_grid()
     theta = jnp.asarray(grid.theta)
@@ -244,7 +244,7 @@ def test_energy_gradient_matches_central_difference_for_interior_shape() -> None
 
 def test_staggered_first_variation_matches_autodiff_for_3d_finite_beta() -> None:
     config = MirrorConfig(
-        resolution=MirrorResolution(ns=7, mpol=2, ntheta=7, nxi=11),
+        resolution=MirrorResolution(ns=7, mpol=3, ntheta=7, nxi=11),
         z_min=-1.3,
         z_max=1.1,
     )
@@ -278,7 +278,7 @@ def test_staggered_first_variation_matches_autodiff_for_3d_finite_beta() -> None
 
 def test_staggered_weak_force_matches_fixed_boundary_projection() -> None:
     config = MirrorConfig(
-        resolution=MirrorResolution(ns=7, mpol=2, ntheta=7, nxi=11),
+        resolution=MirrorResolution(ns=7, mpol=3, ntheta=7, nxi=11),
         z_min=-1.3,
         z_max=1.1,
     )

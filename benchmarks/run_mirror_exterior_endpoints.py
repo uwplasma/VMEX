@@ -97,10 +97,13 @@ def run(
 ) -> dict:
     """Run one beta sequence and return machine-readable diagnostics."""
 
+    if not axisymmetric and ntheta % 2 == 0:
+        raise ValueError("nonaxisymmetric mirror collocation requires odd ntheta")
+
     config = MirrorConfig(
         resolution=MirrorResolution(
             ns=ns,
-            mpol=0 if axisymmetric else 1,
+            mpol=0 if axisymmetric else (ntheta - 1) // 2,
             ntheta=1 if axisymmetric else ntheta,
             nxi=nxi,
         ),

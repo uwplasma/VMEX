@@ -210,11 +210,12 @@ class ThetaBasis:
             raise ValueError("ntheta must be >= 1")
         if mpol < 0:
             raise ValueError("mpol must be >= 0")
-        minimum = 1 if mpol == 0 else 2 * mpol + 1
-        if ntheta < minimum:
-            raise ValueError(f"ntheta={ntheta} cannot resolve mpol={mpol}; use >= {minimum}")
-        if mpol == 0 and ntheta != 1:
-            raise ValueError("axisymmetric theta basis uses one node")
+        required = 2 * mpol + 1
+        if ntheta != required:
+            raise ValueError(
+                f"theta collocation requires ntheta=2*mpol+1; got "
+                f"mpol={mpol}, ntheta={ntheta}"
+            )
         nodes = np.linspace(0.0, 2.0 * np.pi, ntheta, endpoint=False)
         return cls(nodes=nodes, weights=np.full(ntheta, 2.0 * np.pi / ntheta), mpol=mpol)
 

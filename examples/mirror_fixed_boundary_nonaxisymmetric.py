@@ -38,7 +38,7 @@ from vmec_jax.mirror.splines import (  # noqa: E402
 
 # Inputs: edit these constants, then run this file directly.
 CASES = ("rotating_ellipse", "straight_field_line")
-NS, MPOL, NTHETA, SOURCE_NXI = 5, 2, 12, 17
+NS, MPOL, NTHETA, SOURCE_NXI = 5, 8, 17, 17
 SPLINE_ELEMENTS = 4
 SHAPE_STAGES = (0.0, 0.25, 0.5, 0.75, 1.0)
 FTOL = 1.0e-12

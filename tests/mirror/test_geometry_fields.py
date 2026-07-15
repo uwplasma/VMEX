@@ -106,7 +106,7 @@ def test_theta_shaped_geometry_is_positive_and_has_correct_mean_volume() -> None
     epsilon = 0.12
     half_length = 1.25
     grid = MirrorConfig(
-        resolution=MirrorResolution(ns=13, mpol=3, ntheta=9, nxi=25),
+        resolution=MirrorResolution(ns=13, mpol=4, ntheta=9, nxi=25),
         z_min=-half_length,
         z_max=half_length,
     ).build_grid()
@@ -130,7 +130,7 @@ def test_theta_shaped_geometry_is_positive_and_has_correct_mean_volume() -> None
 
 def test_stream_function_field_is_discretely_divergence_free_and_conserves_flux() -> None:
     grid = MirrorConfig(
-        resolution=MirrorResolution(ns=11, mpol=3, ntheta=9, nxi=21),
+        resolution=MirrorResolution(ns=11, mpol=4, ntheta=9, nxi=21),
         z_min=-1.7,
         z_max=1.7,
     ).build_grid()

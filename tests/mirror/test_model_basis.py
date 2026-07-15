@@ -67,10 +67,12 @@ def test_mirror_config_freezes_supported_end_and_convergence_contract() -> None:
     assert MIRROR_INPUT_SCHEMA == "vmec_jax.mirror.input/1"
     assert MIRROR_OUTPUT_SCHEMA == "vmec_jax.mirror.mout/1"
 
-    with pytest.raises(ValueError, match="ntheta=4 cannot resolve mpol=2"):
+    with pytest.raises(ValueError, match=r"ntheta=2\*mpol\+1"):
         MirrorResolution(ns=5, mpol=2, ntheta=4, nxi=9)
-    with pytest.raises(ValueError, match="axisymmetric"):
+    with pytest.raises(ValueError, match=r"ntheta=2\*mpol\+1"):
         MirrorResolution(ns=5, mpol=0, ntheta=3, nxi=9)
+    with pytest.raises(ValueError, match=r"ntheta=2\*mpol\+1"):
+        MirrorResolution(ns=5, mpol=2, ntheta=7, nxi=9)
     with pytest.raises(ValueError, match="z_max"):
         MirrorConfig(z_min=1.0, z_max=1.0)
     with pytest.raises(ValueError, match="ftol"):
@@ -79,7 +81,7 @@ def test_mirror_config_freezes_supported_end_and_convergence_contract() -> None:
 
 def test_grid_and_state_shapes_are_explicit_and_pytree_compatible() -> None:
     config = MirrorConfig(
-        resolution=MirrorResolution(ns=7, mpol=2, ntheta=7, nxi=13),
+        resolution=MirrorResolution(ns=7, mpol=3, ntheta=7, nxi=13),
         z_min=-2.0,
         z_max=3.0,
     )
@@ -153,7 +155,7 @@ def test_cgl_operators_obey_integration_by_parts_and_spectral_interpolation() ->
 
 
 def test_theta_fft_derivative_and_quadrature_resolve_requested_modes() -> None:
-    basis = ThetaBasis.build(ntheta=13, mpol=5)
+    basis = ThetaBasis.build(ntheta=13, mpol=6)
     theta = jnp.asarray(basis.nodes)
     values = 0.7 + 0.4 * jnp.cos(3.0 * theta) - 0.2 * jnp.sin(5.0 * theta)
     expected = -1.2 * jnp.sin(3.0 * theta) - 1.0 * jnp.cos(5.0 * theta)
@@ -174,7 +176,7 @@ def test_theta_fft_derivative_and_quadrature_resolve_requested_modes() -> None:
 
 def _grid(*, ntheta: int = 1, nxi: int = 5):
     return MirrorConfig(
-        resolution=MirrorResolution(ns=3, mpol=0 if ntheta == 1 else 1, ntheta=ntheta, nxi=nxi)
+        resolution=MirrorResolution(ns=3, mpol=(ntheta - 1) // 2, ntheta=ntheta, nxi=nxi)
     ).build_grid()
 
 
@@ -183,7 +185,7 @@ def test_model_constructors_reject_invalid_static_contracts() -> None:
         ({"ns": 2}, "ns"),
         ({"mpol": -1}, "mpol"),
         ({"nxi": 1}, "nxi"),
-        ({"mpol": 1, "ntheta": 2}, "resolve"),
+        ({"mpol": 1, "ntheta": 2}, "collocation"),
     ):
         with pytest.raises(ValueError, match=message):
             MirrorResolution(**arguments)

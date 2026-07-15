@@ -216,7 +216,7 @@ def test_spline_adjoint_matches_reconverged_central_difference() -> None:
 
 def test_nonaxisymmetric_spline_adjoint_includes_stream_function() -> None:
     config = MirrorConfig(
-        resolution=MirrorResolution(ns=5, mpol=1, ntheta=4, nxi=7),
+        resolution=MirrorResolution(ns=5, mpol=1, ntheta=3, nxi=7),
         ftol=1.0e-12,
         max_iterations=1000,
     )

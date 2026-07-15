@@ -84,7 +84,7 @@ def test_boundary_fourier_amplitudes_are_grid_independent() -> None:
 
 
 def test_boundary_fourier_norms_do_not_use_a_symmetry_zero() -> None:
-    grid = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=2, ntheta=7, nxi=9)).build_grid()
+    grid = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=3, ntheta=7, nxi=9)).build_grid()
     theta = jnp.asarray(grid.theta)[:, None]
     xi = jnp.asarray(grid.xi)[None, :]
     boundary = MirrorBoundary(0.2 + 0.03 * xi * jnp.cos(theta))

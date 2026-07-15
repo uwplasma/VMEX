@@ -81,7 +81,7 @@ def test_closed_cylinder_has_exact_area_volume_and_orientation() -> None:
 
 
 def test_shaped_surface_satisfies_divergence_theorem_moments() -> None:
-    grid = _grid(ns=21, mpol=3, ntheta=9, nxi=33)
+    grid = _grid(ns=21, mpol=4, ntheta=9, nxi=33)
     theta = jnp.asarray(grid.theta)[:, None]
     xi = jnp.asarray(grid.xi)[None, :]
     radius = 0.31 * (1.0 + 0.08 * xi**2 + 0.04 * jnp.cos(2.0 * theta) * (1.0 - xi**2))
@@ -94,7 +94,7 @@ def test_shaped_surface_satisfies_divergence_theorem_moments() -> None:
 
 
 def test_caps_share_the_lateral_end_rings() -> None:
-    grid = _grid(ns=13, mpol=2, ntheta=7, nxi=17)
+    grid = _grid(ns=13, mpol=3, ntheta=7, nxi=17)
     theta = jnp.asarray(grid.theta)[:, None]
     xi = jnp.asarray(grid.xi)[None, :]
     boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.05 * jnp.cos(theta) * (1.0 + xi)), grid)
@@ -105,7 +105,7 @@ def test_caps_share_the_lateral_end_rings() -> None:
 
 
 def test_collocation_map_identifies_cap_centers_and_rims() -> None:
-    grid = _grid(ns=13, mpol=2, ntheta=7, nxi=17)
+    grid = _grid(ns=13, mpol=3, ntheta=7, nxi=17)
     theta = jnp.asarray(grid.theta)[:, None]
     xi = jnp.asarray(grid.xi)[None, :]
     surface = build_closed_mirror_surface(
@@ -332,9 +332,9 @@ def test_duffy_rule_is_differentiable_in_geometry_and_density() -> None:
     np.testing.assert_allclose(jnp.sum(geometry_gradient, axis=0), 0.0, atol=3.0e-15)
 
 
-@pytest.mark.parametrize("ntheta", [5, 6])
+@pytest.mark.parametrize("ntheta", [5, 7])
 def test_spectral_side_density_reproduces_fourier_chebyshev_data(ntheta: int) -> None:
-    grid = _grid(ns=7, mpol=2, ntheta=ntheta, nxi=7)
+    grid = _grid(ns=7, mpol=(ntheta - 1) // 2, ntheta=ntheta, nxi=7)
     surface = build_closed_mirror_surface(MirrorBoundary.from_radius(0.3, grid), grid)
     nside = 2 * grid.ntheta * (grid.nxi - 1)
     triangles = np.asarray(surface.triangles[:nside])
