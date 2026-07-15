@@ -438,9 +438,9 @@ evaluated-state parity tests, not as a second production state.
 Axisymmetric free-boundary implicit gradients
 ---------------------------------------------
 
-``free_boundary_adjoint`` currently differentiates the research axisymmetric exterior
-equilibrium with respect to a differentiable external-field callable, axial
-flux, pressure profile, and axial current. The physical fixed point
+``free_boundary_adjoint`` currently differentiates the research axisymmetric
+exterior equilibrium with respect to a differentiable external-field callable,
+axial flux, conserved mass profile, and axial current. The physical fixed point
 contains the lateral LCFS and plasma-interior radii. The exterior Neumann BIE
 eliminates vacuum unknowns, so its exact reverse-AD field and shape responses
 enter the interface-stress rows directly. The transpose solve reuses the
@@ -448,13 +448,17 @@ separable primal plasma preconditioner and does not assemble a dense Jacobian
 or retain nonlinear iterations.
 
 The validation uses a differentiable curl-free paraxial mirror field and
-checks its strength and axial-curvature controls against fully reconverged
-equilibria. Coil-design derivatives belong to the ESSOS integration layer;
-vmec_jax differentiates only the supplied field object.
+checks both its strength/axial-curvature controls and a finite-pressure mass
+direction against fully reconverged equilibria. Pressure changes through the
+same conserved-mass and solved-volume relation as the primal. End-cut radii
+and any central-pressure calibration target remain fixed. Coil-design
+derivatives belong to the ESSOS integration layer; vmec_jax differentiates
+only the supplied field object.
 
-This derivative holds fixed the end-cut radii and physical pressure profile.
-It remains a research API until the coefficient-native free-boundary primal
-lane passes its memory, strong-force, and refinement gates. The
+The adjoint consumes the primal coefficient residual, coefficient packing,
+and block preconditioner. It remains a research API until the
+coefficient-native free-boundary primal lane passes its memory, strong-force,
+and refinement gates. The
 nonaxisymmetric free-boundary derivative is deliberately unavailable because
 local Fourier-mode refinement failed; it will not be presented as a supported
 gradient.

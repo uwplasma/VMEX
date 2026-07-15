@@ -94,12 +94,17 @@ def run(
     *,
     spline_elements: int,
     axisymmetric: bool,
+    center_radius: float | None = None,
     beta_values: tuple[float, ...] = (0.0, 0.50),
 ) -> dict:
     """Run one beta sequence and return machine-readable diagnostics."""
 
     if not axisymmetric and ntheta % 2 == 0:
         raise ValueError("nonaxisymmetric mirror collocation requires odd ntheta")
+    if center_radius is None:
+        center_radius = 0.25 if axisymmetric else 0.2
+    if center_radius <= 0.0:
+        raise ValueError("center_radius must be positive")
 
     config = MirrorConfig(
         resolution=MirrorResolution(
@@ -135,7 +140,7 @@ def run(
         4.0e-7 * jnp.pi * 2.0e5 * 0.9**2 / (2.0 * (0.9**2 + (z - position) ** 2) ** 1.5) for position in (-1.0, 1.0)
     )
     center = grid.nxi // 2
-    flux = 0.5 * on_axis[center] * 0.2**2
+    flux = 0.5 * on_axis[center] * center_radius**2
     base = MirrorBoundary.from_axis_field(flux, on_axis, grid)
     boundary = base
     if not axisymmetric:
@@ -226,6 +231,7 @@ def run(
         "grid": {"ns": ns, "ntheta": ntheta, "nxi": nxi},
         "axisymmetric": axisymmetric,
         "field_preflight": field_preflight,
+        "initial_center_radius_m": center_radius,
         "spline_elements": spline_elements,
         "device": str(jax.devices()[0]),
         "wall_s_pair": wall,
@@ -242,6 +248,7 @@ def main() -> None:
     parser.add_argument("--nxi", type=int, required=True)
     parser.add_argument("--spline-elements", type=int, required=True)
     parser.add_argument("--axisymmetric", action="store_true")
+    parser.add_argument("--center-radius", type=float)
     beta_group = parser.add_mutually_exclusive_group()
     beta_group.add_argument("--beta-zero-only", action="store_true")
     beta_group.add_argument("--beta-values", nargs="+", type=float)
@@ -256,6 +263,7 @@ def main() -> None:
         args.nxi,
         spline_elements=args.spline_elements,
         axisymmetric=args.axisymmetric,
+        center_radius=args.center_radius,
         beta_values=beta_values,
     )
     text = json.dumps(result, indent=2)
