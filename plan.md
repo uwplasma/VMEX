@@ -19,6 +19,21 @@ Audit baseline (2026-07-14):
   examples, and parity a/d passed at the audit cutoff. Three inherited core
   shards were still running and are not being polled repeatedly.
 
+Execution checkpoint (2026-07-14, `fe4ade80` plus the pending WP0 evidence
+update):
+
+- diff: 57 files, meeting the 58-file ceiling;
+- mirror package: 13 modules, 7,826 source lines, 20 public lazy names, and no
+  source file above 931 lines;
+- mirror tests: ten substantive owner-aligned files;
+- unsupported ANIMEC implementation and tests removed; scalar pressure is the
+  only retained equilibrium model;
+- exterior mesh ownership is consolidated in `exterior.py`, and fixed/free
+  converged-state derivatives are consolidated in `implicit.py`;
+- the corrected concentric-loop free-boundary scan converged at all six beta
+  values on three grids, but its independently reconstructed pointwise force
+  is nonmonotone under refinement and therefore remains a promotion blocker.
+
 The branch contains real equilibrium work, but it is not release-ready. In
 particular, one nominally axisymmetric ESSOS benchmark offsets the two coils in
 opposite x directions, the closed-hybrid pointwise force reconstruction is not
@@ -192,33 +207,25 @@ conditions must match VMEC2000. The current branch does not meet this contract.
 
 ### 3.2 Evidence that is not accepted
 
-1. `benchmarks/run_mirror_exterior_endpoints.py` currently sets opposite
-   x-offsets on both ESSOS loops for axisymmetric and nonaxisymmetric runs. The
-   nominal axisymmetric direct-coil scan is therefore not axisymmetric.
-2. The existing axisymmetric JSON uses a different initial radius from the
-   current runner and cannot yet be reproduced by that runner. It remains
-   historical evidence, not the release benchmark.
-3. Earlier physical `B.n` values were computed with panel normals while the
-   field was reconstructed with analytic LCFS normals. The implementation now
-   separates BIE panel data from the physical trace and gives near-roundoff
-   tangency in focused tests, but the corrected concentric-coil refinement has
-   not been completed.
-4. Nonaxisymmetric free-boundary global residuals converge, but local Fourier
+1. The corrected concentric two-loop scan reaches variational residuals from
+   `2.4e-15` to `1.1e-14`, physical lateral `B.n` below `1.5e-18 T`, and raw
+   stress-jump RMS below `4.4e-11 Pa`. However, normalized pointwise force at
+   beta 50% changes from `0.155` to `0.197` to `0.216` over the three grids.
+   The solver result is physically plausible but is not promoted until the
+   force reconstruction passes manufactured and refinement tests.
+2. Nonaxisymmetric free-boundary global residuals converge, but local Fourier
    observables change by 73-81% between available grids and the medium case
    costs roughly 801 seconds and 4.25 GiB. This lane is deferred.
-5. The finite-beta rotating-ellipse `m=2` field-strength amplitude is about 48%
+3. The finite-beta rotating-ellipse `m=2` field-strength amplitude is about 48%
    above the direct paraxial estimate at the finest bounded knot level.
-6. The periodic preconditioner preserves the state but leaves a relative
+4. The periodic preconditioner preserves the state but leaves a relative
    linear residual of `0.136` after 3,000 GMRES iterations on an 892-variable
    racetrack. CG and MINRES are also unacceptably stalled. Closed matrix-free
    primal solves are disabled.
-7. The complete circular-torus pointwise-force norm improves only from `0.709`
+5. The complete circular-torus pointwise-force norm improves only from `0.709`
    at `ns=5` to `0.570` at `ns=7`. A roundoff energy gradient does not validate
    this reconstruction.
-8. ANIMEC-style closures and tests are exploratory. They have no
-   equation-by-equation parity with current STELLOPT `_ANIMEC` and no matched
-   independent finite-beta equilibrium.
-9. There is no release hybrid example, closed MOUT contract, circular
+6. There is no release hybrid example, closed MOUT contract, circular
    VMEC/vmec_jax parity result, open-leg limit, or hybrid derivative result.
 
 ### 3.3 Current code structure
@@ -228,22 +235,21 @@ The retained ownership is mostly sound:
 | Concern | Current source |
 |---|---|
 | contracts and profiles | `model.py` |
-| Chebyshev/Fourier grids | `basis.py` |
+| Chebyshev/Fourier and cubic B-spline bases | `basis.py` |
 | open/closed geometry | `geometry.py` |
 | scalar energy and force diagnostics | `forces.py` |
 | nodal fixed solve and open preconditioner | `solver.py` |
-| spline basis, state, and closed solve | `splines.py` |
+| spline states and closed solve | `splines.py` |
 | free solve and beta continuation | `free_boundary.py` |
-| exterior surface and Green solve | `exterior*.py` |
-| converged-state derivatives | `implicit.py`, `free_boundary_implicit.py` |
+| exterior surface and Green solve | `exterior.py`, `exterior_bie.py` |
+| converged-state derivatives | `implicit.py` |
 | MOUT, restart, diagnostics, plots | `output.py` |
 | independent analytic fixtures | `analytic.py` |
 
-The remaining bloat is concentrated rather than diffuse: `forces.py` has
-1,098 lines, `splines.py` 1,063, `solver.py` 1,001, and `output.py` 912.
-ANIMEC branches, duplicated nonlinear-solve plumbing, three exterior modules,
-and separate fixed/free derivative modules are the primary simplification
-targets.
+The package now meets every source-structure ceiling. Remaining simplification
+is artifact-facing: consolidate benchmark records, make room for the hybrid
+root example by folding the gradient demonstration into the fixed 3-D example,
+and keep new physics inside the existing ownership boundaries.
 
 ## 4. External source and literature decisions
 
@@ -438,7 +444,7 @@ Each package ends with focused tests, a compact evidence update, a small commit,
 and a push. CI is checked after grouped work, not polled after every commit. No
 new physics lane is introduced before these packages finish.
 
-### WP0 - Correct the baseline and evidence
+### WP0 - Correct the baseline and evidence (physics complete; evidence update pending)
 
 1. Make ESSOS coil offsets conditional on `not axisymmetric` in
    `run_mirror_exterior_endpoints.py`.
@@ -457,7 +463,7 @@ new physics lane is introduced before these packages finish.
 Gate: the direct-coil benchmark is actually axisymmetric, exactly reproducible,
 and all stored claims identify their field model and grid.
 
-### WP1 - Remove unsupported breadth and simplify
+### WP1 - Remove unsupported breadth and simplify (source/test targets complete)
 
 1. Delete public ANIMEC, bi-Maxwellian, tabulated `(s,B)` closure, anisotropic
    solve, anisotropic benchmarks, and research-only tests. Retain a short docs
@@ -609,18 +615,18 @@ Percentages estimate accepted promotion evidence, not code volume.
 |---|---:|---|
 | Axisymmetric fixed mirror | 90% | pointwise reconstruction, final spline derivatives, release evidence |
 | Nonaxisymmetric fixed mirror | 82% | paraxial amplitude, SFLM refinement, pointwise force, release evidence |
-| Axisymmetric free mirror | 84% | corrected scan passes; serialize full diagnostics, scaling, adjoint rerun |
+| Axisymmetric free mirror | 86% | corrected scan stored; pointwise force, scaling, adjoint rerun |
 | Nonaxisymmetric free mirror | 100% deferred | public claim removed; retain negative evidence only |
 | Open native B-splines | 84% | fixed-lane promotion; spline free boundary explicitly deferred |
 | Fixed closed B-spline hybrid | 58% | limits, pointwise force, beta scan, derivatives, output |
 | Free closed hybrid | 10% | one conditional attempt after fixed promotion |
 | Structured preconditioning | 48% | one coupled radius/lambda block attempt |
 | Implicit derivatives | 82% | unsupported closure branches removed; closed-axis controls remain |
-| Source/API simplification | 84% | ANIMEC removed; module/test consolidation remains |
-| Documentation/examples | 72% | isotropic docs current; README showcases and hybrid example remain |
+| Source/API simplification | 96% | source/module/test/API ceilings met; consolidate artifacts/examples |
+| Documentation/examples | 74% | isotropic docs current; README showcases and hybrid example remain |
 | ESSOS ownership | 100% | retain callable/MGRID interchange only |
 
-Weighted completion of the required release path is approximately 75%. The
+Weighted completion of the required release path is approximately 76%. The
 percentage will only increase when a gate above passes; deleting an unsupported
 lane counts toward simplification, not toward its physics promotion.
 
@@ -689,7 +695,6 @@ Every implementation update reports:
 6. completion percentage for every open lane;
 7. anything needed from the user.
 
-No user input is currently required. The next executable action is to finish
-WP0 by serializing the corrected pointwise, physical-normal, raw-stress, and
-mirror-ratio diagnostics, then finish WP1 module/test consolidation before
-adding more hybrid code.
+No user input is currently required. The next executable action is to commit
+WP0's corrected three-grid record, finish WP1's benchmark/example artifact
+consolidation, and then repair the WP2 half-to-full pointwise-force diagnostic.
