@@ -36,8 +36,7 @@ class MoutData:
     lambda_stream: Any
     mod_b: Any
     b_xyz: Any
-    p_perpendicular: Any
-    p_parallel: Any
+    pressure: Any
     history: Any
     coil_xyz: Any
     ftol: float
@@ -50,7 +49,6 @@ class MoutData:
     staggered_weak_max: float = np.nan
     pointwise_force_rms: float = np.nan
     normalized_divergence_rms: float = np.nan
-    closure: str = "unknown"
     message: str = ""
     schema: str = MIRROR_OUTPUT_SCHEMA
 
@@ -197,7 +195,7 @@ def summarize_axisymmetric_beta_scan(
     reference_field_squared = float(reference_field) ** 2
     summaries = []
     for requested_beta, result in zip(betas, results, strict=True):
-        pressure = result.perpendicular_pressure
+        pressure = result.pressure
         axis_field = jnp.sqrt(result.plasma_b_squared[0, 0, center])
         if hasattr(result.vacuum_field, "lateral_field_xyz"):
             vacuum_xyz = result.vacuum_field.lateral_field_xyz[center]
@@ -251,7 +249,7 @@ def summarize_nonaxisymmetric_beta_scan(
     reference_field_squared = float(reference_field) ** 2
     summaries = []
     for requested_beta, result in zip(betas, results, strict=True):
-        pressure = result.perpendicular_pressure
+        pressure = result.pressure
         center_field = jnp.sqrt(result.plasma_b_squared[0, :, center])
         boundary_modes = boundary_fourier_amplitudes(result.boundary)
         mode_l2, mode_max = boundary_fourier_norms(result.boundary, grid)
@@ -298,10 +296,8 @@ def mout_from_result(
     axial_flux_derivative: Any,
     current_derivative: Any = 0.0,
     boundary: Any | None = None,
-    perpendicular_pressure: Any | None = None,
-    parallel_pressure: Any | None = None,
+    pressure: Any | None = None,
     coil_xyz: Any | None = None,
-    closure: str = "unknown",
 ) -> MoutData:
     """Collect a fixed- or free-boundary result and plotting fields."""
 
@@ -332,18 +328,17 @@ def mout_from_result(
         )
     )
     shape = tuple(state.radius_scale.shape)
-    if perpendicular_pressure is None:
-        perpendicular_pressure = getattr(result, "perpendicular_pressure", None)
-    if perpendicular_pressure is None and hasattr(result.energy, "pressure"):
-        perpendicular_pressure = np.broadcast_to(np.asarray(result.energy.pressure)[:, None, None], shape)
-    perpendicular = np.full(shape, np.nan) if perpendicular_pressure is None else np.asarray(perpendicular_pressure)
-    if parallel_pressure is None and closure == "isotropic":
-        parallel_pressure = perpendicular
-    parallel = np.full(shape, np.nan) if parallel_pressure is None else np.asarray(parallel_pressure)
-    if perpendicular.shape != shape:
-        raise ValueError("perpendicular_pressure must match the solved state")
-    if parallel.shape != perpendicular.shape:
-        raise ValueError("parallel_pressure must match perpendicular_pressure")
+    if pressure is None:
+        pressure = getattr(result, "pressure", None)
+    if pressure is None:
+        energy = getattr(result, "plasma_energy", getattr(result, "energy", None))
+        if energy is not None and hasattr(energy, "pressure"):
+            pressure = np.broadcast_to(
+                np.asarray(energy.pressure)[:, None, None], shape
+            )
+    pressure = np.full(shape, np.nan) if pressure is None else np.asarray(pressure)
+    if pressure.shape != shape:
+        raise ValueError("pressure must match the solved state")
     coils = np.empty((0, 0, 3)) if coil_xyz is None else np.asarray(coil_xyz)
     if coils.ndim != 3 or coils.shape[-1] != 3:
         raise ValueError("coil_xyz must have shape (ncoil, npoint, 3)")
@@ -371,8 +366,7 @@ def mout_from_result(
         lambda_stream=np.asarray(state.lambda_stream),
         mod_b=mod_b,
         b_xyz=b_xyz,
-        p_perpendicular=perpendicular,
-        p_parallel=parallel,
+        pressure=pressure,
         history=history,
         coil_xyz=coils,
         ftol=float(config.ftol),
@@ -385,7 +379,6 @@ def mout_from_result(
         staggered_weak_max=(float(weak_force.maximum) if weak_force is not None else np.nan),
         pointwise_force_rms=(float(force.normalized_rms) if force is not None else np.nan),
         normalized_divergence_rms=float(getattr(result, "normalized_divergence_rms", np.nan)),
-        closure=str(closure),
         message=str(result.message),
     )
 
@@ -400,8 +393,7 @@ def _finite_shape(data: MoutData) -> tuple[int, int, int]:
         "lambda_stream": shape,
         "mod_b": shape,
         "b_xyz": (*shape, 3),
-        "p_perpendicular": shape,
-        "p_parallel": shape,
+        "pressure": shape,
         "s": (ns,),
         "theta": (ntheta,),
         "xi": (nxi,),
@@ -442,7 +434,6 @@ def write_mout(path: str | Path, data: MoutData, *, overwrite: bool = True) -> P
             "staggered_weak_max",
             "pointwise_force_rms",
             "normalized_divergence_rms",
-            "closure",
             "message",
         ):
             value = getattr(data, name)
@@ -468,8 +459,7 @@ def write_mout(path: str | Path, data: MoutData, *, overwrite: bool = True) -> P
             "lambda_stream": (("s", "theta", "xi"), data.lambda_stream),
             "mod_b": (("s", "theta", "xi"), data.mod_b),
             "b_xyz": (("s", "theta", "xi", "xyz"), data.b_xyz),
-            "p_perpendicular": (("s", "theta", "xi"), data.p_perpendicular),
-            "p_parallel": (("s", "theta", "xi"), data.p_parallel),
+            "pressure": (("s", "theta", "xi"), data.pressure),
             "history": (("history_row", "history_column"), history),
             "coil_xyz": (("coil", "coil_point", "xyz"), coils),
         }
@@ -500,8 +490,7 @@ def read_mout(path: str | Path) -> MoutData:
                 "lambda_stream",
                 "mod_b",
                 "b_xyz",
-                "p_perpendicular",
-                "p_parallel",
+                "pressure",
                 "history",
                 "coil_xyz",
             )
@@ -747,7 +736,7 @@ def plot_mout(
     center = int(np.argmin(np.abs(z)))
     boundary = np.take(np.asarray(data.boundary_radius), z_order, axis=1)
     mod_b = np.take(np.asarray(data.mod_b), z_order, axis=2)
-    pressure = np.take(np.asarray(data.p_perpendicular), z_order, axis=2)
+    pressure = np.take(np.asarray(data.pressure), z_order, axis=2)
 
     fig, axes = plt.subplots(2, 2, figsize=(11.5, 7.2), constrained_layout=True)
     axes[0, 0].plot(z, np.mean(boundary, axis=0), color="#0072B2", lw=2)
@@ -782,7 +771,7 @@ def plot_mout(
     axes[1, 0].set(
         title="Midplane pressure",
         xlabel="Normalized radius sqrt(s)",
-        ylabel="p_perp [kPa]",
+        ylabel="Pressure [kPa]",
     )
     history = np.asarray(data.history)
     if history.size:

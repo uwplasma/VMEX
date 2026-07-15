@@ -12,13 +12,10 @@ jax.config.update("jax_enable_x64", True)
 import jax.numpy as jnp  # noqa: E402
 
 from vmec_jax.mirror import (  # noqa: E402
-    BiMaxwellianPressureClosure,
-    IsotropicPressureClosure,
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
     MirrorState,
-    TabulatedPressureClosure,
     solve_free_boundary_cli,
 )
 from vmec_jax.mirror.output import (  # noqa: E402
@@ -76,39 +73,6 @@ def test_model_constructors_reject_invalid_static_contracts() -> None:
             state, MirrorBoundary(jnp.ones((2, 2))), grid
         )
 
-    with pytest.raises(ValueError, match="greater than one"):
-        IsotropicPressureClosure(jnp.ones(1), gamma=1.0)
-    for arguments, message in (
-        ({"temperature_ratio": 0.0, "critical_field": 1.0}, "temperature_ratio"),
-        ({"temperature_ratio": 0.5, "critical_field": 0.0}, "critical_field"),
-        (
-            {"temperature_ratio": 0.5, "critical_field": 1.0, "gamma": 1.0},
-            "gamma",
-        ),
-    ):
-        with pytest.raises(ValueError, match=message):
-            BiMaxwellianPressureClosure(
-                jnp.ones(1), jnp.ones(1), **arguments
-            )
-
-
-@pytest.mark.parametrize(
-    ("s_nodes", "b_nodes", "values", "gamma", "message"),
-    [
-        ([[0.0, 1.0]], [1.0, 2.0], np.ones((2, 2)), 0.0, "one-dimensional"),
-        ([0.0], [1.0, 2.0], np.ones((1, 2)), 0.0, "at least two"),
-        ([0.0, 1.0], [1.0, 2.0], np.ones((3, 2)), 0.0, "shape"),
-        ([0.0, 0.0], [1.0, 2.0], np.ones((2, 2)), 0.0, "increasing"),
-        ([0.0, 1.0], [1.0, 2.0], np.ones((2, 2)), 1.0, "gamma"),
-    ],
-)
-def test_tabulated_closure_validates_tables(
-    s_nodes, b_nodes, values, gamma, message
-) -> None:
-    with pytest.raises(ValueError, match=message):
-        TabulatedPressureClosure(s_nodes, b_nodes, values, gamma=gamma)
-
-
 def test_fourier_and_beta_diagnostics_validate_inputs() -> None:
     grid = _grid()
     with pytest.raises(ValueError, match="shape"):
@@ -161,7 +125,7 @@ def test_beta_diagnostics_evaluate_solved_state(ntheta: int) -> None:
         boundary=boundary,
         plasma_energy=energy,
         plasma_b_squared=energy.b_squared,
-        perpendicular_pressure=pressure,
+        pressure=pressure,
         vacuum_field=SimpleNamespace(
             lateral_field_xyz=jnp.ones((grid.nxi, 3))
         ),
@@ -198,12 +162,6 @@ def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
         solve_free_boundary_cli(**common, target_central_pressure=0.0)
     with pytest.raises(ValueError, match="initial_mass_scale"):
         solve_free_boundary_cli(**common, initial_mass_scale=0.0)
-    with pytest.raises(ValueError, match="mutually exclusive"):
-        solve_free_boundary_cli(
-            **common,
-            mass_profile=1.0,
-            pressure_closure=IsotropicPressureClosure(jnp.asarray([1.0])),
-        )
     with pytest.raises(ValueError, match="initial boundary"):
         solve_free_boundary_cli(
             **{**common, "initial_boundary": MirrorBoundary(jnp.ones((2, 5)))}

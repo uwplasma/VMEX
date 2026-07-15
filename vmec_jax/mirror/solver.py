@@ -26,14 +26,9 @@ from scipy.sparse.linalg import LinearOperator, gmres
 
 from ..core.device import resolve_device
 from .forces import (
-    AnisotropicForceResidual,
-    AnisotropicMirrorEnergy,
     IsotropicForceResidual,
     MirrorEnergy,
     VariationalResidual,
-    anisotropic_fixed_boundary_variational_residual,
-    anisotropic_force_residual,
-    anisotropic_mirror_energy,
     fixed_boundary_variational_residual,
     isotropic_force_residual,
     isotropic_staggered_fixed_boundary_gradient,
@@ -41,20 +36,14 @@ from .forces import (
     mirror_energy,
 )
 from .geometry import normalized_divergence_rms
-from .model import (
-    MirrorBoundary,
-    MirrorConfig,
-    MirrorState,
-    PressureClosure,
-    project_fixed_boundary_state,
-)
+from .model import MirrorBoundary, MirrorConfig, MirrorState, project_fixed_boundary_state
 
 Array = Any
 _DEVICE_ACTIVE = object()
 _HOST_REFERENCE_MAX_SIZE = 1024
 
 
-def _valid_energy_objective(energy: MirrorEnergy | AnisotropicMirrorEnergy, energy_scale: float) -> Array:
+def _valid_energy_objective(energy: MirrorEnergy, energy_scale: float) -> Array:
     """Normalize energy and reject states with crossed flux surfaces."""
 
     value = energy.total / float(energy_scale)
@@ -72,9 +61,9 @@ class MirrorSolveResult:
     """
 
     state: MirrorState
-    energy: MirrorEnergy | AnisotropicMirrorEnergy
+    energy: MirrorEnergy
     variational: VariationalResidual
-    force: IsotropicForceResidual | AnisotropicForceResidual
+    force: IsotropicForceResidual
     staggered_weak_force: VariationalResidual | None
     normalized_divergence_rms: Array
     history: Array
@@ -713,7 +702,6 @@ def solve_fixed_boundary_cli(
     mass_profile: Array = 0.0,
     current_derivative: Array = 0.0,
     gamma: float = 5.0 / 3.0,
-    pressure_closure: PressureClosure | None = None,
     solve_lambda: bool = False,
     gradient_tolerance: float = 1.0e-11,
     require_convergence: bool = False,
@@ -721,12 +709,10 @@ def solve_fixed_boundary_cli(
 ) -> MirrorSolveResult:
     """Solve a fixed-boundary mirror with host L-BFGS/Newton control.
 
-    Supplying ``solve_lambda=True`` enables the gauge-free M4 stream-function
-    variables while preserving their fixed end-cut values. A
-    ``pressure_closure`` selects the consistent ANIMEC functional; otherwise
-    the mass-conserving isotropic functional is used. ``device=None`` applies
-    the measured core device policy; an explicit device or JAX platform pin is
-    always honored.
+    Supplying ``solve_lambda=True`` enables the gauge-free stream-function
+    variables while preserving their fixed end-cut values. ``device=None``
+    applies the measured core device policy; an explicit device or JAX
+    platform pin is always honored.
     """
 
     if device is not _DEVICE_ACTIVE:
@@ -742,7 +728,6 @@ def solve_fixed_boundary_cli(
                     mass_profile=mass_profile,
                     current_derivative=current_derivative,
                     gamma=gamma,
-                    pressure_closure=pressure_closure,
                     solve_lambda=solve_lambda,
                     gradient_tolerance=gradient_tolerance,
                     require_convergence=require_convergence,
@@ -770,44 +755,24 @@ def solve_fixed_boundary_cli(
     x0 = vectorizer.pack()
     lower_bounds, upper_bounds = vectorizer.bounds()
 
-    if pressure_closure is None:
-        energy_kwargs = {
-            "axial_flux_derivative": axial_flux_derivative,
-            "mass_profile": mass_profile,
-            "current_derivative": current_derivative,
-            "gamma": gamma,
-        }
+    energy_kwargs = {
+        "axial_flux_derivative": axial_flux_derivative,
+        "mass_profile": mass_profile,
+        "current_derivative": current_derivative,
+        "gamma": gamma,
+    }
 
-        def evaluate_energy(state: MirrorState) -> MirrorEnergy | AnisotropicMirrorEnergy:
-            return mirror_energy(state, grid, **energy_kwargs)
+    def evaluate_energy(state: MirrorState) -> MirrorEnergy:
+        return mirror_energy(state, grid, **energy_kwargs)
 
-        def evaluate_variational(state: MirrorState) -> VariationalResidual:
-            return fixed_boundary_variational_residual(state, boundary, grid, **energy_kwargs)
+    def evaluate_variational(state: MirrorState) -> VariationalResidual:
+        return fixed_boundary_variational_residual(state, boundary, grid, **energy_kwargs)
 
-        def evaluate_force(
-            state: MirrorState, energy: MirrorEnergy | AnisotropicMirrorEnergy
-        ) -> IsotropicForceResidual | AnisotropicForceResidual:
-            del state
-            return isotropic_force_residual(energy, grid)
-
-    else:
-        energy_kwargs = {
-            "axial_flux_derivative": axial_flux_derivative,
-            "current_derivative": current_derivative,
-        }
-
-        def evaluate_energy(state: MirrorState) -> MirrorEnergy | AnisotropicMirrorEnergy:
-            return anisotropic_mirror_energy(state, grid, pressure_closure, **energy_kwargs)
-
-        def evaluate_variational(state: MirrorState) -> VariationalResidual:
-            return anisotropic_fixed_boundary_variational_residual(
-                state, boundary, grid, pressure_closure, **energy_kwargs
-            )
-
-        def evaluate_force(
-            state: MirrorState, energy: MirrorEnergy | AnisotropicMirrorEnergy
-        ) -> IsotropicForceResidual | AnisotropicForceResidual:
-            return anisotropic_force_residual(state, energy, grid, pressure_closure)
+    def evaluate_force(
+        state: MirrorState, energy: MirrorEnergy
+    ) -> IsotropicForceResidual:
+        del state
+        return isotropic_force_residual(energy, grid)
 
     initial_energy = evaluate_energy(projected_initial)
     energy_scale = max(abs(float(initial_energy.total)), np.finfo(float).tiny)
@@ -851,8 +816,6 @@ def solve_fixed_boundary_cli(
         )
 
     def packed_staggered_weak(state: MirrorState) -> VariationalResidual | None:
-        if pressure_closure is not None:
-            return None
         weak = isotropic_staggered_weak_residual(
             state,
             boundary,
@@ -962,37 +925,6 @@ def solve_fixed_boundary_cli(
     if require_convergence and not converged:
         raise MirrorConvergenceError(result)
     return result
-
-
-def solve_anisotropic_fixed_boundary_cli(
-    initial_state: MirrorState,
-    boundary: MirrorBoundary,
-    grid: "MirrorGrid",
-    config: MirrorConfig,
-    closure: PressureClosure,
-    *,
-    axial_flux_derivative: Array,
-    current_derivative: Array = 0.0,
-    solve_lambda: bool = False,
-    gradient_tolerance: float = 1.0e-11,
-    require_convergence: bool = False,
-    device: Any = None,
-) -> MirrorSolveResult:
-    """Solve a consistent anisotropic fixed-boundary mirror equilibrium."""
-
-    return solve_fixed_boundary_cli(
-        initial_state,
-        boundary,
-        grid,
-        config,
-        axial_flux_derivative=axial_flux_derivative,
-        current_derivative=current_derivative,
-        pressure_closure=closure,
-        solve_lambda=solve_lambda,
-        gradient_tolerance=gradient_tolerance,
-        require_convergence=require_convergence,
-        device=device,
-    )
 
 
 from typing import TYPE_CHECKING

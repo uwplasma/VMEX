@@ -189,7 +189,6 @@ for case in CASES:
             config,
             boundary=evaluated_boundary,
             axial_flux_derivative=AXIAL_FLUX_DERIVATIVE[case],
-            closure="isotropic",
         ),
     )
     plot_mout(mout_path, OUTPUT_DIR, name=case)

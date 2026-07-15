@@ -36,22 +36,20 @@ Current capability
 The branch currently includes:
 
 * axisymmetric and nonaxisymmetric fixed-boundary finite-current solves,
-* isotropic and ANIMEC-style anisotropic pressure energies and independent
-  tensor-force diagnostics,
+* an isotropic VMEC-style conserved-mass pressure energy with independent
+  weak and pointwise force diagnostics,
 * a free-space boundary-integral vacuum model with an ``xyz -> B`` field
   callable or the shared ESSOS/MAKEGRID-compatible ``MgridField``; coil
   geometry and Biot-Savart evaluation remain in ESSOS,
-* coupled axisymmetric isotropic and anisotropic free-boundary beta
-  continuation with compressed restart files,
+* coupled axisymmetric free-boundary beta continuation with compressed
+  restart files,
 * a closed-surface Neumann solve on the lateral LCFS and both end disks,
-* a genuine theta-dependent exterior free-boundary solve with finite axial
-  current and a nonaxisymmetric external field, and
 * component-wise nonlinear convergence checks at a requested ``ftol=1e-12``.
 
 The axisymmetric free-boundary path has completed unbounded-exterior studies
-through 50% requested beta. The
-nonaxisymmetric path also converges through 50%, but its point observables are
-not monotone under spatial refinement, so it is not promoted. A native periodic
+through 50% requested beta. The nonaxisymmetric free-boundary path is a
+deferred research lane because its point observables were not monotone under
+spatial refinement. A native periodic
 B-spline hybrid geometry and fixed-boundary research solve now exist. The
 removed Fourier projection is not a supported capability, and the hybrid still
 requires the residual, limiting-case, and derivative gates below.
@@ -101,9 +99,9 @@ Straight-axis mirror examples write mirror-native ``mout_*.nc`` files and
 render horizontal 3D, coil, cap-to-cap field-line, ``|B|``, pressure,
 cross-section, and residual figures. The same figures can be regenerated with
 ``vmec --plot mout_*.nc``. The data include geometry, the stream function,
-Cartesian magnetic field, both pressure moments, interface residuals, solver
+Cartesian magnetic field, isotropic pressure, interface residuals, solver
 history, normalized variational, staggered-weak, and pointwise-force residuals,
-normalized ``div(B)``, closure metadata, and optional coil curves. The
+normalized ``div(B)``, and optional coil curves. The
 variational residual defines ``ftol``. The staggered weak residual independently
 assembles the first variation on the energy quadrature and is checked on the
 same constrained solver variables. The pointwise force reconstructs
@@ -351,14 +349,6 @@ factorization reaches ``2.69e-15`` without a GMRES correction, but costs 4.79
 seconds for this one right-hand side. Unlike a many-column forward Jacobian,
 the scalar reverse adjoint cannot amortize its assembly, so preconditioned
 GMRES remains the default and block mode is an opt-in verification path.
-Anisotropic closure pytrees use the same adjoint. A consistent isotropic closure evaluated through
-the anisotropic functional validates closure coefficients, boundary, flux, and
-current together to ``5.22e-9`` relative against reconverged finite
-differences. A bi-Maxwellian case with positive ellipticity indicators also
-validates mass and hot-fraction coefficient gradients to ``2.99e-9``.
-A tabulated closure keeps its interpolation knots static and validates pressure
-table-value gradients to ``5.34e-8``.
-
 ``solve_fixed_boundary_implicit`` exposes the same converged state directly
 to JAX objectives. Its static context keeps the host solver out of the AD tape::
 
@@ -372,8 +362,8 @@ to JAX objectives. Its static context keeps the host solver out of the AD tape::
        ).radius_scale[1, 0, grid.nxi // 2]
    )(parameters)
 
-The custom VJP matches the explicit adjoint for both isotropic and registered
-anisotropic controls. The supported free-boundary field derivative follows.
+The custom VJP matches the explicit isotropic adjoint. The supported
+free-boundary field derivative follows.
 
 ``spline_fixed_boundary_adjoint`` uses that same transpose-solve implementation
 on the coefficient-native residual. Boundary spline coefficients, flux,
@@ -471,12 +461,6 @@ coils, cap-to-cap field lines, field arrows, and coupled residual histories.
 Generated results are ignored by git. CSV rows include closed-surface
 compatibility and BIE condition number for every beta point.
 
-``PRESSURE_MODEL`` selects the mass-conserving isotropic scan, a consistent
-bi-Maxwellian ANIMEC closure, or a tabulated ``p_parallel(s,B)`` sampled from
-that closure. In the anisotropic lane the solved beta target is midplane
-``p_perp``, the interface stress uses ``p_perp``, and convergence also requires
-the firehose/mirror ellipticity indicators to remain valid.
-
 Set ``SAVE_RESTARTS = True`` to write one compressed ``.npz`` hot-start per
 beta point. :func:`vmec_jax.mirror.output.load_free_boundary_restart` checks its
 schema and plasma-grid shape before returning the boundary, plasma state, and
@@ -523,9 +507,9 @@ al., `Confinement performance predictions for a high field axisymmetric tandem
 mirror <https://doi.org/10.1017/S002237782510055X>`_. A checked Pleiades
 Green-function reference at upstream commit ``0161abb3`` gives a 10% field
 ratio of 0.952754 on a 51 by 101 grid. The production mixed-truncation
-``vmec_jax`` solve gives 0.952176, a 0.061% relative difference. Boundary and
-anisotropic independent-reference curves
-remain promotion gates rather than being replaced by this scalar comparison.
+``vmec_jax`` solve gives 0.952176, a 0.061% relative difference. Boundary
+independent-reference curves remain promotion gates rather than being replaced
+by this scalar comparison.
 That study reports robust Pleiades equilibria for ``beta < 1`` and the expected
 outward flux-surface expansion and diamagnetic field depression. Extending the
 numerical gate to 50% therefore probes a scientifically relevant nonlinear

@@ -18,22 +18,16 @@ import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
 from solvax import block_thomas_factor, block_thomas_solve
 
-from .forces import (
-    AnisotropicMirrorEnergy,
-    MirrorEnergy,
-    anisotropic_mirror_energy,
-    mirror_energy,
-)
+from .forces import MirrorEnergy, mirror_energy
 from .model import MirrorBoundary, MirrorState, project_fixed_boundary_state
 from .solver import (
     _MirrorStateVectorizer,
     _packed_preconditioner,
-    solve_anisotropic_fixed_boundary_cli,
     solve_fixed_boundary_cli,
 )
 
 Array = Any
-MirrorQuantity = Callable[[MirrorState, MirrorEnergy | AnisotropicMirrorEnergy], Array]
+MirrorQuantity = Callable[[MirrorState, MirrorEnergy], Array]
 
 
 @dataclass(frozen=True)
@@ -44,7 +38,6 @@ class FixedBoundaryParameters:
     axial_flux_derivative: Array
     mass_profile: Array
     current_derivative: Array
-    pressure_closure: Any
 
 
 @dataclass(frozen=True)
@@ -100,7 +93,6 @@ jax.tree_util.register_dataclass(
         "axial_flux_derivative",
         "mass_profile",
         "current_derivative",
-        "pressure_closure",
     ],
     meta_fields=[],
 )
@@ -132,7 +124,6 @@ def fixed_boundary_parameters(
     axial_flux_derivative: Array,
     mass_profile: Array = 0.0,
     current_derivative: Array = 0.0,
-    pressure_closure: Any = None,
 ) -> FixedBoundaryParameters:
     """Collect fixed-boundary controls in a differentiable pytree."""
 
@@ -141,7 +132,6 @@ def fixed_boundary_parameters(
         axial_flux_derivative=jnp.asarray(axial_flux_derivative),
         mass_profile=jnp.asarray(mass_profile),
         current_derivative=jnp.asarray(current_derivative),
-        pressure_closure=pressure_closure,
     )
 
 
@@ -337,11 +327,8 @@ def fixed_boundary_adjoint(
 
     if not bool(result.converged):
         raise ValueError("implicit differentiation requires a converged mirror result")
-    if not isinstance(result.energy, (MirrorEnergy, AnisotropicMirrorEnergy)):
+    if not isinstance(result.energy, MirrorEnergy):
         raise ValueError("unsupported converged mirror energy model")
-    anisotropic = parameters.pressure_closure is not None
-    if anisotropic != isinstance(result.energy, AnisotropicMirrorEnergy):
-        raise ValueError("pressure_closure must match the converged energy model")
     if rtol <= 0.0 or max_restarts < 1:
         raise ValueError("rtol and max_restarts must be positive")
     if linear_solver not in {"block", "gmres"}:
@@ -362,18 +349,8 @@ def fixed_boundary_adjoint(
             vectorizer.unpack(x), MirrorBoundary(controls.boundary_radius), grid
         )
 
-    def energy_at(
-        x: Array, controls: FixedBoundaryParameters
-    ) -> MirrorEnergy | AnisotropicMirrorEnergy:
+    def energy_at(x: Array, controls: FixedBoundaryParameters) -> MirrorEnergy:
         state = state_at(x, controls)
-        if controls.pressure_closure is not None:
-            return anisotropic_mirror_energy(
-                state,
-                grid,
-                controls.pressure_closure,
-                axial_flux_derivative=controls.axial_flux_derivative,
-                current_derivative=controls.current_derivative,
-            )
         return mirror_energy(
             state,
             grid,
@@ -662,25 +639,15 @@ def _host_fixed_boundary_solve(
         gradient_tolerance=config.gradient_tolerance,
         require_convergence=True,
     )
-    if parameters.pressure_closure is None:
-        result = solve_fixed_boundary_cli(
-            initial,
-            boundary,
-            config.grid,
-            config.config,
-            mass_profile=parameters.mass_profile,
-            gamma=config.gamma,
-            **common,
-        )
-    else:
-        result = solve_anisotropic_fixed_boundary_cli(
-            initial,
-            boundary,
-            config.grid,
-            config.config,
-            parameters.pressure_closure,
-            **common,
-        )
+    result = solve_fixed_boundary_cli(
+        initial,
+        boundary,
+        config.grid,
+        config.config,
+        mass_profile=parameters.mass_profile,
+        gamma=config.gamma,
+        **common,
+    )
     return jax.tree.map(lambda value: np.asarray(value, dtype=np.float64), result.state)
 
 
@@ -715,23 +682,14 @@ def _host_fixed_boundary_pullback(config, parameters, state, cotangent):
     parameters = jax.tree.map(jnp.asarray, parameters)
     state = jax.tree.map(jnp.asarray, state)
     cotangent = jax.tree.map(jnp.asarray, cotangent)
-    if parameters.pressure_closure is None:
-        energy = mirror_energy(
-            state,
-            config.grid,
-            axial_flux_derivative=parameters.axial_flux_derivative,
-            mass_profile=parameters.mass_profile,
-            current_derivative=parameters.current_derivative,
-            gamma=config.gamma,
-        )
-    else:
-        energy = anisotropic_mirror_energy(
-            state,
-            config.grid,
-            parameters.pressure_closure,
-            axial_flux_derivative=parameters.axial_flux_derivative,
-            current_derivative=parameters.current_derivative,
-        )
+    energy = mirror_energy(
+        state,
+        config.grid,
+        axial_flux_derivative=parameters.axial_flux_derivative,
+        mass_profile=parameters.mass_profile,
+        current_derivative=parameters.current_derivative,
+        gamma=config.gamma,
+    )
 
     def cotangent_quantity(candidate, _energy):
         return sum(

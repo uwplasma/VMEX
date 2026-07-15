@@ -18,10 +18,6 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     "MirrorConfig": (".model", "MirrorConfig"),
     "MirrorResolution": (".model", "MirrorResolution"),
     "MirrorState": (".model", "MirrorState"),
-    "PressureClosure": (".model", "PressureClosure"),
-    "IsotropicPressureClosure": (".model", "IsotropicPressureClosure"),
-    "BiMaxwellianPressureClosure": (".model", "BiMaxwellianPressureClosure"),
-    "TabulatedPressureClosure": (".model", "TabulatedPressureClosure"),
     # Fixed and free-boundary solves.
     "MirrorSolveResult": (".solver", "MirrorSolveResult"),
     "solve_fixed_boundary_cli": (".solver", "solve_fixed_boundary_cli"),

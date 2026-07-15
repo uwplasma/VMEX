@@ -45,7 +45,7 @@ def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
     }
     assert required <= set(mirror_api.__all__)
     assert internal.isdisjoint(mirror_api.__all__)
-    assert len(mirror_api.__all__) == 24
+    assert len(mirror_api.__all__) == 20
 
 
 def test_mirror_config_freezes_supported_end_and_convergence_contract() -> None:

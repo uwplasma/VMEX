@@ -12,43 +12,10 @@
     "central_finite_difference": 0.0028769273738293855,
     "relative_error": 1.1029371517885357e-7
   },
-  "anisotropic_closure_case": {
-    "grid": {"ns": 3, "ntheta": 1, "nxi": 5},
-    "closure": "IsotropicPressureClosure evaluated through the anisotropic functional",
-    "controls": ["boundary", "axial_flux", "closure_coefficients", "current_derivative"],
-    "adjoint_iterations": 4,
-    "adjoint_relative_residual": 1.809034721792946e-16,
-    "directional_derivative": 0.001793742346117788,
-    "central_finite_difference": 0.0017937423554825749,
-    "relative_error": 5.220809394438049e-9
-  },
-  "bi_maxwellian_case": {
-    "grid": {"ns": 3, "ntheta": 1, "nxi": 5},
-    "temperature_ratio": 0.7,
-    "critical_field_T": 2.0,
-    "controls": ["boundary", "axial_flux", "mass_coefficients", "hot_fraction_coefficients", "current_derivative"],
-    "ellipticity_valid": true,
-    "adjoint_iterations": 4,
-    "adjoint_relative_residual": 8.920299382263387e-17,
-    "directional_derivative": 0.0016952463568259619,
-    "central_finite_difference": 0.0016952463618991054,
-    "relative_error": 2.9925700625012225e-9
-  },
-  "tabulated_case": {
-    "grid": {"ns": 3, "ntheta": 1, "nxi": 5},
-    "differentiable_controls": ["parallel_values"],
-    "static_controls": ["s_nodes", "b_nodes"],
-    "primal_iterations": 12,
-    "adjoint_iterations": 4,
-    "adjoint_relative_residual": 9.650592247387904e-17,
-    "directional_derivative": 1.4394223932804134e-6,
-    "central_finite_difference": 1.4394224701064218e-6,
-    "relative_error": 5.337280053520721e-8
-  },
   "custom_vjp_case": {
     "forward": "opaque converged host solve through jax.pure_callback",
     "reverse": "matrix-free implicit adjoint",
-    "closures": ["isotropic functional", "registered anisotropic functional"],
+    "model": "isotropic mass-conserving functional",
     "comparison": "explicit fixed_boundary_adjoint",
     "gradient_rtol": 2.0e-9,
     "gradient_atol": 2.0e-11
@@ -77,5 +44,5 @@
     "block_adjoint_relative_residual": 2.6913e-15,
     "process_peak_rss_mib": 983.6
   },
-  "assessment": "The exact reverse solve is independent of the number of physical controls. It is FD-validated with all four isotropic control groups active, with registered closure coefficients through the anisotropic functional, with bi-Maxwellian mass/hot-fraction coefficients under a valid ellipticity gate, and with tabulated parallel-pressure values while interpolation knots remain static. The public custom VJP composes the opaque host solve with the same adjoint for isotropic and anisotropic objectives. It remains matrix-free above the dense reference threshold. Three-color block Thomas is exact but takes 4.79 s versus 3.41 s for one preconditioned-GMRES right-hand side, so GMRES remains the scalar-adjoint default; block mode is retained for future batched sensitivities. Coupled free-boundary adjoints remain open."
+  "assessment": "The exact reverse solve is independent of the number of physical controls. It is FD-validated with all four isotropic control groups active. The public custom VJP composes the opaque host solve with the same adjoint and remains matrix-free above the dense reference threshold. Three-color block Thomas is exact but takes 4.79 s versus 3.41 s for one preconditioned-GMRES right-hand side, so GMRES remains the scalar-adjoint default; block mode is retained for future batched sensitivities. Coupled free-boundary adjoints remain open."
 }

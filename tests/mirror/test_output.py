@@ -57,8 +57,7 @@ def _sample_mout() -> MoutData:
         lambda_stream=np.zeros_like(radius_scale),
         mod_b=mod_b,
         b_xyz=b_xyz,
-        p_perpendicular=pressure,
-        p_parallel=pressure,
+        pressure=pressure,
         history=np.column_stack([np.arange(6), np.geomspace(1.0e-3, 1.0e-12, 6)]),
         coil_xyz=coils,
         ftol=1.0e-12,
@@ -71,7 +70,6 @@ def _sample_mout() -> MoutData:
         staggered_weak_max=6.0e-13,
         pointwise_force_rms=4.0e-4,
         normalized_divergence_rms=5.0e-13,
-        closure="isotropic",
     )
 
 
@@ -80,7 +78,6 @@ def test_mout_roundtrip(tmp_path) -> None:
     loaded = read_mout(path)
     assert loaded.schema == "vmec_jax.mirror.mout/1"
     assert loaded.converged
-    assert loaded.closure == "isotropic"
     assert loaded.staggered_weak_max == pytest.approx(6.0e-13)
     assert loaded.pointwise_force_rms == pytest.approx(4.0e-4)
     assert loaded.normalized_divergence_rms == pytest.approx(5.0e-13)
@@ -123,7 +120,7 @@ def test_mout_from_solved_result_contract() -> None:
         boundary=boundary,
         plasma_state=state,
         plasma_b_squared=np.ones(shape),
-        perpendicular_pressure=np.zeros(shape),
+        pressure=np.zeros(shape),
         history=np.asarray([[0.0, 1.0e-13]]),
         iterations=1,
         converged=True,
@@ -135,7 +132,7 @@ def test_mout_from_solved_result_contract() -> None:
     data = mout_from_result(result, grid, config, axial_flux_derivative=0.02)
     assert data.b_xyz.shape == (*shape, 3)
     assert np.all(np.isfinite(data.b_xyz))
-    assert np.all(np.isnan(data.p_parallel))
+    assert np.all(data.pressure == 0.0)
     assert np.isnan(data.staggered_weak_max)
     assert np.isnan(data.pointwise_force_rms)
     assert np.isnan(data.normalized_divergence_rms)
@@ -167,11 +164,10 @@ def test_mout_accepts_fixed_boundary_result() -> None:
         config,
         boundary=boundary,
         axial_flux_derivative=0.02,
-        closure="isotropic",
     )
 
     assert data.boundary_radius.shape == (1, grid.nxi)
-    np.testing.assert_allclose(data.p_perpendicular, data.p_parallel)
+    assert np.all(np.isfinite(data.pressure))
     assert np.all(np.isfinite(data.mod_b))
     np.testing.assert_allclose(data.history, [[0.0, 1.0e-13]])
     assert np.isnan(data.staggered_weak_max)

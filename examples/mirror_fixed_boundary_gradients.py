@@ -133,7 +133,6 @@ mout_path = write_mout(
         boundary=boundary,
         axial_flux_derivative=AXIAL_FLUX_DERIVATIVE,
         current_derivative=current_derivative,
-        closure="isotropic",
     ),
 )
 plot_mout(mout_path, OUTPUT_DIR, name="mirror_fixed_gradient")

@@ -14,20 +14,14 @@ from .exterior_bie import (
     AxisymmetricExteriorVacuum,
     solve_axisymmetric_exterior_vacuum,
 )
-from .forces import (
-    MU0,
-    AnisotropicMirrorEnergy,
-    MirrorEnergy,
-    anisotropic_mirror_energy,
-    mirror_energy,
-)
+from .forces import MU0, MirrorEnergy, mirror_energy
 from .geometry import magnetic_field_squared
 from .model import MirrorBoundary, MirrorState
 from .solver import _MirrorStateVectorizer, _packed_preconditioner
 
 Array = Any
 FreeBoundaryQuantity = Callable[
-    [MirrorBoundary, MirrorState, MirrorEnergy | AnisotropicMirrorEnergy, Any],
+    [MirrorBoundary, MirrorState, MirrorEnergy, Any],
     Array,
 ]
 
@@ -40,7 +34,6 @@ class FreeBoundaryParameters:
     axial_flux_derivative: Array
     mass_profile: Array
     current_derivative: Array
-    pressure_closure: Any
 
 
 @dataclass(frozen=True, eq=False)
@@ -73,7 +66,6 @@ jax.tree_util.register_dataclass(
         "axial_flux_derivative",
         "mass_profile",
         "current_derivative",
-        "pressure_closure",
     ],
     meta_fields=[],
 )
@@ -90,7 +82,6 @@ def free_boundary_parameters(
     axial_flux_derivative: Array,
     mass_profile: Array = 0.0,
     current_derivative: Array = 0.0,
-    pressure_closure: Any = None,
 ) -> FreeBoundaryParameters:
     """Collect free-boundary controls in a differentiable pytree."""
 
@@ -99,7 +90,6 @@ def free_boundary_parameters(
         axial_flux_derivative=jnp.asarray(axial_flux_derivative),
         mass_profile=jnp.asarray(mass_profile),
         current_derivative=jnp.asarray(current_derivative),
-        pressure_closure=pressure_closure,
     )
 
 
@@ -127,10 +117,6 @@ def free_boundary_adjoint(
         raise ValueError("free-boundary adjoint requires the exterior vacuum backend")
     if config.rtol <= 0.0 or config.max_restarts < 1:
         raise ValueError("adjoint tolerances and iteration limits must be positive")
-    anisotropic = parameters.pressure_closure is not None
-    if anisotropic != isinstance(result.plasma_energy, AnisotropicMirrorEnergy):
-        raise ValueError("pressure_closure must match the converged energy model")
-
     fixed_boundary = jnp.asarray(result.boundary.radius_scale)
     base_state = result.plasma_state
     boundary_indices = (
@@ -166,32 +152,18 @@ def free_boundary_adjoint(
 
     def plasma_components(vector: Array, controls: FreeBoundaryParameters):
         boundary, state = unpack(vector)
-        if controls.pressure_closure is None:
-            plasma = mirror_energy(
-                state,
-                plasma_grid,
-                axial_flux_derivative=controls.axial_flux_derivative,
-                mass_profile=controls.mass_profile,
-                current_derivative=controls.current_derivative,
-                gamma=config.gamma,
-            )
-            pressure = jnp.broadcast_to(
-                plasma.pressure[:, None, None], plasma.b_squared.shape
-            )
-            plasma_b_squared = magnetic_field_squared(plasma.field, plasma.geometry)
-        else:
-            plasma = anisotropic_mirror_energy(
-                state,
-                plasma_grid,
-                controls.pressure_closure,
-                axial_flux_derivative=controls.axial_flux_derivative,
-                current_derivative=controls.current_derivative,
-            )
-            plasma_b_squared = magnetic_field_squared(plasma.field, plasma.geometry)
-            pressure = controls.pressure_closure.moments(
-                jnp.asarray(plasma_grid.s)[:, None, None],
-                jnp.sqrt(jnp.maximum(plasma_b_squared, 0.0)),
-            ).perpendicular
+        plasma = mirror_energy(
+            state,
+            plasma_grid,
+            axial_flux_derivative=controls.axial_flux_derivative,
+            mass_profile=controls.mass_profile,
+            current_derivative=controls.current_derivative,
+            gamma=config.gamma,
+        )
+        pressure = jnp.broadcast_to(
+            plasma.pressure[:, None, None], plasma.b_squared.shape
+        )
+        plasma_b_squared = magnetic_field_squared(plasma.field, plasma.geometry)
         return boundary, state, plasma, pressure, plasma_b_squared
 
     def components(vector: Array, controls: FreeBoundaryParameters):

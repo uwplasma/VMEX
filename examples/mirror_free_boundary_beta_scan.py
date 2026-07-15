@@ -21,18 +21,15 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib import colors  # noqa: E402
-from matplotlib.lines import Line2D  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from vmec_jax.mirror import (  # noqa: E402
-    BiMaxwellianPressureClosure,
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
-    TabulatedPressureClosure,
     mout_from_result,
     plot_mout,
     write_mout,
@@ -49,9 +46,6 @@ from vmec_jax.mirror.output import (  # noqa: E402
 
 # Inputs: edit these values, then run the file directly.
 BETAS = np.asarray([0.0, 0.01, 0.03, 0.10, 0.25, 0.50])
-PRESSURE_MODEL = "isotropic"  # "bi_maxwellian" or "tabulated"
-HOT_FRACTION = 0.2
-TEMPERATURE_RATIO = 0.7
 NS = 7
 NXI = 13
 EXTERIOR_NTHETA = 12
@@ -124,29 +118,6 @@ initial_boundary = MirrorBoundary.from_axis_field(
     vacuum_axis_field,
     grid,
 )
-pressure_closure = None
-if PRESSURE_MODEL in {"bi_maxwellian", "tabulated"}:
-    bi_maxwellian = BiMaxwellianPressureClosure(
-        mass_coefficients=jnp.asarray([1.0, -1.0]),
-        hot_fraction_coefficients=jnp.asarray([HOT_FRACTION]),
-        temperature_ratio=TEMPERATURE_RATIO,
-        critical_field=float(vacuum_axis_field[center]),
-        gamma=0.0,
-    )
-    if PRESSURE_MODEL == "bi_maxwellian":
-        pressure_closure = bi_maxwellian
-    else:
-        s_nodes = jnp.linspace(0.0, 1.0, 5)
-        b_nodes = jnp.linspace(0.4 * vacuum_axis_field[center], 2.0 * vacuum_axis_field[center], 9)
-        pressure_closure = TabulatedPressureClosure(
-            s_nodes,
-            b_nodes,
-            bi_maxwellian.parallel_pressure(s_nodes[:, None], b_nodes[None, :]),
-            gamma=0.0,
-        )
-elif PRESSURE_MODEL != "isotropic":
-    raise ValueError("PRESSURE_MODEL must be 'isotropic', 'bi_maxwellian', or 'tabulated'")
-
 print(f"Solving {BETAS.size} beta points at ns={NS}, nxi={NXI}, ftol={FTOL:.0e}")
 results = solve_axisymmetric_beta_scan_cli(
     initial_boundary,
@@ -157,7 +128,6 @@ results = solve_axisymmetric_beta_scan_cli(
     axial_flux_derivative=axial_flux_derivative,
     reference_field=float(vacuum_axis_field[center]),
     initial_restart=initial_restart,
-    pressure_closure=pressure_closure,
     exterior_ntheta=EXTERIOR_NTHETA,
     exterior_order=EXTERIOR_ORDER,
     exterior_spectral_side_density=EXTERIOR_SPECTRAL_SIDE_DENSITY,
@@ -170,13 +140,6 @@ if SAVE_RESTARTS:
         save_free_boundary_restart(OUTPUT_DIR / label, FreeBoundaryRestart.from_result(result))
 for beta, result in zip(BETAS, results, strict=True):
     label = f"beta_{100 * beta:05.1f}pct".replace(".", "p")
-    if pressure_closure is None:
-        parallel_pressure = result.perpendicular_pressure
-    else:
-        field_strength = jnp.sqrt(result.plasma_b_squared)
-        parallel_pressure = result.mass_scale * pressure_closure.moments(
-            jnp.asarray(grid.s)[:, None, None], field_strength
-        ).parallel
     write_mout(
         OUTPUT_DIR / f"mout_mirror_{label}.nc",
         mout_from_result(
@@ -184,9 +147,7 @@ for beta, result in zip(BETAS, results, strict=True):
             grid,
             config,
             axial_flux_derivative=axial_flux_derivative,
-            parallel_pressure=parallel_pressure,
             coil_xyz=gamma,
-            closure=PRESSURE_MODEL,
         ),
     )
 diagnostics = summarize_axisymmetric_beta_scan(
@@ -285,32 +246,16 @@ fig, axes = plt.subplots(1, 3, figsize=(14.2, 4.2), constrained_layout=True)
 radial_coordinate = np.sqrt(np.asarray(grid.s))
 for index in display_indices:
     result = results[index]
-    pressure = np.asarray(result.perpendicular_pressure[:, 0, center])
+    pressure = np.asarray(result.pressure[:, 0, center])
     magnetic_pressure = np.asarray(result.plasma_b_squared[:, 0, center]) / (2.0 * 4.0e-7 * np.pi)
     color = colors_beta[index]
     label = f"{100 * BETAS[index]:g}%"
     axes[0].plot(radial_coordinate, pressure / 1e3, "o-", color=color, lw=2, label=label)
-    if pressure_closure is not None and BETAS[index] > 0.0:
-        field_strength = np.sqrt(np.asarray(result.plasma_b_squared[:, 0, center]))
-        parallel = (
-            result.mass_scale * pressure_closure.moments(jnp.asarray(grid.s), jnp.asarray(field_strength)).parallel
-        )
-        axes[0].plot(radial_coordinate, np.asarray(parallel) / 1e3, "--", color=color, lw=1.5)
     axes[1].plot(radial_coordinate, magnetic_pressure / 1e3, "o-", color=color, lw=2, label=label)
     axes[1].plot(radial_coordinate, (pressure + magnetic_pressure) / 1e3, "--", color=color, lw=1.5)
-axes[0].set(title=r"Midplane $p_\perp$", xlabel=r"Normalized radius $\sqrt{s}$", ylabel="Pressure [kPa]")
+axes[0].set(title="Midplane pressure", xlabel=r"Normalized radius $\sqrt{s}$", ylabel="Pressure [kPa]")
 axes[1].set(title="Midplane pressure balance", xlabel=r"Normalized radius $\sqrt{s}$", ylabel="Pressure [kPa]")
-beta_legend = axes[0].legend(title="Requested beta", fontsize=8)
-if pressure_closure is not None:
-    axes[0].add_artist(beta_legend)
-    axes[0].legend(
-        handles=[
-            Line2D([], [], color="0.2", lw=1.8, label=r"$p_\perp$"),
-            Line2D([], [], color="0.2", lw=1.5, ls="--", label=r"$p_\parallel$"),
-        ],
-        loc="lower left",
-        fontsize=8,
-    )
+axes[0].legend(title="Requested beta", fontsize=8)
 axes[1].legend(["magnetic", "total"], fontsize=8)
 axes[2].plot(100 * BETAS, 100 * summary[:, 1], "o-", color="#0072B2", lw=2, label="achieved central")
 axes[2].plot(100 * BETAS, 100 * summary[:, 2], "s-", color="#D55E00", lw=2, label="volume averaged")

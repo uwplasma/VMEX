@@ -609,18 +609,18 @@ Percentages estimate accepted promotion evidence, not code volume.
 |---|---:|---|
 | Axisymmetric fixed mirror | 90% | pointwise reconstruction, final spline derivatives, release evidence |
 | Nonaxisymmetric fixed mirror | 82% | paraxial amplitude, SFLM refinement, pointwise force, release evidence |
-| Axisymmetric free mirror | 74% | corrected concentric-coil three-grid scan, scaling, adjoint rerun |
-| Nonaxisymmetric free mirror | 55% | explicitly deferred; remove public claim and retain negative evidence |
+| Axisymmetric free mirror | 84% | corrected scan passes; serialize full diagnostics, scaling, adjoint rerun |
+| Nonaxisymmetric free mirror | 100% deferred | public claim removed; retain negative evidence only |
 | Open native B-splines | 84% | fixed-lane promotion; spline free boundary explicitly deferred |
 | Fixed closed B-spline hybrid | 58% | limits, pointwise force, beta scan, derivatives, output |
 | Free closed hybrid | 10% | one conditional attempt after fixed promotion |
 | Structured preconditioning | 48% | one coupled radius/lambda block attempt |
-| Implicit derivatives | 78% | closed-axis controls and simplified free adjoint |
-| Source/API simplification | 70% | ANIMEC deletion, module/test consolidation, restore unrelated core |
-| Documentation/examples | 68% | concise docs, README showcases, hybrid example |
+| Implicit derivatives | 82% | unsupported closure branches removed; closed-axis controls remain |
+| Source/API simplification | 84% | ANIMEC removed; module/test consolidation remains |
+| Documentation/examples | 72% | isotropic docs current; README showcases and hybrid example remain |
 | ESSOS ownership | 100% | retain callable/MGRID interchange only |
 
-Weighted completion of the required release path is approximately 72%. The
+Weighted completion of the required release path is approximately 75%. The
 percentage will only increase when a gate above passes; deleting an unsupported
 lane counts toward simplification, not toward its physics promotion.
 
@@ -689,6 +689,7 @@ Every implementation update reports:
 6. completion percentage for every open lane;
 7. anything needed from the user.
 
-No user input is currently required. The next executable action is WP0: fix
-the benchmark symmetry definition, regenerate the concentric-coil evidence,
-and then perform the WP1 reduction before adding more hybrid code.
+No user input is currently required. The next executable action is to finish
+WP0 by serializing the corrected pointwise, physical-normal, raw-stress, and
+mirror-ratio diagnostics, then finish WP1 module/test consolidation before
+adding more hybrid code.

@@ -12,14 +12,10 @@ from scipy.optimize import least_squares
 
 from .forces import (
     MU0,
-    AnisotropicForceResidual,
-    AnisotropicMirrorEnergy,
     InterfaceResidual,
     IsotropicForceResidual,
     MirrorEnergy,
     VariationalResidual,
-    anisotropic_force_residual,
-    anisotropic_mirror_energy,
     interface_residual,
     isotropic_force_residual,
     isotropic_staggered_fixed_boundary_gradient,
@@ -27,21 +23,14 @@ from .forces import (
     mass_profile_from_pressure,
     mirror_energy,
 )
-from .geometry import magnetic_field_squared, normalized_divergence_rms
+from .geometry import normalized_divergence_rms
 from .exterior_bie import (
     AxisymmetricExteriorVacuum,
     NonaxisymmetricExteriorVacuum,
     solve_axisymmetric_exterior_vacuum,
     solve_nonaxisymmetric_exterior_vacuum,
 )
-from .model import (
-    MirrorBoundary,
-    MirrorConfig,
-    MirrorState,
-    PressureClosure,
-    PressureMoments,
-    project_fixed_boundary_state,
-)
+from .model import MirrorBoundary, MirrorConfig, MirrorState, project_fixed_boundary_state
 from .output import FreeBoundaryRestart
 from .solver import _MirrorStateVectorizer
 
@@ -50,38 +39,17 @@ _MONOLITHIC_JACOBIAN_MAX_SIZE = 80
 
 
 @dataclass(frozen=True)
-class _ScaledPressureClosure:
-    """Multiply a consistent ANIMEC closure by a solved positive amplitude."""
-
-    closure: PressureClosure
-    scale: Array
-
-    def parallel_pressure(self, s: Array, magnetic_field_strength: Array) -> Array:
-        """Evaluate the pressure closure with the solved amplitude."""
-        return self.scale * self.closure.parallel_pressure(s, magnetic_field_strength)
-
-    def moments(self, s: Array, magnetic_field_strength: Array) -> PressureMoments:
-        """Evaluate consistently scaled parallel, perpendicular, and energy moments."""
-        moments = self.closure.moments(s, magnetic_field_strength)
-        return PressureMoments(
-            parallel=self.scale * moments.parallel,
-            perpendicular=self.scale * moments.perpendicular,
-            energy_density=self.scale * moments.energy_density,
-        )
-
-
-@dataclass(frozen=True)
 class FreeBoundaryMirrorResult:
     """Joint plasma-boundary-vacuum equilibrium result."""
 
     boundary: MirrorBoundary
     plasma_state: MirrorState
-    plasma_energy: MirrorEnergy | AnisotropicMirrorEnergy
-    plasma_force: IsotropicForceResidual | AnisotropicForceResidual
+    plasma_energy: MirrorEnergy
+    plasma_force: IsotropicForceResidual
     plasma_staggered_weak_force: VariationalResidual | None
     normalized_divergence_rms: Array
     plasma_b_squared: Array
-    perpendicular_pressure: Array
+    pressure: Array
     vacuum_geometry: "ClosedMirrorSurface"
     vacuum_field: AxisymmetricExteriorVacuum | NonaxisymmetricExteriorVacuum
     mass_scale: Array
@@ -121,7 +89,6 @@ def solve_free_boundary_cli(
     initial_state: MirrorState | None = None,
     target_central_pressure: float | None = None,
     initial_mass_scale: float = 1.0,
-    pressure_closure: PressureClosure | None = None,
     exterior_ntheta: int = 40,
     exterior_order: int = 8,
     exterior_spectral_side_density: bool = False,
@@ -145,8 +112,6 @@ def solve_free_boundary_cli(
         raise ValueError("target_central_pressure must be positive")
     if initial_mass_scale <= 0.0:
         raise ValueError("initial_mass_scale must be positive")
-    if pressure_closure is not None and np.any(np.asarray(mass_profile) != 0.0):
-        raise ValueError("mass_profile and pressure_closure are mutually exclusive")
     initial_boundary_radius = np.asarray(initial_boundary.radius_scale, dtype=float)
     if initial_boundary_radius.shape != (plasma_grid.ntheta, plasma_grid.nxi):
         raise ValueError("initial boundary does not match the plasma grid")
@@ -213,40 +178,21 @@ def solve_free_boundary_cli(
             mass_scale = jnp.asarray(1.0, dtype=vector.dtype)
         return boundary, state, mass_scale
 
-    center = int(np.argmin(np.abs(plasma_grid.z)))
-
     def components(vector: Array):
         boundary, state, mass_scale = unpack(vector)
-        if pressure_closure is None:
-            plasma = mirror_energy(
-                state,
-                plasma_grid,
-                axial_flux_derivative=axial_flux_derivative,
-                mass_profile=jnp.asarray(mass_profile) * mass_scale,
-                current_derivative=current_derivative,
-                gamma=gamma,
-            )
-            plasma_b_squared = plasma.b_squared
-            perpendicular_pressure = jnp.broadcast_to(plasma.pressure[:, None, None], plasma_b_squared.shape)
-            central_pressure = plasma.pressure[0]
-            anisotropy_valid = jnp.asarray(True)
-        else:
-            scaled_closure = _ScaledPressureClosure(pressure_closure, mass_scale)
-            plasma = anisotropic_mirror_energy(
-                state,
-                plasma_grid,
-                scaled_closure,
-                axial_flux_derivative=axial_flux_derivative,
-                current_derivative=current_derivative,
-            )
-            plasma_b_squared = magnetic_field_squared(plasma.field, plasma.geometry)
-            full_moments = scaled_closure.moments(
-                jnp.asarray(plasma_grid.s)[:, None, None],
-                jnp.sqrt(jnp.maximum(plasma_b_squared, 0.0)),
-            )
-            perpendicular_pressure = full_moments.perpendicular
-            central_pressure = perpendicular_pressure[0, 0, center]
-            anisotropy_valid = jnp.all(plasma.indicators_half.valid)
+        plasma = mirror_energy(
+            state,
+            plasma_grid,
+            axial_flux_derivative=axial_flux_derivative,
+            mass_profile=jnp.asarray(mass_profile) * mass_scale,
+            current_derivative=current_derivative,
+            gamma=gamma,
+        )
+        plasma_b_squared = plasma.b_squared
+        pressure = jnp.broadcast_to(
+            plasma.pressure[:, None, None], plasma_b_squared.shape
+        )
+        central_pressure = plasma.pressure[0]
         if plasma_grid.ntheta == 1:
             vacuum_field = solve_axisymmetric_exterior_vacuum(
                 boundary,
@@ -270,9 +216,8 @@ def solve_free_boundary_cli(
         return (
             plasma,
             plasma_b_squared,
-            perpendicular_pressure,
+            pressure,
             central_pressure,
-            anisotropy_valid,
             vacuum_field.surface,
             vacuum_field,
         )
@@ -287,9 +232,8 @@ def solve_free_boundary_cli(
         (
             plasma,
             plasma_b_squared,
-            perpendicular_pressure,
+            pressure,
             central_pressure,
-            _,
             _,
             vacuum_field,
         ) = components(vector)
@@ -300,7 +244,7 @@ def solve_free_boundary_cli(
             vacuum_xyz = vacuum_xyz[None]
         vacuum_xyz = vacuum_xyz[:, 1:-1].reshape(-1, 3)
         vacuum_b_squared = jnp.sum(vacuum_xyz**2, axis=-1)
-        pressure = perpendicular_pressure[-1, :, 1:-1].reshape(-1)
+        pressure = pressure[-1, :, 1:-1].reshape(-1)
         jump = pressure + plasma_b_squared / (2.0 * MU0) - vacuum_b_squared / (2.0 * MU0)
         stress_scale = jnp.abs(pressure) + plasma_b_squared / (2.0 * MU0) + vacuum_b_squared / (2.0 * MU0)
         stress = jump / jnp.maximum(stress_scale, jnp.finfo(stress_scale.dtype).tiny)
@@ -372,9 +316,8 @@ def solve_free_boundary_cli(
     (
         plasma,
         plasma_b_squared_full,
-        perpendicular_pressure,
+        pressure,
         _,
-        anisotropy_valid,
         vacuum_geometry,
         vacuum_field,
     ) = components(jnp.asarray(solution))
@@ -393,7 +336,7 @@ def solve_free_boundary_cli(
         jnp.asarray(plasma_grid.axial_basis.weights).at[jnp.asarray([0, plasma_grid.nxi - 1])].set(0.0)
     )
     interface = interface_residual(
-        perpendicular_pressure=perpendicular_pressure[-1],
+        pressure=pressure[-1],
         plasma_b_squared=plasma_b_squared,
         vacuum_b_squared=vacuum_b_squared,
         plasma_b_normal=jnp.zeros_like(plasma_b_squared),
@@ -403,46 +346,37 @@ def solve_free_boundary_cli(
     )
     final_residual = np.asarray(residual_jit(jnp.asarray(solution)), dtype=float)
     variational_max = float(np.max(np.abs(final_residual)))
-    if pressure_closure is None:
-        plasma_force = isotropic_force_residual(plasma, plasma_grid)
-        energy_kwargs = {
-            "axial_flux_derivative": axial_flux_derivative,
-            "mass_profile": jnp.asarray(mass_profile) * mass_scale,
-            "current_derivative": current_derivative,
-            "gamma": gamma,
-        }
-        full_weak_force = isotropic_staggered_weak_residual(
-            state,
-            boundary,
-            plasma_grid,
-            **energy_kwargs,
-        )
-        weak_gradient = isotropic_staggered_fixed_boundary_gradient(
-            state,
-            boundary,
-            plasma_grid,
-            **energy_kwargs,
-        )
-        active_weak = plasma_vectorizer.pullback_gradient(weak_gradient) / plasma_scale
-        radius_weak = active_weak[: plasma_vectorizer.radius_size]
-        lambda_weak = active_weak[plasma_vectorizer.radius_size :]
-        plasma_staggered_weak_force = VariationalResidual(
-            radius_gradient=full_weak_force.radius_gradient,
-            lambda_gradient=full_weak_force.lambda_gradient,
-            radius_rms=jnp.asarray(np.sqrt(np.mean(radius_weak**2))),
-            lambda_rms=jnp.asarray(
-                np.sqrt(np.mean(lambda_weak**2)) if lambda_weak.size else 0.0
-            ),
-            maximum=jnp.asarray(np.max(np.abs(active_weak))),
-        )
-    else:
-        plasma_force = anisotropic_force_residual(
-            state,
-            plasma,
-            plasma_grid,
-            _ScaledPressureClosure(pressure_closure, mass_scale),
-        )
-        plasma_staggered_weak_force = None
+    plasma_force = isotropic_force_residual(plasma, plasma_grid)
+    energy_kwargs = {
+        "axial_flux_derivative": axial_flux_derivative,
+        "mass_profile": jnp.asarray(mass_profile) * mass_scale,
+        "current_derivative": current_derivative,
+        "gamma": gamma,
+    }
+    full_weak_force = isotropic_staggered_weak_residual(
+        state,
+        boundary,
+        plasma_grid,
+        **energy_kwargs,
+    )
+    weak_gradient = isotropic_staggered_fixed_boundary_gradient(
+        state,
+        boundary,
+        plasma_grid,
+        **energy_kwargs,
+    )
+    active_weak = plasma_vectorizer.pullback_gradient(weak_gradient) / plasma_scale
+    radius_weak = active_weak[: plasma_vectorizer.radius_size]
+    lambda_weak = active_weak[plasma_vectorizer.radius_size :]
+    plasma_staggered_weak_force = VariationalResidual(
+        radius_gradient=full_weak_force.radius_gradient,
+        lambda_gradient=full_weak_force.lambda_gradient,
+        radius_rms=jnp.asarray(np.sqrt(np.mean(radius_weak**2))),
+        lambda_rms=jnp.asarray(
+            np.sqrt(np.mean(lambda_weak**2)) if lambda_weak.size else 0.0
+        ),
+        maximum=jnp.asarray(np.max(np.abs(active_weak))),
+    )
     divergence_rms = normalized_divergence_rms(
         plasma.field, plasma.geometry, plasma_grid
     )
@@ -450,7 +384,6 @@ def solve_free_boundary_cli(
         variational_max <= config.ftol
         and not bool(plasma.geometry.jacobian_sign_changed)
         and bool(vacuum_valid)
-        and bool(anisotropy_valid)
     )
     message = str(solve.message)
     if not converged:
@@ -463,7 +396,6 @@ def solve_free_boundary_cli(
             f"{float(vacuum_field.neumann_result.raw_compatibility_error):.3e}"
             f"; exterior condition="
             f"{float(vacuum_field.neumann_result.condition_number):.3e}"
-            f"; anisotropy valid={bool(anisotropy_valid)}"
         )
     result = FreeBoundaryMirrorResult(
         boundary=boundary,
@@ -473,7 +405,7 @@ def solve_free_boundary_cli(
         plasma_staggered_weak_force=plasma_staggered_weak_force,
         normalized_divergence_rms=divergence_rms,
         plasma_b_squared=plasma_b_squared_full,
-        perpendicular_pressure=perpendicular_pressure,
+        pressure=pressure,
         vacuum_geometry=vacuum_geometry,
         vacuum_field=vacuum_field,
         mass_scale=mass_scale,
@@ -537,7 +469,6 @@ def solve_beta_scan_cli(
     gamma: float = 5.0 / 3.0,
     beta_rtol: float = 1.0e-8,
     initial_restart: FreeBoundaryRestart | None = None,
-    pressure_closure: PressureClosure | None = None,
     exterior_ntheta: int = 40,
     exterior_order: int = 8,
     exterior_spectral_side_density: bool = False,
@@ -563,27 +494,14 @@ def solve_beta_scan_cli(
     boundary = initial_boundary if initial_restart is None else initial_restart.boundary
     state = None if initial_restart is None else initial_restart.plasma_state
     mass_scale = 1.0 if initial_restart is None else initial_restart.mass_scale
-    using_closure = initial_restart is not None and pressure_closure is not None
     results = []
     for beta in beta_values:
         central_pressure = float(beta) * float(reference_field) ** 2 / (2.0 * MU0)
-        active_closure = pressure_closure if beta > 0.0 else None
-        mass = (
-            mass_profile_from_pressure(
-                central_pressure * pressure_shape,
-                reference_energy.volume_derivative,
-                gamma=gamma,
-            )
-            if active_closure is None
-            else 0.0
+        mass = mass_profile_from_pressure(
+            central_pressure * pressure_shape,
+            reference_energy.volume_derivative,
+            gamma=gamma,
         )
-        if active_closure is not None and not using_closure:
-            base_pressure = float(
-                active_closure.moments(0.0, float(reference_field)).perpendicular
-            )
-            if base_pressure <= 0.0:
-                raise ValueError("pressure_closure must have positive central p_perp")
-            mass_scale = central_pressure / base_pressure
         result = solve_axisymmetric_free_boundary_cli(
             boundary,
             plasma_grid,
@@ -595,7 +513,6 @@ def solve_beta_scan_cli(
             gamma=gamma,
             initial_state=state,
             initial_mass_scale=mass_scale,
-            pressure_closure=active_closure,
             exterior_ntheta=exterior_ntheta,
             exterior_order=exterior_order,
             exterior_spectral_side_density=exterior_spectral_side_density,
@@ -608,7 +525,7 @@ def solve_beta_scan_cli(
             achieved_beta = (
                 2.0
                 * MU0
-                * float(result.perpendicular_pressure[0, 0, center])
+                * float(result.pressure[0, 0, center])
                 / float(reference_field) ** 2
             )
             if abs(achieved_beta - float(beta)) / float(beta) > beta_rtol:
@@ -619,7 +536,6 @@ def solve_beta_scan_cli(
         boundary = result.boundary
         state = result.plasma_state
         mass_scale = float(result.mass_scale)
-        using_closure = active_closure is not None
     return tuple(results)
 
 
