@@ -6,22 +6,23 @@ supersedes the original `/Users/rogeriojorge/Downloads/plan_mirror.md` and
 every earlier version of this plan. Do not create parallel roadmaps. Commits,
 tests, and the four compact benchmark JSON files are the execution log.
 
-Audit baseline (2026-07-15 CDT, final source/literature/worktree review and T6c update):
+Audit baseline (2026-07-15 CDT, final source/literature/worktree review through T8 setup):
 
-- the T7 baseline head is `84d60923` on `codex/mirror-geometry`. T1--T6c are
-  committed and pushed; T7 is the active evidence gate;
-- base `origin/main` is `ed4ac7ac`; the branch is zero commits behind and 323
+- the reviewed head is `4f3a481a` on `codex/mirror-geometry`. T1--T6c and the
+  T7 cut-profile repair are committed and pushed; T7 is the active evidence
+  gate and T8 circular normalization is being resolved in parallel;
+- base `origin/main` is `ed4ac7ac`; the branch is zero commits behind and 331
   commits ahead, so no main-branch merge is pending. It includes the
   coil-ownership cleanup from PR #26, simultaneous boundary/coil derivatives
   from PR #28, and solver-sensitive gradient documentation from PR #29;
 - draft PR #22 is open, mergeable, and remains draft. Every completed CI job
-  inspected on the latest pushed head passed; several long shards were still
-  running. Do not poll CI while implementing; inspect the accumulated result
-  before each major push;
-- the pushed diff is 50 files, 17,123 insertions, and 1,608 deletions. This is
+  inspected on `4f3a481a` passed; several long shards were still running. Do
+  not poll CI while implementing; inspect the accumulated result before each
+  major push;
+- the pushed diff is 50 files, 17,256 insertions, and 1,608 deletions. This is
   above the final 46-file budget and makes T11 deletion mandatory;
-- the active worktree contains 13 mirror modules, 7,880 physical lines, 20
-  lazy public names, and 4,227 mirror-test lines. `splines.py` is 999 lines.
+- the active worktree contains 13 mirror modules, 7,891 physical lines, 20
+  lazy public names, and 4,329 mirror-test lines. `splines.py` is 1,006 lines.
   T6c has removed the obsolete nodal vectorizer, preconditioner, interpolation
   path, rejected cached linearization, and duplicate test setup. T11 still
   must reach the final 7,200/4,000 and 46-file/API/artifact budgets;
@@ -115,8 +116,18 @@ Audit baseline (2026-07-15 CDT, final source/literature/worktree review and T6c 
   distance in the mirror sparse factor changes the first 1,182-variable closed
   solve from the stale noncyclic residual `0.136` after 3,000 Krylov iterations
   to `7.39e-10` after 907; it reaches variational `9.37e-13` in 11.50 seconds.
-  Its strong force is still `8.78e-2`, so circular physics parity remains an
-  active T8 gate rather than a promoted result.
+  Its strong force is still `8.78e-2`, and radial refinement with the constant
+  mirror flux derivative increases it from `7.79e-2` at `ns=5` to `9.88e-2`
+  at `ns=9`. Shifting the spline axis to the VMEC2000 magnetic axis does not
+  change that trend. The failed comparison prescribed different radial flux
+  coordinates: an exactly concentric current-free circular torus requires
+  `dPsi/ds proportional to 1/sqrt(1-(a/R0)^2 s)`, represented in VMEC by a
+  matched ``APHI`` polynomial and total ``PHIEDGE``. T8 must establish this
+  analytic profile parity before diagnosing any remaining force error or
+  changing axis degrees of freedom. For `a/R0=0.1`, 20 ``APHI`` entries match
+  the analytic derivative to `2.22e-16`; VMEC's documented 101-point integral
+  differs from the analytic integral by `6.33e-10`, so the represented
+  integral, not a silently mixed exact normalization, is the code-parity gate.
 
 Execution update (2026-07-15): T1 enforced the matrix-free open policy and
 compacted its evidence; T2 removed the nodal fixed solver, custom VJP, and
@@ -139,8 +150,9 @@ The branch contains real fixed-open equilibrium solvers and useful validation,
 but it is not release-ready. Dense coupled free-boundary Jacobian storage and
 duplicated nodal free/implicit production paths are no longer blockers. The
 immediate blockers are the incomplete T7 refinement gate, stale hybrid force
-evidence, nonconverged local 3D free-boundary modes, and incomplete
-closed-hybrid limiting cases. Artificial end disks are
+evidence caused first by an unmatched radial flux coordinate, nonconverged
+local 3D free-boundary modes, and incomplete closed-hybrid limiting cases.
+Artificial end disks are
 retained only as exterior integration closures and are tested by cap
 compatibility and cut-location independence;
 they are not plasma boundaries. The milestones below remove the remaining
@@ -554,8 +566,12 @@ continuation. They are not validated production references:
 - notebook and binary artifacts account for branch diffs above one million
   inserted lines and make direct code transfer undesirable.
 
-The branch heads were rechecked against current DESC master `24aa7b9dc` on
-2026-07-15 and have not advanced. Current released DESC retains
+The branch heads were fetched and rechecked against current DESC master
+`24aa7b9dc` on 2026-07-15 and have not advanced. The `mirror` diff spans 123
+files and more than one million inserted lines because it includes notebooks,
+binary arrays, and renamed upstream tests; the production additions alone
+include a 2,255-line equilibrium class and a 1,393-line objective module.
+Current released DESC retains
 `ChebyshevDoubleFourierBasis` and `ChebyshevPolynomial`, but no released open
 mirror equilibrium. This makes Chebyshev a useful independent collocation
 oracle, not a second production state or a reason to duplicate DESC's branch
@@ -564,9 +580,11 @@ architecture here.
 DESC's newer `dd/cylindrical` branch (`6f85f50a`, 2026-06-26) implements
 `DoubleChebyshevFourierBasis`: two nonperiodic Cartesian Chebyshev coordinates
 (`R` and `Z`) and one periodic Fourier angle. It is not an axial-Chebyshev
-mirror equilibrium implementation. It has initial basis tests but no mirror
-equilibrium, end-cap, axis-regularity, free-boundary, or force-refinement
-evidence. The `finite_element_basis` branches last changed in 2024 and add
+mirror equilibrium implementation. Its two commits test values and first and
+second derivatives, explicitly leaving third derivatives unimplemented. It
+has no mirror equilibrium, end-cap, axis-regularity, free-boundary, or
+force-refinement evidence. The `finite_element_basis` branches last changed in
+2024 and add
 experimental scikit-fem paths, debugging output, and incomplete JAX
 integration. Use formulas from these branches as review material only. None is
 a reason to replace the compact Fourier/radial/longitudinal-spline tensor
@@ -1037,6 +1055,17 @@ are labeled scalar-pressure equilibria, not ANIMEC or kinetic predictions.
    Write down and test the mapping from the periodic spline coordinate and
    `axial_flux_derivative`/`current_derivative` to VMEC toroidal/poloidal flux
    conventions before comparing any observable.
+   The first gate is the analytic current-free concentric torus. For major
+   radius `R0`, minor radius `a`, and normalized area coordinate `s`, prescribe
+   `dPsi/ds = psi0/sqrt(1-(a/R0)^2 s)`. Encode the same shape in VMEC with
+   `APHI[k] = binom(2k,k) * ((a/R0)^2)^k / (4^k*(k+1))`, truncated only after
+   its represented derivative is below the grid error. Set `PHIEDGE` to
+   `2*pi*psi0*torflux(1)` using VMEC's documented 101-point integration and
+   separately report its error from the analytic integral. Verify the Python
+   ``APHI`` indexing against `magnetic_fluxes.f` and compare both codes before
+   repeating the historical constant-``APHI`` case. A constant mirror
+   derivative is not an admissible concentric fixture and cannot be used to
+   infer an axis or force bug.
    Compare volume, energy terms, axis/edge `iota`, magnetic well, `|B|`, and
    independently reconstructed force on three grids; do not compare only
    output coefficients with different basis conventions.
@@ -1146,39 +1175,33 @@ recorded as compact negative evidence.
 | T6a (complete) | Add the composed free coefficient map and Galerkin boundary-work residual | 3 focused and 28 non-full spline tests; directional JAX/FD work parity; square coefficient map; pre-commit pass |
 | T6b (complete) | Replace the coupled Jacobian with measured-memory JVP/VJP `LinearOperator` actions and migrate result/restart schema | dense tiny-case and transpose parity; repeated actions selected by memory/runtime A/B; no full coupled Jacobian above threshold; schema-3 restart and continuation pass |
 | T6c (complete) | Reuse the primal coefficient residual in the free tangent/adjoint and delete all nodal production packing | external-field and finite-pressure reconverged-FD gradients; true transpose residual; 103 normal and 3 representative full tests pass; source `7,880`, tests `4,227`, `splines.py 999`; strict docs/static checks pass |
-| T7 | Regenerate the axisymmetric beta scan through 50% | three-grid physics, interface, force, low-beta Pleiades field, and high-beta trend gates |
-| T8 | Establish circular hybrid parity and long-leg/open limit | ordinary VMEC-JAX and VMEC2000 parity; force refinement |
+| T7 | Complete the nested-cut axisymmetric beta scan through 50% | independent radial/axial/angular/exterior/quadrature and combined refinement; interface/force gates; low-beta Pleiades field; high-beta trend |
+| T8 | Establish matched-flux circular hybrid parity and long-leg/open limit | analytic ``APHI``/spline flux mapping; ordinary VMEC-JAX and VMEC2000 three-grid parity; cyclic linear and strong-force refinement |
 | T9 | Promote the spline racetrack/rotating-return hybrid | positive map, nonzero iota, beta profiles, derivatives, MOUT round trip |
 | T10 | Run the bounded nonaxisymmetric free-boundary attempt | promotion or explicit negative record within stated budget |
-| T11 | Remove ESSOS runner, compatibility paths, redundant figures/tests, and stale records | section 5 repository budgets |
+| T11 | Remove the ESSOS-owned runner, compatibility paths, redundant figures/tests, and stale records | at most 46 changed files, 7,200 mirror source lines, 4,000 mirror-test lines, 18 public names, 4 JSON records, and 3 root examples/figures |
 | T12 | Regenerate README/docs/examples and perform final release audit | all local/CI gates green; PR diff reviewed; draft removed only then |
 
 No additional physics lane enters this PR. ANIMEC, free-boundary hybrid,
 arbitrary curved open axes, stability, and mirror Boozer work begin only in a
 new plan after T12.
 
-### Immediate T6 file contract
+### Remaining reduction contract
 
-T6 changes existing owners only:
+T11 changes existing owners only and is driven by deletion. `splines.py` must
+return below 1,000 lines without splitting it into another module. The spline
+fixed/free maps and one physics-specific preconditioner remain; duplicate
+packing, migration, plotting, and algorithm-choice helpers do not. `output.py`
+retains one MOUT schema and one legacy migration path. Test files retain one
+analytic, one operator, one refinement, and one derivative gate per behavior;
+duplicated setup and tests of private implementation choices are removed.
 
-| File | Required change | Required deletion |
-| --- | --- | --- |
-| `vmec_jax/mirror/splines.py` | retain the shared coefficient map and preconditioner | remove local duplication/comments sufficient to return below 1,000 lines; do not move code |
-| `vmec_jax/mirror/free_boundary.py` | retain T6b's one square coefficient problem and parameterize it for implicit derivatives | `interpolate_fixed_boundary_state`, nodal compatibility paths, and duplicate wrappers |
-| `vmec_jax/mirror/implicit.py` | finish consuming the exact primal free problem and coefficient residual | reconstructed nodal free residual, copied masks, second pack/unpack path |
-| `vmec_jax/mirror/output.py` | retain schema-3 round trip and one schema-2 migration | duplicate raw-array migration paths |
-| `vmec_jax/mirror/solver.py` | retain fixed-driver orchestration only | `_free_radius_mask`, `_MirrorStateVectorizer`, and `_packed_preconditioner` |
-| `tests/mirror/test_free_boundary.py` | retain boundary-work/operator/restart/beta gates | nodal interpolation and duplicate algorithm-choice tests |
-| `tests/mirror/test_implicit.py` | add a finite-pressure control FD to the coefficient free adjoint | nodal free-adjoint fixture |
-| `tests/mirror/test_output.py` | retain schema-3 round trip and schema-2 migration | duplicate raw-array restart tests |
-| `examples/mirror_free_boundary_beta_scan.py` | no T6c feature growth | private imports and nodal interpolation helpers if any remain |
-| `benchmarks/mirror_free_boundary_axisymmetric.json` | keep explicitly stale/research until T7 regenerates it | incompatible positive status |
-
-No T6 source module is added. T6c must return below the measured post-T6a
-7,884-source/4,228-test baseline after T6b adds the production coefficient
-result, restart, continuation, and implicit controls. This is an intermediate
-deletion gate, not the release budget: T11 still must reduce the complete tree
-below 7,200 source and 4,000 test lines.
+The root keeps only the fixed-open and free-axisymmetric executable examples
+plus the fixed closed hybrid after promotion. The temporary ESSOS benchmark
+runner and coil construction leave this repository; vmec_jax retains only the
+documented external-field callable/MGRID interface. Canonical benchmark data
+are regenerated in place, never added as timestamped variants. T11 is complete
+only when all repository budgets in section 5 pass together.
 
 ## 7. Canonical artifacts and reporting
 
@@ -1218,17 +1241,17 @@ Percentages measure promotion evidence, not lines written:
 | Fixed open axisymmetric | 100% | maintain gates while shared solver code changes |
 | Fixed open nonaxisymmetric | 100% | maintain gates during shared-core changes |
 | Open fixed B-spline representation | 100% | maintain coefficient and cut-location gates |
-| Free open axisymmetric | 84% | regenerate three-grid force/interface/beta evidence |
+| Free open axisymmetric | 88% | finish nested-cut independent/combined force, interface, and beta refinement matrix |
 | Free open nonaxisymmetric | 35% | conditional three-grid local-mode promotion attempt after M4 |
-| Fixed closed B-spline hybrid | 45% | current-semantics VMEC parity, open-leg limit, force, derivatives |
+| Fixed closed B-spline hybrid | 50% | matched-flux circular parity, open-leg limit, racetrack continuation, force, derivatives |
 | Strong-force diagnostic | 100% | maintain gates in promoted equilibrium lanes |
-| Structured preconditioning | 90% | add cyclic structure and close periodic true residual in T8/T9 |
+| Structured preconditioning | 97% | cyclic sparse factor is active; A/B periodic solve and retain only the winning generic wrapper |
 | Implicit differentiation | 90% | rerun hybrid derivatives only after primal promotion |
-| Code/API simplification | 72% | T6c line gates pass; T11 must meet final file/API/source/test budgets |
+| Code/API simplification | 70% | current 50-file/7,891-source/4,329-test/20-name tree must meet all T11 budgets |
 | Docs/examples/artifacts | 68% | correct coefficient-adjoint text; regenerate free/hybrid showcases after physics gates |
 | ESSOS ownership separation | 90% | remove the remaining ESSOS-owned benchmark runner; retain field-callable integration only |
 
-Weighted completion of the four required release models is approximately 82%.
+Weighted completion of the four required release models is approximately 83%.
 Free closed hybrid and ANIMEC are deferred and excluded from that percentage.
 
 ## 9. Primary references
@@ -1279,6 +1302,11 @@ Free closed hybrid and ANIMEC are deferred and excluded from that percentage.
   <https://doi.org/10.1063/1.865851>
 - Savenko and Ågren, finite-beta SFLM ellipticity:
   <https://doi.org/10.1063/1.2401153>
+- Savenko, *MHD Stability and Confinement of Plasmas in a Single Mirror
+  Cell* (thesis and collected SFLM derivations):
+  <https://www.diva-portal.org/smash/get/diva2:167915/FULLTEXT01.pdf>
+- Patch et al., 2025 DESC/open-mirror development status:
+  <https://archive.aps.org/dpp/2025/jo05/4/>
 - Beklemishev, diamagnetic bubble equilibria:
   <https://arxiv.org/abs/1606.05454>
 - JAX custom derivative and implicit-iteration guide:
