@@ -432,3 +432,16 @@ def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
     assert received[0][2] == 2.5
     assert received[1][2] == 3.0
     assert all(item[3] is True for item in received)
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        solve_beta_scan_cli(
+            reference,
+            discretization,
+            config,
+            object(),
+            jnp.asarray([0.0]),
+            axial_flux_derivative=0.1,
+            reference_field=1.0,
+            initial_state=restart.plasma_state,
+            initial_restart=restart,
+        )

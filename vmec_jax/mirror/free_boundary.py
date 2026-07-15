@@ -865,6 +865,7 @@ def solve_beta_scan_cli(
     current_derivative: Array = 0.0,
     gamma: float = 5.0 / 3.0,
     beta_rtol: float = 1.0e-8,
+    initial_state: SplineMirrorState | None = None,
     initial_restart: FreeBoundaryRestart | None = None,
     exterior_ntheta: int = 40,
     exterior_order: int = 8,
@@ -880,11 +881,16 @@ def solve_beta_scan_cli(
     if beta_rtol <= 0.0:
         raise ValueError("beta_rtol must be positive")
     grid = discretization.grid
-    reference_radius = jnp.broadcast_to(
-        jnp.asarray(initial_boundary.radius_coefficients),
-        (grid.ns, grid.ntheta, discretization.coefficient_count),
-    )
-    reference_coefficients = SplineMirrorState(reference_radius, jnp.zeros_like(reference_radius))
+    if initial_state is not None and initial_restart is not None:
+        raise ValueError("initial_state and initial_restart are mutually exclusive")
+    if initial_state is None:
+        reference_radius = jnp.broadcast_to(
+            jnp.asarray(initial_boundary.radius_coefficients),
+            (grid.ns, grid.ntheta, discretization.coefficient_count),
+        )
+        reference_coefficients = SplineMirrorState(reference_radius, jnp.zeros_like(reference_radius))
+    else:
+        reference_coefficients = discretization.project_fixed_boundary(initial_state, initial_boundary)
     reference_state = discretization.evaluate_state(reference_coefficients)
     reference_energy = mirror_energy(
         reference_state,

@@ -18,7 +18,10 @@ from vmec_jax.mirror import (
     MirrorBoundary,
     MirrorConfig,
     MirrorResolution,
+    MirrorState,
     SplineMirrorDiscretization,
+    SplineMirrorBoundary,
+    SplineMirrorState,
     solve_beta_scan_cli,
 )
 from vmec_jax.mirror.output import (
@@ -135,6 +138,53 @@ def _axisymmetric_flux_surface_radii(
     }
 
 
+def _axisymmetric_flux_surface_state(
+    external_field,
+    s: np.ndarray,
+    z: np.ndarray,
+    axial_flux_derivative: float,
+    paraxial_scale: np.ndarray,
+) -> np.ndarray:
+    """Return nested radius scales whose enclosed flux is ``s * Psi'``."""
+
+    scales = np.empty((len(s), len(z)))
+    scales[0] = paraxial_scale
+    for index, radial_coordinate in enumerate(np.asarray(s)[1:], start=1):
+        root = np.sqrt(radial_coordinate)
+        radii, _ = _axisymmetric_flux_surface_radii(
+            external_field,
+            z,
+            radial_coordinate * axial_flux_derivative,
+            root * paraxial_scale,
+        )
+        scales[index] = radii / root
+    return scales
+
+
+def _axisymmetric_flux_preflight(
+    external_field,
+    state: MirrorState,
+    grid,
+    axial_flux_derivative: float,
+    *,
+    order: int = 16,
+) -> dict[str, float]:
+    """Measure represented enclosed-flux error over all nonaxis surfaces."""
+
+    nodes, weights = np.polynomial.legendre.leggauss(order)
+    radial_nodes = 0.5 * (nodes + 1.0)
+    radial_weights = 0.5 * weights
+    errors = []
+    for index, radial_coordinate in enumerate(np.asarray(grid.s)[1:], start=1):
+        radii = np.sqrt(radial_coordinate) * np.asarray(state.radius_scale[index, 0])
+        for radius, axial in zip(radii, np.asarray(grid.z), strict=True):
+            points = np.column_stack((radius * radial_nodes, np.zeros(order), np.full(order, axial)))
+            bz = np.asarray(external_field(jnp.asarray(points)))[:, 2]
+            enclosed = radius**2 * np.sum(radial_weights * radial_nodes * bz)
+            errors.append(abs(enclosed / (radial_coordinate * axial_flux_derivative) - 1.0))
+    return {"quadrature_order": order, "maximum_relative_flux_error": float(max(errors))}
+
+
 def run(
     ns: int,
     ntheta: int,
@@ -168,7 +218,6 @@ def run(
         ftol=1.0e-12,
         max_iterations=1000,
     )
-    source_grid = config.build_grid()
     discretization = SplineMirrorDiscretization.build_cgl(config, elements=spline_elements)
     grid = discretization.grid
     dofs = _two_coil_dofs(axisymmetric=axisymmetric)
@@ -186,30 +235,57 @@ def run(
         return jax.vmap(biot_savart.B)(points.reshape(-1, 3)).reshape(points.shape)
 
     field_preflight = _axisymmetric_field_preflight(external_field, np.asarray(grid.z)) if axisymmetric else None
+    def analytic_axis_field(z):
+        z = jnp.asarray(z)
+        return sum(
+            4.0e-7 * jnp.pi * 2.0e5 * 0.9**2 / (2.0 * (0.9**2 + (z - position) ** 2) ** 1.5)
+            for position in (-1.0, 1.0)
+        )
+
     z = jnp.asarray(grid.z)
-    on_axis = sum(
-        4.0e-7 * jnp.pi * 2.0e5 * 0.9**2 / (2.0 * (0.9**2 + (z - position) ** 2) ** 1.5) for position in (-1.0, 1.0)
-    )
+    on_axis = analytic_axis_field(z)
     center = grid.nxi // 2
     flux = 0.5 * on_axis[center] * center_radius**2
     paraxial = MirrorBoundary.from_axis_field(flux, on_axis, grid)
     flux_preflight = None
+    initial_state = None
     if axisymmetric:
-        exact_radii, flux_preflight = _axisymmetric_flux_surface_radii(
+        coefficient_xi = np.asarray(discretization.spline.collocation_nodes)
+        coefficient_z = 0.5 * (config.z_min + config.z_max) + 0.5 * (config.z_max - config.z_min) * coefficient_xi
+        coefficient_axis_field = np.asarray(analytic_axis_field(coefficient_z))
+        coefficient_paraxial = np.sqrt(2.0 * float(flux) / coefficient_axis_field)
+        coefficient_scales = _axisymmetric_flux_surface_state(
             external_field,
-            np.asarray(grid.z),
+            np.asarray(grid.s),
+            coefficient_z,
             float(flux),
-            np.asarray(paraxial.radius_scale[0]),
+            coefficient_paraxial,
         )
-        boundary = MirrorBoundary.from_radius(exact_radii, grid)
+        radius_coefficients = discretization.spline.fit(coefficient_scales, axis=-1)
+        boundary = SplineMirrorBoundary(jnp.asarray(radius_coefficients[-1][None]))
+        initial_state = SplineMirrorState(
+            jnp.asarray(radius_coefficients[:, None]),
+            jnp.zeros_like(jnp.asarray(radius_coefficients[:, None])),
+        )
+        evaluated_state = discretization.evaluate_state(initial_state)
+        flux_preflight = _axisymmetric_flux_preflight(
+            external_field,
+            evaluated_state,
+            grid,
+            float(flux),
+        )
+        flux_preflight["maximum_paraxial_radius_correction"] = float(
+            np.max(np.abs(np.asarray(evaluated_state.radius_scale[-1, 0]) / np.asarray(paraxial.radius_scale[0]) - 1.0))
+        )
     else:
-        boundary = MirrorBoundary(
+        nodal_boundary = MirrorBoundary(
             paraxial.radius_scale + 0.03 * jnp.asarray(grid.xi)[None, :] * jnp.cos(jnp.asarray(grid.theta)[:, None])
         )
+        boundary = discretization.fit_boundary(nodal_boundary, config.build_grid())
     betas = jnp.asarray(beta_values)
     start = time.perf_counter()
     results = solve_beta_scan_cli(
-        discretization.fit_boundary(boundary, source_grid),
+        boundary,
         discretization,
         config,
         external_field,
@@ -217,6 +293,7 @@ def run(
         axial_flux_derivative=flux,
         reference_field=float(on_axis[center]),
         current_derivative=(0.0 if axisymmetric else 1.0e-3 * jnp.asarray(grid.s)),
+        initial_state=initial_state,
         exterior_ntheta=ntheta,
         exterior_order=exterior_order,
         exterior_spectral_side_density=True,

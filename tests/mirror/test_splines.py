@@ -686,6 +686,22 @@ def test_coefficient_native_state_matches_chebyshev_polynomial_geometry_and_ener
     assert evaluated.radius_scale.shape[-1] > projected.radius_coefficients.shape[-1]
 
 
+def test_clamped_projection_preserves_prescribed_nested_cut_profiles() -> None:
+    _, _, _, _, discretization, boundary, state = _spline_polynomial_state()
+    radial_profile = jnp.linspace(0.82, 1.0, discretization.grid.ns)
+    radius = state.radius_coefficients.at[:, :, 0].multiply(radial_profile[:, None])
+    radius = radius.at[:, :, -1].multiply((2.0 - radial_profile)[:, None])
+    projected = discretization.project_fixed_boundary(
+        SplineMirrorState(radius, state.lambda_coefficients),
+        boundary,
+    )
+
+    np.testing.assert_allclose(projected.radius_coefficients[-1], boundary.radius_coefficients)
+    np.testing.assert_allclose(projected.radius_coefficients[1:-1, :, 0], radius[1:-1, :, 0])
+    np.testing.assert_allclose(projected.radius_coefficients[1:-1, :, -1], radius[1:-1, :, -1])
+    np.testing.assert_allclose(projected.radius_coefficients[0], projected.radius_coefficients[1])
+
+
 def test_boundary_transfer_preserves_nested_self_similarity() -> None:
     config = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=1, nxi=9))
     source_grid = config.build_grid()

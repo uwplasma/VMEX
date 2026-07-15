@@ -247,14 +247,15 @@ class SplineMirrorDiscretization:
         state: SplineMirrorState,
         boundary: SplineMirrorBoundary,
     ) -> SplineMirrorState:
-        """Apply side/end geometry, axis regularity, and the lambda gauge in coefficient space."""
+        """Apply side geometry, axis regularity, and the lambda gauge.
+
+        Clamped endpoint coefficients remain the prescribed cut profiles from
+        ``state``. The coefficient vectorizer excludes them from every solve.
+        """
 
         radius = jnp.asarray(state.radius_coefficients)
         boundary_radius = jnp.asarray(boundary.radius_coefficients)
         radius = radius.at[-1].set(boundary_radius)
-        if not self.closed:
-            radius = radius.at[:, :, 0].set(boundary_radius[:, 0][None, :])
-            radius = radius.at[:, :, -1].set(boundary_radius[:, -1][None, :])
         radius = radius.at[0].set(radius[1])
         lam = jnp.asarray(state.lambda_coefficients).at[0].set(state.lambda_coefficients[1])
         evaluated = jnp.tensordot(lam, jnp.asarray(self.evaluation_matrix).T, axes=((-1,), (0,)))

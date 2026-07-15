@@ -8,10 +8,8 @@ tests, and the four compact benchmark JSON files are the execution log.
 
 Audit baseline (2026-07-15 CDT, final source/literature/worktree review and T6c update):
 
-- the pushed implementation head is `df0b8e54` on
-  `codex/mirror-geometry`. T1--T6b and the primal/adjoint unification part of
-  T6c are committed and pushed. The final T6c reduction removes repeated
-  fixtures and one-use wrappers without removing a physics assertion;
+- the T7 baseline head is `84d60923` on `codex/mirror-geometry`. T1--T6c are
+  committed and pushed; T7 is the active evidence gate;
 - base `origin/main` is `ed4ac7ac`; the branch is zero commits behind and 323
   commits ahead, so no main-branch merge is pending. It includes the
   coil-ownership cleanup from PR #26, simultaneous boundary/coil derivatives
@@ -99,6 +97,17 @@ Audit baseline (2026-07-15 CDT, final source/literature/worktree review and T6c 
   suite passes 103 tests with 7 full tests deselected in 323.73 seconds; the
   finite-pressure adjoint, 0--50% axisymmetric beta scan, and finite-current
   nonaxisymmetric endpoint pass together in 209.91 seconds.
+- T7's first two-coil refinement pass exposed a fixed-data error rather than
+  solver stalling. The LCFS followed the finite-radius vacuum flux surface,
+  but every internal surface at each cut was still overwritten by a scaled
+  LCFS. At beta zero the medium-grid variational residual reached
+  `7.97e-13` while all-volume/end-collar strong force remained
+  `4.74e-2`/`7.55e-2`. The corrected contract preserves the initial state's
+  nested cut profiles. Initializing all radial surfaces from enclosed ESSOS
+  flux reduces those values to `3.41e-3`/`5.26e-3`, with bulk force
+  `1.30e-3` and variational residual `2.33e-14`. T7 must now establish this
+  decrease on the independent and combined refinement matrix before promoting
+  finite-beta evidence.
 
 Execution update (2026-07-15): T1 enforced the matrix-free open policy and
 compacted its evidence; T2 removed the nodal fixed solver, custom VJP, and
@@ -114,14 +123,15 @@ half-radius studies, and fine-grid tangent/adjoint checks. Its complete local
 gate now passes. T6a established the composed coefficient map and discrete
 boundary-work shape derivative. T6b migrated the free primal, operator,
 result, and restart. T6c unifies the free implicit residual and completes the
-mandatory deletion pass. T7 is next after static and strict-documentation
-checks and the T6c commit.
+mandatory deletion pass. T7 is active and is regenerating the axisymmetric
+free-boundary evidence from physically nested finite-radius cut data.
 
 The branch contains real fixed-open equilibrium solvers and useful validation,
-but it is not release-ready. Dense coupled free-boundary Jacobian storage is
-no longer a blocker. The immediate blockers are duplicated nodal free/implicit
-code, stale free/hybrid force evidence, nonconverged local 3D free-boundary
-modes, and incomplete closed-hybrid limiting cases. Artificial end disks are
+but it is not release-ready. Dense coupled free-boundary Jacobian storage and
+duplicated nodal free/implicit production paths are no longer blockers. The
+immediate blockers are the incomplete T7 refinement gate, stale hybrid force
+evidence, nonconverged local 3D free-boundary modes, and incomplete
+closed-hybrid limiting cases. Artificial end disks are
 retained only as exterior integration closures and are tested by cap
 compatibility and cut-location independence;
 they are not plasma boundaries. The milestones below remove the remaining
@@ -931,11 +941,11 @@ first-order reason recorded in section 3.3.
 
 ### M4. Promote axisymmetric open free boundary through beta 50%
 
-Implementation status: steps 1--7 are implemented by T6a/T6b and pass their
-focused operator, restart, continuation, and memory tests. Step 8 is the active
-T6c work. Steps 9--13 are T7 and must regenerate all physics evidence because
-the existing benchmark predates the accepted strong-force reconstruction and
-coefficient residual.
+Implementation status: steps 1--8 are complete and pass their operator,
+restart, continuation, memory, and reconverged-adjoint tests. Steps 9--13 are
+the active T7 work and must regenerate all physics evidence because the
+existing benchmark predates the accepted strong-force reconstruction,
+coefficient residual, and nested finite-radius cut initialization.
 
 1. Represent boundary, interior geometry, and lambda with the same clamped
    axial spline coefficients used by fixed boundary. Evaluate them on the
@@ -985,6 +995,10 @@ coefficient residual.
    `0, 0.01, 0.03, 0.10, 0.25, 0.50`, warm-starting only between adjacent
    values and recording retries. The external field comes from an ESSOS
    callable or MGRID; no coil representation enters mirror source code.
+   Prescribe the full nested endpoint profiles from the supplied field's
+   enclosed flux. Record their represented-flux error after the spline fit;
+   correcting only the LCFS while retaining self-similar internal cuts is not
+   an admissible initialization.
 10. Run three independently refined radial, axial, exterior, and angular grids;
    refine one family at a time before the combined study.
 11. Compare only on-axis field depression at 1%, 3%, and 10% with the pinned

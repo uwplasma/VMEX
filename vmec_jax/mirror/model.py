@@ -200,11 +200,11 @@ def project_fixed_boundary_state(
     boundary: MirrorBoundary,
     grid: "MirrorGrid",
 ) -> MirrorState:
-    """Apply fixed side/end geometry, axis regularity, and lambda gauge.
+    """Apply the side boundary, axis regularity, and lambda gauge.
 
-    End geometry is radial-self-similar at both fixed-flux cuts.  The lambda
-    surface mean is removed with tensor-product theta/CGL quadrature; this is
-    a pure gauge operation and does not change ``B``.
+    The input state's endpoint profiles are prescribed cut data. Keeping them
+    intact permits finite-radius flux surfaces instead of forcing every cut
+    to be a scaled copy of the LCFS. The lambda surface mean is a pure gauge.
     """
 
     state.validate_shape(grid)
@@ -213,8 +213,6 @@ def project_fixed_boundary_state(
         raise ValueError("boundary shape does not match mirror grid")
     radius_scale = jnp.asarray(state.radius_scale)
     radius_scale = radius_scale.at[-1].set(boundary_radius)
-    radius_scale = radius_scale.at[:, :, 0].set(boundary_radius[:, 0][None, :])
-    radius_scale = radius_scale.at[:, :, -1].set(boundary_radius[:, -1][None, :])
     radius_scale = radius_scale.at[0].set(radius_scale[1])
 
     lam = jnp.asarray(state.lambda_stream)

@@ -69,10 +69,10 @@ def test_fixed_boundary_projection_enforces_geometry_and_lambda_gauge() -> None:
     )
     projected = project_fixed_boundary_state(state, boundary, grid)
     np.testing.assert_allclose(projected.radius_scale[-1], boundary.radius_scale)
-    np.testing.assert_allclose(
-        projected.radius_scale[:, :, 0],
-        np.broadcast_to(np.asarray(boundary.radius_scale[:, 0]), (grid.ns, grid.ntheta)),
-    )
+    expected_cut = np.asarray(state.radius_scale[:, :, 0]).copy()
+    expected_cut[-1] = np.asarray(boundary.radius_scale[:, 0])
+    expected_cut[0] = expected_cut[1]
+    np.testing.assert_allclose(projected.radius_scale[:, :, 0], expected_cut)
     np.testing.assert_allclose(projected.radius_scale[0], projected.radius_scale[1])
     np.testing.assert_allclose(projected.lambda_stream[0], projected.lambda_stream[1])
     surface_mean = np.einsum(

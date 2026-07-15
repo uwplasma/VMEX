@@ -41,6 +41,12 @@ surface, so disks temporarily close the two cuts. Their Neumann data continue
 the nonzero plasma and applied-field through-flux across each cut. The disks do
 not close the plasma or acquire an interface pressure-balance equation.
 Tangency and total-pressure continuity are enforced only on the lateral LCFS.
+The complete nested radial profile at each cut is prescribed by the initial
+state and remains fixed during primal and implicit solves. A state built only
+from the LCFS uses radially self-similar cuts. For a finite-radius supplied
+field, callers should instead initialize nested cut surfaces from its enclosed
+flux; otherwise the incompatible cut data appear as a localized strong-force
+error even when the variational residual is small.
 
 Resolution contract
 -------------------
