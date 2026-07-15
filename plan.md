@@ -666,42 +666,44 @@ evidence is:
 - autodiff and the independent radial-Gauss first variation agree for radius,
   stream function, and center fields;
 - all three separable preconditioner blocks are finite;
-- pre-commit passes, the focused map lane is `4 passed, 1 full skipped`, and
-  the normal mirror suite is `112 passed, 10 skipped` in 234.27 s on the local
+- commit `f3da1f67` removes the interior radius field's real `m=1` translation
+  mode whenever center variables are active, defining a unique section center;
+- the same commit adds a residual-norm dense Newton lane only for center-map
+  systems of at most 512 variables. Larger states retain matrix-free Newton;
+- pre-commit passes, the focused map lane is `5 passed, 1 full skipped`, and
+  the normal mirror suite is `113 passed, 10 skipped` in 238.36 s on the local
   JAX 0.10.2 CPU environment.
 
-The nonlinear promotion gate is not accepted. Bounded diagnostics on one RTX
-A4000 with CUDA JAX 0.6.2 used a circular closed case with `ns=5`, `mpol=0`,
-four periodic controls, `ftol=1e-12`, and a small frame-binormal displacement.
-The committed full-radial map drove center coefficients to their broad bounds.
-At 100 iterations it stalled at variational `6.32e-2`, strong force `25.76`,
-and true linear residual `1.69e-9`. Half-radius and 10%-radius bounds, a local
-trust-region residual start, and the restricted trial `q=(1-s)Q(u)` all
-remained bound-limited and increased strong force; none is retained. Peak host
-memory was 1.60-1.67 GiB. The rejected sparse colored-center Hessian path used
-2.9 GiB and compiled too slowly; the committed separable path used about 1.8
-GiB in the comparable local trial.
+The early `mpol=0` nonlinear diagnostics were invalid for a closed torus:
+without poloidal stream-function modes, center virtual work was `0.953` and
+the solve ran to bounds. Those results are retained only as a resolution guard,
+not evidence against the map. Empirical center bounds, a restricted
+`q=(1-s)Q(u)` trial, energy-globalized post-polish, and exact block alternation
+were rejected and are not in source.
 
-This activates the T9b stop rule. Do not continue to racetrack geometry or
-current until the circular map passes strong-force refinement. The repair
-sequence is finite:
+Dense Hessians at zero and small displacement are symmetric to `2e-16`; manual
+and autodiff center work agree from `2e-16` (`mpol=0`) to `1e-13` (`mpol=1`).
+They expose strong radius-center coupling and lambda-dominated small modes.
+Removing the radius `m=1` gauge reduces the accepted `ns=5`, `mpol=3`,
+four-control system to 200 variables. Direct dense residual Newton then reaches
+variational `4.24e-13`, true linear residual `1.78e-13`, strong force
+`2.82e-3`, center shift `8.62e-3`, and positive Jacobian in four steps. The
+integrated full test passes in 60.08 s on one RTX A4000 with CUDA JAX 0.6.2;
+peak host memory is 2.96 GiB and `max_iterations=1000` is honored.
 
-1. At the zero and small-displacement circular states, build the dense packed
-   Hessian for the smallest `mpol=0` and `mpol=1` cases. Record eigenvalues,
-   singular vectors, radius-center cross blocks, transpose error, and Cartesian
-   virtual work.
-2. Separate physical transverse motion from the first-poloidal-harmonic radius
-   representation. Derive and test one explicit section-centering gauge rather
-   than imposing empirical box bounds.
-3. Compare that constrained map term by term with VMEC2000 `R/Z` force
-   variations and GVEC's two-coordinate map. Repair the half/full radial action
-   only if the virtual-work comparison identifies a mismatch.
-4. Re-run displaced-circle solves at `ns=5,9,17` with longitudinal controls
-   `8,12,16`. Accept only monotone weak/strong refinement, an unsaturated map,
-   fixed LCFS, positive Jacobian, and `ftol<=1e-12`.
-5. If the constrained circular map still has no nearby stationary branch,
-   remove the center-map solve variables and defer the fixed closed hybrid as
-   required by T9b.8; do not keep a public nonconvergent scaffold.
+The circular center-map formulation is accepted at one resolution, but its
+refinement gate remains open. Continue in this order:
+
+1. Repeat the displaced-circle solve at poloidal modes `3,5,7`, periodic
+   controls `4,8,12`, and radial nodes `5,9,17`, changing one resolution at a
+   time and using coefficient/radial warm starts.
+2. Require monotone strong-force convergence, unsaturated center coefficients,
+   fixed Cartesian LCFS, positive Jacobian, weak parity, `ftol<=1e-12`, and
+   true linear residual `<=1e-8`. Do not count under-resolved `mpol=1` runs.
+3. Compare the constrained map's Cartesian virtual work with VMEC2000 `R/Z`
+   variations and GVEC's two-coordinate map before the half-straight stage.
+4. Only after those gates, resume T9b continuation through axis aspect,
+   straight length, return curvature, ellipse, twist, and current.
 
 ## 10. Completion estimate
 
@@ -713,7 +715,7 @@ Percentages represent promotion evidence, not implementation volume.
 | Fixed open nonaxisymmetric | 100% | maintain shared-core gates |
 | Free open axisymmetric through 10% | 100% | maintain support ceiling |
 | Free open nonaxisymmetric | 35% | bounded three-grid disposition |
-| Fixed closed B-spline hybrid | 58% | center-map gauge/force repair, staged geometry/current continuation, force refinement, open limit, beta, derivatives/output |
+| Fixed closed B-spline hybrid | 63% | circular-map refinement, staged geometry/current continuation, open limit, beta, derivatives/output |
 | Structured preconditioning | 100% | maintain resource and true-residual gates |
 | Implicit differentiation | 90% | closed-hybrid derivatives after primal promotion |
 | Code/API simplification | 62% | 53/8,147/4,642/20 must meet T11 budgets |
@@ -728,7 +730,7 @@ deferred.
 
 Source revisions reviewed locally on 2026-07-15:
 
-- `vmec_jax` main `ed4ac7ac` and mirror HEAD `b8895aa0`;
+- `vmec_jax` main `ed4ac7ac` and mirror HEAD `f3da1f67`;
 - DESC master `24aa7b9d`, mirror `0dba071d`, mirror-anisotropy `805b77fc`,
   racetrack `2014ed0e`, cylindrical/Chebyshev `6f85f50a`, and
   straight-stellarator `8cf50b58`;
