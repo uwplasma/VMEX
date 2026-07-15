@@ -388,6 +388,8 @@ class IsotropicForceResidual:
     normalized_rms: Array
     bulk_normalized_rms: Array
     axis_normalized_rms: Array
+    first_row_normalized_rms: Array
+    end_collar_normalized_rms: Array
     component_rms: Array
 
 
@@ -761,8 +763,10 @@ def isotropic_force_residual(
     normalized_rms = physical_rms / jnp.maximum(reference_rms, jnp.finfo(physical_rms.dtype).tiny)
     active_s = jnp.asarray(grid.s[1:-1])
 
-    def regional_normalized_rms(mask: Array) -> Array:
-        regional_weights = weights * jnp.asarray(mask)[:, None, None]
+    def regional_normalized_rms(radial_mask: Array, axial_mask: Array = 1.0) -> Array:
+        axial_mask = jnp.broadcast_to(jnp.asarray(axial_mask), (force_active.shape[2],))
+        mask = jnp.asarray(radial_mask)[:, None, None] * axial_mask[None, None, :]
+        regional_weights = weights * mask
         denominator = jnp.maximum(jnp.sum(regional_weights), jnp.finfo(physical_rms.dtype).tiny)
         regional_force = jnp.sqrt(jnp.sum(regional_weights * force_squared) / denominator)
         regional_reference = jnp.sqrt(jnp.sum(regional_weights * magnetic_force_scale**2) / denominator)
@@ -770,6 +774,10 @@ def isotropic_force_residual(
 
     bulk_normalized_rms = regional_normalized_rms(active_s >= 0.2)
     axis_normalized_rms = regional_normalized_rms(active_s < 0.2)
+    first_row_normalized_rms = regional_normalized_rms(jnp.arange(active_s.size) == 0)
+    active_xi = jnp.arange(force_active.shape[2])
+    end_collar = (active_xi == 0) | (active_xi == active_xi.size - 1)
+    end_collar_normalized_rms = regional_normalized_rms(jnp.ones_like(active_s), end_collar)
     return IsotropicForceResidual(
         covariant_s=force_s,
         covariant_theta=force_theta,
@@ -781,6 +789,8 @@ def isotropic_force_residual(
         normalized_rms=normalized_rms,
         bulk_normalized_rms=bulk_normalized_rms,
         axis_normalized_rms=axis_normalized_rms,
+        first_row_normalized_rms=first_row_normalized_rms,
+        end_collar_normalized_rms=end_collar_normalized_rms,
         component_rms=component_rms,
     )
 

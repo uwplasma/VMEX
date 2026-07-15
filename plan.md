@@ -197,6 +197,11 @@ conditions must match VMEC2000. The current branch does not meet this contract.
   `F_u du = -F_p dp` and passes its current open-state checks.
 - The analytic module contains independent two-loop, paraxial rotating-ellipse,
   and Straight Field Line Mirror fixtures.
+- Pointwise-force manufactured tests now include an analytic radial
+  finite-beta balance with second-order ``ns`` convergence and a
+  theta-dependent tube carrying an exactly uniform Cartesian field. These
+  isolate the remaining defect to shaped solved states rather than the basic
+  curl, pressure-gradient, or coordinate formulas.
 - The axisymmetric free solver produces finite-beta equilibria with roundoff
   variational/weak residuals, increasing radius, decreasing center field, and
   separate tangency/stress diagnostics in analytic-field tests.
@@ -614,8 +619,8 @@ Percentages estimate accepted promotion evidence, not code volume.
 
 | Lane | Completion | Final status / remaining gate |
 |---|---:|---|
-| Axisymmetric fixed mirror | 90% | pointwise reconstruction, final spline derivatives, release evidence |
-| Nonaxisymmetric fixed mirror | 82% | paraxial amplitude, SFLM refinement, pointwise force, release evidence |
+| Axisymmetric fixed mirror | 91% | solved-state pointwise convergence, final spline derivatives, release evidence |
+| Nonaxisymmetric fixed mirror | 83% | paraxial amplitude, SFLM and solved-state pointwise refinement, release evidence |
 | Axisymmetric free mirror | 86% | corrected scan stored; pointwise force, scaling, adjoint rerun |
 | Nonaxisymmetric free mirror | 100% deferred | public claim removed; retain negative evidence only |
 | Open native B-splines | 84% | fixed-lane promotion; spline free boundary explicitly deferred |

@@ -106,8 +106,9 @@ variational residual defines ``ftol``. The staggered weak residual independently
 assembles the first variation on the energy quadrature and is checked on the
 same constrained solver variables. The pointwise force reconstructs
 ``J x B - grad(p)`` on the full mesh and remains a non-gating spatial-error
-diagnostic. ``div(B)`` checks the field representation. Straight-axis mirror
-data are never encoded as a toroidal WOUT file.
+diagnostic. Its total, near-axis, first-radial-row, bulk, and end-collar norms
+are reported separately. ``div(B)`` checks the field representation.
+Straight-axis mirror data are never encoded as a toroidal WOUT file.
 
 The saved ``|B|`` array is reconstructed from the same radial Gauss cells used
 by the magnetic-energy functional. Cartesian field samples remain separate for
@@ -143,6 +144,14 @@ essential: the former midpoint rule admitted an alternating lambda hourglass
 mode and its published refinement data were rejected. The corrected lambda
 and pitch profiles are smooth, and a dedicated regression test assigns the
 alternating mode finite energy.
+
+Two manufactured pointwise-force fixtures isolate the reconstruction from the
+nonlinear solve. A cylindrical finite-beta state with analytic radial
+``B_z(s)`` and pressure balance converges at second order when ``ns`` doubles.
+A theta-dependent self-similar tube carrying an exactly uniform Cartesian
+field gives normalized Lorentz force below ``1e-12``. These gates show that
+radial differentiation and nonaxisymmetric coordinates work independently;
+they do not promote shaped solved states whose pointwise force remains large.
 
 At ``ns=15,nxi=15,ntheta=5``, the variational force is ``2.25e-13`` and the
 independently differenced all-row/axis/bulk force residuals are

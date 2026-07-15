@@ -129,6 +129,69 @@ def test_mass_profile_recovers_reference_isotropic_pressure() -> None:
     assert float(isotropic_force_residual(finite_beta, grid).normalized_rms) < 2.0e-13
 
 
+def test_manufactured_radial_pressure_balance_converges_second_order() -> None:
+    """Resolve a cylindrical equilibrium with analytic radial ``B_z`` and pressure."""
+
+    residuals = []
+    for ns in (9, 17, 33):
+        grid, _, _ = _cylinder(ns=ns, nxi=9)
+        s = jnp.asarray(grid.s)
+        radius, shaping, flux = 0.3, 0.4, 0.1
+        radius_scale = radius * jnp.sqrt(1.0 + shaping * s)
+        state = MirrorState(
+            jnp.broadcast_to(radius_scale[:, None, None], grid.shape),
+            jnp.zeros(grid.shape),
+        )
+        vacuum = mirror_energy(state, grid, axial_flux_derivative=flux)
+        radial_jacobian = 0.5 * radius**2 * (1.0 + 2.0 * shaping * s)
+        field = flux / radial_jacobian
+        pressure = 2.0e5 + (field[-1] ** 2 - field**2) / (2.0 * MU0)
+        energy = mirror_energy(
+            state,
+            grid,
+            axial_flux_derivative=flux,
+            mass_profile=mass_profile_from_pressure(
+                pressure,
+                vacuum.volume_derivative,
+            ),
+        )
+        residuals.append(float(isotropic_force_residual(energy, grid).normalized_rms))
+
+    assert residuals[0] > residuals[1] > residuals[2]
+    np.testing.assert_allclose(
+        np.asarray(residuals[:-1]) / np.asarray(residuals[1:]),
+        4.1,
+        rtol=0.08,
+    )
+
+
+def test_nonaxisymmetric_coordinates_recover_uniform_cartesian_field() -> None:
+    """A shaped self-similar tube must not create a spurious Lorentz force."""
+
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=9, mpol=2, ntheta=9, nxi=9),
+    )
+    grid = config.build_grid()
+    theta = jnp.asarray(grid.theta)
+    radius_scale = 0.3 * (1.0 + 0.12 * jnp.cos(theta))
+    radial_jacobian = 0.5 * radius_scale**2
+    axial_flux = jnp.sum(jnp.asarray(grid.theta_basis.weights) * radial_jacobian) / (2.0 * jnp.pi)
+    stream_derivative = radial_jacobian - axial_flux
+    modes = jnp.fft.fft(stream_derivative)
+    mode_numbers = jnp.fft.fftfreq(grid.ntheta, 1.0 / grid.ntheta)
+    inverse_derivative = jnp.where(mode_numbers == 0.0, 0.0, 1.0 / (1j * mode_numbers))
+    stream = jnp.fft.ifft(modes * inverse_derivative).real
+    state = MirrorState(
+        jnp.broadcast_to(radius_scale[None, :, None], grid.shape),
+        jnp.broadcast_to(stream[None, :, None], grid.shape),
+    )
+    energy = mirror_energy(state, grid, axial_flux_derivative=axial_flux)
+    residual = isotropic_force_residual(energy, grid)
+
+    np.testing.assert_allclose(energy.b_squared, 1.0, rtol=4.0e-15, atol=4.0e-15)
+    assert float(residual.normalized_rms) < 1.0e-12
+
+
 def test_optimizer_merit_rejects_crossed_flux_surfaces() -> None:
     config = MirrorConfig(resolution=MirrorResolution(ns=5, nxi=7))
     grid = config.build_grid()
