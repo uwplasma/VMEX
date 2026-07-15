@@ -158,6 +158,25 @@ def run(
     diagnostics = summarize(results, betas, grid, reference_field=float(on_axis[center]))
     rows = []
     for beta, result, diagnostic in zip(betas, results, diagnostics, strict=True):
+        axial_weights = np.asarray(grid.axial_basis.weights).copy()
+        axial_weights[[0, -1]] = 0.0
+        lateral_weights = (
+            np.asarray(grid.theta_basis.weights)[:, None]
+            * axial_weights[None, :]
+        )
+        vacuum_b_normal = np.asarray(result.vacuum_field.lateral_b_normal)
+        if vacuum_b_normal.ndim == 1:
+            vacuum_b_normal = vacuum_b_normal[None, :]
+        stress_jump = np.asarray(result.interface.normal_stress_jump)
+
+        def lateral_rms(values: np.ndarray) -> float:
+            return float(
+                np.sqrt(
+                    np.sum(lateral_weights * values**2)
+                    / np.sum(lateral_weights)
+                )
+            )
+
         row = {
             "beta": float(beta),
             "converged": result.converged,
@@ -166,19 +185,24 @@ def run(
             "normal_stress_rms": float(result.interface.normal_stress_rms),
             "vacuum_b_normal_rms": float(result.interface.vacuum_b_normal_rms),
             "staggered_weak_max": float(result.plasma_staggered_weak_force.maximum),
+            "pointwise_force_rms": float(result.plasma_force.normalized_rms),
             "normalized_divb": float(result.normalized_divergence_rms),
             "lambda_max": float(jnp.max(jnp.abs(result.plasma_state.lambda_stream))),
             "compatibility": float(result.vacuum_field.neumann_result.compatibility_error),
             "raw_compatibility": float(result.vacuum_field.neumann_result.raw_compatibility_error),
             "condition_number": float(result.vacuum_field.neumann_result.condition_number),
+            "vacuum_b_normal_T_rms": lateral_rms(vacuum_b_normal),
+            "normal_stress_jump_Pa_rms": lateral_rms(stress_jump),
             "achieved_beta": float(diagnostic.achieved_reference_beta),
             "volume_beta": float(diagnostic.volume_averaged_beta),
         }
         if axisymmetric:
+            axis_field = np.sqrt(np.asarray(result.plasma_b_squared)[0, 0])
             row.update(
                 center_radius_m=float(diagnostic.center_radius),
                 center_field_T=float(diagnostic.center_axis_field),
                 field_ratio=float(diagnostic.diamagnetic_field_ratio),
+                mirror_ratio=float(np.max(axis_field) / axis_field[center]),
             )
         else:
             row.update(
