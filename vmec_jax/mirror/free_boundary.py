@@ -454,7 +454,15 @@ def solve_free_boundary_cli(
     )
     message = str(solve.message)
     if not converged:
-        message += f"; variational force={variational_max:.3e}"
+        message += (
+            f"; variational force={variational_max:.3e}"
+            f"; crossed surfaces={bool(plasma.geometry.jacobian_sign_changed)}"
+            f"; exterior compatibility="
+            f"{float(vacuum_field.neumann_result.compatibility_error):.3e}"
+            f"; exterior condition="
+            f"{float(vacuum_field.neumann_result.condition_number):.3e}"
+            f"; anisotropy valid={bool(anisotropy_valid)}"
+        )
     result = FreeBoundaryMirrorResult(
         boundary=boundary,
         plasma_state=state,
