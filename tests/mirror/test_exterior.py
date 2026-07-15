@@ -452,7 +452,9 @@ def test_axisymmetric_neumann_balance_changes_only_artificial_caps() -> None:
         z_max=0.6,
     ).build_grid()
     radius = 0.3
-    boundary = MirrorBoundary.from_radius(radius, grid)
+    boundary = MirrorBoundary.from_radius(
+        radius * (1.0 + 0.1 * (1.0 - jnp.asarray(grid.xi) ** 2)), grid
+    )
     state = MirrorState.from_boundary(boundary, grid)
     geometry = evaluate_geometry(state, grid)
     target_bz = 0.08
@@ -489,9 +491,18 @@ def test_axisymmetric_neumann_balance_changes_only_artificial_caps() -> None:
     )
     np.testing.assert_allclose(neumann[: grid.nxi], expected_lateral, atol=2.0e-16)
 
-    result = solve_reduced_exterior_laplace_neumann(surface, neumann, order=4)
-    assert float(result.raw_compatibility_error) > 1.0e-10
-    assert float(result.compatibility_error) < 2.0e-15
+    vacuum = solve_axisymmetric_exterior_vacuum(
+        boundary,
+        plasma_field,
+        grid,
+        displaced_dipole,
+        axisymmetric_ntheta=8,
+        cap_rim_grade=3.5,
+        order=4,
+    )
+    assert float(vacuum.neumann_result.raw_compatibility_error) > 1.0e-10
+    assert float(vacuum.neumann_result.compatibility_error) < 2.0e-15
+    assert float(jnp.max(jnp.abs(vacuum.lateral_b_normal))) < 2.0e-15
 
 
 def test_nonaxisymmetric_plasma_neumann_data_preserves_closed_flux() -> None:

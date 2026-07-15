@@ -366,13 +366,6 @@ def solve_axisymmetric_exterior_vacuum(
         spectral_side_density=spectral_side_density,
     )
     external = _external_field_xyz(external_field, surface.lateral_xyz[0])
-    lateral = axisymmetric_exterior_lateral_field(
-        surface,
-        result.boundary_potential,
-        neumann,
-        plasma_grid,
-        external,
-    )
     radius = jnp.linalg.norm(surface.lateral_xyz[0, :, :2], axis=1)
     radius_xi = plasma_grid.axial_basis.differentiate(radius)
     normal = jnp.stack(
@@ -384,6 +377,16 @@ def solve_axisymmetric_exterior_vacuum(
         axis=1,
     )
     normal /= jnp.linalg.norm(normal, axis=1)[:, None]
+    physical_neumann = neumann.at[: plasma_grid.nxi].set(
+        -jnp.sum(external * normal, axis=1)
+    )
+    lateral = axisymmetric_exterior_lateral_field(
+        surface,
+        result.boundary_potential,
+        physical_neumann,
+        plasma_grid,
+        external,
+    )
     return AxisymmetricExteriorVacuum(
         surface=surface,
         neumann=neumann,
