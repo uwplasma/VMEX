@@ -459,6 +459,8 @@ def solve_free_boundary_cli(
             f"; crossed surfaces={bool(plasma.geometry.jacobian_sign_changed)}"
             f"; exterior compatibility="
             f"{float(vacuum_field.neumann_result.compatibility_error):.3e}"
+            f"; raw compatibility="
+            f"{float(vacuum_field.neumann_result.raw_compatibility_error):.3e}"
             f"; exterior condition="
             f"{float(vacuum_field.neumann_result.condition_number):.3e}"
             f"; anisotropy valid={bool(anisotropy_valid)}"

@@ -445,6 +445,55 @@ def test_plasma_external_neumann_adapter_matches_uniform_field_data() -> None:
     assert float(vacuum.neumann_result.condition_number) < 10.0
 
 
+def test_axisymmetric_neumann_balance_changes_only_artificial_caps() -> None:
+    grid = MirrorConfig(
+        resolution=MirrorResolution(ns=5, mpol=0, ntheta=1, nxi=9),
+        z_min=-0.6,
+        z_max=0.6,
+    ).build_grid()
+    radius = 0.3
+    boundary = MirrorBoundary.from_radius(radius, grid)
+    state = MirrorState.from_boundary(boundary, grid)
+    geometry = evaluate_geometry(state, grid)
+    target_bz = 0.08
+    plasma_field = contravariant_field(
+        state,
+        geometry,
+        grid,
+        axial_flux_derivative=0.5 * target_bz * radius**2,
+    )
+    surface = build_closed_mirror_surface(
+        boundary, grid, axisymmetric_ntheta=8, cap_rim_grade=3.5
+    )
+
+    def displaced_dipole(points):
+        displacement = jnp.asarray(points) - jnp.asarray([0.0, 0.0, 3.0])
+        radius_squared = jnp.sum(displacement**2, axis=-1)
+        moment = jnp.asarray([0.0, 0.0, 0.02])
+        return (
+            3.0
+            * displacement
+            * jnp.sum(moment * displacement, axis=-1)[..., None]
+            / radius_squared[..., None] ** 2.5
+            - moment / radius_squared[..., None] ** 1.5
+        )
+
+    neumann = axisymmetric_plasma_external_neumann(
+        surface, plasma_field, grid, displaced_dipole
+    )
+    representatives = jnp.asarray(surface.reduced_representatives)
+    lateral_points = surface.collocation_xyz[representatives[: grid.nxi]]
+    lateral_normals = surface.collocation_normals[representatives[: grid.nxi]]
+    expected_lateral = -jnp.sum(
+        displaced_dipole(lateral_points) * lateral_normals, axis=1
+    )
+    np.testing.assert_allclose(neumann[: grid.nxi], expected_lateral, atol=2.0e-16)
+
+    result = solve_reduced_exterior_laplace_neumann(surface, neumann, order=4)
+    assert float(result.raw_compatibility_error) > 1.0e-10
+    assert float(result.compatibility_error) < 2.0e-15
+
+
 def test_nonaxisymmetric_plasma_neumann_data_preserves_closed_flux() -> None:
     grid = MirrorConfig(
         resolution=MirrorResolution(ns=5, mpol=1, ntheta=3, nxi=7),

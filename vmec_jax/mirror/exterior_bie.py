@@ -41,6 +41,37 @@ def _external_field_xyz(source: Any, points_xyz: Array) -> Array:
     )
 
 
+def _balance_neumann_on_caps(
+    surface: ClosedMirrorSurface, neumann: Array, lateral_size: int
+) -> Array:
+    """Enforce discrete Neumann compatibility without changing LCFS data."""
+
+    weights = _reduced_quadrature_weights(surface)
+    cap_weights = weights.at[:lateral_size].set(0.0)
+    correction = jnp.sum(weights * neumann) / jnp.sum(cap_weights)
+    return neumann.at[lateral_size:].add(-correction)
+
+
+def _reduced_quadrature_weights(surface: ClosedMirrorSurface) -> Array:
+    quadrature_to_reduced = surface.collocation_to_reduced[
+        surface.quadrature_to_collocation
+    ]
+    return jnp.zeros(surface.reduced_size).at[quadrature_to_reduced].add(
+        surface.quadrature_weights
+    )
+
+
+def _neumann_compatibility_error(
+    surface: ClosedMirrorSurface, neumann: Array
+) -> Array:
+    weights = _reduced_quadrature_weights(surface)
+    net_flux = jnp.sum(weights * neumann)
+    scale = surface.area * jnp.maximum(
+        jnp.sqrt(jnp.mean(neumann**2)), jnp.finfo(neumann.dtype).tiny
+    )
+    return jnp.abs(net_flux) / scale
+
+
 @dataclass(frozen=True)
 class LaplaceNeumannResult:
     """Reduced boundary potential and diagnostics for a Neumann solve."""
@@ -48,6 +79,7 @@ class LaplaceNeumannResult:
     boundary_potential: Array
     residual: Array
     compatibility_error: Array
+    raw_compatibility_error: Array
     condition_number: Array
     gauge_error: Array
 
@@ -491,6 +523,12 @@ def solve_reduced_exterior_laplace_neumann(
     expected = (surface.reduced_size,)
     if neumann.shape != expected:
         raise ValueError(f"neumann shape {neumann.shape} must be {expected}")
+    raw_compatibility_error = _neumann_compatibility_error(surface, neumann)
+    full_lateral_size = int(np.prod(surface.lateral_xyz.shape[:2]))
+    lateral_size = int(
+        np.sum(np.asarray(surface.reduced_representatives) < full_lateral_size)
+    )
+    neumann = _balance_neumann_on_caps(surface, neumann, lateral_size)
     zero = jnp.zeros_like(neumann)
 
     def dirichlet_operator(values: Array) -> Array:
@@ -513,16 +551,11 @@ def solve_reduced_exterior_laplace_neumann(
     potential = jnp.linalg.solve(matrix, right_hand_side)
     residual = matrix @ potential - right_hand_side
 
-    full_neumann = surface.expand_reduced_values(neumann)
-    quadrature_neumann = surface.expand_collocation_values(full_neumann)
-    net_flux = jnp.sum(quadrature_neumann * surface.quadrature_weights)
-    flux_scale = surface.area * jnp.maximum(
-        jnp.sqrt(jnp.mean(neumann**2)), jnp.finfo(neumann.dtype).tiny
-    )
     return LaplaceNeumannResult(
         boundary_potential=potential,
         residual=residual,
-        compatibility_error=jnp.abs(net_flux) / flux_scale,
+        compatibility_error=_neumann_compatibility_error(surface, neumann),
+        raw_compatibility_error=raw_compatibility_error,
         condition_number=jnp.linalg.cond(matrix),
         gauge_error=jnp.asarray(0.0, dtype=matrix.dtype),
     )

@@ -310,7 +310,14 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution() -> None:
             )
         )
         compatibility.append(
-            np.asarray([float(result.vacuum_field.neumann_result.compatibility_error) for result in results])
+            np.asarray(
+                [
+                    float(
+                        result.vacuum_field.neumann_result.raw_compatibility_error
+                    )
+                    for result in results
+                ]
+            )
         )
 
     relative_change = np.abs((observables[-1] - observables[-2]) / observables[-1])

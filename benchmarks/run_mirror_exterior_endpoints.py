@@ -117,6 +117,9 @@ def run(
             "normalized_divb": float(result.normalized_divergence_rms),
             "lambda_max": float(jnp.max(jnp.abs(result.plasma_state.lambda_stream))),
             "compatibility": float(result.vacuum_field.neumann_result.compatibility_error),
+            "raw_compatibility": float(
+                result.vacuum_field.neumann_result.raw_compatibility_error
+            ),
             "condition_number": float(result.vacuum_field.neumann_result.condition_number),
             "achieved_beta": float(diagnostic.achieved_reference_beta),
             "volume_beta": float(diagnostic.volume_averaged_beta),
