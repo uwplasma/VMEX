@@ -653,6 +653,56 @@ Figures are derived summaries, never the numerical authority. Every work
 report states steps, results including failed gates, tests/hardware, files and
 ownership, next steps, lane percentages, and concrete user input needed.
 
+### 9.1 Center-map execution checkpoint (2026-07-15)
+
+Commit `b8895aa0` adds the optional two-component closed-volume map through the
+existing state, spline, geometry, force, solver, free-boundary-diagnostic, and
+implicit block contracts. It introduces no module or public facade. Accepted
+evidence is:
+
+- zero-map metric and Cartesian parity is bitwise exact;
+- the Cartesian LCFS is fixed while the represented magnetic axis moves;
+- periodic coefficient transfer and pack/unpack preserve both components;
+- autodiff and the independent radial-Gauss first variation agree for radius,
+  stream function, and center fields;
+- all three separable preconditioner blocks are finite;
+- pre-commit passes, the focused map lane is `4 passed, 1 full skipped`, and
+  the normal mirror suite is `112 passed, 10 skipped` in 234.27 s on the local
+  JAX 0.10.2 CPU environment.
+
+The nonlinear promotion gate is not accepted. Bounded diagnostics on one RTX
+A4000 with CUDA JAX 0.6.2 used a circular closed case with `ns=5`, `mpol=0`,
+four periodic controls, `ftol=1e-12`, and a small frame-binormal displacement.
+The committed full-radial map drove center coefficients to their broad bounds.
+At 100 iterations it stalled at variational `6.32e-2`, strong force `25.76`,
+and true linear residual `1.69e-9`. Half-radius and 10%-radius bounds, a local
+trust-region residual start, and the restricted trial `q=(1-s)Q(u)` all
+remained bound-limited and increased strong force; none is retained. Peak host
+memory was 1.60-1.67 GiB. The rejected sparse colored-center Hessian path used
+2.9 GiB and compiled too slowly; the committed separable path used about 1.8
+GiB in the comparable local trial.
+
+This activates the T9b stop rule. Do not continue to racetrack geometry or
+current until the circular map passes strong-force refinement. The repair
+sequence is finite:
+
+1. At the zero and small-displacement circular states, build the dense packed
+   Hessian for the smallest `mpol=0` and `mpol=1` cases. Record eigenvalues,
+   singular vectors, radius-center cross blocks, transpose error, and Cartesian
+   virtual work.
+2. Separate physical transverse motion from the first-poloidal-harmonic radius
+   representation. Derive and test one explicit section-centering gauge rather
+   than imposing empirical box bounds.
+3. Compare that constrained map term by term with VMEC2000 `R/Z` force
+   variations and GVEC's two-coordinate map. Repair the half/full radial action
+   only if the virtual-work comparison identifies a mismatch.
+4. Re-run displaced-circle solves at `ns=5,9,17` with longitudinal controls
+   `8,12,16`. Accept only monotone weak/strong refinement, an unsaturated map,
+   fixed LCFS, positive Jacobian, and `ftol<=1e-12`.
+5. If the constrained circular map still has no nearby stationary branch,
+   remove the center-map solve variables and defer the fixed closed hybrid as
+   required by T9b.8; do not keep a public nonconvergent scaffold.
+
 ## 10. Completion estimate
 
 Percentages represent promotion evidence, not implementation volume.
@@ -663,7 +713,7 @@ Percentages represent promotion evidence, not implementation volume.
 | Fixed open nonaxisymmetric | 100% | maintain shared-core gates |
 | Free open axisymmetric through 10% | 100% | maintain support ceiling |
 | Free open nonaxisymmetric | 35% | bounded three-grid disposition |
-| Fixed closed B-spline hybrid | 55% | transverse center map, staged geometry/current continuation, force refinement, open limit, beta, derivatives/output |
+| Fixed closed B-spline hybrid | 58% | center-map gauge/force repair, staged geometry/current continuation, force refinement, open limit, beta, derivatives/output |
 | Structured preconditioning | 100% | maintain resource and true-residual gates |
 | Implicit differentiation | 90% | closed-hybrid derivatives after primal promotion |
 | Code/API simplification | 62% | 53/8,147/4,642/20 must meet T11 budgets |
@@ -678,7 +728,7 @@ deferred.
 
 Source revisions reviewed locally on 2026-07-15:
 
-- `vmec_jax` main `ed4ac7ac` and mirror HEAD `b2eb72ef`;
+- `vmec_jax` main `ed4ac7ac` and mirror HEAD `b8895aa0`;
 - DESC master `24aa7b9d`, mirror `0dba071d`, mirror-anisotropy `805b77fc`,
   racetrack `2014ed0e`, cylindrical/Chebyshev `6f85f50a`, and
   straight-stellarator `8cf50b58`;
