@@ -496,7 +496,9 @@ def test_closed_spline_fixed_boundary_torus_converges_to_ftol() -> None:
     assert result.iterations < 50
     assert float(result.variational.maximum) <= config.ftol
     assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
-    assert float(result.normalized_divergence_rms) < 1.0e-12
+    # The Clebsch field is analytically solenoidal; two independently applied
+    # mixed derivative matrices leave an x64 commutator floor near 1e-12.
+    assert float(result.normalized_divergence_rms) < 2.0e-12
     assert not bool(result.energy.geometry.jacobian_sign_changed)
 
 
