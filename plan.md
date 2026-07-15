@@ -5,13 +5,17 @@ Status: active and authoritative plan for draft PR #22. This file supersedes
 branch. Do not add another plan file. Commits and compact benchmark JSON/CSV
 files are the execution log.
 
-Review baseline: `codex/mirror-geometry` at `eb4955cd696f`, based on
-`origin/main` at `ed4ac7acae11`, reviewed 2026-07-14. The branch is 261 commits
-ahead and zero behind `origin/main`; PR #22 is open, draft, and mergeable. The
-latest CI run exposed one concrete workflow defect: both fast jobs referenced
-the deleted `tests/test_coils.py`. Removing that stale path makes the exact local
-shard pass with 200 passed and 6 skipped. The grouped CI run still needs to
-confirm this fix and the parity-c job was pending at the audit cutoff.
+Review baseline: `codex/mirror-geometry` at `b3f30cb45619`, based on
+`origin/main` at `ed4ac7acae11`, reviewed 2026-07-14 after refreshing all
+remotes. The branch is 270 commits ahead and zero behind `origin/main`; PR #22
+is open, draft, mergeable, and contains 71 changed files with 18,538 additions
+and 1,633 deletions. The stale fast-shard path is fixed. A later example-smoke
+failure was traced to confusing the low-level PyPI `virtual-casing-jax` package
+with its unreleased extender API; capability-gated tests now use the production
+API predicate, and the unrelated fixed-mirror gradient example always runs.
+The latest grouped run has passed build, console smoke, and Python 3.10 fast
+tests; the long mirror, example, implicit, and parity jobs were still running at
+this audit cutoff and are intentionally not being polled.
 
 ## 1. Mission and finish line
 
@@ -166,13 +170,14 @@ The converged residual is `F(u,p)=0`. Derivatives use
 
 JAX `custom_linear_solve`, JAXopt, Lineax, and the spectral-adjoint literature
 all support this high-level implicit approach. SOLVAX remains the only added
-solver dependency because vmec_jax already uses it. Only APIs released on
-SOLVAX `main` may be required. The CI-resolved and current PyPI release, SOLVAX
-0.8.3, provides GMRES, GCROT, PCG, block Thomas, ordinary and periodic banded
-LU, operators, chunked Jacobians, implicit solves, and Newton-Krylov. The local
-0.7.3 environment already has periodic banded LU but not the released
-Newton-Krylov interface. Raise vmec_jax's current broad dependency floor only
-after API and numerical parity at 0.8.3; no mirror-local cyclic solver is needed.
+solver dependency because vmec_jax already uses it. Only released SOLVAX APIs
+may be required. Tag `v0.8.3` was inspected directly: it provides GMRES, GCROT,
+PCG, block Thomas, ordinary and periodic banded LU, operators, chunked
+Jacobians, implicit solves, and Newton-Krylov. SOLVAX `main` is preparing 0.8.4
+with the same relevant public surface. The system environment has 0.7.3 and the
+repository venv has 0.2.0, so neither is evidence for the new APIs. Raise
+vmec_jax's current `solvax>=0.2.0` floor only after numerical/API parity in a
+clean 0.8.3 environment; no mirror-local cyclic or Krylov solver is needed.
 
 ### 3.3 Public API target
 
@@ -192,8 +197,8 @@ their owning module and are not flattened into `vmec_jax.mirror`.
 ### 4.1 Branch footprint
 
 The initial audit relative to `origin/main` found 137 changed files, 24,370
-added lines, and 4,255 deleted lines. The first Phase 1 restoration reduces the
-working diff to 71 files, 19,378 added lines, and 1,610 deleted lines: 66
+added lines, and 4,255 deleted lines. Phase 1 and the current cleanup reduce the
+working diff to 71 files, 18,538 added lines, and 1,633 deleted lines: 66
 unrelated files and about 5,000 added lines are gone. `vmec_jax/mirror` now
 contains 9,491 lines in 19 modules and exposes 24 lazy names. Its largest files
 are `forces.py` (1,098), `solver.py` (1,001), `splines.py` (983), and
@@ -293,9 +298,9 @@ software-architecture reference, not a mirror oracle.
 
 ### 5.2 DESC and its research branches
 
-DESC `master`, `mirror`, `mirror_anisotropy`, `finite_element_basis`,
-`finite_element_basis_alan`, and `dd/cylindrical` were inspected locally after
-fetching current remote refs.
+DESC `master` at `24aa7b9d`, `mirror`, `mirror_anisotropy`,
+`finite_element_basis`, `finite_element_basis_alan`, and `dd/cylindrical` were
+inspected locally after fetching current remote refs.
 
 Useful ideas:
 
@@ -307,11 +312,25 @@ Useful ideas:
 - DESC's current free-boundary work treats `B.n` and magnetic-pressure jump as
   separate area-weighted residuals.
 
-Do not port these branches. The mirror branches copy a large equilibrium class,
-use solve tolerances near `1e-6`, and contain unfinished boundary-objective
-methods. The finite-element branches add broad 1D/2D/3D mesh machinery. The
-June 2026 `dd/cylindrical` branch has useful double-Chebyshev basis tests, but it
-is an early basis experiment rather than a demonstrated mirror solver.
+Do not port these branches. The `mirror` diff changes 123 files, disables or
+renames much of upstream CI, copies a large equilibrium class, and carries
+notebooks/binaries that make its raw diff exceed one million lines. Its only
+direct straight-coordinate solve test is still periodic in the axial angle,
+uses `ftol=1e-6`, accepts about `1e-2` geometry error, and leaves a screw-pinch
+fixture empty. Its end-cap objective module contains repeated no-op helper
+methods and unsupported mode selections. The anisotropy branch itself labels
+some force quantities suspicious or unchecked. These branches are valuable
+for failure modes and formulas, not reusable production code.
+
+The current `dd/cylindrical` head adds `DoubleChebyshevFourierBasis`, a tensor
+product of two Chebyshev coordinates and one Fourier coordinate. The mirror
+content is two basis/test commits with no demonstrated equilibrium solve, while
+the branch also performs an unrelated repository-wide grid refactor. It does
+not provide B-spline straight spans, hybrid centerlines, end-cap physics, or a
+validated free-boundary model. DESC master does contain mature radial
+Chebyshev-Fourier machinery and high-order toroidal free-boundary residuals;
+those support our basis and residual contracts but do not replace the open
+topology or local-support axial B-splines.
 
 ### 5.3 Mirror analytic validation
 
@@ -369,9 +388,14 @@ and VMEC2000 `_ANIMEC` source agree on the following contracts:
 - report firehose (`sigma`) and mirror (`tau`) validity measures;
 - recover scalar VMEC exactly in the isotropic/hot-fraction-zero limit.
 
-The current mirror ANIMEC lane may be retained only if these source equations,
-normalizations, and limits pass one bounded parity implementation and one
-independent finite-beta case.
+The source is more specific than the papers alone. `fbal.f` defines the
+piecewise bi-Maxwellian `H(s,B)` above and below `B_crit`; `bcovar.f` adds
+`p_perp` to magnetic pressure and replaces the effective current by
+`K=curl(sigma B)`; `jxbforce.f` uses
+`sigma = 1 + (p_perp-p_parallel)/(2*bsq)` in VMEC's pressure normalization.
+The current mirror ANIMEC lane may be retained only if those exact branches,
+normalizations, sigma/tau limits, and scalar limit pass one bounded source
+parity implementation and one independent finite-beta case.
 
 ## 6. Ordered implementation phases
 
@@ -404,10 +428,14 @@ shards and every build, example, mirror, implicit, and parity job. The aggregate
 core-only coverage gate is `94%` versus `95%` because inherited branch-only core
 modules add untested statements; do not lower the threshold. Phase 1 must
 restore that unrelated core diff before Phase 0 can be declared globally green.
-The branch-wide whitespace check and all focused local tests now pass.
-The Phase 1 restoration has also put the unrelated core implementation back at
-`origin/main`; aggregate coverage is the remaining post-push confirmation for
-closing Phase 0 globally.
+The Phase 1 restoration subsequently put that core implementation back at
+`origin/main`. The next grouped run passed every build, fast, mirror, implicit,
+and parity job but exposed the virtual-casing example capability check described
+in the review baseline. Its focused fix passes in both dependency states: four
+extender tests skip in the core environment, while the editable extender
+environment reports 6 passed and 3 skipped in 426.68 seconds. The branch-wide
+whitespace check and all focused local tests pass; only the grouped confirmation
+of that final test fix remains for closing Phase 0 globally.
 
 ### Phase 1: reduce the PR before adding physics
 
@@ -472,11 +500,24 @@ residual below `2.3e-15`. They failed the independent interface gate: with
 spectral side density, pointwise stress RMS changed `1.38e-7 -> 2.79e-5 ->
 1.25e-4` for 2, 4, and 8 axial elements. That adapter was deleted rather than
 retained as a scaffold. Do not retry projected stress. The second and final
-bounded attempt must derive the discrete exterior magnetic-energy shape
-gradient from the solved Green problem and compare it directly with Maxwell
-stress before coupling it to spline coefficients. If those two routes do not
-agree and refine, coefficient-native free boundary is deferred and the
-promoted nodal free solve remains the public path.
+bounded attempt has four ordered gates before any coupled solve is added:
+
+1. derive the discrete exterior magnetic energy for the solved Neumann Green
+   problem, including correction, applied-field cross term, moving-domain
+   background term, and cap through-flux signs;
+2. on manufactured sphere/cylinder-like closed surfaces, compare that boundary
+   energy with independent finite-volume energy and verify its shape derivative
+   against centered finite differences;
+3. compare the same discrete shape derivative with integrated Maxwell virtual
+   work under normal boundary perturbations and require refinement in panel and
+   singular-quadrature order independently;
+4. only after gates 1--3 pass, pull the verified shape gradient back through
+   open B-spline boundary coefficients and couple it to the plasma first
+   variation.
+
+If the energy, finite-volume, and Maxwell routes do not agree and refine, the
+coefficient-native free boundary is deferred and the promoted nodal free solve
+remains the public path. No third discretization strategy is permitted.
 
 ### Phase 3: structured solver and preconditioner
 
@@ -673,17 +714,18 @@ The following do not block completion:
 
 ## 10. Immediate execution order
 
-1. Execute Phase 1's unrelated-core restoration, then close Phase 0 by
-   confirming the unchanged `95%` aggregate coverage gate.
-2. Finish the remaining API/module reduction in Phase 1 before adding another
-   solver or geometry path.
-3. Finish the promoted open scalar/B-spline lanes in Phase 2.
-4. Complete structured linear algebra in Phase 3, then make the one bounded
+1. Close the current capability-gate CI run, then finish the remaining
+   API/module reduction in Phase 1 without changing physics.
+2. Execute the four exterior-energy gates above and finish the promoted open
+   scalar/B-spline lanes in Phase 2; defer native free splines immediately if
+   the independent shape-gradient gate fails.
+3. Establish a clean SOLVAX 0.8.3 parity environment, complete structured
+   linear algebra in Phase 3, then make the one bounded
    nonaxisymmetric free-boundary decision in Phase 4.
-5. Promote the fixed closed hybrid in Phase 5; attempt free hybrid only after
+4. Promote the fixed closed hybrid in Phase 5; attempt free hybrid only after
    that gate.
-6. Close derivative and ANIMEC decisions in Phase 6.
-7. Execute the deletion, documentation, GPU, and release gates in Phase 7.
+5. Close derivative and ANIMEC decisions in Phase 6.
+6. Execute the deletion, documentation, GPU, and release gates in Phase 7.
 
 This sequence is finite. A conditional lane gets two bounded attempts after its
 prerequisites; it is then promoted or deferred. No new lane is introduced before
