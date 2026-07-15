@@ -289,12 +289,12 @@ evaluation nodes versus 41 Chebyshev nodes; volume agrees to roundoff, total
 energy agrees to ``5.0e-13`` relative, and an energy directional derivative
 agrees with finite differences to ``1.9e-8`` relative.
 
-The public ``solve_fixed_boundary_cli`` now minimizes the scalar-pressure
-energy directly in the active spline coefficients. It fixes the side and end
-coefficients, eliminates the weighted stream-function gauge, and uses the same
-host L-BFGS plus residual-Newton policy as the CGL reference solve. The independent
-staggered first variation is assembled on the quadrature grid and pulled back
-through the spline evaluation matrix rather than reused from autodiff.
+The public ``solve_fixed_boundary_cli`` minimizes the scalar-pressure energy
+directly in the active spline coefficients. It fixes the side and end
+coefficients, eliminates the weighted stream-function gauge, and uses the
+shared host L-BFGS plus residual-Newton policy. The independent staggered first
+variation is assembled on the quadrature grid and pulled back through the
+spline evaluation matrix rather than reused from autodiff.
 
 For an ``ns=5`` finite-pressure, finite-current flared tube, both paths converge
 in 59 iterations below ``ftol=1e-12``. Seven spline coefficients replace nine
@@ -311,7 +311,7 @@ spline coefficients with the nodal grids. Energy error decreases
 test is deliberately not applied to the near-zero gauge stream function; the
 physical field is the invariant comparison. Splines use roughly half the
 active radius variables and take 2.70, 3.32, and 4.14 seconds versus 5.77,
-9.29, and 12.15 seconds for the local nodal solves. All variational and
+9.29, and 12.15 seconds for the retired CGL migration solves. All variational and
 independent weak residuals remain below ``1.3e-15``. Compact evidence is in
 the ``axisymmetric_finite_beta`` section of
 ``benchmarks/mirror_fixed_boundary.json``.
@@ -404,12 +404,12 @@ within ``2e-4`` in relative state norm, with linear residual below ``1e-8``.
 This establishes both open-spline derivative directions. Closed-axis and
 centerline-control derivatives remain part of fixed-hybrid promotion.
 
-The former public CGL fixed solve and its custom-VJP wrapper are now internal
-migration references. Public fixed-boundary inputs are
+The former CGL fixed solve, custom VJP, and nodal adjoint have been removed.
+Public fixed-boundary inputs are
 ``SplineMirrorBoundary``, ``SplineMirrorState``, and
 ``SplineMirrorDiscretization``; public ``solve_fixed_boundary_cli`` returns a
 ``SplineMirrorSolveResult``. CGL values remain available for quadrature and
-parity tests, not as a second production state.
+evaluated-state parity tests, not as a second production state.
 
 Axisymmetric free-boundary implicit gradients
 ---------------------------------------------
@@ -443,8 +443,7 @@ RTX A4000. Energy and force diagnostics agree to numerical precision. Explicit
 The host CLI remains the forward-performance reference. Derivatives solve the
 linearized converged coefficient residual and never retain or differentiate
 the nonlinear iteration history. Runtime and memory comparisons are
-regenerated only after the nodal custom-VJP path is removed and the coupled
-preconditioner is fixed.
+regenerated after the coupled preconditioner is fixed.
 
 Release evidence
 ----------------

@@ -1,4 +1,4 @@
-"""Implicit fixed, spline, and free-boundary mirror derivatives.
+"""Implicit coefficient-fixed and free-boundary mirror derivatives.
 
 Derivatives use converged equilibrium equations, not host iteration histories.
 """
@@ -6,38 +6,21 @@ Derivatives use converged equilibrium equations, not host iteration histories.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import functools
-from types import SimpleNamespace
 from typing import Any, Callable
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy.sparse.linalg import LinearOperator, gmres
-from solvax import block_thomas_factor, block_thomas_solve
 
 from .exterior_bie import AxisymmetricExteriorVacuum, solve_axisymmetric_exterior_vacuum
 from .forces import MU0, MirrorEnergy, mirror_energy
 from .geometry import magnetic_field_squared, regularize_axis_stream_function
-from .model import MirrorBoundary, MirrorState, project_fixed_boundary_state
-from .solver import (
-    _MirrorStateVectorizer,
-    _packed_preconditioner,
-    _solve_nodal_fixed_boundary_cli,
-)
+from .model import MirrorBoundary, MirrorState
+from .solver import _MirrorStateVectorizer, _packed_preconditioner
 
 Array = Any
 MirrorQuantity = Callable[[MirrorState, MirrorEnergy], Array]
-
-
-@dataclass(frozen=True)
-class FixedBoundaryParameters:
-    """Differentiable physical inputs to an isotropic mirror equilibrium."""
-
-    boundary_radius: Array
-    axial_flux_derivative: Array
-    mass_profile: Array
-    current_derivative: Array
 
 
 @dataclass(frozen=True)
@@ -72,30 +55,6 @@ class MirrorTangentResult:
     converged: bool
 
 
-@dataclass(frozen=True, eq=False)
-class FixedBoundaryImplicitConfig:
-    """Static numerical context for a differentiable fixed-boundary solve."""
-
-    initial_state: MirrorState
-    grid: Any
-    config: Any
-    gamma: float = 5.0 / 3.0
-    solve_lambda: bool = False
-    gradient_tolerance: float = 1.0e-11
-    adjoint_rtol: float = 1.0e-10
-    adjoint_max_restarts: int = 20
-
-
-jax.tree_util.register_dataclass(
-    FixedBoundaryParameters,
-    data_fields=[
-        "boundary_radius",
-        "axial_flux_derivative",
-        "mass_profile",
-        "current_derivative",
-    ],
-    meta_fields=[],
-)
 jax.tree_util.register_dataclass(
     SplineFixedBoundaryParameters,
     data_fields=[
@@ -118,23 +77,6 @@ jax.tree_util.register_dataclass(
 )
 
 
-def fixed_boundary_parameters(
-    boundary: MirrorBoundary,
-    *,
-    axial_flux_derivative: Array,
-    mass_profile: Array = 0.0,
-    current_derivative: Array = 0.0,
-) -> FixedBoundaryParameters:
-    """Collect fixed-boundary controls in a differentiable pytree."""
-
-    return FixedBoundaryParameters(
-        boundary_radius=jnp.asarray(boundary.radius_scale),
-        axial_flux_derivative=jnp.asarray(axial_flux_derivative),
-        mass_profile=jnp.asarray(mass_profile),
-        current_derivative=jnp.asarray(current_derivative),
-    )
-
-
 def spline_fixed_boundary_parameters(
     boundary: Any,
     *,
@@ -149,31 +91,6 @@ def spline_fixed_boundary_parameters(
         axial_flux_derivative=jnp.asarray(axial_flux_derivative),
         mass_profile=jnp.asarray(mass_profile),
         current_derivative=jnp.asarray(current_derivative),
-    )
-
-
-def make_fixed_boundary_implicit_config(
-    initial_state: MirrorState,
-    grid: Any,
-    config: Any,
-    *,
-    gamma: float = 5.0 / 3.0,
-    solve_lambda: bool = False,
-    gradient_tolerance: float = 1.0e-11,
-    adjoint_rtol: float = 1.0e-10,
-    adjoint_max_restarts: int = 20,
-) -> FixedBoundaryImplicitConfig:
-    """Build the static context used by :func:`solve_fixed_boundary_implicit`."""
-
-    return FixedBoundaryImplicitConfig(
-        initial_state=initial_state,
-        grid=grid,
-        config=config,
-        gamma=gamma,
-        solve_lambda=solve_lambda,
-        gradient_tolerance=gradient_tolerance,
-        adjoint_rtol=adjoint_rtol,
-        adjoint_max_restarts=adjoint_max_restarts,
     )
 
 
@@ -249,7 +166,7 @@ def _implicit_adjoint(
     max_restarts: int,
     initializer: Callable[[Callable[[Array], Array], np.ndarray], tuple[np.ndarray, str]] | None = None,
 ) -> MirrorAdjointResult:
-    """Solve one implicit transpose system shared by nodal and spline states."""
+    """Solve one transpose system shared by spline-fixed and free states."""
 
     value, (quantity_x, quantity_parameters) = jax.value_and_grad(evaluate_quantity, argnums=(0, 1))(x_star, parameters)
     _, transpose = jax.vjp(lambda x: residual(x, parameters), x_star)
@@ -286,121 +203,6 @@ def _implicit_adjoint(
         relative_residual=relative_residual,
         converged=converged,
         linear_solver=solver_used,
-    )
-
-
-def fixed_boundary_adjoint(
-    result: Any,
-    parameters: FixedBoundaryParameters,
-    grid: Any,
-    quantity: MirrorQuantity,
-    *,
-    gamma: float = 5.0 / 3.0,
-    solve_lambda: bool = False,
-    linear_solver: str = "gmres",
-    rtol: float = 1.0e-10,
-    max_restarts: int = 20,
-) -> MirrorAdjointResult:
-    """Differentiate one scalar quantity through a converged equilibrium.
-
-    The residual is the normalized MHD energy gradient after fixed geometry
-    and gauge elimination. ``"gmres"`` is the one-RHS default; ``"block"``
-    verifies the nearest-radial Hessian with SOLVAX block Thomas.
-    """
-
-    if not bool(result.converged):
-        raise ValueError("implicit differentiation requires a converged mirror result")
-    if not isinstance(result.energy, MirrorEnergy):
-        raise ValueError("unsupported converged mirror energy model")
-    if rtol <= 0.0 or max_restarts < 1:
-        raise ValueError("rtol and max_restarts must be positive")
-    if linear_solver not in {"block", "gmres"}:
-        raise ValueError("linear_solver must be 'block' or 'gmres'")
-    boundary = MirrorBoundary(jnp.asarray(parameters.boundary_radius))
-    vectorizer = _MirrorStateVectorizer.build(
-        result.state,
-        boundary,
-        grid,
-        axial_flux_derivative=parameters.axial_flux_derivative,
-        solve_lambda=solve_lambda,
-    )
-    x_star = jnp.asarray(vectorizer.pack())
-    energy_scale = max(abs(float(result.energy.total)), np.finfo(float).tiny)
-
-    def state_at(x: Array, controls: FixedBoundaryParameters) -> MirrorState:
-        state = project_fixed_boundary_state(
-            vectorizer.unpack(x),
-            MirrorBoundary(controls.boundary_radius),
-            grid,
-        )
-        return regularize_axis_stream_function(
-            state,
-            grid,
-            controls.axial_flux_derivative,
-        )
-
-    def energy_at(x: Array, controls: FixedBoundaryParameters) -> MirrorEnergy:
-        state = state_at(x, controls)
-        return mirror_energy(
-            state,
-            grid,
-            axial_flux_derivative=controls.axial_flux_derivative,
-            mass_profile=controls.mass_profile,
-            current_derivative=controls.current_derivative,
-            gamma=gamma,
-        )
-
-    def normalized_energy(x: Array, controls: FixedBoundaryParameters) -> Array:
-        return energy_at(x, controls).total / energy_scale
-
-    def residual(x: Array, controls: FixedBoundaryParameters) -> Array:
-        return jax.grad(normalized_energy, argnums=0)(x, controls)
-
-    def evaluate_quantity(x: Array, controls: FixedBoundaryParameters) -> Array:
-        state = state_at(x, controls)
-        value = jnp.asarray(quantity(state, energy_at(x, controls)))
-        if value.ndim != 0:
-            raise ValueError("mirror adjoint quantity must return a scalar")
-        return value
-
-    apply_preconditioner, scales = _packed_preconditioner(grid, vectorizer)
-    split = (slice(0, vectorizer.radius_size), slice(vectorizer.radius_size, None))
-
-    def block_initializer(transpose_action, right_hand_side):
-        radial_blocks = grid.ns - 2
-        block_size = grid.ntheta * (grid.nxi - 2)
-        if radial_blocks * block_size != x_star.size:
-            raise ValueError("packed geometry does not match radial block structure")
-        colors = jnp.repeat(jnp.arange(3), block_size)
-        columns = jnp.tile(jnp.arange(block_size), 3)
-        active_rows = jnp.arange(radial_blocks)[None, :] % 3 == colors[:, None]
-        probes = (
-            active_rows[:, :, None] * jax.nn.one_hot(columns, block_size, dtype=x_star.dtype)[:, None, :]
-        ).reshape(3 * block_size, x_star.size)
-        responses = jax.jit(jax.vmap(transpose_action))(probes).reshape(3, block_size, radial_blocks, block_size)
-        radial_index = jnp.arange(radial_blocks)
-
-        def band(offset: int) -> Array:
-            values = responses[(radial_index + offset) % 3, :, radial_index, :]
-            return jnp.swapaxes(values, 1, 2)
-
-        factors = block_thomas_factor(band(-1), band(0), band(1))
-        initial_adjoint = np.asarray(
-            block_thomas_solve(factors, jnp.asarray(right_hand_side).reshape(radial_blocks, block_size))
-        ).reshape(-1)
-        return initial_adjoint, "block+gmres"
-
-    return _implicit_adjoint(
-        x_star,
-        parameters,
-        residual,
-        evaluate_quantity,
-        apply_preconditioner,
-        scales,
-        split[: 2 if vectorizer.lambda_size else 1],
-        rtol=rtol,
-        max_restarts=max_restarts,
-        initializer=(block_initializer if linear_solver == "block" and not vectorizer.lambda_size else None),
     )
 
 
@@ -591,115 +393,6 @@ def spline_fixed_boundary_tangent(
         relative_residual=relative_residual,
         converged=converged,
     )
-
-
-def _state_shape(config: FixedBoundaryImplicitConfig) -> MirrorState:
-    shape = config.grid.shape
-    field = jax.ShapeDtypeStruct(shape, jnp.float64)
-    return MirrorState(radius_scale=field, lambda_stream=field)
-
-
-def _parameter_shape(parameters: FixedBoundaryParameters) -> FixedBoundaryParameters:
-    return jax.tree.map(lambda value: jax.ShapeDtypeStruct(value.shape, value.dtype), parameters)
-
-
-def _host_fixed_boundary_solve(config: FixedBoundaryImplicitConfig, parameters: FixedBoundaryParameters) -> MirrorState:
-    parameters = jax.tree.map(jnp.asarray, parameters)
-    boundary = MirrorBoundary(parameters.boundary_radius)
-    initial = project_fixed_boundary_state(config.initial_state, boundary, config.grid)
-    common = dict(
-        axial_flux_derivative=parameters.axial_flux_derivative,
-        current_derivative=parameters.current_derivative,
-        solve_lambda=config.solve_lambda,
-        gradient_tolerance=config.gradient_tolerance,
-        require_convergence=True,
-    )
-    result = _solve_nodal_fixed_boundary_cli(
-        initial,
-        boundary,
-        config.grid,
-        config.config,
-        mass_profile=parameters.mass_profile,
-        gamma=config.gamma,
-        **common,
-    )
-    return jax.tree.map(lambda value: np.asarray(value, dtype=np.float64), result.state)
-
-
-@functools.partial(jax.custom_vjp, nondiff_argnums=(1,))
-def solve_fixed_boundary_implicit(
-    parameters: FixedBoundaryParameters, config: FixedBoundaryImplicitConfig
-) -> MirrorState:
-    """Return a converged state with an implicit reverse derivative.
-
-    Host iterations stay outside the AD tape through :func:`jax.pure_callback`;
-    reverse memory is therefore independent of the primal iteration count.
-    """
-
-    return jax.pure_callback(
-        functools.partial(_host_fixed_boundary_solve, config),
-        _state_shape(config),
-        parameters,
-    )
-
-
-def _solve_fixed_boundary_implicit_fwd(parameters, config):
-    state = jax.pure_callback(
-        functools.partial(_host_fixed_boundary_solve, config),
-        _state_shape(config),
-        parameters,
-    )
-    return state, (parameters, state)
-
-
-def _host_fixed_boundary_pullback(config, parameters, state, cotangent):
-    parameters = jax.tree.map(jnp.asarray, parameters)
-    state = jax.tree.map(jnp.asarray, state)
-    cotangent = jax.tree.map(jnp.asarray, cotangent)
-    energy = mirror_energy(
-        state,
-        config.grid,
-        axial_flux_derivative=parameters.axial_flux_derivative,
-        mass_profile=parameters.mass_profile,
-        current_derivative=parameters.current_derivative,
-        gamma=config.gamma,
-    )
-
-    def cotangent_quantity(candidate, _energy):
-        return sum(
-            jnp.vdot(value, weight)
-            for value, weight in zip(jax.tree.leaves(candidate), jax.tree.leaves(cotangent), strict=True)
-        )
-
-    result = SimpleNamespace(converged=True, state=state, energy=energy)
-    adjoint = fixed_boundary_adjoint(
-        result,
-        parameters,
-        config.grid,
-        cotangent_quantity,
-        gamma=config.gamma,
-        solve_lambda=config.solve_lambda,
-        rtol=config.adjoint_rtol,
-        max_restarts=config.adjoint_max_restarts,
-    )
-    if not adjoint.converged:
-        raise RuntimeError(f"fixed-boundary adjoint failed at residual {adjoint.relative_residual:.3e}")
-    return jax.tree.map(lambda value: np.asarray(value, dtype=np.float64), adjoint.gradient)
-
-
-def _solve_fixed_boundary_implicit_bwd(config, residual, cotangent):
-    parameters, state = residual
-    gradient = jax.pure_callback(
-        functools.partial(_host_fixed_boundary_pullback, config),
-        _parameter_shape(parameters),
-        parameters,
-        state,
-        cotangent,
-    )
-    return (gradient,)
-
-
-solve_fixed_boundary_implicit.defvjp(_solve_fixed_boundary_implicit_fwd, _solve_fixed_boundary_implicit_bwd)
 
 
 FreeBoundaryQuantity = Callable[[MirrorBoundary, MirrorState, MirrorEnergy, Any], Array]
@@ -919,26 +612,12 @@ __all__ = [
     "FreeBoundaryAdjointConfig",
     "FreeBoundaryAdjointResult",
     "FreeBoundaryParameters",
-    "free_boundary_adjoint",
-    "free_boundary_parameters",
-]
-
-__all__ = [
-    "FreeBoundaryAdjointConfig",
-    "FreeBoundaryAdjointResult",
-    "FreeBoundaryParameters",
-    "FixedBoundaryImplicitConfig",
-    "FixedBoundaryParameters",
     "MirrorAdjointResult",
     "MirrorTangentResult",
     "SplineFixedBoundaryParameters",
-    "fixed_boundary_adjoint",
-    "fixed_boundary_parameters",
     "free_boundary_adjoint",
     "free_boundary_parameters",
-    "make_fixed_boundary_implicit_config",
     "spline_fixed_boundary_adjoint",
     "spline_fixed_boundary_tangent",
     "spline_fixed_boundary_parameters",
-    "solve_fixed_boundary_implicit",
 ]

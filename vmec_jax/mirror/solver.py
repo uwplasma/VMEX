@@ -1,15 +1,11 @@
-"""Host-controlled fixed-boundary mirror reference solver.
+"""Shared host optimization and preconditioning for mirror equilibria.
 
-This M2 solver is the non-differentiable CLI/reference lane.  It minimizes the
-same JAX energy used by the future traced lane, but lets SciPy control L-BFGS
-line searches and early exits.  Crucially, SciPy success is not equilibrium
-success: the returned state is converged only when the normalized variational
-force meets ``MirrorConfig.ftol``. The independently differenced tensor force
-and ``div(B)`` remain discretization-verification diagnostics.
-
-Open systems are polished with separably preconditioned Newton-GMRES at every
-size, with a bounded dense rescue for small stalled systems. Closed periodic
-spline systems retain an exact dense Newton reference.
+The coefficient fixed-boundary solver and the nodal free-boundary solver use
+the same convergence contract: optimizer status never substitutes for a
+normalized variational residual below ``MirrorConfig.ftol``. Open systems use
+matrix-free Newton-GMRES at every size, with a bounded dense rescue for small
+stalled systems. Closed periodic spline systems retain an exact dense Newton
+reference.
 """
 
 from __future__ import annotations
@@ -24,22 +20,14 @@ from scipy.linalg import eigh
 from scipy.optimize import least_squares, minimize
 from scipy.sparse.linalg import LinearOperator, gmres
 
-from ..core.device import resolve_device
 from .forces import (
     IsotropicForceResidual,
     MirrorEnergy,
     VariationalResidual,
-    fixed_boundary_variational_residual,
-    isotropic_force_residual,
-    isotropic_staggered_fixed_boundary_gradient,
-    isotropic_staggered_weak_residual,
-    mirror_energy,
 )
-from .geometry import normalized_divergence_rms, regularize_axis_stream_function
 from .model import MirrorBoundary, MirrorConfig, MirrorState, project_fixed_boundary_state
 
 Array = Any
-_DEVICE_ACTIVE = object()
 
 
 def _valid_energy_objective(energy: MirrorEnergy, energy_scale: float) -> Array:
@@ -676,252 +664,6 @@ def _optimize_fixed_boundary(
         final_linear_residual=final_linear_residual,
         message=optimizer_message,
     )
-
-
-def _solve_nodal_fixed_boundary_cli(
-    initial_state: MirrorState,
-    boundary: MirrorBoundary,
-    grid: "MirrorGrid",
-    config: MirrorConfig,
-    *,
-    axial_flux_derivative: Array,
-    mass_profile: Array = 0.0,
-    current_derivative: Array = 0.0,
-    gamma: float = 5.0 / 3.0,
-    solve_lambda: bool = False,
-    gradient_tolerance: float = 1.0e-11,
-    require_convergence: bool = False,
-    device: Any = None,
-) -> MirrorSolveResult:
-    """Solve a fixed-boundary mirror with host L-BFGS/Newton control.
-
-    Supplying ``solve_lambda=True`` enables the gauge-free stream-function
-    variables while preserving their fixed end-cut values. ``device=None``
-    applies the measured core device policy; an explicit device or JAX
-    platform pin is always honored.
-    """
-
-    if device is not _DEVICE_ACTIVE:
-        resolved = resolve_device(device, config.resolution)
-        if resolved is not None:
-            with jax.default_device(resolved):
-                return _solve_nodal_fixed_boundary_cli(
-                    initial_state,
-                    boundary,
-                    grid,
-                    config,
-                    axial_flux_derivative=axial_flux_derivative,
-                    mass_profile=mass_profile,
-                    current_derivative=current_derivative,
-                    gamma=gamma,
-                    solve_lambda=solve_lambda,
-                    gradient_tolerance=gradient_tolerance,
-                    require_convergence=require_convergence,
-                    device=_DEVICE_ACTIVE,
-                )
-
-    initial_state.validate_shape(grid)
-    if grid.shape != (
-        config.resolution.ns,
-        config.resolution.ntheta,
-        config.resolution.nxi,
-    ):
-        raise ValueError("grid resolution does not match MirrorConfig")
-    if gradient_tolerance <= 0.0:
-        raise ValueError("gradient_tolerance must be positive")
-
-    vectorizer = _MirrorStateVectorizer.build(
-        initial_state,
-        boundary,
-        grid,
-        axial_flux_derivative=axial_flux_derivative,
-        solve_lambda=solve_lambda,
-    )
-    projected_initial = vectorizer.base
-    x0 = vectorizer.pack()
-    lower_bounds, upper_bounds = vectorizer.bounds()
-
-    energy_kwargs = {
-        "axial_flux_derivative": axial_flux_derivative,
-        "mass_profile": mass_profile,
-        "current_derivative": current_derivative,
-        "gamma": gamma,
-    }
-
-    def evaluate_energy(state: MirrorState) -> MirrorEnergy:
-        return mirror_energy(state, grid, **energy_kwargs)
-
-    def evaluate_variational(state: MirrorState) -> VariationalResidual:
-        return fixed_boundary_variational_residual(state, boundary, grid, **energy_kwargs)
-
-    def evaluate_force(state: MirrorState, energy: MirrorEnergy) -> IsotropicForceResidual:
-        return isotropic_force_residual(
-            energy,
-            grid,
-            state=state,
-            **energy_kwargs,
-        )
-
-    initial_energy = evaluate_energy(projected_initial)
-    energy_scale = max(abs(float(initial_energy.total)), np.finfo(float).tiny)
-
-    def unpack(x: Array) -> MirrorState:
-        return vectorizer.unpack(x)
-
-    def objective(x: Array) -> Array:
-        return _valid_energy_objective(evaluate_energy(unpack(x)), energy_scale)
-
-    value_and_gradient = jax.jit(jax.value_and_grad(objective))
-    cache_x: np.ndarray | None = None
-    cache_value = 0.0
-    cache_gradient = np.empty_like(x0)
-
-    def evaluate(x: np.ndarray) -> tuple[float, np.ndarray]:
-        nonlocal cache_x, cache_value, cache_gradient
-        if cache_x is None or not np.array_equal(x, cache_x):
-            value, gradient = value_and_gradient(jnp.asarray(x))
-            cache_x = np.array(x, copy=True)
-            cache_value = float(value)
-            cache_gradient = np.asarray(gradient, dtype=float)
-        return cache_value, cache_gradient
-
-    def packed_variational(x: Array, state: MirrorState) -> VariationalResidual:
-        variational = evaluate_variational(state)
-        if not solve_lambda:
-            return variational
-        gradient = evaluate(np.asarray(x, dtype=float))[1]
-        radius_values = gradient[: vectorizer.radius_size]
-        lambda_values = gradient[vectorizer.radius_size :]
-        radius_rms = float(np.sqrt(np.mean(radius_values**2)))
-        lambda_rms = float(np.sqrt(np.mean(lambda_values**2)))
-        maximum = float(max(np.max(np.abs(radius_values)), np.max(np.abs(lambda_values))))
-        return VariationalResidual(
-            radius_gradient=variational.radius_gradient,
-            lambda_gradient=variational.lambda_gradient,
-            radius_rms=jnp.asarray(radius_rms),
-            lambda_rms=jnp.asarray(lambda_rms),
-            maximum=jnp.asarray(maximum),
-        )
-
-    def packed_staggered_weak(state: MirrorState) -> VariationalResidual | None:
-        weak = isotropic_staggered_weak_residual(
-            state,
-            boundary,
-            grid,
-            **energy_kwargs,
-        )
-        if not solve_lambda:
-            return weak
-        gradient = isotropic_staggered_fixed_boundary_gradient(
-            state,
-            boundary,
-            grid,
-            **energy_kwargs,
-        )
-        packed = vectorizer.pullback_gradient(gradient) / energy_scale
-        radius_values = packed[: vectorizer.radius_size]
-        lambda_values = packed[vectorizer.radius_size :]
-        return VariationalResidual(
-            radius_gradient=weak.radius_gradient,
-            lambda_gradient=weak.lambda_gradient,
-            radius_rms=jnp.asarray(np.sqrt(np.mean(radius_values**2))),
-            lambda_rms=jnp.asarray(np.sqrt(np.mean(lambda_values**2))),
-            maximum=jnp.asarray(np.max(np.abs(packed))),
-        )
-
-    history: list[tuple[float, float, float, float, float, float]] = []
-
-    def record(iteration: int, x: np.ndarray) -> None:
-        state = unpack(jnp.asarray(x))
-        energy = evaluate_energy(state)
-        variational = packed_variational(x, state)
-        force = evaluate_force(state, energy)
-        history.append(
-            (
-                float(iteration),
-                float(energy.total),
-                float(variational.radius_rms),
-                float(variational.lambda_rms),
-                float(variational.maximum),
-                float(force.normalized_rms),
-            )
-        )
-
-    record(0, x0)
-    if history[-1][4] <= config.ftol and not bool(initial_energy.geometry.jacobian_sign_changed):
-        initial_variational = packed_variational(x0, projected_initial)
-        initial_weak_force = packed_staggered_weak(projected_initial)
-        projected_initial = regularize_axis_stream_function(
-            projected_initial,
-            grid,
-            axial_flux_derivative,
-        )
-        result = MirrorSolveResult(
-            state=projected_initial,
-            energy=initial_energy,
-            variational=initial_variational,
-            force=evaluate_force(projected_initial, initial_energy),
-            staggered_weak_force=initial_weak_force,
-            normalized_divergence_rms=normalized_divergence_rms(initial_energy.field, initial_energy.geometry, grid),
-            history=jnp.asarray(history),
-            iterations=0,
-            converged=True,
-            optimizer_success=True,
-            linear_iterations=0,
-            final_linear_residual=0.0,
-            message="initial state satisfies physical ftol",
-        )
-        return result
-
-    optimization = _optimize_fixed_boundary(
-        x0,
-        lower_bounds,
-        upper_bounds,
-        objective=objective,
-        evaluate=evaluate,
-        packed_variational=packed_variational,
-        unpack=unpack,
-        record=record,
-        config=config,
-        gradient_tolerance=gradient_tolerance,
-        matrix_free_context=(vectorizer, _packed_preconditioner(grid, vectorizer)),
-    )
-    final_x = optimization.vector
-
-    final_state = regularize_axis_stream_function(
-        unpack(jnp.asarray(final_x)),
-        grid,
-        axial_flux_derivative,
-    )
-    final_energy = evaluate_energy(final_state)
-    final_variational = packed_variational(final_x, final_state)
-    final_force = evaluate_force(final_state, final_energy)
-    final_weak_force = packed_staggered_weak(final_state)
-    record(optimization.iterations, final_x)
-    converged = bool(
-        float(final_variational.maximum) <= config.ftol and not bool(final_energy.geometry.jacobian_sign_changed)
-    )
-    message = optimization.message
-    if not converged:
-        message += f"; variational force={float(final_variational.maximum):.3e}"
-    result = MirrorSolveResult(
-        state=final_state,
-        energy=final_energy,
-        variational=final_variational,
-        force=final_force,
-        staggered_weak_force=final_weak_force,
-        normalized_divergence_rms=normalized_divergence_rms(final_energy.field, final_energy.geometry, grid),
-        history=jnp.asarray(history),
-        iterations=optimization.iterations,
-        converged=converged,
-        optimizer_success=optimization.optimizer_success,
-        linear_iterations=optimization.linear_iterations,
-        final_linear_residual=optimization.final_linear_residual,
-        message=message,
-    )
-    if require_convergence and not converged:
-        raise MirrorConvergenceError(result)
-    return result
 
 
 from typing import TYPE_CHECKING
