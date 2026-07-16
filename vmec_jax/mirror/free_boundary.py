@@ -865,7 +865,7 @@ def solve_beta_scan_cli(
     grid = discretization.grid
     if initial_state is not None and initial_restart is not None:
         raise ValueError("initial_state and initial_restart are mutually exclusive")
-    if initial_state is None and initial_restart is None and callable(external_field):
+    if initial_state is None and callable(external_field):
         initial_boundary, reference_coefficients = _axisymmetric_flux_initialization(
             initial_boundary,
             discretization,
