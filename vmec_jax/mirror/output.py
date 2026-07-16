@@ -489,6 +489,14 @@ def _matplotlib():
     return plt
 
 
+def _save_figure(fig, plt, path: Path) -> Path:
+    """Write one reviewed plot and release its Matplotlib resources."""
+
+    fig.savefig(path, dpi=_PLOT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 def _as_mout(mout):
     if hasattr(mout, "boundary_radius") and hasattr(mout, "b_xyz"):
         return mout, "mout"
@@ -638,9 +646,7 @@ def plot_mout(
     axes[1, 1].legend()
     for axis in axes.flat:
         axis.grid(alpha=0.22)
-    paths["summary"] = outdir / f"{label}_summary.png"
-    fig.savefig(paths["summary"], dpi=_PLOT_DPI, bbox_inches="tight")
-    plt.close(fig)
+    paths["summary"] = _save_figure(fig, plt, outdir / f"{label}_summary.png")
 
     theta_dense = np.linspace(0.0, 2.0 * np.pi, 129)
     indices = np.unique(np.round(np.linspace(0, len(z) - 1, 6)).astype(int))
@@ -654,9 +660,7 @@ def plot_mout(
         axis.set(title=f"z = {z[iz]:.3g} m", xlabel="x [m]", ylabel="y [m]", aspect="equal")
     for axis in axes.flat[len(indices) :]:
         axis.set_visible(False)
-    paths["cross_sections"] = outdir / f"{label}_cross_sections.png"
-    fig.savefig(paths["cross_sections"], dpi=_PLOT_DPI, bbox_inches="tight")
-    plt.close(fig)
+    paths["cross_sections"] = _save_figure(fig, plt, outdir / f"{label}_cross_sections.png")
 
     boundary_b = _theta_samples(data, mod_b[-1], theta_dense)
     fig, axis = plt.subplots(figsize=(10.5, 4.2), constrained_layout=True)
@@ -668,9 +672,7 @@ def plot_mout(
         xlabel="Axial position z [m]",
         ylabel="Poloidal angle theta",
     )
-    paths["modB"] = outdir / f"{label}_modB.png"
-    fig.savefig(paths["modB"], dpi=_PLOT_DPI, bbox_inches="tight")
-    plt.close(fig)
+    paths["modB"] = _save_figure(fig, plt, outdir / f"{label}_modB.png")
 
     radius_dense = _theta_samples(data, boundary, theta_dense)
     zz, tt = np.meshgrid(z, theta_dense)
@@ -745,9 +747,7 @@ def plot_mout(
     axis.set_box_aspect((2.2, 1.0, 1.0))
     axis.view_init(elev=22, azim=-57)
     axis.legend(loc="upper left")
-    paths["3d"] = outdir / f"{label}_3d.png"
-    fig.savefig(paths["3d"], dpi=_PLOT_DPI, bbox_inches="tight")
-    plt.close(fig)
+    paths["3d"] = _save_figure(fig, plt, outdir / f"{label}_3d.png")
     return paths
 
 
@@ -783,9 +783,7 @@ def _closed_field_line_xyz(line, state, discretization, axis, radial_index):
     binormal = interpolate_axis(axis.binormal)
     binormal = binormal - np.sum(binormal * normal, axis=1)[:, None] * normal
     binormal = binormal / np.linalg.norm(binormal, axis=1)[:, None]
-    radial = np.cos(np.asarray(line.theta))[:, None] * normal + np.sin(
-        np.asarray(line.theta)
-    )[:, None] * binormal
+    radial = np.cos(np.asarray(line.theta))[:, None] * normal + np.sin(np.asarray(line.theta))[:, None] * binormal
     return centerline + radius[:, None] * radial
 
 
@@ -807,11 +805,7 @@ def plot_stellarator_mirror_hybrid(
     theta = np.asarray(discretization.grid.theta)
     parameter = np.asarray(discretization.grid.z)
     theta_dense = np.linspace(0.0, 2.0 * np.pi, 97)
-    phase = np.exp(
-        1j
-        * theta_dense[:, None]
-        * np.fft.fftfreq(theta.size, d=1.0 / theta.size)[None]
-    )
+    phase = np.exp(1j * theta_dense[:, None] * np.fft.fftfreq(theta.size, d=1.0 / theta.size)[None])
 
     def dense_theta(values):
         return np.real(phase @ (np.fft.fft(np.asarray(values), axis=0) / theta.size))
@@ -925,17 +919,15 @@ def plot_stellarator_mirror_hybrid(
 
     sections = fig.add_subplot(grid[1, 0])
     section_indices = np.asarray(
-        [
-            int(np.argmin(np.abs(parameter - 2.0 * np.pi * fraction)))
-            for fraction in (0.125, 0.375, 0.625, 0.875)
-        ]
+        [int(np.argmin(np.abs(parameter - 2.0 * np.pi * fraction))) for fraction in (0.125, 0.375, 0.625, 0.875)]
     )
     colors = ("#0072B2", "#D55E00", "#009E73", "#CC79A7")
     for color, axial_index in zip(colors, section_indices, strict=False):
         for surface_index in radial_samples:
-            radius = np.sqrt(float(discretization.grid.s[surface_index])) * dense_theta(
-                state.radius_scale[surface_index]
-            )[:, axial_index]
+            radius = (
+                np.sqrt(float(discretization.grid.s[surface_index]))
+                * dense_theta(state.radius_scale[surface_index])[:, axial_index]
+            )
             sections.plot(
                 radius * np.cos(theta_dense),
                 radius * np.sin(theta_dense),
@@ -943,7 +935,7 @@ def plot_stellarator_mirror_hybrid(
                 lw=0.8,
                 alpha=0.72,
             )
-        sections.plot([], [], color=color, label=f"u/2pi={parameter[axial_index] / (2*np.pi):.2f}")
+        sections.plot([], [], color=color, label=f"u/2pi={parameter[axial_index] / (2 * np.pi):.2f}")
     sections.set(
         title="Solved cross-sections",
         xlabel="Local normal [m]",
@@ -1000,9 +992,7 @@ def plot_stellarator_mirror_hybrid(
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     path = outdir / f"{name}.png"
-    fig.savefig(path, dpi=_PLOT_DPI, bbox_inches="tight")
-    plt.close(fig)
-    return path
+    return _save_figure(fig, plt, path)
 
 
 __all__ = [
