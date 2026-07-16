@@ -4,7 +4,8 @@ Status: final authoritative plan for draft PR #22. Revised 2026-07-15 after
 auditing the pushed branch and clean research worktree, current `origin/main`,
 VMEC2000/ANIMEC, DESC and its experimental mirror/Chebyshev branches, GVEC,
 SOLVAX 0.8.3/current main, Pleiades, primary mirror literature, and differentiable-solver
-literature, and completing the decisive T9b same-geometry matrix. This file
+literature, completing the decisive T9b same-geometry matrix, and completing
+the bounded T10 nonaxisymmetric free-boundary disposition. This file
 replaces all earlier plans, including `plan_mirror.md`. Do not create another
 roadmap.
 
@@ -49,7 +50,7 @@ geometry helper or generated output was retained.
 | Fixed open, nonaxisymmetric | rotating ellipse and Agren-Savenko SFLM, supplied-field projection, three grids, tangents/adjoints | supported |
 | Free open, axisymmetric | square coefficient residual, exterior BIE, beta continuation, low-beta Pleiades trend, implicit adjoint | supported through 10% beta |
 | Free open, 25%/50% beta | converged scalar-pressure states but failed independent force/refinement ceiling | research only |
-| Free open, nonaxisymmetric | solver exists, local-mode refinement has not passed | conditional research |
+| Free open, nonaxisymmetric | three-grid cost study and failed local-mode refinement | explicitly deferred; unsupported code removed |
 | Fixed closed circular limit | VMEC2000/ordinary-vmec_jax flux parity, axis regularity, `ns=5,9,17` force refinement | supported validation limit |
 | Fixed closed hybrid | exact same-geometry T9b matrix passes every absolute gate but fails monotone 16/32/64 strong-force refinement | explicitly deferred; remove hybrid scaffolds |
 | Preconditioning | physical-Hessian support test and coupled sparse factor reduce the 32-control solve from 7,383 to 37 Krylov iterations | supported |
@@ -591,6 +592,14 @@ use the same promoted state and pass release tests.
 
 ### T10. Bound the nonaxisymmetric free-open lane
 
+**Complete: explicit deferral.** The historical three-grid beta-pair study
+cost 293, 944, and 2,995 seconds and 2.74, 4.57, and 7.35 GiB. Global
+coarse-to-medium observables changed by at most 0.96%, but center ``m=1``
+changed by 73--81%, and the states predate the corrected axis map. The
+theta-dependent exterior, public diagnostics, and ESSOS endpoint runner were
+removed. The compact negative record is
+``benchmarks/mirror_free_boundary_nonaxisymmetric.json``.
+
 1. Seed from the promoted weakly rotating fixed-open state and supplied-field
    projection.
 2. Continue pressure, ellipticity, and rotation separately on three grids.
@@ -794,15 +803,15 @@ Percentages represent promotion evidence, not implementation volume.
 | Fixed open axisymmetric | 100% | maintain shared-core gates |
 | Fixed open nonaxisymmetric | 100% | maintain shared-core gates |
 | Free open axisymmetric through 10% | 100% | maintain support ceiling |
-| Free open nonaxisymmetric | 35% | bounded three-grid disposition |
-| Fixed closed B-spline hybrid | 90% | remove hybrid-only scaffolds and retain the compact negative record |
+| Free open nonaxisymmetric | 100% | explicitly deferred after failed bounded promotion gates |
+| Fixed closed B-spline hybrid | 100% | explicitly deferred; exact transfer/preconditioning retained |
 | Structured preconditioning | 100% | maintain physical-support and resource regression gates |
 | Implicit differentiation | 100% | promoted open-lane derivative scope complete; closed derivatives deferred |
-| Code/API simplification | 55% | 53 files, 8,696 source lines, 5,007 test lines, and 20 names must meet T11 budgets |
-| Docs/examples/artifacts | 73% | hybrid showcase and final README/docs reduction |
-| ESSOS ownership separation | 90% | remove the remaining ESSOS-owned runner |
+| Code/API simplification | 65% | 52 files, 8,294 source lines, 4,527 test lines, and 20 names must meet T11 budgets |
+| Docs/examples/artifacts | 78% | final README/docs and artifact reduction |
+| ESSOS ownership separation | 100% | coils and Biot-Savart remain outside the mirror package |
 
-Weighted completion of required release models is approximately 86%.
+Weighted completion of required release models is approximately 91%.
 Fixed/free closed hybrids and ANIMEC are excluded because they are explicitly
 deferred.
 

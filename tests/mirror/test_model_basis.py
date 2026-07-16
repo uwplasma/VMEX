@@ -30,12 +30,7 @@ from vmec_jax.mirror.model import (  # noqa: E402
     MIRROR_OUTPUT_SCHEMA,
     project_fixed_boundary_state,
 )
-from vmec_jax.mirror.output import (  # noqa: E402
-    boundary_fourier_amplitudes,
-    boundary_fourier_norms,
-    summarize_axisymmetric_beta_scan,
-    summarize_nonaxisymmetric_beta_scan,
-)
+from vmec_jax.mirror.output import summarize_axisymmetric_beta_scan  # noqa: E402
 
 
 def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
@@ -226,38 +221,17 @@ def test_model_constructors_reject_invalid_static_contracts() -> None:
         project_fixed_boundary_state(state, MirrorBoundary(jnp.ones((2, 2))), grid)
 
 
-def test_fourier_and_beta_diagnostics_validate_inputs() -> None:
+def test_beta_diagnostics_validate_inputs() -> None:
     grid = _grid()
-    with pytest.raises(ValueError, match="shape"):
-        boundary_fourier_amplitudes(MirrorBoundary(jnp.ones(5)))
-    even_theta = jnp.linspace(0.0, 2.0 * jnp.pi, 4, endpoint=False)
-    nyquist = boundary_fourier_amplitudes(MirrorBoundary(0.2 + 0.01 * jnp.cos(2.0 * even_theta)[:, None]))
-    np.testing.assert_allclose(nyquist[2], 0.01)
-    with pytest.raises(ValueError, match="axial size"):
-        boundary_fourier_norms(MirrorBoundary(jnp.ones((1, 4))), grid)
-    with pytest.raises(ValueError, match="central_fraction"):
-        boundary_fourier_norms(MirrorBoundary(jnp.ones((1, 5))), grid, central_fraction=1.0)
-
     with pytest.raises(ValueError, match="one value"):
         summarize_axisymmetric_beta_scan((), [0.0], grid, reference_field=1.0)
     with pytest.raises(ValueError, match="at least one"):
         summarize_axisymmetric_beta_scan((), [], grid, reference_field=1.0)
     with pytest.raises(ValueError, match="ntheta=1"):
         summarize_axisymmetric_beta_scan((object(),), [0.0], _grid(ntheta=3), reference_field=1.0)
-    with pytest.raises(ValueError, match="one value"):
-        summarize_nonaxisymmetric_beta_scan((), [0.0], _grid(ntheta=3), reference_field=1.0)
-    with pytest.raises(ValueError, match="at least one"):
-        summarize_nonaxisymmetric_beta_scan((), [], _grid(ntheta=3), reference_field=1.0)
-    with pytest.raises(ValueError, match="ntheta > 1"):
-        summarize_nonaxisymmetric_beta_scan((object(),), [0.0], grid, reference_field=1.0)
-
-
-@pytest.mark.parametrize("ntheta", [1, 3])
-def test_beta_diagnostics_evaluate_solved_state(ntheta: int) -> None:
-    grid = _grid(ntheta=ntheta)
-    theta = jnp.asarray(grid.theta)[:, None]
-    xi = jnp.asarray(grid.xi)[None, :]
-    radius = 0.3 + (0.0 if ntheta == 1 else 0.01 * xi * jnp.cos(theta))
+def test_beta_diagnostics_evaluate_solved_state() -> None:
+    grid = _grid()
+    radius = 0.3
     boundary = MirrorBoundary.from_radius(radius, grid)
     state = MirrorState.from_boundary(boundary, grid)
     energy = mirror_energy(state, grid, axial_flux_derivative=0.1)
@@ -269,14 +243,9 @@ def test_beta_diagnostics_evaluate_solved_state(ntheta: int) -> None:
         pressure=pressure,
         vacuum_field=SimpleNamespace(lateral_field_xyz=jnp.ones((grid.nxi, 3))),
     )
-    if ntheta == 1:
-        diagnostic = summarize_axisymmetric_beta_scan((result,), [0.0], grid, reference_field=1.0)[0]
-        assert float(diagnostic.center_radius) > 0.0
-        assert float(diagnostic.center_vacuum_side_field) > 0.0
-    else:
-        diagnostic = summarize_nonaxisymmetric_beta_scan((result,), [0.0], grid, reference_field=1.0)[0]
-        assert float(diagnostic.plasma_volume) > 0.0
-        assert float(diagnostic.boundary_mode_core_l2[1]) > 0.0
+    diagnostic = summarize_axisymmetric_beta_scan((result,), [0.0], grid, reference_field=1.0)[0]
+    assert float(diagnostic.center_radius) > 0.0
+    assert float(diagnostic.center_vacuum_side_field) > 0.0
 
 
 def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
@@ -297,6 +266,20 @@ def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
         solve_free_boundary_cli(**common, initial_mass_scale=0.0)
     with pytest.raises(ValueError, match="coefficient shape"):
         solve_free_boundary_cli(**{**common, "initial_boundary": SplineMirrorBoundary(jnp.ones((2, 5)))})
+
+    nonaxis_config = MirrorConfig(resolution=MirrorResolution(ns=3, mpol=1, nxi=5))
+    nonaxis_discretization = SplineMirrorDiscretization.build_cgl(nonaxis_config, elements=2)
+    nonaxis_boundary = SplineMirrorBoundary(
+        jnp.full((nonaxis_discretization.grid.ntheta, nonaxis_discretization.coefficient_count), 0.2)
+    )
+    with pytest.raises(ValueError, match="only axisymmetric"):
+        solve_free_boundary_cli(
+            nonaxis_boundary,
+            nonaxis_discretization,
+            nonaxis_config,
+            object(),
+            axial_flux_derivative=0.1,
+        )
 
 
 def test_free_boundary_rejects_inconsistent_initial_guesses() -> None:

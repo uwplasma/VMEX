@@ -55,62 +55,6 @@ class MoutData:
     schema: str = MIRROR_OUTPUT_SCHEMA
 
 
-def boundary_fourier_amplitudes(boundary: MirrorBoundary) -> Any:
-    """Return real-signal theta-mode amplitudes along the mirror boundary.
-
-    The result has shape ``(ntheta // 2 + 1, nxi)``. Mode zero is the theta
-    mean; positive modes use peak-amplitude normalization. The Nyquist mode on
-    an even grid is not doubled.
-    """
-
-    radius = jnp.asarray(boundary.radius_scale)
-    if radius.ndim != 2:
-        raise ValueError("boundary radius must have shape (ntheta, nxi)")
-    ntheta = radius.shape[0]
-    coefficients = jnp.fft.rfft(radius, axis=0) / float(ntheta)
-    scale = jnp.full(coefficients.shape[0], 2.0, dtype=radius.dtype).at[0].set(1.0)
-    if ntheta % 2 == 0 and ntheta > 1:
-        scale = scale.at[-1].set(1.0)
-    return jnp.abs(coefficients) * scale[:, None]
-
-
-def boundary_fourier_norms(
-    boundary: MirrorBoundary,
-    grid: "MirrorGrid",
-    *,
-    central_fraction: float | None = None,
-) -> tuple[Any, Any]:
-    """Return weighted axial L2 and maximum amplitude of each theta mode.
-
-    Axial norms remain meaningful when a mode vanishes at a symmetry plane,
-    where a relative error based on one collocation point is ill-conditioned.
-    ``central_fraction`` evaluates the Fourier-CGL interpolant on the fixed
-    window ``|xi| <= central_fraction``. This avoids comparing different
-    near-cap CGL nodes as axial resolution changes.
-    """
-
-    radius = jnp.asarray(boundary.radius_scale)
-    if radius.shape[1] != grid.nxi:
-        raise ValueError("boundary axial size does not match mirror grid")
-    if central_fraction is not None:
-        if not 0.0 < central_fraction < 1.0:
-            raise ValueError("central_fraction must lie strictly between zero and one")
-        nodes, weights = np.polynomial.legendre.leggauss(grid.nxi)
-        quadrature_nodes = central_fraction * nodes
-        quadrature_radius = grid.axial_basis.interpolate(radius, quadrature_nodes, axis=1)
-        amplitudes = boundary_fourier_amplitudes(boundary.__class__(quadrature_radius))
-        extrema_nodes = np.linspace(-central_fraction, central_fraction, 257)
-        extrema_radius = grid.axial_basis.interpolate(radius, extrema_nodes, axis=1)
-        maximum = jnp.max(boundary_fourier_amplitudes(boundary.__class__(extrema_radius)), axis=1)
-        weights = jnp.asarray(weights)
-    else:
-        amplitudes = boundary_fourier_amplitudes(boundary)
-        weights = jnp.asarray(grid.axial_basis.weights)
-        maximum = jnp.max(amplitudes, axis=1)
-    l2 = jnp.sqrt(jnp.sum(amplitudes**2 * weights[None, :], axis=1) / jnp.sum(weights))
-    return l2, maximum
-
-
 @dataclass(frozen=True)
 class AxisymmetricBetaDiagnostics:
     """Scalar checks for one axisymmetric free-boundary beta point."""
@@ -125,24 +69,6 @@ class AxisymmetricBetaDiagnostics:
     diamagnetic_field_ratio: Any
     paraxial_field_ratio: Any
     paraxial_relative_error: Any
-
-
-@dataclass(frozen=True)
-class NonaxisymmetricBetaDiagnostics:
-    """Global and modal checks for one theta-dependent beta point."""
-
-    requested_beta: Any
-    achieved_reference_beta: Any
-    volume_averaged_beta: Any
-    center_mean_radius: Any
-    center_mean_field: Any
-    center_boundary_modes: Any
-    boundary_mode_l2: Any
-    boundary_mode_max: Any
-    boundary_mode_core_l2: Any
-    boundary_mode_core_max: Any
-    plasma_volume: Any
-    plasma_energy: Any
 
 
 def _integration_measure(result: "FreeBoundaryMirrorResult", grid: "MirrorGrid"):
@@ -214,56 +140,6 @@ def summarize_axisymmetric_beta_scan(
                 paraxial_field_ratio=paraxial_ratio,
                 paraxial_relative_error=(diamagnetic_ratio - paraxial_ratio)
                 / jnp.maximum(paraxial_ratio, jnp.finfo(axis_field.dtype).tiny),
-            )
-        )
-    return tuple(summaries)
-
-
-def summarize_nonaxisymmetric_beta_scan(
-    results: tuple["FreeBoundaryMirrorResult", ...],
-    requested_betas: Any,
-    grid: "MirrorGrid",
-    *,
-    reference_field: float,
-) -> tuple[NonaxisymmetricBetaDiagnostics, ...]:
-    """Summarize solved 3D beta points with global and Fourier observables."""
-
-    betas = jnp.asarray(requested_betas)
-    if betas.ndim != 1 or betas.size != len(results):
-        raise ValueError("requested_betas must have one value per result")
-    if not results:
-        raise ValueError("beta diagnostics require at least one result")
-    if grid.ntheta <= 1:
-        raise ValueError("nonaxisymmetric beta diagnostics require ntheta > 1")
-    center = int(np.argmin(np.abs(np.asarray(grid.z))))
-    reference_field_squared = float(reference_field) ** 2
-    summaries = []
-    for requested_beta, result in zip(betas, results, strict=True):
-        pressure = result.pressure
-        center_field = jnp.sqrt(result.plasma_b_squared[0, :, center])
-        boundary_modes = boundary_fourier_amplitudes(result.boundary)
-        mode_l2, mode_max = boundary_fourier_norms(result.boundary, grid)
-        core_l2, core_max = boundary_fourier_norms(result.boundary, grid, central_fraction=0.75)
-        measure = _integration_measure(result, grid)
-        summaries.append(
-            NonaxisymmetricBetaDiagnostics(
-                requested_beta=requested_beta,
-                achieved_reference_beta=(2.0 * MU0 * jnp.mean(pressure[0, :, center]) / reference_field_squared),
-                volume_averaged_beta=(
-                    2.0
-                    * MU0
-                    * _volume_average(pressure, result, grid)
-                    / _volume_average(result.plasma_b_squared, result, grid)
-                ),
-                center_mean_radius=jnp.mean(result.boundary.radius_scale[:, center]),
-                center_mean_field=jnp.mean(center_field),
-                center_boundary_modes=boundary_modes[:, center],
-                boundary_mode_l2=mode_l2,
-                boundary_mode_max=mode_max,
-                boundary_mode_core_l2=core_l2,
-                boundary_mode_core_max=core_max,
-                plasma_volume=jnp.sum(measure),
-                plasma_energy=result.plasma_energy.total,
             )
         )
     return tuple(summaries)
@@ -849,16 +725,12 @@ __all__ = [
     "AxisymmetricBetaDiagnostics",
     "FreeBoundaryRestart",
     "MoutData",
-    "NonaxisymmetricBetaDiagnostics",
-    "boundary_fourier_amplitudes",
-    "boundary_fourier_norms",
     "load_free_boundary_restart",
     "mout_from_result",
     "plot_mout",
     "read_mout",
     "save_free_boundary_restart",
     "summarize_axisymmetric_beta_scan",
-    "summarize_nonaxisymmetric_beta_scan",
     "write_mout",
 ]
 

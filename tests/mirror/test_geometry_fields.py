@@ -173,41 +173,6 @@ def test_geometry_volume_is_jax_differentiable_with_analytic_cylinder_gradient()
     jax.make_jaxpr(volume)(radius)
 
 
-def test_axisymmetric_essos_benchmark_uses_concentric_coils() -> None:
-    """Keep the direct-coil axisymmetric promotion case rotationally symmetric."""
-
-    from benchmarks.run_mirror_exterior_endpoints import _two_coil_dofs
-
-    axisymmetric = _two_coil_dofs(axisymmetric=True)
-    nonaxisymmetric = _two_coil_dofs(axisymmetric=False)
-    np.testing.assert_array_equal(axisymmetric[:, 0, 0], 0.0)
-    np.testing.assert_allclose(nonaxisymmetric[:, 0, 0], [0.04, -0.04])
-
-
-def test_axisymmetric_benchmark_initializer_traces_finite_radius_flux() -> None:
-    from benchmarks.run_mirror_exterior_endpoints import _axisymmetric_flux_surface_radii
-
-    z = np.linspace(-0.8, 0.8, 7)
-    center_field, curvature, flux = 0.08, 0.02, 0.0025
-
-    def field(points):
-        x, y, axial = jnp.moveaxis(jnp.asarray(points), -1, 0)
-        return jnp.stack(
-            (
-                -curvature * x * axial,
-                -curvature * y * axial,
-                center_field + curvature * (axial**2 - 0.5 * (x**2 + y**2)),
-            ),
-            axis=-1,
-        )
-
-    paraxial = np.sqrt(2.0 * flux / (center_field + curvature * z**2))
-    radii, metrics = _axisymmetric_flux_surface_radii(field, z, flux, paraxial)
-    enclosed = 0.5 * (center_field + curvature * z**2) * radii**2 - 0.125 * curvature * radii**4
-
-    np.testing.assert_allclose(enclosed, flux, rtol=2.0e-13)
-    assert metrics["maximum_relative_flux_error"] < 2.0e-13
-    assert metrics["maximum_paraxial_radius_correction"] > 1.0e-3
 
 
 def test_two_coil_flux_tube_has_high_field_throats_and_correct_on_axis_field() -> None:

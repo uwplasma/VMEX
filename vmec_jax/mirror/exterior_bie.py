@@ -15,8 +15,6 @@ from .exterior import (
     panel_green_boundary_residual,
     panel_green_gradient_off_surface,
 )
-from .geometry import magnetic_field_xyz
-
 Array = Any
 
 
@@ -86,7 +84,6 @@ class ExteriorVacuum:
 
 
 AxisymmetricExteriorVacuum = ExteriorVacuum
-NonaxisymmetricExteriorVacuum = ExteriorVacuum
 
 
 jax.tree_util.register_dataclass(
@@ -99,57 +96,6 @@ jax.tree_util.register_dataclass(
     data_fields=[field.name for field in fields(ExteriorVacuum)],
     meta_fields=[],
 )
-
-
-def plasma_external_neumann(
-    surface: ClosedMirrorSurface,
-    plasma_field: "ContravariantField",
-    plasma_geometry: "MirrorGeometry",
-    plasma_grid: "MirrorGrid",
-    external_field: Any,
-) -> Array:
-    """Build ``(B_plasma-B_external) dot n`` on the Green surface.
-
-    The lateral plasma trace is sampled directly. End-cut ``Bz`` is
-    interpolated in ``s=r^2/a_end^2`` onto the graded cap rings. The cap values
-    continue physical through-flux; they are not zero-normal plasma boundary
-    conditions.
-    """
-
-    ntheta, nxi = surface.lateral_xyz.shape[:2]
-    if plasma_grid.ntheta == 1:
-        raise ValueError("use axisymmetric_plasma_external_neumann for ntheta=1")
-    if ntheta != plasma_grid.ntheta or nxi != plasma_grid.nxi:
-        raise ValueError("surface and plasma grid have incompatible lateral nodes")
-    external_normal = jnp.sum(
-        _external_field_xyz(external_field, surface.collocation_xyz) * surface.collocation_normals,
-        axis=1,
-    )
-    field_xyz = magnetic_field_xyz(plasma_field, plasma_geometry)
-    lateral_count = ntheta * nxi
-    lateral_normal = jnp.sum(
-        field_xyz[-1].reshape(-1, 3) * surface.collocation_normals[:lateral_count],
-        axis=1,
-    )
-
-    def cap_normal(cap_xyz: Array, endpoint: int, orientation: float) -> Array:
-        boundary_radius = jnp.linalg.norm(surface.lateral_xyz[:, endpoint, :2], axis=1)
-        cap_s = jnp.sum(cap_xyz[..., :2] ** 2, axis=-1) / boundary_radius[None, :] ** 2
-        source_bz = field_xyz[:, :, endpoint, 2]
-        interpolated = jnp.stack(
-            [jnp.interp(cap_s[:, index], jnp.asarray(plasma_grid.s), source_bz[:, index]) for index in range(ntheta)],
-            axis=1,
-        )
-        return orientation * jnp.concatenate([jnp.mean(interpolated[0])[None], interpolated[1:-1].reshape(-1)])
-
-    plasma_normal = jnp.concatenate(
-        [
-            lateral_normal,
-            cap_normal(surface.lower_cap_xyz, 0, -1.0),
-            cap_normal(surface.upper_cap_xyz, -1, 1.0),
-        ]
-    )
-    return surface.reduce_collocation_values(plasma_normal - external_normal)
 
 
 def axisymmetric_plasma_external_neumann(
@@ -239,65 +185,6 @@ def axisymmetric_exterior_lateral_field(
     return external_xyz + correction
 
 
-def nonaxisymmetric_exterior_lateral_field(
-    surface: ClosedMirrorSurface,
-    boundary_potential: Array,
-    neumann: Array,
-    plasma_grid: "MirrorGrid",
-    external_xyz: Array,
-) -> Array:
-    """Reconstruct total field on a theta-dependent lateral boundary."""
-
-    if plasma_grid.ntheta == 1:
-        raise ValueError("use axisymmetric_exterior_lateral_field for ntheta=1")
-    ntheta, nxi = plasma_grid.ntheta, plasma_grid.nxi
-    expected = (surface.reduced_size,)
-    boundary_potential = jnp.asarray(boundary_potential)
-    neumann = jnp.asarray(neumann)
-    external_xyz = jnp.asarray(external_xyz)
-    if boundary_potential.shape != expected or neumann.shape != expected:
-        raise ValueError(f"potential and neumann must have shape {expected}")
-    if external_xyz.shape != (ntheta, nxi, 3):
-        raise ValueError(f"external_xyz must have shape ({ntheta}, {nxi}, 3)")
-
-    lateral_size = ntheta * nxi
-    potential = boundary_potential[:lateral_size].reshape(ntheta, nxi)
-    potential_theta = plasma_grid.theta_basis.differentiate(potential, axis=0)
-    potential_xi = plasma_grid.axial_basis.differentiate(potential, axis=1)
-    radius = jnp.linalg.norm(surface.lateral_xyz[..., :2], axis=-1)
-    radius_theta = plasma_grid.theta_basis.differentiate(radius, axis=0)
-    radius_xi = plasma_grid.axial_basis.differentiate(radius, axis=1)
-    theta = jnp.asarray(plasma_grid.theta)[:, None]
-    cosine, sine = jnp.cos(theta), jnp.sin(theta)
-    zeros = jnp.zeros_like(radius)
-    e_theta = jnp.stack(
-        [
-            radius_theta * cosine - radius * sine,
-            radius_theta * sine + radius * cosine,
-            zeros,
-        ],
-        axis=-1,
-    )
-    e_xi = jnp.stack(
-        [
-            radius_xi * cosine,
-            radius_xi * sine,
-            jnp.full_like(radius, plasma_grid.dz_dxi),
-        ],
-        axis=-1,
-    )
-    gtt = jnp.sum(e_theta**2, axis=-1)
-    gtx = jnp.sum(e_theta * e_xi, axis=-1)
-    gxx = jnp.sum(e_xi**2, axis=-1)
-    determinant = gtt * gxx - gtx**2
-    coefficient_theta = (gxx * potential_theta - gtx * potential_xi) / determinant
-    coefficient_xi = (gtt * potential_xi - gtx * potential_theta) / determinant
-    tangential = coefficient_theta[..., None] * e_theta + coefficient_xi[..., None] * e_xi
-    normals = surface.collocation_normals[:lateral_size].reshape(ntheta, nxi, 3)
-    correction = neumann[:lateral_size].reshape(ntheta, nxi)[..., None] * normals + tangential
-    return external_xyz + correction
-
-
 def solve_axisymmetric_exterior_vacuum(
     boundary: "MirrorBoundary",
     plasma_field: "ContravariantField",
@@ -357,52 +244,6 @@ def solve_axisymmetric_exterior_vacuum(
         neumann_result=result,
         lateral_field_xyz=lateral,
         lateral_b_normal=jnp.sum(lateral * normal, axis=1),
-    )
-
-
-def solve_nonaxisymmetric_exterior_vacuum(
-    boundary: "MirrorBoundary",
-    plasma_field: "ContravariantField",
-    plasma_geometry: "MirrorGeometry",
-    plasma_grid: "MirrorGrid",
-    external_field: Any,
-    *,
-    cap_rim_grade: float = 3.5,
-    order: int = 8,
-    spectral_side_density: bool = False,
-) -> NonaxisymmetricExteriorVacuum:
-    """Solve and reconstruct the unbounded theta-dependent vacuum field."""
-
-    if plasma_grid.ntheta == 1:
-        raise ValueError("nonaxisymmetric exterior vacuum requires ntheta > 1")
-    surface = build_closed_mirror_surface(
-        boundary,
-        plasma_grid,
-        cap_rim_grade=cap_rim_grade,
-    )
-    neumann = plasma_external_neumann(surface, plasma_field, plasma_geometry, plasma_grid, external_field)
-    result = solve_reduced_exterior_laplace_neumann(
-        surface,
-        neumann,
-        order=order,
-        spectral_side_density=spectral_side_density,
-    )
-    external = _external_field_xyz(external_field, surface.lateral_xyz)
-    lateral = nonaxisymmetric_exterior_lateral_field(
-        surface,
-        result.boundary_potential,
-        neumann,
-        plasma_grid,
-        external,
-    )
-    lateral_size = plasma_grid.ntheta * plasma_grid.nxi
-    normals = surface.collocation_normals[:lateral_size].reshape(plasma_grid.ntheta, plasma_grid.nxi, 3)
-    return NonaxisymmetricExteriorVacuum(
-        surface=surface,
-        neumann=neumann,
-        neumann_result=result,
-        lateral_field_xyz=lateral,
-        lateral_b_normal=jnp.sum(lateral * normals, axis=-1),
     )
 
 
@@ -526,5 +367,5 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .basis import MirrorGrid
-    from .geometry import ContravariantField, MirrorGeometry
+    from .geometry import ContravariantField
     from .model import MirrorBoundary

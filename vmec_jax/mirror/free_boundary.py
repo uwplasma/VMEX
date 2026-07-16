@@ -27,9 +27,7 @@ from .forces import (
 from .geometry import normalized_divergence_rms
 from .exterior_bie import (
     AxisymmetricExteriorVacuum,
-    NonaxisymmetricExteriorVacuum,
     solve_axisymmetric_exterior_vacuum,
-    solve_nonaxisymmetric_exterior_vacuum,
 )
 from .model import MirrorBoundary, MirrorConfig, MirrorState
 from .output import FreeBoundaryRestart
@@ -393,7 +391,7 @@ class FreeBoundaryMirrorResult:
     plasma_b_squared: Array
     pressure: Array
     vacuum_geometry: "ClosedMirrorSurface"
-    vacuum_field: AxisymmetricExteriorVacuum | NonaxisymmetricExteriorVacuum
+    vacuum_field: AxisymmetricExteriorVacuum
     mass_scale: Array
     plasma_scale: float
     target_central_pressure: float | None
@@ -460,6 +458,8 @@ def _build_free_equilibrium_problem(
     """Assemble the square coefficient residual and its physical components."""
 
     grid = discretization.grid
+    if grid.ntheta != 1:
+        raise ValueError("free-boundary mirrors currently support only axisymmetric geometry")
     calibrate_pressure = target_central_pressure is not None
     vectorizer = _SplineFreeBoundaryVectorizer.build(
         initial_boundary,
@@ -508,26 +508,15 @@ def _build_free_equilibrium_problem(
         coefficient_boundary, coefficient_state, mass_scale, boundary, state, plasma, pressure = plasma_components(
             vector, controls
         )
-        if grid.ntheta == 1:
-            vacuum_field = solve_axisymmetric_exterior_vacuum(
-                boundary,
-                plasma.field,
-                grid,
-                controls.external_field,
-                axisymmetric_ntheta=exterior_ntheta,
-                order=exterior_order,
-                spectral_side_density=exterior_spectral_side_density,
-            )
-        else:
-            vacuum_field = solve_nonaxisymmetric_exterior_vacuum(
-                boundary,
-                plasma.field,
-                plasma.geometry,
-                grid,
-                controls.external_field,
-                order=exterior_order,
-                spectral_side_density=exterior_spectral_side_density,
-            )
+        vacuum_field = solve_axisymmetric_exterior_vacuum(
+            boundary,
+            plasma.field,
+            grid,
+            controls.external_field,
+            axisymmetric_ntheta=exterior_ntheta,
+            order=exterior_order,
+            spectral_side_density=exterior_spectral_side_density,
+        )
         return (
             coefficient_boundary,
             coefficient_state,
@@ -614,12 +603,14 @@ def solve_free_boundary_cli(
     grid = discretization.grid
     if discretization.closed:
         raise ValueError("free-boundary mirrors require an open spline discretization")
+    if grid.ntheta != 1:
+        raise ValueError("free-boundary mirrors currently support only axisymmetric geometry")
     if grid.ns != config.resolution.ns or grid.ntheta != config.resolution.ntheta:
         raise ValueError("spline radial and poloidal resolution must match MirrorConfig")
     if not np.allclose(np.asarray(grid.xi), np.asarray(config.build_grid().xi), rtol=0.0, atol=2.0e-14):
         raise ValueError("free-boundary exterior panels require SplineMirrorDiscretization.build_cgl")
     if solve_lambda is None:
-        solve_lambda = grid.ntheta != 1
+        solve_lambda = False
     if target_central_pressure is not None and target_central_pressure <= 0.0:
         raise ValueError("target_central_pressure must be positive")
     if initial_mass_scale <= 0.0:

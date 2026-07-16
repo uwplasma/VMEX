@@ -1,161 +1,37 @@
 {
-  "schema": "vmec_jax.benchmark.mirror_free_boundary_nonaxisymmetric/5",
-  "provenance": {
-    "measurement_commit": "f9eb6a4443d9c92ba0bff36aa1c1cfb77bd5bf21",
-    "input_schema": "vmec_jax.mirror.input/1",
-    "basis": "CGL in xi; legacy uniform theta collocation",
-    "represented_modes": "coarse mpol=1; medium mpol=2",
-    "grid": "coarse and medium grids only",
-    "hardware_class": "office NVIDIA RTX A4000",
-    "promotion_status": "stale_negative_evidence",
-    "stale_sections": [
-      "coarse",
-      "medium",
-      "coarse_to_medium_relative_change"
-    ],
-    "stale_reason": "states predate the corrected magnetic-axis regularity map",
-    "promotion_blocker": "no third-grid local-mode convergence and excessive runtime/memory"
-  },
-  "case": {
-    "external_field": "ESSOS two-coil mirror with opposite x offsets",
-    "axial_current_derivative": "1e-3 * s",
-    "plasma_state": "radius plus gauge-free lambda",
-    "vacuum_backend": "exterior, spectral side density, linear caps",
-    "betas": [
-      0.0,
-      0.5
-    ],
+  "schema": "vmec_jax.benchmark.mirror_free_boundary_nonaxisymmetric/6",
+  "status": "deferred_negative_evidence",
+  "model": "nonaxisymmetric free-boundary straight-axis mirror",
+  "reason": "local theta-mode observables did not converge and dense host Jacobian scaling is prohibitive",
+  "historical_case": {
+    "external_field": "ESSOS two-coil mirror with opposite transverse offsets",
+    "current_derivative": "1e-3 * s",
+    "betas": [0.0, 0.5],
     "ftol": 1e-12,
-    "device": "office RTX A4000"
+    "hardware": "NVIDIA RTX A4000",
+    "note": "states predate the corrected magnetic-axis regularity map"
   },
-  "coarse": {
-    "grid": {
-      "ns": 5,
-      "ntheta": 3,
-      "nxi": 5
-    },
-    "wall_s_pair_warm": 71.406,
-    "peak_rss_mib": 2201.96,
-    "beta0": {
-      "iterations": 26,
-      "variational_max": 4.571e-15,
-      "staggered_weak_max": 5.75e-16,
-      "normal_stress_rms": 2.122e-15,
-      "vacuum_b_normal_rms": 3.731e-17,
-      "normalized_divb": 2.841e-16,
-      "lambda_max": 0.0002723,
-      "compatibility": 0.0009505,
-      "center_radius_m": 0.2014018783,
-      "center_field_T": 0.0838655345,
-      "center_m1_m": 0.0024869107,
-      "volume_m3": 0.1651036492,
-      "energy_J": 717.0835279
-    },
-    "beta50": {
-      "iterations": 28,
-      "variational_max": 2.757e-15,
-      "staggered_weak_max": 4.318e-16,
-      "normal_stress_rms": 1.569e-15,
-      "vacuum_b_normal_rms": 4.449e-17,
-      "normalized_divb": 2.967e-16,
-      "lambda_max": 0.0002697,
-      "compatibility": 0.0008984,
-      "center_radius_m": 0.2168913152,
-      "center_field_T": 0.0630597155,
-      "center_m1_m": 0.0031770992,
-      "volume_m3": 0.1836946314,
-      "energy_J": 876.6910493
+  "grid_study": {
+    "ns_ntheta_nxi": [[5, 3, 5], [7, 5, 7], [9, 7, 9]],
+    "beta_pair_wall_s": [292.699, 943.944, 2994.901],
+    "peak_rss_mib": [2807.38, 4677.04, 7524.89],
+    "coarse_to_medium_global_relative_change_max": 0.0096,
+    "coarse_to_medium_center_m1_relative_change": {
+      "beta0": 0.8134,
+      "beta50": 0.7268
     }
   },
-  "medium": {
-    "grid": {
-      "ns": 7,
-      "ntheta": 5,
-      "nxi": 7
-    },
-    "wall_s_pair": 800.733,
-    "peak_rss_mib": 4249.73,
-    "beta0": {
-      "iterations": 83,
-      "variational_max": 9.126e-15,
-      "staggered_weak_max": 7.109e-16,
-      "normal_stress_rms": 3.291e-15,
-      "vacuum_b_normal_rms": 2.697e-17,
-      "normalized_divb": 9.602e-16,
-      "lambda_max": 0.0004107,
-      "compatibility": 1.407e-05,
-      "center_radius_m": 0.2014399571,
-      "center_field_T": 0.0841332019,
-      "center_m1_m": 0.0004639745,
-      "volume_m3": 0.164546934,
-      "energy_J": 714.0342608
-    },
-    "beta50": {
-      "iterations": 36,
-      "variational_max": 5.641e-15,
-      "staggered_weak_max": 3.927e-16,
-      "normal_stress_rms": 2.629e-15,
-      "vacuum_b_normal_rms": 2.55e-17,
-      "normalized_divb": 9.5e-16,
-      "lambda_max": 0.0004129,
-      "compatibility": 1.358e-05,
-      "center_radius_m": 0.2177834999,
-      "center_field_T": 0.0624543569,
-      "center_m1_m": 0.0008679221,
-      "volume_m3": 0.1831145106,
-      "energy_J": 871.1950597
-    }
+  "gates": {
+    "nonlinear_residual": true,
+    "global_observables": true,
+    "local_mode_refinement": false,
+    "runtime_under_30_min_per_beta_pair": false,
+    "memory_under_8_gib": true,
+    "supported_api": false
   },
-  "coarse_to_medium_relative_change": {
-    "beta0": {
-      "center_radius": 0.0001891,
-      "center_field": 0.003192,
-      "volume": 0.003372,
-      "energy": 0.004252,
-      "center_m1": 0.8134
-    },
-    "beta50": {
-      "center_radius": 0.004114,
-      "center_field": 0.0096,
-      "volume": 0.003158,
-      "energy": 0.006269,
-      "center_m1": 0.7268
-    }
-  },
-  "bounded_alternative": {
-    "method": "high-order cap panels, four-beta coarse scan",
-    "terminated_after_s": 690.7,
-    "result": "did not complete the bounded test"
-  },
-  "assessment": "The full radius-plus-lambda MHD residual converges through beta 0.50 with weak force, div(B), stress, and B.n near roundoff. Global coarse-to-medium observables change by at most 0.96%, but local m=1 changes by 73-81% and the medium pair costs 13.3 minutes. Keep the lane research-only until structured Jacobian solves make a third level practical and local modes converge. All earlier radius-only benchmark rows were removed as incomplete equilibria.",
-  "performance": {
-    "grid_family": [
-      [
-        5,
-        3,
-        5
-      ],
-      [
-        7,
-        5,
-        7
-      ],
-      [
-        9,
-        7,
-        9
-      ]
-    ],
-    "office_a4000_pair_wall_s": [
-      292.699,
-      943.944,
-      2994.901
-    ],
-    "peak_rss_mib": [
-      2807.38,
-      4677.04,
-      7524.89
-    ],
-    "assessment": "Dense host Jacobian scaling is prohibitive and the local-mode gate fails; this lane is deferred."
-  }
+  "promotion_requires": [
+    "structured exterior Jacobian or equivalent matrix-free preconditioner",
+    "corrected-axis three-grid local-mode convergence",
+    "independent force and interface diagnostics"
+  ]
 }

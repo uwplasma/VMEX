@@ -710,39 +710,19 @@ to virtual-casing-jax; vmec_jax retains only the operator used by mirror
 equilibria. Broader shaped and near-singular references and higher-order side
 panels remain promotion work.
 
-The nonaxisymmetric seam is explicit. ``magnetic_field_xyz`` converts the full
-contravariant field without an axisymmetry shortcut, while
-``plasma_external_neumann`` assembles lateral and cap data on a
-theta-dependent closed surface. ``solve_free_boundary_cli`` composes free
-boundary, interior radius, gauge-free stream function, and optional pressure
-scale in one B-spline coefficient map. Earlier refinement
-runs held the stream function fixed; those incomplete-equilibrium rows have
-been removed rather than used as validation evidence.
+Nonaxisymmetric free-boundary mirrors are explicitly deferred. A historical
+three-grid study reached roundoff nonlinear residuals, but local ``m=1``
+observables changed by 73--81% between the first two grids. Runtime grew from
+293 to 2,995 seconds and host memory from 2.74 to 7.35 GiB on an RTX A4000.
+Those states also predate the corrected magnetic-axis regularity map. The
+unsupported theta-dependent exterior and diagnostics have therefore been
+removed rather than presented as an equilibrium model. Compact negative
+evidence remains in
+``benchmarks/mirror_free_boundary_nonaxisymmetric.json``. Fixed-boundary
+nonaxisymmetric mirrors remain supported; free-boundary promotion requires a
+structured exterior Jacobian and a new three-grid local-mode study.
 
-The historical finite-current endpoint case uses two oppositely offset end-coil
-fields supplied by ESSOS. At ``(ns,ntheta,nxi)=(5,3,5)`` and ``(7,5,7)``, beta
-0 and 50% all converge at requested ``ftol=1e-12``. Variational and independent
-weak-force residuals, normalized ``div(B)``, normal stress, and ``B.n`` remain
-below ``1e-14``. On the medium grid, beta 50% expands the mean center radius to
-``0.2177835 m`` and reduces the center field to ``0.0624544 T``. The stream
-function is nonzero, so this is a complete nonaxisymmetric MHD state rather
-than a radius-only shape optimization.
-
-Global coarse-to-medium changes are at most 0.96% for center radius, center
-field, volume, and energy. The local center ``m=1`` amplitude changes by 81%
-at beta zero and 73% at beta 50%, however. The medium endpoint pair takes
-800.7 s and 4.25 GiB host RSS on one RTX A4000. A second formulation using
-high-order cap panels did not complete a bounded 690.7 s coarse scan. The lane
-therefore remains research-only: no third brute-force grid is scheduled before
-structured Jacobian solves make local-mode refinement practical. These states
-also predate the corrected axis-regularity map, so they are stale negative
-evidence rather than current equilibria. Compact input, residual, observable,
-runtime, and memory evidence is retained in
-``benchmarks/mirror_free_boundary_nonaxisymmetric.json``.
-
-``solve_beta_scan_cli`` is the coefficient-native hot-start driver and
-propagates current through its reference and finite-beta solves. The former
-axisymmetric compatibility aliases have been removed.
+``solve_beta_scan_cli`` is the axisymmetric coefficient-native hot-start driver.
 
 Two cheaper boundary-limit approximations were tested and rejected. Inward or
 outward offset collocation produced density-system condition numbers from
