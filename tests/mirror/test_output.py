@@ -66,7 +66,7 @@ def test_fixed_benchmark_separates_corrected_cut_support_status() -> None:
     record = json.loads(path.read_text())
     audit = record["nonaxisymmetric_corrected_cut_audit"]
     assert audit["rotating_ellipse"]["status"] == "release-candidate"
-    assert audit["straight_field_line"]["status"] == "research"
+    assert audit["straight_field_line"]["status"] == "validation-only"
     assert record["gates"]["rotating_ellipse_strong_force"]
     assert not record["gates"]["straight_field_line_independent_strong_force"]
 

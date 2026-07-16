@@ -261,7 +261,7 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution(_module_ji
         )
 
     relative_change = np.abs((observables[-1] - observables[-2]) / observables[-1])
-    # The supported 0/10% lane is converged below 0.2%; the 50% research
+    # The supported 0/10% lane is converged below 0.2%; the 50% validation
     # continuation is required to stay bounded but is not promoted.
     assert np.max(relative_change[:2]) < 2.0e-3
     assert np.max(relative_change[2]) < 1.5e-2

@@ -23,7 +23,7 @@ from vmec_jax.mirror import (
 
 # Inputs: edit these values, then run this file directly.
 NS, MPOL = 5, 3
-SPLINE_COEFFICIENTS = 16
+SPLINE_COEFFICIENTS = 32
 SPLINE_QUADRATURE_ORDER = 3
 STRAIGHT_LENGTH = 8.0
 RETURN_RADIUS = 2.5

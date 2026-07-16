@@ -140,12 +140,12 @@ case: its coefficient residual reaches `1.7e-16`, but its corrected-cut strong
 force is `0.335`, so it is not advertised as an equilibrium.
 
 The periodic hybrid example uses a rotation-minimizing frame around a closed
-B-spline axis. Its two central leg spans have zero curvature to roundoff; the
+B-spline axis. Its central leg spans have zero curvature to roundoff; the
 elliptical section rotates by 90 degrees only in each return. A finite axial
-current produces `iota=0.0856`, and the plotted cyan curves are integrated
-field lines from the solved field. The current coarse case reaches
-`6.7e-14` variational residual and `1.7e-14` normalized divergence, but its
-independent strong-force residual is `0.573`. The implementation and example
+current produces `iota=0.0851`, and the plotted cyan curves are integrated
+field lines from the solved field. The default 32-control case reaches
+`2.4e-14` variational residual and `3.1e-14` normalized divergence, but its
+independent strong-force residual is `0.430`. The implementation and example
 are available for refinement and review, but this case is not yet a supported
 equilibrium benchmark.
 
@@ -154,7 +154,10 @@ equilibrium benchmark.
 The free-boundary solver jointly updates the spline LCFS, plasma state, and
 unbounded exterior vacuum. Independent force and grid-refinement gates support
 the 0%, 1%, 3%, and 10% sequence. The converged 25% and 50% continuation
-states remain unpromoted because their independent force gates fail.
+states remain unpromoted because their independent force gates fail. The
+canonical refinement record supports the promoted sequence; a current medium
+rerun has a larger `0.0706` beta-zero force residual and must be regenerated
+before the default cross-section can be enlarged.
 
 ![Solved free-boundary beta scan with ESSOS coils, field lines, LCFS, magnetic field, pressure, and residual histories](docs/_static/figures/mirror_free_boundary_beta50_summary.png)
 

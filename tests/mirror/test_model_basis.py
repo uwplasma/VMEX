@@ -39,6 +39,8 @@ def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
         "SplineMirrorBoundary",
         "SplineMirrorDiscretization",
         "SplineMirrorState",
+        "build_stellarator_mirror_hybrid",
+        "trace_closed_field_line",
         "solve_fixed_boundary_cli",
         "solve_free_boundary_cli",
         "solve_beta_scan_cli",
@@ -46,6 +48,7 @@ def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
         "spline_fixed_boundary_tangent",
         "write_mout",
         "plot_mout",
+        "plot_stellarator_mirror_hybrid",
     }
     internal = {
         "ChebyshevBasis",
@@ -55,7 +58,7 @@ def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
     }
     assert required <= set(mirror_api.__all__)
     assert internal.isdisjoint(mirror_api.__all__)
-    assert len(mirror_api.__all__) == 17
+    assert len(mirror_api.__all__) == 20
     assert mirror_api.solve_fixed_boundary_cli.__module__ == "vmec_jax.mirror.splines"
 
 

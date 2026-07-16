@@ -191,10 +191,10 @@ example is::
 
    python examples/stellarator_mirror_hybrid.py
 
-Its default ``ns=5``, ``mpol=3``, 16-control case reaches variational residual
-``6.74e-14`` and normalized ``div(B)=1.69e-14`` with axis closure
-``1.75e-15``. The solved finite-current state gives ``iota=0.0856`` at
-``s=0.75``. The independent reconstructed strong-force residual is ``0.573``;
+Its default ``ns=5``, ``mpol=3``, 32-control case reaches variational residual
+``2.36e-14`` and normalized ``div(B)=3.14e-14`` with axis closure
+``8.88e-16``. The solved finite-current state gives ``iota=0.0851`` at
+``s=0.75``. The independent reconstructed strong-force residual is ``0.430``;
 therefore the figure is a functioning equilibrium-solve and field-line
 demonstration, not yet a promoted accuracy benchmark. Promotion requires exact
 16/32/64 spline transfer of one geometry, reconvergence at each level, and a
@@ -205,7 +205,9 @@ monotone, but it plateaus far above the ``0.05`` gate. Volumes agree within
 so the next diagnostic is radial/poloidal refinement rather than more
 longitudinal controls. The earlier nonmonotone sequence is retained in
 ``benchmarks/mirror_hybrid_fixed_boundary.json`` so a new result cannot erase
-the failed refinement history.
+the failed refinement history. The default 32-control figure and this transfer
+study are deliberately reported separately: rebuilding the control polygon at
+32 controls changes the geometry, whereas exact knot insertion preserves it.
 
 Source ownership is compact: periodic basis/refinement is in ``basis.py``;
 axis, Bishop frame, and embedding are in ``geometry.py``; coefficient packing,
@@ -697,7 +699,7 @@ boundary-potential error from 5.44% to 1.19% and far-field gradient error from
 example to exercise it. The default is false because the coupled 3D study
 below shows that density order alone is insufficient.
 
-An experimental curved-side and high-order-cap variant was removed after its
+A curved-side and high-order-cap variant was removed after its
 bounded nonaxisymmetric endpoint run failed to complete in 690 seconds. Its
 medium manufactured improvement did not justify roughly 400 lines of extra
 geometry, interpolation, and differentiation code. The retained production

@@ -28,7 +28,7 @@
       "linear_iterations": 345
     },
     "straight_field_line": {
-      "status": "research",
+      "status": "validation-only",
       "ns": 7,
       "mpol": 6,
       "elements": 6,

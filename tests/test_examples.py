@@ -157,7 +157,7 @@ def test_mirror_fixed_boundary_nonaxisymmetric_example(tmp_path):
     assert summary["rotating_ellipse"]["strong_force_normalized_rms"] < 5.0e-2
     assert summary["rotating_ellipse"]["boundary_gradient_relative_error"] < 1.0e-4
     assert summary["rotating_ellipse"]["adjoint_relative_residual"] < 1.0e-8
-    assert summary["straight_field_line"]["status"].startswith("research")
+    assert summary["straight_field_line"]["status"].startswith("not-supported")
     assert summary["straight_field_line"]["variational_max"] < 1.0e-12
     assert summary["straight_field_line"]["final_linear_residual"] < 1.0e-8
     assert summary["straight_field_line"]["linear_iterations"] < 1000
