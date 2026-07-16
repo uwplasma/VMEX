@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
 
 import jax
 import jax.numpy as jnp
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from vmec_jax.mirror import (  # noqa: E402
     MirrorBoundary,
@@ -40,8 +45,8 @@ FINITE_DIFFERENCE_STEP = 2.0e-4
 STRONG_FORCE_GATE = 5.0e-2
 OUTPUT_DIR = Path("results/mirror_fixed_boundary_nonaxisymmetric")
 
-RADIUS = {"rotating_ellipse": 0.05, "straight_field_line": 0.03}
-AXIAL_FLUX_DERIVATIVE = {"rotating_ellipse": 0.01, "straight_field_line": 0.005}
+RADIUS = {"rotating_ellipse": 0.12, "straight_field_line": 0.10}
+AXIAL_FLUX_DERIVATIVE = {"rotating_ellipse": 0.0072, "straight_field_line": 0.005}
 
 jax.config.update("jax_enable_x64", True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -185,7 +190,7 @@ for case in CASES:
         validation["adjoint_relative_residual"] = adjoint.relative_residual
     supported = case == "rotating_ellipse"
     summaries[case] = {
-        "status": "supported" if supported else "research: corrected-cut refinement pending",
+        "status": "supported" if supported else "not-supported: strong-force gate failed",
         "stage_iterations": stage_iterations,
         "linear_iterations": result.linear_iterations,
         "final_linear_residual": result.final_linear_residual,
