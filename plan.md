@@ -14,30 +14,32 @@ as a public scaffold.
 
 ## 1. Goal
 
-Deliver a small, research-grade `vmec_jax.mirror` backend for scalar-pressure,
-nested-flux-surface equilibria in a finite straight-axis flux tube. The code
+Deliver a small, validated `vmec_jax.mirror` backend for scalar-pressure,
+nested-flux-surface equilibria in open straight-axis flux tubes and a closed
+two-leg stellarator-mirror hybrid. The code
 must:
 
 1. solve the stated fixed- or free-boundary ideal-MHD model rather than only
    draw a prescribed surface;
-2. use a nonperiodic longitudinal representation with independent end cuts;
+2. use a nonperiodic longitudinal representation with independent end cuts
+   for open mirrors and a full periodic B-spline representation for hybrids;
 3. reach component-wise equilibrium `ftol <= 1e-12` and independently
    verified weak-force, strong-force, and refinement gates;
 4. provide implicit derivatives of converged supported equilibria;
 5. keep the fast forward CLI independent of differentiability constraints;
 6. consume external magnetic fields supplied by ESSOS or MGRID without
    owning coils or Biot-Savart calculations;
-7. expose one compact API, two root examples, mirror-native output, and
+7. expose one compact API, three root examples, mirror-native open output, and
    reviewed plots; and
-8. remain substantially simpler than the current research branch.
+8. remain substantially simpler than the archived experimental scaffold.
 
 The release is not required to solve anisotropic kinetic mirrors, end losses,
-stability, or a closed stellarator-mirror hybrid. Those are different models
-or failed promotion candidates and are separated in section 10.
+stability, or a free-boundary hybrid. Those are different models or later
+promotion candidates and are separated in section 10.
 
 ## 2. Audited repository state
 
-Pushed source snapshot used for the final release audit:
+The completed open-mirror R1-R5 snapshot was:
 
 - branch source checkpoint: `codex/mirror-geometry` at `5ff15d99`;
 - fetched base: `origin/main` at `ed4ac7ac`, with no commits behind;
@@ -51,6 +53,13 @@ Pushed source snapshot used for the final release audit:
 - retained examples: two root scripts;
 - retained figures: two compressed PNGs;
 - retained evidence: four compact schema-1 JSON files.
+
+H1 now supersedes only the closed-hybrid disposition. At pushed checkpoint
+``2e77f521`` the branch has 45 changed files, 7,925 mirror-source lines, 3,657
+mirror-test lines, 20 public mirror names, three root mirror examples, and
+three nonredundant compressed mirror showcase figures after the current
+documentation trim. No coil/Biot-Savart source or new scientific module was
+added.
 
 Final verification for this revision:
 
@@ -74,17 +83,17 @@ Final verification for this revision:
 | Lane | Reproduced evidence | Decision |
 | --- | --- | --- |
 | Fixed open axisymmetric | exact polynomial-vacuum fixture; three spline grids; strong force `0.04349 -> 0.03474 -> 0.02873`; field error refines | supported |
-| Fixed open nonaxisymmetric rotating ellipse | supplied-field initialization, explicit self-similar end cuts, medium-grid strong force `0.04178`, knot refinement, and reconverged adjoint error `5.0e-10` | supported |
-| Agren-Savenko straight-field-line target | corrected-cut solve reaches variational `3.1e-16`, but reconstructed strong force is `1.09` and collar force is `2.27` | research only; stale pre-cut promotion removed |
+| Fixed open nonaxisymmetric rotating ellipse | larger `0.12 m` LCFS, strong force `0.0267`, divergence `6.7e-15`, reconverged adjoint error `5.9e-10` | supported |
+| Agren-Savenko straight-field-line target | larger `0.10 m` LCFS reaches variational `1.7e-16`, but reconstructed strong force is `0.335` and collar force is `0.701` | unsupported validation case |
 | Free open axisymmetric, beta 0-10% | coefficient LCFS/plasma solve, unbounded exterior BIE, three grids, pressure calibration, Pleiades trend, free adjoint | supported through central beta 10% |
-| Free open axisymmetric, beta 25/50% | nonlinear residual reaches `1e-12`, but independent force/refinement gates fail; beta 50% gives radius `+7.73%` and center field `-23.73%` | research continuation only |
+| Free open axisymmetric, beta 25/50% | nonlinear residual reaches `1e-12`, but independent force/refinement gates fail | validation continuation only |
 | Free open nonaxisymmetric | global observables look stable, but local `m=1` changes 73-81%; 3-grid beta pair costs 293/944/2995 s and 2.74/4.57/7.35 GiB | deferred; implementation removed |
-| Fixed closed B-spline hybrid | exact 16/32/64 transfer and absolute gates pass, but same-geometry strong force is nonmonotone for two quadrature orders | deferred; closed runtime removed in R1 |
+| Fixed closed B-spline hybrid | periodic representation, exact straight spans, Bishop-frame closure, converged primal, finite-current field lines, and root example; coarse strong force `0.573` | active H1 validation; not promoted |
 | Differentiation | fixed-open JVP/VJP and free-axisymmetric VJP agree with fully reconverged finite differences near `2e-10` | supported only for promoted lanes |
 | Preconditioning | open separable/local sparse factor is effective; closed colored factor was effective but serves a deferred model | retain open path; archive closed result |
 
 The optimizer residual is not the equilibrium acceptance criterion. The
-research-case failures demonstrate why support requires a staggered weak
+failed validation cases demonstrate why support requires a staggered weak
 variation, reconstructed `J x B - grad(p)`, and grid convergence in addition
 to `ftol`.
 
@@ -363,7 +372,7 @@ never promotes a state.
 - requested and achieved central beta agree to the solve tolerance;
 - every plotted beta boundary and field line comes from that beta's solved
   state;
-- beta 25/50 remain research-only until the complete three-grid force and
+- beta 25/50 remain validation-only until the complete three-grid force and
   observable matrix passes.
 
 ### 7.3 Derivative gates
@@ -384,16 +393,16 @@ never promotes a state.
   ignored;
 - every committed PNG is compressed and under 400 KiB.
 
-## 8. Finite release plan for PR #22
+## 8. Completed open-mirror baseline for PR #22
 
-Execute R1-R5 in order. Commit and push after each accepted tranche. Do not
-add another scientific lane before R5 passes.
+R1-R5 are the completed historical open-mirror baseline. H1 in section 10 is
+the only active scientific lane; its execution status is in section 12.
 
 ### R1. Remove closed and dead contracts
 
-The closed hybrid failed its declared same-geometry refinement gate and is not
-in the release scope. Git history and
-`benchmarks/mirror_hybrid_fixed_boundary.json` preserve the work.
+The former closed hybrid failed its declared same-geometry refinement gate and
+was removed from the open baseline. Git history and
+`benchmarks/mirror_hybrid_fixed_boundary.json` preserve that work.
 
 Implementation status: complete and accepted by the R5 audit in section 12.
 
@@ -526,25 +535,27 @@ Run from a clean tree at the final source commit:
 3. affected core CLI, MGRID, device, output, and package tests;
 4. strict Sphinx, pre-commit on changed files, and `git diff --check`;
 5. wheel and sdist build, clean-venv install/import, console-script smoke;
-6. both root examples in clean temporary directories;
+6. all three root mirror examples in clean temporary directories;
 7. MOUT read/write and `vmec --plot` smoke;
 8. coverage of the retained mirror package with a 95% target;
 9. final CPU timing/memory and one supplementary office-GPU parity run;
 10. one batched CI review after the final push.
 
-Final merge budgets, measured against fetched `origin/main`:
+H1 merge budgets, measured against fetched `origin/main`:
 
-- at most 42 changed files;
-- at most 7,000 mirror source lines;
-- at most 3,500 mirror-test lines;
-- at most 17 public mirror names;
-- exactly two root mirror examples and two showcase figures;
+- at most 44 changed files;
+- at most 8,000 mirror source lines;
+- at most 3,700 mirror-test lines;
+- at most 20 public mirror names;
+- exactly three root mirror examples and three nonredundant showcase figures;
 - exactly four compact benchmark JSON records;
-- no generated scientific output in Git;
-- PR remains draft until every R1-R5 exit gate passes.
+- no generated scientific output in Git except the three compressed reviewed
+  showcase figures;
+- PR remains draft until every required H1 gate has a documented disposition.
 
 Exit: CI is green, branch is mergeable, final diff is reviewed, no supported
 claim lacks independent evidence, and PR #22 can be marked ready for review.
+The PR remains draft while any required H1 gate is active.
 
 ## 9. File and API contract
 
@@ -554,17 +565,17 @@ Keep ownership clear; merge a file only when one coherent owner remains.
 | File | Owner |
 | --- | --- |
 | `model.py` | open inputs, state, configuration, schemas |
-| `basis.py` | theta Fourier, CGL evaluation, clamped cubic B-splines |
-| `geometry.py` | straight-axis embedding, metric, Jacobian, field conversion |
+| `basis.py` | theta Fourier, CGL evaluation, clamped and periodic cubic B-splines |
+| `geometry.py` | straight/closed-axis embedding, Bishop frame, metric, field conversion |
 | `forces.py` | energy, mass-pressure relation, weak/strong/interface residuals |
 | `analytic.py` | exact polynomial, rotating ellipse, SFLM fixtures |
-| `splines.py` | coefficient maps, initialization, fixed solve adapter |
-| `solver.py` | bounded globalization, Newton-GMRES, open preconditioner |
+| `splines.py` | open/periodic coefficient maps, initialization, fixed solve, tracing |
+| `solver.py` | bounded globalization, Newton-GMRES, shared preconditioner |
 | `exterior.py` | closed integration surface, panels, singular quadrature |
 | `exterior_bie.py` | axisymmetric exterior Neumann solve and LCFS trace |
 | `free_boundary.py` | coupled axisymmetric free solve and beta continuation |
 | `implicit.py` | supported converged-residual tangents and adjoints |
-| `output.py` | MOUT, restart, diagnostics, and plots |
+| `output.py` | open MOUT, restart, diagnostics, and open/closed plots |
 
 The public namespace contains only user inputs, spline states/discretization,
 the three solve workflows, supported derivatives, and MOUT/plot helpers.
@@ -574,10 +585,10 @@ No coils, Biot-Savart, coil geometry, coil optimization, generic virtual
 casing, toroidal WOUT compatibility shim, or second solved basis belongs in
 this package.
 
-## 10. Deferred plans after PR #22
+## 10. Active and deferred scientific lanes
 
-These are separate go/no-go PRs. They do not block PR #22 and must not leave
-public scaffolds if their bounded gates fail.
+H1 is active on the draft PR. N1 and A1 are deferred go/no-go lanes and must
+not leave public scaffolds if their bounded gates fail.
 
 ### N1. Free open nonaxisymmetric mirror
 
@@ -602,8 +613,9 @@ the implementation.
 
 ### H1. Toroidal stellarator-mirror hybrid with full longitudinal B-splines
 
-Prerequisite: a fresh branch after PR #22. Recover useful algorithms from Git
-history, not the old public scaffold.
+Status: active on the draft PR after the open-mirror release audit. Useful
+algorithms were recovered selectively from Git history; the removed center-map,
+free-boundary, and colored-Hessian scaffolds were not restored.
 
 The target is a closed toroidal racetrack: two long straight mirror legs and
 two smooth curved stellarator returns, with exact leg-exchange/up-down
@@ -625,37 +637,39 @@ angle makes the frame/section close exactly. Symmetry is imposed by tying
 spline coefficients, not by fitting or projecting a sampled Fourier surface.
 This is the required meaning of a full B-spline hybrid.
 
-1. Basis gate: implement periodic cubic evaluation, two derivatives, cyclic
+1. **Complete.** Basis gate: implement periodic cubic evaluation, two derivatives, cyclic
    band structure, and exact dyadic knot insertion in an isolated module.
    Test partition of unity, local support, periodic closure, JVP/VJP transpose,
    and exact geometry preservation before adding equilibrium code.
-2. Geometry-only gate: exact closure of `c`, tangent, frame, and section
+2. **Complete at 16 controls; refinement audit remains.** Geometry-only gate: exact closure of `c`, tangent, frame, and section
    through two derivatives; at least 50% low-curvature length on each leg;
    smooth curvature ramps in the returns; 90-degree difference between the
    two straight-leg ellipses; frame holonomy cancelled explicitly; positive
    clearance/Jacobian; exact leg symmetry; and exact nested knot refinement.
-3. Circular-limit gate: compare a periodic spline circle with ordinary
+3. **Partial.** Circular-limit gate: compare a periodic spline circle with ordinary
    `vmec_jax` and VMEC2000 at identical physical boundary, flux, pressure,
    current, and radial/poloidal resolution.
-4. Open-leg gate: increase straight-to-return scale on three geometries and
+4. **Pending.** Open-leg gate: increase straight-to-return scale on three geometries and
    compare the central halves with the promoted fixed-open rotating ellipse
    and SFLM geometry, `|B|`, field-line, and force observables. The local
    straight section is validated before the returns are trusted.
-5. Residual gate: diagnose the previous nonmonotone 16/32/64 strong-force
+5. **In progress.** Residual gate: diagnose the previous nonmonotone 16/32/64 strong-force
    sequence before increasing resolution. Check mapping gauge, axis
    regularity, independent staggered force, and quadrature aliasing on one
    exactly preserved geometry.
-6. Solver gate: start from the promoted open residual/preconditioner, replace
+6. **Partial.** Solver gate: start from the promoted open residual/preconditioner, replace
    only longitudinal boundary conditions and metric/frame terms, and retain
    one coefficient residual. Require monotone 16/32/64 longitudinal,
    three-grid radial/poloidal, and independent quadrature refinement.
-7. Transform gate: report current-free geometric transform separately from
+7. **Partial.** Transform gate: report current-free geometric transform separately from
    transform driven by continued on-axis current. Do not assume either sign or
    magnitude.
-8. Finite-beta fixed-LCFS gate: beta `0,1,3,10%`, with Ilgisonis et al. used
+8. **Pending.** Finite-beta fixed-LCFS gate: beta `0,1,3,10%`, with Ilgisonis et al. used
    only for sign/scaling in its asymptotic regime.
-9. Only after monotone three-grid strong-force convergence: add implicit
-   derivatives, periodic MOUT, CLI plots, and one root example.
+9. **Example complete; derivatives and periodic MOUT remain gated.** The root
+   example and solved-state plot were added for review before promotion because
+   they expose the failed strong-force gate. Add implicit derivatives and a
+   periodic MOUT only after monotone three-grid convergence.
 10. Free boundary and ESSOS coil coupling are later than the fixed hybrid.
     Coils and Biot-Savart remain entirely in ESSOS.
 
@@ -709,14 +723,15 @@ At this revision:
 | Free open axisymmetric through 10% | 100% | regression only |
 | Implicit derivatives for supported lanes | 100% | regression only |
 | Open preconditioning | 100% | regression only |
-| Closed hybrid disposition | 100% | negative record retained; future H1 is separate |
+| Closed hybrid fixed boundary | 55% | same-geometry longitudinal/radial/poloidal refinement, circular/open-leg parity, finite beta |
 | Nonaxisymmetric free disposition | 100% | compact negative evidence retained |
 | API/code simplification | 100% | preserve final line and public-API budgets |
-| README/docs/examples/plots | 100% | keep figures tied to solved MOUT states |
-| Packaging/CI/release audit | 100% | complete |
+| README/docs/examples/plots | 90% | final metric refresh and strict Sphinx audit |
+| Packaging/CI/release audit | 80% | rerun after H1 validation disposition |
 
-Weighted completion of R1-R5 for PR #22 is 100%. Deferred N1/H1/A1 work is not
-included in that percentage and requires separate go/no-go PRs.
+The open-mirror R1-R5 release work is complete. H1 is now active on the draft
+PR and is tracked separately so its failed gates cannot alter open-mirror
+promotion status. N1 and A1 remain deferred.
 
 ### 2026-07-15 R1 removal and final plan audit
 
@@ -855,6 +870,41 @@ included in that percentage and requires separate go/no-go PRs.
   incomplete release lanes.
 - User input: none required for PR #22; post-release model selection is a new
   decision.
+
+### 2026-07-16 H1 periodic spline representation and primal solve
+
+- Steps: restored only periodic cubic evaluation/refinement; implemented the
+  racetrack axis, Bishop frame, rotating elliptical section, periodic metric,
+  closed force/divergence diagnostics, shared fixed-boundary solve dispatch,
+  vacuum stream-function initialization, and RK4 field-line tracing; added one
+  parser-free root example and one reusable reviewed plot.
+- Results: the circular limit reaches variational ``3.66e-14``, strong force
+  ``8.32e-3``, and divergence ``4.78e-15``. The default 16-control hybrid
+  reaches variational ``6.74e-14``, divergence ``1.69e-14``, axis closure
+  ``1.75e-15``, and ``iota=0.0856``. Its strong force is ``0.573`` and blocks
+  promotion. Exact same-geometry 16/32/64 transfer on an RTX A4000 gives
+  monotone strong force ``0.5733 -> 0.3556 -> 0.3325`` with all variational
+  residuals below ``6.7e-14``. Longitudinal aliasing improves the result but
+  is not the remaining dominant error. The tracked figure reports that
+  failure directly.
+- Tests: periodic partition/C2/refinement/JVP/VJP, exact straight spans,
+  frame closure, 90-degree section exchange, positive nested volume,
+  divergence identity, circular solve, hybrid solve, and field-line pitch all
+  pass. The two jitted full solves pass in 15.96 seconds on Apple CPU.
+- Files/API: no historical center map, free-boundary hybrid, colored Hessian,
+  or coil code was restored. Three focused public operations were added:
+  ``build_stellarator_mirror_hybrid``, ``trace_closed_field_line``, and
+  ``plot_stellarator_mirror_hybrid``. ESSOS remains the sole coil/Biot-Savart
+  owner.
+- Best next step: run exact-transfer 16/32/64 longitudinal and three-grid
+  radial/poloidal studies on office GPU, diagnose the strong-force sequence,
+  and either pass H1 gates or retain the example as an explicitly failed
+  validation case. Then complete circular/open-leg and finite-beta comparisons.
+- Open lanes: fixed open axisymmetric 100%, fixed open rotating ellipse 100%,
+  free open axisymmetric 100%, open derivatives 100%, open preconditioning
+  100%, H1 basis 100%, H1 geometry 90%, H1 primal 75%, H1 validation 30%, H1
+  derivatives 0%, docs/examples 90%, final audit 80%.
+- User input: none required for the fixed-boundary H1 validation sequence.
 
 After every implementation tranche, append one short dated entry here with:
 

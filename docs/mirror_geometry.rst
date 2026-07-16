@@ -1,13 +1,16 @@
 Mirror geometry
 ===============
 
-``vmec_jax.mirror`` is the open-field-line equilibrium backend. It uses
-coordinates ``(s, theta, xi)`` with a nonperiodic axial coordinate and
-fixed-flux end cuts. It does not reinterpret a straight mirror as a periodic
-torus. Axisymmetric and nonaxisymmetric fixed-boundary lanes are supported,
-as is axisymmetric free boundary through 10% requested beta. Higher-beta and
-nonaxisymmetric free-boundary states remain research lanes. Periodic hybrids
-are explicitly deferred after failing their same-geometry refinement gate.
+``vmec_jax.mirror`` contains two spline-native scalar-pressure equilibrium
+models. Open mirrors use coordinates ``(s, theta, xi)`` with a nonperiodic
+axial coordinate and fixed-flux end cuts; they are not reinterpreted as thin
+periodic tori. Closed stellarator-mirror hybrids use a periodic longitudinal
+B-spline around two exactly straight mirror legs and two curved stellarator
+returns. Axisymmetric and rotating-ellipse fixed-boundary open lanes are
+supported, as is axisymmetric free boundary through 10% requested beta. The
+periodic hybrid has a complete fixed-boundary solve and example, but remains a
+validation candidate until its independent strong-force residual converges
+under same-geometry refinement.
 
 Open topology and end cuts
 --------------------------
@@ -118,33 +121,106 @@ The branch currently includes:
   restart files,
 * a closed-surface Neumann solve on the lateral LCFS and both end disks,
 * component-wise nonlinear convergence checks at a requested ``ftol=1e-12``.
+* a periodic B-spline racetrack with two straight mirror legs, rotating
+  elliptical returns, a fixed-boundary solve, and closed field-line tracing.
 
 The axisymmetric free-boundary path is supported through 10% requested beta
-and retains 25% and 50% as explicitly labeled research scans. The
-nonaxisymmetric free-boundary path is a deferred research lane because its
+and retains 25% and 50% as explicitly labeled validation continuations. The
+nonaxisymmetric free-boundary path is deferred because its
 point observables were not monotone under spatial refinement.
 
-Deferred closed hybrid
-----------------------
+Periodic stellarator-mirror hybrid
+----------------------------------
 
-The closed stellarator-mirror candidate failed its declared same-geometry
-refinement gate. Its strong-force sequence was
-``0.05277, 0.10756, 0.02365`` at quadrature order 3 and
-``0.05280, 0.10714, 0.02353`` at order 4. The nonmonotone middle state is
-reproduced at both orders, so it cannot be promoted by considering only the
-finest value.
+The implemented target follows the topology proposed for `stellarators
+linking axisymmetric mirrors (SLAM)
+<https://downloads.regulations.gov/DOE-HQ-2023-0038-0020/attachment_1.pdf>`_:
+two long straight mirror legs are joined by two curved stellarator sections.
+The same topology appears in the `APS linked-mirror abstract
+<https://meetings.aps.org/Meeting/DPP22/Session/NP11.24>`_. It is related to,
+but geometrically distinct from, the warm-stellarator/rectilinear-mirror
+fusion--fission hybrid proposed by `Moiseenko et al.
+<https://doi.org/10.1017/S0022377823000442>`_. The implementation uses de
+Boor's local cubic B-spline construction and `Bishop's rotation-minimizing
+frame <https://doi.org/10.1080/00029890.1975.11993807>`_. The present code
+addresses only ideal-MHD nested-surface geometry and a scalar-pressure
+equilibrium. It does not model fusion--fission blankets, minority fast ions,
+end losses, or kinetic stability.
 
-Periodic splines, moving-frame geometry, center maps, closed initializers,
-and closed nonlinear/preconditioner paths were removed from the release
-runtime. The compact negative evidence remains in
-``benchmarks/mirror_hybrid_fixed_boundary.json``; a future hybrid must start
-from the bounded design in ``plan.md`` and pass its gates before exposing an
-API.
+Let :math:`u\in[0,2\pi)` parameterize the closed circuit. The coordinate map is
+
+.. math::
+
+   \boldsymbol x(s,\theta,u) = \boldsymbol c(u)
+   + \sqrt{s}\,a(s,\theta,u)
+     [\cos\theta\,\boldsymbol n(u)+\sin\theta\,\boldsymbol b(u)].
+
+``CubicBSplineBasis.periodic_uniform`` represents :math:`\boldsymbol c`.
+Control points are divided between straight leg, return, opposite straight
+leg, and second return. A cubic spline has local support, so every central span
+whose four active controls are collinear is exactly straight; increasing the
+number of controls lengthens the exact straight region rather than merely
+improving a global Fourier fit. ``evaluate_closed_spline_axis`` transports a
+Bishop rotation-minimizing frame :math:`(\boldsymbol n,\boldsymbol b)` around
+the curve and distributes its residual holonomy over the period. This frame is
+well defined where the straight-leg curvature is exactly zero, unlike the
+Frenet frame.
+
+The LCFS is an ellipse written as a polar radius,
+
+.. math::
+
+   a(1,\theta,u) =
+   \frac{A B}{\sqrt{[B\cos(\theta-\alpha(u))]^2
+                   +[A\sin(\theta-\alpha(u))]^2}}.
+
+The section angle :math:`\alpha` is constant on each straight leg and changes
+smoothly by 90 degrees through each return. The radial surfaces and stream
+function use the same periodic longitudinal basis. The divergence-free field
+is the open expression with :math:`\xi` replaced by :math:`u`; periodicity
+removes end cuts, and all longitudinal coefficients are active. A finite
+:math:`I'(s)` gives visible pitch and nonzero rotational transform.
+
+``build_stellarator_mirror_hybrid`` constructs the discretization, closed
+axis, LCFS, and a vacuum-field initial stream function. The ordinary
+``solve_fixed_boundary_cli`` then uses the same energy, host globalization,
+matrix-free Hessian actions, and separable preconditioner as open mirrors.
+``trace_closed_field_line`` integrates
+:math:`d\theta/du=B^\theta/B^u` with periodic RK4 steps. The parser-free root
+example is::
+
+   python examples/stellarator_mirror_hybrid.py
+
+Its default ``ns=5``, ``mpol=3``, 16-control case reaches variational residual
+``6.74e-14`` and normalized ``div(B)=1.69e-14`` with axis closure
+``1.75e-15``. The solved finite-current state gives ``iota=0.0856`` at
+``s=0.75``. The independent reconstructed strong-force residual is ``0.573``;
+therefore the figure is a functioning equilibrium-solve and field-line
+demonstration, not yet a promoted accuracy benchmark. Promotion requires exact
+16/32/64 spline transfer of one geometry, reconvergence at each level, and a
+monotonically decreasing strong-force sequence. The first H1 office-GPU audit
+now gives ``0.5733 -> 0.3556 -> 0.3325``: unlike the historical run it is
+monotone, but it plateaus far above the ``0.05`` gate. Volumes agree within
+``5.0e-6`` relative and every variational residual remains below ``6.7e-14``,
+so the next diagnostic is radial/poloidal refinement rather than more
+longitudinal controls. The earlier nonmonotone sequence is retained in
+``benchmarks/mirror_hybrid_fixed_boundary.json`` so a new result cannot erase
+the failed refinement history.
+
+Source ownership is compact: periodic basis/refinement is in ``basis.py``;
+axis, Bishop frame, and embedding are in ``geometry.py``; coefficient packing,
+initialization, solve dispatch, and tracing are in ``splines.py``; the shared
+energy and force diagnostics are in ``forces.py``; and the reviewed figure is
+produced by ``output.plot_stellarator_mirror_hybrid``.
+
+.. image:: _static/figures/stellarator_mirror_hybrid.png
+   :alt: Solved periodic B-spline stellarator-mirror hybrid with field lines, magnetic field, cross-sections, transform, and residuals
+   :width: 100%
 
 Plotting and output scope
 -------------------------
 
-Straight-axis mirror examples write mirror-native ``mout_*.nc`` files and
+Open straight-axis examples write mirror-native ``mout_*.nc`` files and
 render horizontal 3D, coil, cap-to-cap field-line, ``|B|``, pressure,
 cross-section, and residual figures. The same figures can be regenerated with
 ``vmec --plot mout_*.nc``. The data include geometry, the stream function,
@@ -158,7 +234,10 @@ same constrained solver variables. The pointwise force reconstructs
 but its magnitude and refinement are independent promotion gates. Its total,
 near-axis, first-radial-row, bulk, and end-collar norms are reported
 separately. ``div(B)`` checks the field representation.
-Straight-axis mirror data are never encoded as a toroidal WOUT file.
+Open mirror data are never encoded as a toroidal WOUT file. The closed hybrid
+currently writes a reviewed PNG and JSON summary directly from the solved
+objects; a periodic MOUT schema is deliberately not inferred from the open
+end-cut schema.
 
 The saved ``|B|`` array is reconstructed from the same radial Gauss cells used
 by the magnetic-energy functional. Cartesian field samples remain separate for
@@ -168,7 +247,7 @@ polygons.
 
 The compact six-point isotropic data are recorded in
 ``benchmarks/mirror_free_boundary_axisymmetric.json`` with
-``promotion_status=supported_through_beta_0.10_research_through_beta_0.50``.
+``promotion_status=supported_through_beta_0.10_validation_through_beta_0.50``.
 The nested-cut GPU matrix contains independent radial, axial,
 exterior-angular, exterior-order, and combined refinements. At 10%, the fine
 all-volume/core forces are ``1.44e-2``/``1.62e-3`` and every independent fine
@@ -253,11 +332,12 @@ Native spline basis status
 --------------------------
 
 ``vmec_jax.mirror.splines.CubicBSplineBasis`` supplies the longitudinal
-basis for the open solver. It uses clamped knots, exact endpoint values,
-four-point Gauss-Legendre quadrature on every nonzero span, and exact Boehm
-knot insertion. Evaluation and two derivatives are JAX operations. Tests
-match SciPy, reproduce cubics, preserve curves under insertion, and verify
-JVP/VJP actions.
+basis. Open mirrors use clamped knots, exact endpoint values, Gauss-Legendre
+quadrature on every nonzero span, and exact Boehm knot insertion. Closed
+hybrids use folded uniform periodic cubic splines and exact dyadic refinement.
+Evaluation and two derivatives are JAX operations. Tests match SciPy,
+reproduce cubics, preserve open and periodic curves under refinement, verify
+partition of unity and C2 closure, and check JVP/VJP actions.
 
 ``SplineMirrorState`` and ``SplineMirrorBoundary`` store geometry and stream
 function coefficients rather than sampled values. ``SplineMirrorDiscretization``
@@ -331,9 +411,10 @@ The old zero-stream continuation produced a nonconvergent strong-force floor.
 Supplied-field initialization provides the physical stream function and flux,
 and ``impose_self_similar_cuts`` fixes each end section to scaled copies of its
 LCFS. With these corrected cut semantics, the medium 90-degree rotating
-ellipse has variational residual ``1.72e-16``, independent weak residual
-``1.69e-16``, all-volume strong force ``4.18e-2``, and normalized divergence
-``6.61e-15``. This is the current nonaxisymmetric release candidate.
+ellipse has variational residual ``2.11e-16``, independent weak residual
+``2.08e-16``, all-volume strong force ``2.67e-2``, and normalized divergence
+``6.68e-15`` at LCFS radius ``0.12 m``. This is the current supported
+nonaxisymmetric fixed-boundary case.
 
 ``initialize_from_cartesian_field`` now keeps a supplied spline geometry fixed,
 infers :math:`\Psi'(s)` from the surface-averaged axial flux, and obtains the
@@ -341,10 +422,10 @@ nonzero poloidal stream-function modes from the remaining contravariant field.
 It accepts either Cartesian field samples or a point callable and performs no
 coil construction or Biot--Savart integration. The independent Agren--Savenko
 field remains a useful projection and field-direction fixture, but it is not
-currently a supported equilibrium. At ``(ns,mpol,elements)=(7,6,6)`` the
-corrected-cut solve reaches variational residual ``3.10e-16`` and divergence
-``7.22e-15``, while the reconstructed all-volume and end-collar strong forces
-are ``1.09`` and ``2.27``. The former pre-cut refinement numbers do not
+currently a supported equilibrium. At ``(ns,mpol,elements)=(7,6,6)`` and LCFS
+radius ``0.10 m``, the corrected-cut solve reaches variational residual
+``1.71e-16`` and divergence ``7.04e-15``, while the reconstructed all-volume
+and end-collar strong forces are ``0.335`` and ``0.701``. The former pre-cut refinement numbers do not
 reproduce this boundary condition and have been removed from canonical
 evidence.
 
@@ -355,7 +436,7 @@ continuation stages and writes MOUT plus horizontal 3-D, cross-section,
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
 The example asserts every release gate for the rotating ellipse and labels the
-SFLM result as research. Its figures expose variational and reconstructed-force
+SFLM result as unsupported. Its figures expose variational and reconstructed-force
 histories and show actual solved nested surfaces and cap-to-cap field lines,
 not the analytic target alone.
 
@@ -373,8 +454,8 @@ fully reconverged equilibria::
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
 For the corrected-cut rotating ellipse, the volume adjoint agrees with two
-fully reconverged centered-difference solves to ``5.01e-10`` relative and its
-transpose linear residual is ``1.80e-11``. An SFLM adjoint is not promoted
+fully reconverged centered-difference solves to ``5.91e-10`` relative and its
+transpose linear residual is ``2.30e-10``. An SFLM adjoint is not promoted
 while its primal independent-force gate fails.
 
 ``spline_fixed_boundary_tangent`` solves the complementary forward system
@@ -382,8 +463,9 @@ while its primal independent-force gate fails.
 nonaxisymmetric finite-current ``solve_lambda=True`` case, both radius and
 stream-function tangents agree with two fully reconverged centered differences
 within ``2e-4`` in relative state norm, with linear residual below ``1e-8``.
-This establishes both open-spline derivative directions. The deferred
-closed hybrid has no primal or derivative API.
+This establishes both open-spline derivative directions. The closed hybrid
+has a primal API; implicit derivatives remain deferred until its independent
+strong-force refinement gate passes.
 
 The former CGL fixed solve, custom VJP, and nodal adjoint have been removed.
 Public fixed-boundary inputs are
@@ -452,7 +534,7 @@ hybrid disposition; repository-shape and promotion gates are maintained in
 ``plan.md``.
 
 .. image:: _static/figures/mirror_fixed_boundary_3d.png
-   :alt: Fixed-boundary axisymmetric convergence, nonaxisymmetric force gates, and matrix-free solver evidence
+   :alt: Fixed-boundary rotating-ellipse mirror with a large cross-section and cap-to-cap field lines
    :width: 100%
 
 Beta scan example
@@ -465,15 +547,28 @@ From a developer checkout, run:
    python examples/mirror_free_boundary_beta_scan.py
 
 The script has editable inputs at its top and no command-line parser. It
-solves every beta point from 0 through 50% and writes CSV plus three reviewed
-figures under ``results/mirror_free_boundary_beta_scan/``. The figures include horizontal
+solves every beta point from 0 through 50% and writes one MOUT per state, a
+compact JSON summary, restart files, and reviewed figures under
+``results/mirror_free_boundary_beta_scan/``. The figures include horizontal
 ``z`` geometry, LCFS displacement, on-axis and LCFS ``|B|``, pressure balance,
 coils, cap-to-cap field lines, field arrows, and coupled residual histories.
-Generated results are ignored by git. CSV rows include closed-surface
-compatibility and BIE condition number for every beta point. Values through
-10% exercise the supported lane; 25% and 50% are research continuation points
+Generated results are ignored by git. Values through
+10% exercise the supported lane; 25% and 50% are validation continuation points
 and must not be presented as promoted merely because the nonlinear solve ends.
-The CSV ``supported_lane`` column and plot labels carry that distinction.
+The JSON ``supported_lane`` and ``passes_strong_force_gate`` fields carry that
+distinction for each actual run.
+
+The default free-boundary center radius remains ``0.25 m``. A July 16 audit at
+``0.35 m`` converged all six beta points below ``ftol=1e-12`` and made the
+finite-beta displacement more visible, but its beta-zero medium-grid strong
+force was already ``0.114``. Even the current ``0.25 m`` medium example gives
+``0.0706``, while the older canonical record reports ``0.00341`` on its
+nominal medium grid. The example JSON therefore distinguishes the validated
+beta range from ``passes_strong_force_gate`` for the actual run. The larger
+radius is not committed until that benchmark discrepancy is regenerated on
+identical code and grids. Larger reviewed cross-sections are used in the fixed
+rotating-ellipse and closed-hybrid examples, where their force diagnostics are
+reported from the same runs.
 
 Set ``SAVE_RESTARTS = True`` to write one compressed ``.npz`` hot-start per
 beta point. :func:`vmec_jax.mirror.output.load_free_boundary_restart` checks its
@@ -511,7 +606,7 @@ expands by 1.21%, while the central field falls by 4.38%. Thus field depression
 is the more sensitive validation observable for this zero-edge-pressure
 profile.
 
-On that grid, the 50% research point reaches center radius ``0.272554 m``,
+On that grid, the 50% validation-only point reaches center radius ``0.272554 m``,
 field ratio ``0.762687``, and volume beta ``0.216984`` with nonlinear residual
 ``8.31e-13``. The paraxial small-beta estimate is intentionally shown but is
 not an accuracy reference at 50%; the failed strong-force and refinement gates
@@ -663,7 +758,7 @@ The office RTX A4000 study continues every grid through 50% beta. On the fine
 grid, beta 50% gives center radius ``0.272554 m``, axis field ``0.063578 T``,
 volume beta ``0.216984``, and all-volume/core force
 ``6.69e-2``/``1.50e-2``. Medium-to-fine relative changes are ``0.137%`` in
-radius and ``1.02%`` in center field. The point remains research-only. The
+radius and ``1.02%`` in center field. The point remains validation-only. The
 same matrix promotes 10%, where all independent force and observable gates
 pass. Higher-order panels and lower runtime remain later optimization work.
 Tests require exact cylinder area and volume, zero integrated normal, the full
@@ -697,7 +792,7 @@ outward offset collocation produced density-system condition numbers from
 single-layer panel by an equal-area disk was stable but only algebraic: the
 hardest linear harmonic retained 8.3% boundary error at about 1,900 unknowns.
 The implementation therefore follows local singular quadrature rather than
-labeling either approximation research-grade. Relevant numerical foundations
+labeling either approximation production-ready. Relevant numerical foundations
 are Duffy's `vertex-singularity transform
 <https://doi.org/10.1137/0719090>`_ and the distinction between smooth-surface
 QBX error control and explicit corner treatment discussed by

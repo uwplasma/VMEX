@@ -41,7 +41,8 @@ class MirrorSolveResult:
     """Solved state, diagnostics, and dense iteration history.
 
     History columns are ``iteration, total_energy, radius_variational_rms,
-    lambda_variational_rms, variational_max, pointwise_force_rms``.
+    lambda_variational_rms, variational_max``. The independently reconstructed
+    pointwise force is stored in ``force`` and evaluated for the final state.
     ``optimizer_success`` is recorded separately and never substitutes for
     ``converged``.
     """

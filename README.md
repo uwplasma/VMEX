@@ -85,15 +85,16 @@ vmec --booz wout_nfp4_QH_warm_start.nc     # Boozer transform -> boozmn_*.nc
 vmec --plot boozmn_nfp4_QH_warm_start.nc   # Boozer |B| contours + spectrum
 ```
 
-## Straight-axis mirrors
+## Mirror equilibria
 
 The separate `vmec_jax.mirror` backend solves scalar-pressure nested surfaces
-at `ftol=1e-12`. The release lanes are fixed-boundary axisymmetric mirrors, a
-fixed-boundary rotating-ellipse mirror, and axisymmetric free-boundary mirrors
-through 10% central beta. Cubic B-splines resolve the nonperiodic axis and
-Fourier modes resolve each cross-section. Coils and Biot-Savart fields remain in
-[ESSOS](https://github.com/uwplasma/ESSOS); vmec-jax consumes a supplied
-`xyz -> B` field.
+at `ftol=1e-12`. Open mirrors use clamped longitudinal B-splines and physical
+fixed-flux end cuts. Closed stellarator-mirror hybrids use periodic B-splines,
+which represent two exactly straight mirror legs and two curved stellarator
+returns without fitting the straight sections with global Fourier modes.
+Fourier modes are used only around each cross-section. Coils and Biot-Savart
+fields remain in [ESSOS](https://github.com/uwplasma/ESSOS); vmec-jax consumes
+a supplied `xyz -> B` field.
 
 For `r=sqrt(s) a(s,theta,z)`, the divergence-free field and scalar-pressure
 energy are
@@ -131,15 +132,29 @@ result = solve_fixed_boundary_cli(
 
 The rotating ellipse passes the independent reconstructed-force gate and its
 implicit boundary gradient agrees with two fully reconverged finite-difference
-solves to `5.0e-10` relative, providing the derivative needed by an external
-optimizer. The Agren-Savenko straight-field-line target is shown as a research
-case: its coefficient residual reaches `3.1e-16`, but its corrected-cut strong
-force is `1.09`, so it is not advertised as an equilibrium.
+solves to `5.9e-10` relative, providing the derivative needed by an external
+optimizer. With the larger `0.12 m` cross-section, the solved variational,
+strong-force, and divergence residuals are `2.1e-16`, `0.0267`, and `6.7e-15`.
+The Agren-Savenko straight-field-line target is retained as a failed validation
+case: its coefficient residual reaches `1.7e-16`, but its corrected-cut strong
+force is `0.335`, so it is not advertised as an equilibrium.
+
+The periodic hybrid example uses a rotation-minimizing frame around a closed
+B-spline axis. Its two central leg spans have zero curvature to roundoff; the
+elliptical section rotates by 90 degrees only in each return. A finite axial
+current produces `iota=0.0856`, and the plotted cyan curves are integrated
+field lines from the solved field. The current coarse case reaches
+`6.7e-14` variational residual and `1.7e-14` normalized divergence, but its
+independent strong-force residual is `0.573`. The implementation and example
+are available for refinement and review, but this case is not yet a supported
+equilibrium benchmark.
+
+![Solved periodic B-spline hybrid with straight legs, rotating returns, field lines, LCFS |B|, cross-sections, iota, and convergence](docs/_static/figures/stellarator_mirror_hybrid.png)
 
 The free-boundary solver jointly updates the spline LCFS, plasma state, and
 unbounded exterior vacuum. Independent force and grid-refinement gates support
-the 0%, 1%, 3%, and 10% sequence. The converged 25% and 50% continuations are
-kept as research evidence because their independent force gates fail.
+the 0%, 1%, 3%, and 10% sequence. The converged 25% and 50% continuation
+states remain unpromoted because their independent force gates fail.
 
 ![Solved free-boundary beta scan with ESSOS coils, field lines, LCFS, magnetic field, pressure, and residual histories](docs/_static/figures/mirror_free_boundary_beta50_summary.png)
 
@@ -148,11 +163,13 @@ central radius grows by 7.52% and the on-axis field falls by 22.94% from the
 vacuum state; this visibly exercises the finite-beta coupling without
 promoting the failed 25/50% force gates.
 
-Run `python examples/mirror_fixed_boundary_nonaxisymmetric.py` or
-`python examples/mirror_free_boundary_beta_scan.py`. MOUT files can be plotted
-with `vmec --plot mout_*.nc`. The [mirror documentation](docs/mirror_geometry.rst)
-defines the end-cut boundary conditions, residuals, validation matrix,
-derivatives, and deferred closed-hybrid/nonaxisymmetric-free lanes.
+Run `python examples/mirror_fixed_boundary_nonaxisymmetric.py`,
+`python examples/mirror_free_boundary_beta_scan.py`, or
+`python examples/stellarator_mirror_hybrid.py`. Open-mirror MOUT files can be
+plotted with `vmec --plot mout_*.nc`. The
+[mirror documentation](docs/mirror_geometry.rst) derives the coordinate and
+field models, defines the boundary conditions and residuals, maps those models
+to the source, and records the validation and derivative limits.
 
 ## Parity with VMEC2000
 

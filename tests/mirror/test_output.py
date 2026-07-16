@@ -42,7 +42,12 @@ def test_canonical_benchmarks_declare_provenance_and_promotion_status() -> None:
     for path in paths:
         record = json.loads(path.read_text())
         assert record["schema"] == "vmec_jax.benchmark.mirror/1"
-        assert record["status"] in {"supported", "supported-through-beta-0.10", "deferred"}
+        assert record["status"] in {
+            "active-validation",
+            "deferred",
+            "supported",
+            "supported-through-beta-0.10",
+        }
         commit = record["provenance"]["measurement_commit"]
         assert 8 <= len(commit) <= 40 and int(commit, 16) >= 0, path.name
         assert record["gates"], path.name

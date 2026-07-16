@@ -4,9 +4,9 @@ Run from the repository root with::
 
     python examples/mirror_free_boundary_beta_scan.py
 
-The first four points are the supported 0--10% validation scan.  The last two
-are research continuation states whose independent force/refinement gates do
-not pass.  Every curve and surface comes from a coupled
+The first four points are the supported 0--10% validation scan. The last two
+are continuation states whose independent force/refinement gates do not pass.
+Every curve and surface comes from a coupled
 plasma-boundary-vacuum equilibrium solve with residual tolerance ``FTOL``; no
 prescribed finite-beta boundary is plotted.
 """
@@ -45,6 +45,7 @@ from vmec_jax.mirror.output import (  # noqa: E402
 # Inputs: edit these values, then run the file directly.
 BETAS = np.asarray([0.0, 0.01, 0.03, 0.10, 0.25, 0.50])
 SUPPORTED_BETA_MAX = 0.10
+STRONG_FORCE_GATE = 5.0e-2
 NS = 7
 NXI = 13
 SPLINE_ELEMENTS = 7
@@ -160,7 +161,14 @@ summary = [
     | {
         "variational_max": float(result.variational_max),
         "pointwise_force_rms": float(result.plasma_force.normalized_rms),
-        "supported_lane": bool(item.requested_beta <= SUPPORTED_BETA_MAX),
+        "supported_lane": bool(
+            item.requested_beta <= SUPPORTED_BETA_MAX
+            and float(result.plasma_force.normalized_rms) < STRONG_FORCE_GATE
+        ),
+        "model_supported_beta_range": bool(item.requested_beta <= SUPPORTED_BETA_MAX),
+        "passes_strong_force_gate": bool(
+            float(result.plasma_force.normalized_rms) < STRONG_FORCE_GATE
+        ),
     }
     for item, result in zip(diagnostics, results, strict=True)
 ]
