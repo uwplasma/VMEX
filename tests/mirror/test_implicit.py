@@ -22,6 +22,7 @@ from vmec_jax.mirror import (  # noqa: E402
 )
 from vmec_jax.mirror.implicit import (  # noqa: E402
     FreeBoundaryAdjointConfig,
+    _spline_implicit_problem,
     spline_fixed_boundary_parameters,
 )
 from vmec_jax.mirror.free_boundary import FreeBoundaryParameters  # noqa: E402
@@ -29,8 +30,11 @@ from vmec_jax.mirror.forces import MU0, mass_profile_from_pressure, mirror_energ
 from vmec_jax.mirror.splines import (  # noqa: E402
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
+    SplineMirrorState,
+    _initialize_closed_vacuum_stream_function,
     solve_fixed_boundary_cli as solve_spline_fixed_boundary_cli,
 )
+from vmec_jax.mirror.geometry import evaluate_closed_spline_axis  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -214,6 +218,136 @@ def test_nonaxisymmetric_spline_adjoint_includes_stream_function() -> None:
             jnp.linalg.norm(expected), jnp.finfo(expected.dtype).tiny
         )
         assert float(relative_error) < 2.0e-4
+
+
+def test_closed_spline_adjoint_differentiates_axis_and_boundary() -> None:
+    resolution = MirrorResolution(ns=5, mpol=1, nxi=4)
+    config = MirrorConfig(resolution=resolution, ftol=1.0e-12, max_iterations=1000)
+    discretization = SplineMirrorDiscretization.build_closed(
+        resolution,
+        coefficient_count=8,
+        quadrature_order=3,
+    )
+    basis = discretization.spline
+    points = jnp.asarray(basis.collocation_nodes)
+    axis_coefficients = basis.fit(
+        jnp.stack(
+            (2.5 * jnp.cos(points), jnp.zeros_like(points), 2.5 * jnp.sin(points)),
+            axis=-1,
+        ),
+        axis=0,
+    )
+
+    def axis_at(coefficients):
+        return evaluate_closed_spline_axis(
+            coefficients,
+            basis,
+            discretization.grid.z,
+            initial_normal=jnp.asarray([0.0, 1.0, 0.0]),
+        )
+
+    boundary = SplineMirrorBoundary(jnp.full((resolution.ntheta, basis.size), 0.25))
+    radius = jnp.full((resolution.ns, resolution.ntheta, basis.size), 0.25)
+    initial = _initialize_closed_vacuum_stream_function(
+        SplineMirrorState(radius, jnp.zeros_like(radius)),
+        discretization,
+        axis_at(axis_coefficients),
+        axial_flux_derivative=0.03,
+    )
+    solve_options = dict(
+        axial_flux_derivative=0.03,
+        solve_lambda=True,
+        gradient_tolerance=1.0e-12,
+        require_convergence=True,
+    )
+    result = solve_spline_fixed_boundary_cli(
+        initial,
+        boundary,
+        discretization,
+        config,
+        axis=axis_at(axis_coefficients),
+        **solve_options,
+    )
+    parameters = spline_fixed_boundary_parameters(
+        boundary,
+        axial_flux_derivative=0.03,
+        axis_coefficients=axis_coefficients,
+    )
+    adjoint = spline_fixed_boundary_adjoint(
+        result,
+        parameters,
+        discretization,
+        lambda _state, energy: energy.geometry.volume,
+        solve_lambda=True,
+        rtol=1.0e-9,
+    )
+    boundary_direction = jnp.full_like(boundary.radius_coefficients, 0.01)
+    axis_direction = 0.01 * axis_coefficients
+    parameter_direction = replace(
+        jax.tree.map(jnp.zeros_like, parameters),
+        boundary_coefficients=boundary_direction,
+        axis_coefficients=axis_direction,
+    )
+    predicted = float(
+        jnp.vdot(adjoint.gradient.boundary_coefficients, boundary_direction)
+        + jnp.vdot(adjoint.gradient.axis_coefficients, axis_direction)
+    )
+    x_star, _, _, residual, *_ = _spline_implicit_problem(
+        result,
+        parameters,
+        discretization,
+        gamma=5.0 / 3.0,
+        solve_lambda=True,
+    )
+    cotangent = jnp.linspace(-0.5, 0.5, x_star.size)
+    parameter_jvp = jax.jvp(
+        lambda controls: residual(x_star, controls),
+        (parameters,),
+        (parameter_direction,),
+    )[1]
+    parameter_vjp = jax.vjp(lambda controls: residual(x_star, controls), parameters)[1](cotangent)[0]
+    transpose_product = sum(
+        jnp.vdot(direction, pullback)
+        for direction, pullback in zip(
+            jax.tree.leaves(parameter_direction),
+            jax.tree.leaves(parameter_vjp),
+            strict=True,
+        )
+    )
+    np.testing.assert_allclose(
+        jnp.vdot(parameter_jvp, cotangent),
+        transpose_product,
+        rtol=2.0e-12,
+        atol=2.0e-12,
+    )
+    finite_differences = []
+    for epsilon in (4.0e-4, 2.0e-4, 1.0e-4):
+        values = []
+        for sign in (-1.0, 1.0):
+            varied_boundary = SplineMirrorBoundary(
+                boundary.radius_coefficients + sign * epsilon * boundary_direction
+            )
+            varied_axis_coefficients = axis_coefficients + sign * epsilon * axis_direction
+            varied = solve_spline_fixed_boundary_cli(
+                discretization.transfer_boundary(
+                    result.coefficient_state,
+                    boundary,
+                    varied_boundary,
+                ),
+                varied_boundary,
+                discretization,
+                config,
+                axis=axis_at(varied_axis_coefficients),
+                **solve_options,
+            )
+            values.append(float(varied.evaluated.energy.geometry.volume))
+        finite_differences.append((values[1] - values[0]) / (2.0 * epsilon))
+
+    assert adjoint.converged
+    assert adjoint.relative_residual < 1.0e-8
+    assert float(jnp.linalg.norm(adjoint.gradient.axis_coefficients)) > 0.0
+    np.testing.assert_allclose(finite_differences, predicted, rtol=5.0e-5)
+    np.testing.assert_allclose(finite_differences[-1], predicted, rtol=2.0e-5)
 
 
 @dataclass(frozen=True)

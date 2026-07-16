@@ -14,7 +14,7 @@ import numpy as np
 
 from .forces import MirrorEnergy, mirror_energy
 from .free_boundary import FreeBoundaryParameters, _build_free_equilibrium_problem
-from .geometry import regularize_axis_stream_function
+from .geometry import evaluate_closed_spline_axis, regularize_axis_stream_function
 from .model import MirrorBoundary, MirrorState
 from .solver import _solve_krylov_system
 
@@ -27,6 +27,7 @@ class SplineFixedBoundaryParameters:
     """Differentiable controls for a coefficient-native spline equilibrium."""
 
     boundary_coefficients: Array
+    axis_coefficients: Array
     axial_flux_derivative: Array
     mass_profile: Array
     current_derivative: Array
@@ -58,6 +59,7 @@ jax.tree_util.register_dataclass(
     SplineFixedBoundaryParameters,
     data_fields=[
         "boundary_coefficients",
+        "axis_coefficients",
         "axial_flux_derivative",
         "mass_profile",
         "current_derivative",
@@ -82,11 +84,15 @@ def spline_fixed_boundary_parameters(
     axial_flux_derivative: Array,
     mass_profile: Array = 0.0,
     current_derivative: Array = 0.0,
+    axis_coefficients: Array | None = None,
 ) -> SplineFixedBoundaryParameters:
-    """Collect native spline controls in a differentiable pytree."""
+    """Collect native boundary, axis, flux, pressure, and current controls."""
 
     return SplineFixedBoundaryParameters(
         boundary_coefficients=jnp.asarray(boundary.radius_coefficients),
+        axis_coefficients=jnp.empty((0, 3))
+        if axis_coefficients is None
+        else jnp.asarray(axis_coefficients),
         axial_flux_derivative=jnp.asarray(axial_flux_derivative),
         mass_profile=jnp.asarray(mass_profile),
         current_derivative=jnp.asarray(current_derivative),
@@ -94,14 +100,12 @@ def spline_fixed_boundary_parameters(
 
 
 def _solve_implicit_system(
-    matrix_vector: Callable[[np.ndarray], np.ndarray],
+    matrix_vector: Callable[[Array], Array],
     right_hand_side: np.ndarray,
-    apply_preconditioner: Callable[[np.ndarray], np.ndarray],
+    apply_preconditioner: Callable[[Array], Array],
     scales: np.ndarray,
     block_slices: tuple[slice, ...],
     *,
-    local_builder: Any | None = None,
-    matrix_columns: Callable[[np.ndarray], np.ndarray] | None = None,
     rtol: float,
     max_restarts: int,
     initial: np.ndarray | None = None,
@@ -109,21 +113,14 @@ def _solve_implicit_system(
     """Solve one preconditioned implicit linear system on the host."""
 
     size = right_hand_side.size
-    active_preconditioner = apply_preconditioner
-    if local_builder is not None and matrix_columns is not None:
-        try:
-            active_preconditioner = local_builder(matrix_columns)
-        except RuntimeError:
-            pass
-    if active_preconditioner is apply_preconditioner:
-        probe = np.random.default_rng(0).choice((-1.0, 1.0), size=size)
-        for block, active in enumerate(block_slices):
-            direction = np.zeros_like(probe)
-            direction[active] = probe[active]
-            response = apply_preconditioner(matrix_vector(direction))
-            denominator = abs(float(np.dot(direction, response)))
-            if denominator > np.finfo(float).tiny:
-                scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
+    probe = np.random.default_rng(0).choice((-1.0, 1.0), size=size)
+    for block, active in enumerate(block_slices):
+        direction = np.zeros_like(probe)
+        direction[active] = probe[active]
+        response = apply_preconditioner(matrix_vector(jnp.asarray(direction)))
+        denominator = abs(float(np.dot(direction, response)))
+        if denominator > np.finfo(float).tiny:
+            scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
 
     if initial is None:
         initial_relative_residual = np.inf
@@ -141,7 +138,7 @@ def _solve_implicit_system(
         solution, iterations, relative_residual, info = _solve_krylov_system(
             matrix_vector,
             right_hand_side,
-            active_preconditioner,
+            apply_preconditioner,
             initial=initial,
             restart=min(100, size),
             max_restarts=min(3, max_restarts) if initial is not None else max_restarts,
@@ -156,11 +153,10 @@ def _implicit_adjoint(
     parameters: Any,
     residual: Callable[[Array, Any], Array],
     evaluate_quantity: Callable[[Array, Any], Array],
-    apply_preconditioner: Callable[[np.ndarray], np.ndarray],
+    apply_preconditioner: Callable[[Array], Array],
     scales: np.ndarray,
     block_slices: tuple[slice, ...],
     *,
-    local_builder: Any | None = None,
     rtol: float,
     max_restarts: int,
     initializer: Callable[[Callable[[Array], Array], np.ndarray], tuple[np.ndarray, str]] | None = None,
@@ -171,17 +167,12 @@ def _implicit_adjoint(
     _, transpose = jax.vjp(lambda x: residual(x, parameters), x_star)
     transpose_action = jax.jit(lambda vector: transpose(vector)[0])
 
-    def matrix_vector(vector: np.ndarray) -> np.ndarray:
-        return np.asarray(transpose_action(jnp.asarray(vector)), dtype=float)
-
-    transpose_columns = jax.jit(jax.vmap(transpose_action))
-
-    def matrix_columns(directions: np.ndarray) -> np.ndarray:
-        return np.asarray(transpose_columns(jnp.asarray(directions)), dtype=float)
+    def matrix_vector(vector: Array) -> Array:
+        return transpose_action(vector)
 
     right_hand_side = np.asarray(quantity_x, dtype=float)
     initial_adjoint, solver_used = (
-        (None, "gmres") if initializer is None else initializer(transpose_action, right_hand_side)
+        (None, "scipy-gmres") if initializer is None else initializer(transpose_action, right_hand_side)
     )
     adjoint, iterations, relative_residual, converged = _solve_implicit_system(
         matrix_vector,
@@ -189,8 +180,6 @@ def _implicit_adjoint(
         apply_preconditioner,
         scales,
         block_slices,
-        local_builder=local_builder,
-        matrix_columns=matrix_columns,
         rtol=rtol,
         max_restarts=max_restarts,
         initial=initial_adjoint,
@@ -234,6 +223,13 @@ def _spline_implicit_problem(
     if not isinstance(evaluated.energy, MirrorEnergy):
         raise ValueError("spline implicit derivatives require the isotropic energy")
     boundary = SplineMirrorBoundary(jnp.asarray(parameters.boundary_coefficients))
+    axis_shape = tuple(jnp.shape(parameters.axis_coefficients))
+    if discretization.closed:
+        expected = (discretization.coefficient_count, 3)
+        if axis_shape != expected:
+            raise ValueError(f"closed spline axis coefficients must have shape {expected}")
+    elif np.prod(axis_shape) != 0:
+        raise ValueError("open spline derivatives do not use axis coefficients")
     vectorizer = _SplineStateVectorizer.build(
         result.coefficient_state,
         boundary,
@@ -256,6 +252,14 @@ def _spline_implicit_problem(
         )
 
     def energy_at(x: Array, controls: SplineFixedBoundaryParameters) -> MirrorEnergy:
+        axis = None
+        if discretization.closed:
+            axis = evaluate_closed_spline_axis(
+                controls.axis_coefficients,
+                discretization.spline,
+                discretization.grid.z,
+                initial_normal=jnp.asarray([0.0, 1.0, 0.0]),
+            )
         return mirror_energy(
             state_at(x, controls),
             discretization.grid,
@@ -263,12 +267,13 @@ def _spline_implicit_problem(
             mass_profile=controls.mass_profile,
             current_derivative=controls.current_derivative,
             gamma=gamma,
+            axis=axis,
         )
 
     def residual(x: Array, controls: SplineFixedBoundaryParameters) -> Array:
         return jax.grad(lambda vector: energy_at(vector, controls).total / energy_scale)(x)
 
-    apply_preconditioner, scales, local_builder = _packed_spline_preconditioner(discretization, vectorizer)
+    apply_preconditioner, scales, _ = _packed_spline_preconditioner(discretization, vectorizer)
     return (
         x_star,
         state_at,
@@ -276,7 +281,6 @@ def _spline_implicit_problem(
         residual,
         apply_preconditioner,
         scales,
-        local_builder,
         vectorizer.block_slices,
     )
 
@@ -303,7 +307,6 @@ def spline_fixed_boundary_adjoint(
         residual,
         apply_preconditioner,
         scales,
-        local_builder,
         split,
     ) = _spline_implicit_problem(
         result,
@@ -328,7 +331,6 @@ def spline_fixed_boundary_adjoint(
         apply_preconditioner,
         scales,
         split,
-        local_builder=local_builder,
         rtol=rtol,
         max_restarts=max_restarts,
     )
@@ -356,7 +358,6 @@ def spline_fixed_boundary_tangent(
         residual,
         apply_preconditioner,
         scales,
-        local_builder,
         split,
     ) = _spline_implicit_problem(
         result,
@@ -379,13 +380,8 @@ def spline_fixed_boundary_tangent(
         )[1]
     )
 
-    def matrix_vector(vector: np.ndarray) -> np.ndarray:
-        return np.asarray(tangent_action(jnp.asarray(vector)), dtype=float)
-
-    tangent_columns = jax.jit(jax.vmap(tangent_action))
-
-    def matrix_columns(directions: np.ndarray) -> np.ndarray:
-        return np.asarray(tangent_columns(jnp.asarray(directions)), dtype=float)
+    def matrix_vector(vector: Array) -> Array:
+        return tangent_action(vector)
 
     packed_tangent, iterations, relative_residual, converged = _solve_implicit_system(
         matrix_vector,
@@ -393,8 +389,6 @@ def spline_fixed_boundary_tangent(
         apply_preconditioner,
         scales,
         split,
-        local_builder=local_builder,
-        matrix_columns=matrix_columns,
         rtol=rtol,
         max_restarts=max_restarts,
     )

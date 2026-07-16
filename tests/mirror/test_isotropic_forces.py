@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from scipy.sparse.linalg import LinearOperator, gmres
+from solvax import gmres
 
 jax = pytest.importorskip("jax")
 jax.config.update("jax_enable_x64", True)
@@ -512,39 +512,28 @@ def test_separable_preconditioner_is_exact_for_its_model_and_reduces_gmres_work(
     right_hand_side = preconditioner.operator(exact)
     np.testing.assert_allclose(preconditioner.apply(right_hand_side), exact, rtol=2.0e-12, atol=2.0e-12)
 
-    operator = LinearOperator(
-        (preconditioner.size, preconditioner.size),
-        matvec=preconditioner.operator,
-        dtype=float,
-    )
-    inverse = LinearOperator(
-        (preconditioner.size, preconditioner.size),
-        matvec=preconditioner.apply,
-        dtype=float,
-    )
-    iterations = {"plain": 0, "preconditioned": 0}
-    plain, plain_info = gmres(
-        operator,
+    plain = gmres(
+        preconditioner.operator,
         right_hand_side,
         rtol=1.0e-11,
         atol=0.0,
-        callback=lambda _: iterations.__setitem__("plain", iterations["plain"] + 1),
-        callback_type="pr_norm",
+        restart=20,
+        max_restarts=50,
     )
-    accelerated, accelerated_info = gmres(
-        operator,
+    accelerated = gmres(
+        preconditioner.operator,
         right_hand_side,
-        M=inverse,
+        precond=preconditioner.apply,
         rtol=1.0e-11,
         atol=0.0,
-        callback=lambda _: iterations.__setitem__("preconditioned", iterations["preconditioned"] + 1),
-        callback_type="pr_norm",
+        restart=20,
+        max_restarts=50,
     )
-    assert plain_info == accelerated_info == 0
-    assert iterations["plain"] >= 10
-    assert iterations["preconditioned"] <= 2
-    np.testing.assert_allclose(plain, exact, rtol=2.0e-9, atol=2.0e-9)
-    np.testing.assert_allclose(accelerated, exact, rtol=2.0e-12, atol=2.0e-12)
+    assert bool(plain.converged) and bool(accelerated.converged)
+    assert int(plain.iterations) >= 10
+    assert int(accelerated.iterations) <= 2
+    np.testing.assert_allclose(plain.x, exact, rtol=2.0e-9, atol=2.0e-9)
+    np.testing.assert_allclose(accelerated.x, exact, rtol=2.0e-12, atol=2.0e-12)
 
 
 @pytest.mark.parametrize("use_objective", [False, True])
@@ -552,6 +541,7 @@ def test_shared_bounded_newton_driver_reports_true_linear_residual(use_objective
     matrix = np.diag([2.0, 3.0, 5.0])
     right_hand_side = np.array([0.5, -0.75, 1.0])
     inverse = np.diag(1.0 / np.diag(matrix))
+    matrix_jax, inverse_jax = jnp.asarray(matrix), jnp.asarray(inverse)
 
     def residual(x):
         return matrix @ x - right_hand_side
@@ -565,7 +555,10 @@ def test_shared_bounded_newton_driver_reports_true_linear_residual(use_objective
     result = _bounded_newton_krylov(
         np.zeros(3),
         residual,
-        lambda _x, _residual: (matrix.__matmul__, inverse.__matmul__),
+        lambda _x, _residual: (
+            lambda vector: matrix_jax @ vector,
+            lambda vector: inverse_jax @ vector,
+        ),
         (-np.ones(3), np.ones(3)),
         ftol=1.0e-12,
         max_steps=3,

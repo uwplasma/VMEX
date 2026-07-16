@@ -109,6 +109,7 @@ class StellaratorMirrorSetup:
     """Periodic spline discretization, axis, LCFS, and nested initial state."""
 
     discretization: Any
+    axis_coefficients: Array
     axis: Any
     boundary: SplineMirrorBoundary
     initial_state: SplineMirrorState
@@ -357,12 +358,13 @@ def build_stellarator_mirror_hybrid(
         quadrature_order=quadrature_order,
     )
     basis = discretization.spline
+    axis_coefficients = stellarator_mirror_axis_coefficients(
+        basis,
+        straight_length=straight_length,
+        return_radius=return_radius,
+    )
     axis = evaluate_closed_spline_axis(
-        stellarator_mirror_axis_coefficients(
-            basis,
-            straight_length=straight_length,
-            return_radius=return_radius,
-        ),
+        axis_coefficients,
         basis,
         discretization.grid.z,
         initial_normal=jnp.asarray([0.0, 1.0, 0.0]),
@@ -388,7 +390,13 @@ def build_stellarator_mirror_hybrid(
         axis,
         axial_flux_derivative=axial_flux_derivative,
     )
-    return StellaratorMirrorSetup(discretization, axis, boundary, initial_state)
+    return StellaratorMirrorSetup(
+        discretization,
+        axis_coefficients,
+        axis,
+        boundary,
+        initial_state,
+    )
 
 
 def _initialize_closed_vacuum_stream_function(
@@ -771,11 +779,9 @@ def _packed_spline_layout(
     radial = np.asarray(vectorizer.radius_indices[0], dtype=int)
     axial = np.asarray(vectorizer.radius_indices[2], dtype=int)
     if vectorizer.lambda_size:
-        channels = np.concatenate(
-            (channels, np.full(vectorizer.lambda_size, 3, dtype=int))
-        )
-        axial_count = vectorizer.lambda_axial_indices.size
+        channels = np.concatenate((channels, np.full(vectorizer.lambda_size, 3, dtype=int)))
         free = vectorizer.lambda_free_indices
+        axial_count = vectorizer.lambda_axial_indices.size
         radial = np.concatenate(
             (radial, np.repeat(np.arange(1, discretization.grid.ns), free.size))
         )
@@ -795,7 +801,7 @@ def _packed_spline_preconditioner(
     discretization: SplineMirrorDiscretization,
     vectorizer: _SplineStateVectorizer,
 ) -> tuple[Any, np.ndarray, Any]:
-    """Build tensor fallback and optional local sparse Hessian factor."""
+    """Build traceable tensor and optional host sparse preconditioners."""
 
     from .solver import SeparableMirrorPreconditioner
 
@@ -820,10 +826,15 @@ def _packed_spline_preconditioner(
     scales = np.ones(len(vectorizer.block_slices))
     lambda_start = vectorizer.radius_size
 
-    def apply(vector: np.ndarray) -> np.ndarray:
-        vector = np.asarray(vector, dtype=float)
-        result = np.array(vector, copy=True)
-        result[: vectorizer.radius_size] = geometry.apply(vector[: vectorizer.radius_size]) * scales[0]
+    def apply(vector: Array) -> Array:
+        host = isinstance(vector, np.ndarray)
+        vector = np.asarray(vector) if host else jnp.asarray(vector)
+        geometry_result = geometry.apply(vector[: vectorizer.radius_size]) * scales[0]
+        if host:
+            result = np.array(vector, copy=True)
+            result[: vectorizer.radius_size] = geometry_result
+        else:
+            result = vector.at[: vectorizer.radius_size].set(geometry_result)
         if stream is not None:
             reduced = vector[lambda_start:]
             reduced = stream.apply_gauge_free(
@@ -832,9 +843,11 @@ def _packed_spline_preconditioner(
                 pivot=vectorizer.lambda_pivot,
                 weights=vectorizer.lambda_weights,
             )
-            result[lambda_start:] = reduced * scales[1]
+            if host:
+                result[lambda_start:] = reduced * scales[1]
+            else:
+                result = result.at[lambda_start:].set(reduced * scales[1])
         return result
-
     def build_local(matrix_columns: Callable[[np.ndarray], np.ndarray]) -> Any:
         """Factor a frozen sparse Hessian from chunked matrix-free columns."""
 
@@ -845,10 +858,9 @@ def _packed_spline_preconditioner(
         row_parts: list[np.ndarray] = []
         column_parts: list[np.ndarray] = []
         value_parts: list[np.ndarray] = []
-        chunk_size = min(32, size)
         channels, radial, axial = _packed_spline_layout(discretization, vectorizer)
-        for start in range(0, size, chunk_size):
-            columns = np.arange(start, min(start + chunk_size, size))
+        for start in range(0, size, 32):
+            columns = np.arange(start, min(start + 32, size))
             directions = np.zeros((columns.size, size))
             directions[np.arange(columns.size), columns] = 1.0
             responses = np.asarray(matrix_columns(directions), dtype=float)
@@ -869,15 +881,8 @@ def _packed_spline_preconditioner(
             ),
             shape=(size, size),
         ).tocsc()
-        matrix = 0.5 * (matrix + matrix.T)
-        factor = splu(matrix)
-
-        def solve(vector: np.ndarray) -> np.ndarray:
-            return factor.solve(vector)
-
-        solve.hessian_probe_count = size  # type: ignore[attr-defined]
-        solve.hessian_column_count = size  # type: ignore[attr-defined]
-        return solve
+        factor = splu(0.5 * (matrix + matrix.T))
+        return factor.solve
 
     local_builder = build_local if vectorizer.lambda_size and not discretization.closed else None
     return apply, scales, local_builder

@@ -193,23 +193,27 @@ class SeparableMirrorPreconditioner:
         """Number of active geometry unknowns."""
         return int(np.prod(self.active_shape))
 
-    def _transform(self, vector: Array, *, inverse: bool) -> np.ndarray:
-        values = np.asarray(vector, dtype=float)
+    def _transform(self, vector: Array, *, inverse: bool) -> Array:
+        xp = np if isinstance(vector, np.ndarray) else jnp
+        values = xp.asarray(vector)
         if values.size != self.size:
             raise ValueError(f"vector has {values.size} values; expected {self.size}")
         blocks = values.reshape(self.active_shape)
-        multiplier = 1.0 / self.denominator if inverse else self.denominator
-        coefficients = np.einsum("ri,rtx,xj->itj", self.radial_vectors, blocks, self.axial_vectors)
-        coefficients = np.fft.fft(coefficients, axis=1, norm="ortho")
-        coefficients = np.fft.ifft(multiplier * coefficients, axis=1, norm="ortho").real
-        result = np.einsum("ri,itj,xj->rtx", self.radial_vectors, coefficients, self.axial_vectors)
+        denominator = xp.asarray(self.denominator, dtype=values.dtype)
+        multiplier = 1.0 / denominator if inverse else denominator
+        radial = xp.asarray(self.radial_vectors, dtype=values.dtype)
+        axial = xp.asarray(self.axial_vectors, dtype=values.dtype)
+        coefficients = xp.einsum("ri,rtx,xj->itj", radial, blocks, axial)
+        coefficients = xp.fft.fft(coefficients, axis=1, norm="ortho")
+        coefficients = xp.fft.ifft(multiplier * coefficients, axis=1, norm="ortho").real
+        result = xp.einsum("ri,itj,xj->rtx", radial, coefficients, axial)
         return result.reshape(values.shape)
 
-    def apply(self, vector: Array) -> np.ndarray:
+    def apply(self, vector: Array) -> Array:
         """Apply the inverse model operator to a flattened residual."""
         return self._transform(vector, inverse=True)
 
-    def operator(self, vector: Array) -> np.ndarray:
+    def operator(self, vector: Array) -> Array:
         """Apply the model operator, primarily for verification tests."""
         return self._transform(vector, inverse=False)
 
@@ -220,26 +224,32 @@ class SeparableMirrorPreconditioner:
         free_indices: np.ndarray,
         pivot: int,
         weights: np.ndarray,
-    ) -> np.ndarray:
+    ) -> Array:
         """Apply the inverse after eliminating one weighted-mean gauge node.
 
         The lift and orthogonal projection keep the reduced operator symmetric.
         """
 
-        free_indices = np.asarray(free_indices, dtype=int)
-        weights = np.asarray(weights, dtype=float)
-        reduced = np.asarray(vector, dtype=float).reshape(self.active_shape[0], free_indices.size)
+        xp = np if isinstance(vector, np.ndarray) else jnp
+        values = xp.asarray(vector)
+        free_indices = xp.asarray(free_indices, dtype=int)
+        weights = xp.asarray(weights, dtype=values.dtype)
+        reduced = values.reshape(self.active_shape[0], free_indices.size)
         ratio = weights[free_indices] / weights[int(pivot)]
         gram = 1.0 + ratio @ ratio
         lifted_free = reduced - ((reduced @ ratio) / gram)[:, None] * ratio[None, :]
-        lifted = np.zeros((self.active_shape[0], weights.size))
-        lifted[:, free_indices] = lifted_free
-        lifted[:, int(pivot)] = -(lifted_free @ ratio)
+        lifted = xp.zeros((self.active_shape[0], weights.size), dtype=values.dtype)
+        if xp is np:
+            lifted[:, free_indices] = lifted_free
+            lifted[:, int(pivot)] = -(lifted_free @ ratio)
+        else:
+            lifted = lifted.at[:, free_indices].set(lifted_free)
+            lifted = lifted.at[:, int(pivot)].set(-(lifted_free @ ratio))
 
         solved = self.apply(lifted.reshape(-1)).reshape(lifted.shape)
         projected = solved[:, free_indices] - solved[:, int(pivot), None] * ratio[None, :]
         projected -= ((projected @ ratio) / gram)[:, None] * ratio[None, :]
-        return projected.reshape(np.asarray(vector).shape)
+        return projected.reshape(values.shape)
 
 
 def _solve_krylov_system(
@@ -252,12 +262,20 @@ def _solve_krylov_system(
     max_restarts: int,
     initial: np.ndarray | None = None,
 ) -> tuple[np.ndarray, int, float, int]:
-    """Solve a host GMRES system and report its true relative residual."""
+    """Solve one host GMRES system and verify its true relative residual."""
 
     right_hand_side = np.asarray(right_hand_side, dtype=float)
     size = right_hand_side.size
-    operator = LinearOperator((size, size), matvec=matrix_vector, dtype=float)
-    inverse = LinearOperator((size, size), matvec=apply_preconditioner, dtype=float)
+    operator = LinearOperator(
+        (size, size),
+        matvec=lambda vector: np.array(matrix_vector(vector), dtype=float, copy=True),
+        dtype=float,
+    )
+    inverse = LinearOperator(
+        (size, size),
+        matvec=lambda vector: np.array(apply_preconditioner(vector), dtype=float, copy=True),
+        dtype=float,
+    )
     iterations = 0
 
     def count_iteration(_residual: float) -> None:
@@ -393,14 +411,12 @@ def _polish_fixed_coefficients(
     def linear_model(vector: np.ndarray, _residual: np.ndarray) -> tuple[Any, Any]:
         nonlocal active_preconditioner, local_preconditioner
 
-        def matrix_vector(direction: np.ndarray) -> np.ndarray:
+        def matrix_vector(direction: Array) -> Array:
             product = hessian_vector(jnp.asarray(vector), jnp.asarray(direction))
-            return np.asarray(product, dtype=float) + damping[0] * np.asarray(direction)
+            return product + damping[0] * jnp.asarray(direction)
 
         if local_preconditioner is None and build_local is not None:
-
             def matrix_columns(directions: np.ndarray) -> np.ndarray:
-                directions = np.asarray(directions, dtype=float)
                 products = hessian_columns(jnp.asarray(vector), jnp.asarray(directions))
                 return np.asarray(products, dtype=float) + damping[0] * directions
 

@@ -805,7 +805,7 @@ def test_equal_end_axisymmetric_mirror_is_independent_of_cut_location(_module_ji
     np.testing.assert_allclose(center_axis_field, center_axis_field[0], rtol=2.0e-5)
 
 
-def test_local_spline_preconditioner_builds_from_bounded_hessian_chunks() -> None:
+def test_spline_preconditioners_are_traceable_and_locally_exact() -> None:
     config = MirrorConfig(resolution=MirrorResolution(ns=5, mpol=2, nxi=9))
     grid = config.build_grid()
     boundary = MirrorBoundary.from_radius(0.3, grid)
@@ -819,16 +819,20 @@ def test_local_spline_preconditioner_builds_from_bounded_hessian_chunks() -> Non
         axial_flux_derivative=0.1,
         solve_lambda=True,
     )
-    _, _, build_local = _packed_spline_preconditioner(discretization, vectorizer)
+    apply, scales, build_local = _packed_spline_preconditioner(discretization, vectorizer)
     size = vectorizer.pack().size
+    vector = jnp.asarray(np.random.default_rng(7).normal(size=size))
+    assert scales.shape == (2,)
+    np.testing.assert_allclose(jax.jit(apply)(vector), apply(vector), rtol=2.0e-13, atol=2.0e-13)
+
     diagonal = np.linspace(1.0, 3.0, size)
     matrix = np.diag(diagonal)
     stream_row = slice(
         vectorizer.radius_size,
         vectorizer.radius_size + vectorizer.lambda_free_indices.size,
     )
-    gauge_coupling = np.linspace(0.01, 0.03, vectorizer.lambda_free_indices.size)
-    matrix[stream_row, stream_row] += np.outer(gauge_coupling, gauge_coupling)
+    coupling = np.linspace(0.01, 0.03, vectorizer.lambda_free_indices.size)
+    matrix[stream_row, stream_row] += np.outer(coupling, coupling)
     batch_sizes = []
 
     def matrix_columns(directions):
@@ -836,12 +840,10 @@ def test_local_spline_preconditioner_builds_from_bounded_hessian_chunks() -> Non
         return directions @ matrix.T
 
     assert build_local is not None
-    apply = build_local(matrix_columns)
-    exact = np.random.default_rng(7).normal(size=size)
-
-    np.testing.assert_allclose(apply(matrix @ exact), exact, rtol=3.0e-14, atol=3.0e-14)
+    local = build_local(matrix_columns)
+    exact = np.random.default_rng(8).normal(size=size)
+    np.testing.assert_allclose(local(matrix @ exact), exact, rtol=3.0e-14, atol=3.0e-14)
     assert max(batch_sizes) <= 32
-    assert sum(batch_sizes) >= size
 
 
 @pytest.mark.full

@@ -210,7 +210,7 @@ class _FreeEquilibriumProblem:
     def residual(self, vector: Array) -> Array:
         return self.residual_function(vector)
 
-    def preconditioner(self) -> Callable[[np.ndarray], np.ndarray]:
+    def preconditioner(self) -> Callable[[Array], Array]:
         """Return the shared boundary/interior block preconditioner."""
 
         boundary_size = self.vectorizer.boundary_size
@@ -220,11 +220,15 @@ class _FreeEquilibriumProblem:
             self.vectorizer.state_vectorizer,
         )
 
-        def apply(vector: np.ndarray) -> np.ndarray:
-            output = np.array(vector, dtype=float, copy=True)
+        def apply(vector: Array) -> Array:
+            host = isinstance(vector, np.ndarray)
+            output = np.array(vector, copy=True) if host else jnp.asarray(vector)
             active = slice(boundary_size, boundary_size + state_size)
-            output[active] = state_preconditioner(output[active])
-            return output
+            state = state_preconditioner(output[active])
+            if host:
+                output[active] = state
+                return output
+            return output.at[active].set(state)
 
         return apply
 
@@ -250,6 +254,18 @@ class _FreeEquilibriumProblem:
             matvec=matvec,
             rmatvec=rmatvec,
             dtype=np.dtype(vector.dtype),
+        )
+
+    def linear_action(self, vector: np.ndarray) -> Callable[[Array], Array]:
+        """Return the JAX-native exact residual Jacobian action."""
+
+        point = jnp.asarray(vector)
+        return jax.jit(
+            lambda direction: jax.jvp(
+                self.residual_function,
+                (point,),
+                (direction,),
+            )[1]
         )
 
 
@@ -643,7 +659,7 @@ def solve_free_boundary_cli(
             solution,
             lambda vector: np.asarray(problem.residual(jnp.asarray(vector)), dtype=float),
             lambda vector, _residual: (
-                problem.linear_operator(vector).matvec,
+                problem.linear_action(vector),
                 free_preconditioner,
             ),
             (lower, upper),
