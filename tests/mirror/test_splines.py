@@ -769,7 +769,8 @@ def test_closed_center_coefficients_vectorize_and_transfer() -> None:
     )
     probe = np.random.default_rng(42).normal(size=vectorizer.pack().size)
     preconditioned = apply_preconditioner(probe)
-    assert build_local is None
+    assert build_local is not None
+    assert build_local.reuse_linearization
     assert scales.shape == (3,)
     assert preconditioned.shape == probe.shape
     assert np.all(np.isfinite(preconditioned))
@@ -1031,12 +1032,22 @@ def test_closed_spline_fixed_boundary_torus_converges_to_ftol() -> None:
 
 
 @pytest.mark.full
-def test_displaced_closed_center_map_reconverges_to_ftol() -> None:
-    resolution = MirrorResolution(ns=5, mpol=3, nxi=4)
+@pytest.mark.parametrize(
+    "ns,mpol,controls,iteration_limit,linear_limit",
+    [(5, 3, 12, 10, 10), (9, 5, 16, 100, 5000)],
+)
+def test_displaced_closed_center_map_reconverges_to_ftol(
+    ns,
+    mpol,
+    controls,
+    iteration_limit,
+    linear_limit,
+) -> None:
+    resolution = MirrorResolution(ns=ns, mpol=mpol, nxi=4)
     config = MirrorConfig(resolution=resolution, ftol=1.0e-12, max_iterations=1000)
     discretization, axis, boundary, base = _closed_circular_torus(
         resolution,
-        coefficient_count=12,
+        coefficient_count=controls,
     )
     radial = jnp.asarray(discretization.grid.s)[:, None]
     center = jnp.stack(
@@ -1068,7 +1079,8 @@ def test_displaced_closed_center_map_reconverges_to_ftol() -> None:
     ).evaluated
 
     assert result.converged
-    assert result.iterations < 10
+    assert result.iterations < iteration_limit
+    assert result.linear_iterations < linear_limit
     assert float(result.variational.maximum) <= config.ftol
     assert float(result.staggered_weak_force.maximum) <= 1.1 * config.ftol
     assert float(result.force.normalized_rms) < 5.0e-3
@@ -1759,12 +1771,21 @@ def test_closed_vectorizer_fixes_one_local_stream_gauge_coefficient() -> None:
     assert np.count_nonzero(np.abs(changed) > 1.0e-14) == 1
 
 
-def test_closed_colored_hessian_probing_reconstructs_local_symmetric_matrix() -> None:
+@pytest.mark.parametrize("with_center", [False, True])
+def test_closed_colored_hessian_probing_reconstructs_local_symmetric_matrix(
+    with_center,
+) -> None:
     resolution = MirrorResolution(ns=5, mpol=1, nxi=4)
     discretization, _, boundary, state = _closed_circular_torus(
         resolution,
         coefficient_count=8,
     )
+    if with_center:
+        state = SplineMirrorState(
+            state.radius_coefficients,
+            state.lambda_coefficients,
+            jnp.zeros((resolution.ns, 2, discretization.coefficient_count)),
+        )
     vectorizer = _SplineStateVectorizer.build(
         state,
         boundary,
@@ -1798,6 +1819,7 @@ def test_closed_colored_hessian_probing_reconstructs_local_symmetric_matrix() ->
     np.testing.assert_allclose(left @ apply(right), right @ apply(left), rtol=2.0e-13, atol=2.0e-13)
     assert sum(probe_batches) == apply.hessian_probe_count
     assert apply.hessian_probe_count < apply.hessian_column_count
+    assert apply.rebuild_each_step is not with_center
 
 
 def test_closed_hessian_coloring_reduces_refined_probe_count_fourfold() -> None:

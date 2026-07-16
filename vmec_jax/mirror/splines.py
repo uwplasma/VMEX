@@ -1130,13 +1130,12 @@ def _packed_spline_preconditioner(
 
         solve.hessian_probe_count = len(groups) if discretization.closed else size  # type: ignore[attr-defined]
         solve.hessian_column_count = size  # type: ignore[attr-defined]
-        solve.rebuild_each_step = discretization.closed  # type: ignore[attr-defined]
+        solve.rebuild_each_step = bool(  # type: ignore[attr-defined]
+            discretization.closed and not vectorizer.center_size
+        )
         return solve
 
-    # Center channels make the frozen closed Hessian nearly dense across
-    # field components. The three separable cyclic blocks avoid compiling
-    # hundreds of colored probes while retaining matrix-free Newton actions.
-    local_builder = build_local if vectorizer.lambda_size and not vectorizer.center_size else None
+    local_builder = build_local if vectorizer.lambda_size else None
     if local_builder is not None:
         local_builder.reuse_linearization = discretization.closed  # type: ignore[attr-defined]
     return apply, scales, local_builder

@@ -48,7 +48,7 @@ geometry helper or generated output was retained.
 | Free open, nonaxisymmetric | solver exists, local-mode refinement has not passed | conditional research |
 | Fixed closed circular limit | VMEC2000/ordinary-vmec_jax flux parity, axis regularity, `ns=5,9,17` force refinement | supported validation limit |
 | Fixed closed hybrid | periodic B-spline geometry, Bishop frame, rotating section, finite-current solve, field-line tracer | not promoted |
-| Preconditioning | open local sparse factor and center-free closed coloring pass; 2,664-variable center map takes 200,000 GMRES iterations | center-map scale blocked |
+| Preconditioning | coupled sparse local factor passes dense-oracle tests; the 2,664-variable center map converges in 4,300 GMRES iterations | supported through the half-straight radial restart |
 | Differentiation | converged-residual open tangents/adjoints and free-axisymmetric adjoint | supported for promoted open lanes |
 
 Important measured results:
@@ -122,9 +122,15 @@ Important measured results:
   `mpol=5`, all stages through fraction 0.5 reach `ftol=1e-12`; the endpoint
   takes 30.0 s, has positive Jacobian, and strong force `0.06565`. With 16
   controls it has strong force `0.05277`. Transferring that state from
-  `ns=5 -> 9` changes force only to `0.05262` but stalls at variational
-  `2.39e-10` after 200,000 GMRES iterations with true linear residual `0.391`.
-  The physical gate and scalable linear solve therefore both remain open.
+  `ns=5 -> 9` changes force only to `0.05262`. The original matrix-free
+  restart stalled at variational `2.39e-10` after 200,000 GMRES iterations
+  with true linear residual `0.391`. Enabling the already-tested colored
+  sparse local factor for center-map states converges the same 2,664-variable
+  problem to variational `1.56e-13` in 55 nonlinear and 4,300 linear
+  iterations. The solve takes 54.3 s for the refined state, stays below
+  2.4 GiB for the continuation, and reports true linear residual `4.98e-10`.
+  Scalable preconditioning therefore passes; the strong-force gate remains
+  open by about 5.2%.
 - Directly regenerating the control-polygon axis at 16, 24, and 32 controls is
   not a valid same-geometry refinement: arc length and curvature change while
   strong force rises. A resolution-independent C2 Hermite return converges but
@@ -132,9 +138,8 @@ Important measured results:
   it to `0.14858`. Both experiments were removed. Future longitudinal evidence
   must refine one 16-control physical axis into nested 32/64 spline spaces.
 
-The release is blocked by scalable center-map preconditioning and a
-same-geometry half-straight strong-force refinement below `5e-2`, then code
-reduction. The
+The release is blocked by a same-geometry half-straight strong-force
+refinement below `5e-2`, then code reduction. The
 conditional nonaxisymmetric free-boundary attempt must not delay those required
 steps.
 
@@ -707,8 +712,8 @@ introduce no module or public facade. Accepted evidence is:
   acceptance, and the configured nonlinear iteration limit is honored;
 - rank-revealing QR and radial restart transfer recover refined circular solves
   below five minutes without adding a module or public name;
-- pre-commit passes, the normal mirror suite is `118 passed, 10 skipped` in
-  261.70 s on the local JAX 0.10.2 CPU environment.
+- pre-commit passes, the normal mirror suite is `119 passed, 11 skipped` in
+  311.46 s on the local JAX 0.10.2 CPU environment.
 
 The early `mpol=0` nonlinear diagnostics were invalid for a closed torus:
 without poloidal stream-function modes, center virtual work was `0.953` and
@@ -728,26 +733,23 @@ variational `4.24e-13`, true linear residual `1.78e-13`, strong force
 peak host memory is 2.68 GiB.
 
 The circular center-map formulation passes independent poloidal, radial, and
-periodic-control trends. The half-straight state converges at the coarse level,
-but its strong force plateaus just above `5e-2` and its 2,664-variable radial
-restart exposes the matrix-free blocker. Continue in this order:
+periodic-control trends. The coupled colored sparse factor resolves the
+2,664-variable matrix-free blocker: the half-straight radial restart now
+converges in 4,300 rather than 200,000 Krylov iterations. Its strong force
+still plateaus just above `5e-2`. Continue in this order:
 
-1. Profile one `ns=9, mpol=5`, 16-control Newton step by setup, JVP,
-   preconditioner, host transfer, and GMRES iteration count. The measured
-   baseline is 200,000 Krylov iterations and relative residual `0.391`.
-2. Enable a coupled local radius/center/stream factor only if its sparse
-   support oracle matches a dense tiny Hessian. Otherwise use a two-level
-   coarse correction built from the accepted `ns=5` dense factor. Require
-   `ftol<=1e-12`, true linear residual `<=1e-8`, less than 30 minutes/8 GiB,
-   and fewer than 5,000 Krylov iterations.
-3. Freeze the 16-control physical axis and transfer it into nested 32- and
+1. Preserve the accepted sparse support oracle and frozen center-map local
+   factor. The measured `ns=9, mpol=5`, 16-control result is 4,300 Krylov
+   iterations, true linear residual `4.98e-10`, 54.3 s, and less than 2.4 GiB;
+   regressions above 5,000 iterations, 30 minutes, or 8 GiB fail this gate.
+2. Freeze the 16-control physical axis and transfer it into nested 32- and
    64-control periodic spline spaces. Do not regenerate a different stadium at
    each count. Transfer boundary and state with the same knot hierarchy.
-4. Repeat half-straight `ns=5,9`, `mpol=5,7` refinement. Require positive
+3. Repeat half-straight `ns=5,9`, `mpol=5,7` refinement. Require positive
    geometry, weak parity, `ftol`, and monotone same-geometry strong force below
    `5e-2`. Compare the center map's Cartesian work with VMEC2000 `R/Z` and
    GVEC's two-coordinate map in this tranche.
-5. If the gate still fails at 64 controls after the scalable solve, remove the
+4. If the gate still fails at 64 controls after the scalable solve, remove the
    fixed closed hybrid from release scope, retain one compact negative record,
    and skip T9c/T9d as required by T9b. Otherwise continue ellipse, twist, and
    current continuation.
@@ -762,8 +764,8 @@ Percentages represent promotion evidence, not implementation volume.
 | Fixed open nonaxisymmetric | 100% | maintain shared-core gates |
 | Free open axisymmetric through 10% | 100% | maintain support ceiling |
 | Free open nonaxisymmetric | 35% | bounded three-grid disposition |
-| Fixed closed B-spline hybrid | 70% | scalable same-geometry half-straight gate, then section/current or explicit deferral |
-| Structured preconditioning | 84% | reduce 200,000-iteration center-map solve below resource/true-residual gates |
+| Fixed closed B-spline hybrid | 75% | same-geometry half-straight gate, then section/current or explicit deferral |
+| Structured preconditioning | 98% | retain the accepted center-map regression gates during refinement |
 | Implicit differentiation | 90% | closed-hybrid derivatives after primal promotion |
 | Code/API simplification | 59% | 53/8,697/4,985/20 must meet T11 budgets |
 | Docs/examples/artifacts | 73% | hybrid showcase and final README/docs reduction |
