@@ -161,9 +161,9 @@ The free-boundary solver jointly updates the spline LCFS, plasma state, and
 unbounded exterior vacuum. Independent force and grid-refinement gates support
 the 0%, 1%, 3%, and 10% sequence. The converged 25% and 50% continuation
 states remain unpromoted because their independent force gates fail. The
-canonical refinement record supports the promoted sequence; a current medium
-rerun has a larger `0.0706` beta-zero force residual and must be regenerated
-before the default cross-section can be enlarged.
+default finite-radius vacuum-flux initialization reproduces the canonical
+medium-grid beta-zero strong-force residual of `0.003411` for the enlarged
+`0.25 m` central cross-section.
 
 ![Solved free-boundary beta scan with ESSOS coils, field lines, LCFS, magnetic field, pressure, and residual histories](docs/_static/figures/mirror_free_boundary_beta50_summary.png)
 

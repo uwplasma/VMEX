@@ -1096,6 +1096,30 @@ N1 and A1 remain bounded future lanes.
   100%, docs/examples 100%, final release audit 99%.
 - User input: none required.
 
+### 2026-07-16 final main integration
+
+- Steps: fetched and merged `main` at `f2769fe9`; reviewed its QP deck,
+  README/docs/reference polish, and orphaned-figure removals; corrected the one
+  stale mirror README sentence left from the paraxial free-boundary run.
+- Results: upstream changes do not touch mirror physics, derivatives, or solver
+  code. The README now reports the reproduced beta-zero strong-force residual
+  `0.003411` at the `0.25 m` central cross-section. The branch is current with
+  main and retains the accepted support and negative-promotion boundaries.
+- Tests: 93 normal mirror tests pass with eight expected full deselections in
+  238.31 seconds; 29 example/package API tests pass with one dependency skip
+  and 15 full deselections in 141.41 seconds; strict Sphinx `-W`, branch-scoped
+  pre-commit hooks, compileall, and diff checks pass.
+- Files/API: the merge preserves 44 mirror-branch files, exactly 8,000 mirror
+  source lines, 3,794 mirror-test lines, 20 public names, three parser-free
+  examples, three compressed figures, and four benchmark records. No mirror
+  module, dependency, runtime path, coil implementation, or public name changed.
+- Best next step: review the single final CI batch after this integration and
+  mark PR #22 ready only if every required job passes.
+- Open lanes: supported open physics 100%, derivative algorithms 100%,
+  preconditioning/backend audit 100%, H1 and nonaxisymmetric-free dispositions
+  100%, docs/examples 100%, final release audit 99%.
+- User input: none required.
+
 After every implementation tranche, append one short dated entry here with:
 
 - steps taken;
