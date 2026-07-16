@@ -56,6 +56,16 @@ def test_axisymmetric_free_boundary_benchmark_declares_supported_beta_ceiling() 
     assert [row["beta"] for row in record["refinement"] if not row["passed"]] == [0.25, 0.50]
 
 
+def test_fixed_benchmark_separates_corrected_cut_support_status() -> None:
+    path = REPO / "benchmarks" / "mirror_fixed_boundary.json"
+    record = json.loads(path.read_text())
+    audit = record["nonaxisymmetric_corrected_cut_audit"]
+    assert audit["rotating_ellipse"]["status"] == "release-candidate"
+    assert audit["straight_field_line"]["status"] == "research"
+    assert record["gates"]["rotating_ellipse_strong_force"]
+    assert not record["gates"]["straight_field_line_independent_strong_force"]
+
+
 def _sample_mout() -> MoutData:
     ns, ntheta, nxi = 3, 5, 7
     s = np.linspace(0.0, 1.0, ns)

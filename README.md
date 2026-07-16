@@ -87,11 +87,11 @@ vmec --plot boozmn_nfp4_QH_warm_start.nc   # Boozer |B| contours + spectrum
 
 ## Straight-axis mirrors
 
-The separate `vmec_jax.mirror` backend supports three scalar-pressure,
-nested-surface models at `ftol=1e-12`: fixed-boundary axisymmetric mirrors,
-fixed-boundary nonaxisymmetric mirrors, and axisymmetric free-boundary mirrors
-through 10% central beta. It uses cubic B-splines along the nonperiodic axis
-and Fourier modes in the cross-section. Coils and Biot-Savart fields remain in
+The separate `vmec_jax.mirror` backend solves scalar-pressure nested surfaces
+at `ftol=1e-12`. The release lanes are fixed-boundary axisymmetric mirrors, a
+fixed-boundary rotating-ellipse mirror, and axisymmetric free-boundary mirrors
+through 10% central beta. Cubic B-splines resolve the nonperiodic axis and
+Fourier modes resolve each cross-section. Coils and Biot-Savart fields remain in
 [ESSOS](https://github.com/uwplasma/ESSOS); vmec-jax consumes a supplied
 `xyz -> B` field.
 
@@ -127,14 +127,26 @@ result = solve_fixed_boundary_cli(
 )
 ```
 
-![Fixed-boundary axisymmetric and nonaxisymmetric mirror refinement](docs/_static/figures/mirror_fixed_boundary_3d.png)
+![Fixed-boundary solved geometry, field lines, cross-sections, convergence, and corrected-cut validation](docs/_static/figures/mirror_fixed_boundary_3d.png)
+
+The rotating ellipse passes the independent reconstructed-force gate and its
+implicit boundary gradient agrees with two fully reconverged finite-difference
+solves to `5.0e-10` relative, providing the derivative needed by an external
+optimizer. The Agren-Savenko straight-field-line target is shown as a research
+case: its coefficient residual reaches `3.1e-16`, but its corrected-cut strong
+force is `1.09`, so it is not advertised as an equilibrium.
 
 The free-boundary solver jointly updates the spline LCFS, plasma state, and
 unbounded exterior vacuum. Independent force and grid-refinement gates support
 the 0%, 1%, 3%, and 10% sequence. The converged 25% and 50% continuations are
 kept as research evidence because their independent force gates fail.
 
-![Axisymmetric free-boundary beta support ceiling](docs/_static/figures/mirror_free_boundary_beta50_summary.png)
+![Solved free-boundary beta scan with ESSOS coils, field lines, LCFS displacement, magnetic field, and residual histories](docs/_static/figures/mirror_free_boundary_beta50_summary.png)
+
+Every displayed beta uses its own solved MOUT state. At 50% requested beta the
+central radius grows by 7.52% and the on-axis field falls by 22.94% from the
+vacuum state; this visibly exercises the finite-beta coupling without
+promoting the failed 25/50% force gates.
 
 Run `python examples/mirror_fixed_boundary_nonaxisymmetric.py` or
 `python examples/mirror_free_boundary_beta_scan.py`. MOUT files can be plotted
@@ -276,25 +288,6 @@ dashed) and the coil currents retune together, with the joint gradient
 finite-difference validated. Coils come from ESSOS — vmec_jax stays
 coil-agnostic. Reproduce with
 `python examples/single_stage_essos_coils_opt.py`.*
-
-## Code size
-
-vmec-jax delivers that superset of capabilities in little more than **half the
-code**, and is the most densely documented of the three. Solver source only (tests,
-language bindings, and vendored third-party excluded), counted with
-[`pygount`](https://pypi.org/project/pygount/) 3.2:
-
-| code base | language | files | code (SLOC) | comments / docstrings | doc-to-code |
-|---|---|---:|---:|---:|---:|
-| **vmec-jax** | Python | 41 | **13,326** | 6,744 | **0.51** |
-| VMEC2000 (PARVMEC) | Fortran | 115 | 24,190 | 8,425 | 0.35 |
-| VMEC++ | C++ / Python | 117 | 22,824 | 7,646 | 0.34 |
-
-vmec-jax is little more than half the SLOC of VMEC2000 and VMEC++, while
-*adding* differentiability, GPU execution, direct-coil free boundary, and a
-built-in Boozer transform — and it carries the highest comment/docstring
-density of the three (reproduce with
-`pygount --format=summary vmec_jax`).
 
 ## Python API
 

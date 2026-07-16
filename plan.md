@@ -86,7 +86,8 @@ one stale figure. Preserve those changes while executing this plan.
 | Lane | Reproduced evidence | Decision |
 | --- | --- | --- |
 | Fixed open axisymmetric | exact polynomial-vacuum fixture; three spline grids; strong force `0.04349 -> 0.03474 -> 0.02873`; field error refines | release candidate |
-| Fixed open nonaxisymmetric | rotating ellipse and Agren-Savenko SFLM; supplied-field initialization; three grids; strong force reaches `0.00976` and `0.01086`; tangent/adjoint checks | release candidate; example basin remains |
+| Fixed open nonaxisymmetric rotating ellipse | supplied-field initialization, explicit self-similar end cuts, medium-grid strong force `0.04178`, and reconverged adjoint error `5.0e-10` | release candidate; corrected-cut refinement audit remains |
+| Agren-Savenko straight-field-line target | corrected-cut solve reaches variational `3.1e-16`, but reconstructed strong force is `1.09` and collar force is `2.27` | research only; stale pre-cut promotion removed |
 | Free open axisymmetric, beta 0-10% | coefficient LCFS/plasma solve, unbounded exterior BIE, three grids, pressure calibration, Pleiades trend, free adjoint | release candidate through central beta 10% |
 | Free open axisymmetric, beta 25/50% | nonlinear residual reaches `1e-12`, but independent force/refinement gates fail; beta 50% gives radius `+7.73%` and center field `-23.73%` | research continuation only |
 | Free open nonaxisymmetric | global observables look stable, but local `m=1` changes 73-81%; 3-grid beta pair costs 293/944/2995 s and 2.74/4.57/7.35 GiB | deferred; implementation removed |
@@ -451,9 +452,10 @@ tolerance. R2 must preserve the final 7,000-line ceiling.
    nonaxisymmetric grids. Record setup time, Krylov count, true residual, wall
    time, and peak memory.
 7. Add a continuation-basin regression across the compact example and the
-   three refinement grids. A resolution change must either reach the promoted
-   strong-force branch or fail explicitly; optimizer `ftol` alone is not a
-   successful equilibrium.
+   corrected-cut refinement grids. A resolution change must either reach the
+   promoted strong-force branch or fail explicitly; optimizer `ftol` alone is
+   not a successful equilibrium. The SFLM now fails explicitly and remains a
+   research fixture until a corrected-cut refinement passes.
 8. Keep SciPy/JAX host boundaries in one solver module. Do not add JAXopt,
    Optax, Equinox, Optimistix, or Lineax to this backend. SOLVAX is considered
    only under the complete-replacement rule above.
@@ -467,13 +469,15 @@ flag; normal tests and benchmark values pass; mirror source remains below
 
 ### R3. Correct examples, plots, and output
 
-1. Treat the current compact `(5,8,4)` fixed-nonaxisymmetric example only as
-   a runtime smoke: its strong-force gates fail. After the R2 basin audit,
-   choose the cheapest robust configuration that passes both cases. Keep the
-   standalone `(5,4,4) -> (7,6,6) -> (9,8,8)` rotating-ellipse and
-   `(7,6,6) -> (9,8,8) -> (11,10,10)` SFLM refinement studies separate.
-2. Require both fixed example cases to assert `ftol`, weak force, strong force,
+1. Use `(ns,mpol,elements)=(7,6,6)` as the compact corrected-cut
+   nonaxisymmetric example. Require the rotating ellipse to pass every gate;
+   execute the SFLM beside it as explicitly labelled negative research
+   evidence. Rebuild either refinement sequence only from current cut
+   semantics; the removed pre-cut numbers are not promotion evidence.
+2. Require the rotating ellipse to assert `ftol`, weak force, strong force,
    divergence, geometry, and derivative gates before writing success output.
+   Require the SFLM to report its failed independent-force gates without
+   writing a supported status.
 3. Replace free-example curves at `1.05*LCFS radius` with solved interior flux
    surface curves. In the zero-current axisymmetric lane these are physical
    constant-theta field lines from cap to cap. Do not draw decorative lines
@@ -496,8 +500,9 @@ flag; normal tests and benchmark values pass; mirror source remains below
    checks. Keep only the two current compressed showcase figures unless a new
    figure replaces one.
 
-Exit: both root examples finish within the resource gate, all plots are from
-solved states, MOUT round trips, and CLI plots are polished and nonblank.
+Exit: both root examples finish within the resource gate, every supported
+case asserts its scientific gates, all plots are from solved states, MOUT
+round trips, and CLI plots are polished and nonblank.
 
 ### R4. Make documentation exact and executable
 
@@ -716,17 +721,17 @@ At this revision:
 | Lane | Completion | Remaining work |
 | --- | ---: | --- |
 | Fixed open axisymmetric physics | 100% | regression only |
-| Fixed open nonaxisymmetric physics | 90% | robust continuation/default and final smoke |
-| Free open axisymmetric through 10% | 95% | final example/plot and full-suite audit |
+| Fixed open nonaxisymmetric physics | 88% | rotating-ellipse corrected-cut refinement; SFLM stays research until its force gate passes |
+| Free open axisymmetric through 10% | 97% | full-suite and clean-example audit |
 | Implicit derivatives for promoted lanes | 95% | final reconverged audit after simplification |
 | Open preconditioning | 90% | post-removal A/B record |
 | Closed hybrid disposition | 100% | negative record retained; future H1 is separate |
 | Nonaxisymmetric free disposition | 100% | compact negative evidence retained |
 | API/code simplification | 90% | finish R2 benchmark/full audit; preserve final line budget |
-| README/docs/examples/plots | 78% | R3/R4 corrections and visual review |
-| Packaging/CI/release audit | 75% | post-R1 full suite and R5 clean audit |
+| README/docs/examples/plots | 90% | simplify examples, strict docs, and final CLI visual audit |
+| Packaging/CI/release audit | 78% | office full shard and R5 clean audit |
 
-Weighted completion of PR #22 is approximately 86%. Deferred N1/H1/A1 work
+Weighted completion of PR #22 is approximately 88%. Deferred N1/H1/A1 work
 is not included in that percentage.
 
 ### 2026-07-15 R1 removal and final plan audit
@@ -780,6 +785,36 @@ is not included in that percentage.
   axisymmetric 95%, derivatives 97%, preconditioning 95%, simplification 90%,
   docs/examples 78%, release audit 76%.
 - User input: none required.
+
+### 2026-07-16 R2 basin audit and R3 solved-state plots
+
+- Steps: imposed explicit self-similar end cuts from the LCFS sections;
+  started supplied-field finite-current states in the shared Newton/Krylov
+  path; removed decorative free-example field curves; made `plot_mout` trace
+  lines from saved Cartesian fields; reran both root examples.
+- Results: the medium rotating ellipse passes with variational `1.72e-16`,
+  weak `1.69e-16`, strong force `0.04178`, divergence `6.61e-15`, and
+  adjoint/fully reconverged finite-difference error `5.01e-10`. The corrected
+  SFLM reaches variational `3.10e-16` but fails strong force at `1.089`; it is
+  now research-only. The beta scan independently solves 0, 1, 3, 10, 25, and
+  50%, with center radius `+7.52%` and axis field `-22.94%` at 50% relative
+  to vacuum; 25/50% remain research because pointwise-force gates fail.
+- Tests: 86 normal mirror tests pass with six full tests deselected in 163.69
+  seconds on Apple CPU; both examples complete at `ftol=1e-12`; Ruff,
+  compileall, and diff checks pass. A clean full shard for `e02dcea7` is
+  running unattended on office GPU 0. The earlier R1 attempt ended in an XLA
+  allocation failure while both GPUs were occupied and is not physics
+  evidence.
+- Files/API: no module, dependency, or public name was added. Source remains
+  6,994 lines. Reusable cut enforcement and field-line rendering live in
+  `splines.py` and `output.py`; examples only orchestrate public workflows.
+- Best next step: finish R3/R4 benchmark and documentation corrections,
+  simplify both examples toward the line target, then perform the clean R5
+  audit after the office full shard reports.
+- Open lanes: fixed axisymmetric 100%, fixed rotating-ellipse 92%, SFLM
+  research 55%, free axisymmetric 97%, derivatives 97%, preconditioning 95%,
+  simplification 92%, docs/examples 90%, release audit 78%.
+- User input: none required for R1-R5.
 
 After every implementation tranche, append one short dated entry here with:
 

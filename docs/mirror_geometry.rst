@@ -327,28 +327,26 @@ surface at spline collocation nodes before projection, instead of replacing
 only the LCFS and risking crossed surfaces. The optimizer also rejects any
 trial with a changed Jacobian sign, matching the regular VMEC-JAX merit policy.
 
-The old zero-stream continuation produced a nonconvergent strong-force floor
-for both shaped cases. Those runs remain historical negative evidence and are
-not the default. Physical supplied-field initialization changes the result.
-For the 90-degree rotating ellipse, combined refinement
-``(ns,mpol,elements)=(5,4,4),(7,6,6),(9,8,8)`` reduces all-volume strong force
-``6.39e-2 -> 2.41e-2 -> 9.76e-3``. The corresponding SFLM sequence
-``(7,6,6),(9,8,8),(11,10,10)`` reduces it
-``4.18e-2 -> 2.11e-2 -> 1.09e-2``. Zero-limit fits have observed orders
-``2.69`` and ``2.63``; both are consistent with zero. Variational and
-independent weak residuals remain near roundoff, Jacobians stay positive, and
-the bulk strong-force gate is below ``2e-2``.
+The old zero-stream continuation produced a nonconvergent strong-force floor.
+Supplied-field initialization provides the physical stream function and flux,
+and ``impose_self_similar_cuts`` fixes each end section to scaled copies of its
+LCFS. With these corrected cut semantics, the medium 90-degree rotating
+ellipse has variational residual ``1.72e-16``, independent weak residual
+``1.69e-16``, all-volume strong force ``4.18e-2``, and normalized divergence
+``6.61e-15``. This is the current nonaxisymmetric release candidate.
 
 ``initialize_from_cartesian_field`` now keeps a supplied spline geometry fixed,
 infers :math:`\Psi'(s)` from the surface-averaged axial flux, and obtains the
 nonzero poloidal stream-function modes from the remaining contravariant field.
 It accepts either Cartesian field samples or a point callable and performs no
-coil construction or Biot--Savart integration. On the independent
-Agren--Savenko field at ``(ns,mpol,elements)=(9,8,8)``, field reconstruction
-error is ``3.42e-4``, field tangency error is ``1.33e-4``, and the all-volume
-strong-force norm is ``5.12e-3``. The inferred flux differs from the analytic
-``B0*a^2/2 = 4.5e-4`` by less than ``6.3e-5`` relative. A JVP test confirms
-that field-amplitude derivatives pass through the projection.
+coil construction or Biot--Savart integration. The independent Agren--Savenko
+field remains a useful projection and field-direction fixture, but it is not
+currently a supported equilibrium. At ``(ns,mpol,elements)=(7,6,6)`` the
+corrected-cut solve reaches variational residual ``3.10e-16`` and divergence
+``7.22e-15``, while the reconstructed all-volume and end-collar strong forces
+are ``1.09`` and ``2.27``. The former pre-cut refinement numbers do not
+reproduce this boundary condition and have been removed from canonical
+evidence.
 
 The parser-free root example runs both fixtures through five coefficient-space
 continuation stages and writes MOUT plus horizontal 3-D, cross-section,
@@ -356,18 +354,10 @@ continuation stages and writes MOUT plus horizontal 3-D, cross-section,
 
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
-At its compact demonstration resolution, the rotating ellipse retains central
-all-volume strong force above the finest benchmark value; the example is a
-fast workflow demonstration, while the compact benchmark carries promotion
-evidence. The SFLM continuation
-now reprojects the analytic field at each shape stage and infers
-``Psi'(s)`` instead of using a prescribed scalar. Its final variational and
-staggered residuals are near roundoff, normalized ``div(B)`` is below
-``8.0e-15``, and mean field-direction cosine exceeds ``0.9999996``. The final
-compact all-volume strong-force norm is ``3.52e-2``; the refined benchmark,
-not this compact run, establishes convergence.
-The figures expose both residual histories and show the actual solved nested
-surfaces and cap-to-cap field lines, not the analytic target alone.
+The example asserts every release gate for the rotating ellipse and labels the
+SFLM result as research. Its figures expose variational and reconstructed-force
+histories and show actual solved nested surfaces and cap-to-cap field lines,
+not the analytic target alone.
 
 Coefficient fixed-boundary gradients
 ------------------------------------
@@ -382,10 +372,10 @@ fully reconverged equilibria::
 
    python examples/mirror_fixed_boundary_nonaxisymmetric.py
 
-On the fine grid the rotating-ellipse and SFLM volume adjoints agree with
-centered differences to ``1.7e-10`` and ``2.0e-10`` relative. Their transpose
-linear residuals are below ``7.4e-10``. These derivatives now inherit promoted
-fixed-open primal states.
+For the corrected-cut rotating ellipse, the volume adjoint agrees with two
+fully reconverged centered-difference solves to ``5.01e-10`` relative and its
+transpose linear residual is ``1.80e-11``. An SFLM adjoint is not promoted
+while its primal independent-force gate fails.
 
 ``spline_fixed_boundary_tangent`` solves the complementary forward system
 ``F_u du = -F_p dp`` with exact residual JVPs and the same preconditioner. On a
@@ -405,7 +395,7 @@ evaluated-state parity tests, not as a second production state.
 Axisymmetric free-boundary implicit gradients
 ---------------------------------------------
 
-``free_boundary_adjoint`` currently differentiates the research axisymmetric
+``free_boundary_adjoint`` differentiates the axisymmetric
 exterior equilibrium with respect to a differentiable external-field callable,
 axial flux, conserved mass profile, and axial current. The physical fixed point
 contains the lateral LCFS and plasma-interior radii. The exterior Neumann BIE
@@ -422,11 +412,11 @@ and any central-pressure calibration target remain fixed. Coil-design
 derivatives belong to the ESSOS integration layer; vmec_jax differentiates
 only the supplied field object.
 
-The adjoint consumes the primal coefficient residual, coefficient packing,
-and block preconditioner. It remains a research API until the
-coefficient-native free-boundary primal lane passes its memory, strong-force,
-and refinement gates. The
-nonaxisymmetric free-boundary derivative is deliberately unavailable because
+The adjoint consumes the same primal coefficient residual, coefficient
+packing, and block preconditioner. It is a release candidate through the
+supported 10% beta ceiling and is checked against fully reconverged field and
+mass perturbations. The nonaxisymmetric free-boundary derivative is
+deliberately unavailable because
 local Fourier-mode refinement failed; it will not be presented as a supported
 gradient.
 
@@ -435,11 +425,9 @@ the corrected ``15x15`` case took 35.2 seconds on CPU and 44.2 seconds on one
 RTX A4000. Energy and force diagnostics agree to numerical precision. Explicit
 ``device=`` arguments and JAX platform environment pins are always honored.
 
-The host CLI remains the forward-performance reference. Fixed-boundary
-derivatives solve the linearized converged coefficient residual and never
-retain or differentiate the nonlinear iteration history. The free-boundary
-adjoint still reconstructs the former nodal residual and is not a supported
-gradient until it is migrated to the primal coefficient problem.
+The host CLI remains the forward-performance reference. Fixed- and
+free-boundary derivatives solve the linearized converged coefficient residual
+and never retain or differentiate the nonlinear iteration history.
 
 Release evidence
 ----------------
