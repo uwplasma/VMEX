@@ -9,7 +9,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from scipy.optimize import least_squares
-from scipy.sparse.linalg import LinearOperator, gmres
+from scipy.sparse.linalg import LinearOperator
 
 from .forces import (
     MU0,
@@ -31,6 +31,7 @@ from .exterior_bie import (
 )
 from .model import MirrorBoundary, MirrorConfig, MirrorState
 from .output import FreeBoundaryRestart
+from .solver import _bounded_newton_krylov
 from .splines import (
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
@@ -250,82 +251,6 @@ class _FreeEquilibriumProblem:
             rmatvec=rmatvec,
             dtype=np.dtype(vector.dtype),
         )
-
-
-def _polish_free_equilibrium(
-    problem: _FreeEquilibriumProblem,
-    x0: np.ndarray,
-    bounds: tuple[np.ndarray, np.ndarray],
-    *,
-    ftol: float,
-    max_steps: int,
-    record: Callable[[np.ndarray], np.ndarray],
-) -> tuple[np.ndarray, int, int, float, bool, str]:
-    """Bounded Newton-GMRES polish with the fixed-solver spline preconditioner."""
-
-    x = np.asarray(x0, dtype=float)
-    lower, upper = bounds
-    apply_preconditioner = problem.preconditioner()
-    inverse = LinearOperator((problem.size, problem.size), matvec=apply_preconditioner, dtype=float)
-    linear_iterations = 0
-    final_linear_residual = np.inf
-    for step in range(max(0, int(max_steps))):
-        residual = np.asarray(problem.residual(jnp.asarray(x)), dtype=float)
-        residual_max = float(np.max(np.abs(residual)))
-        if residual_max <= ftol:
-            return x, step, linear_iterations, final_linear_residual, True, "Newton-GMRES converged"
-        operator = problem.linear_operator(x)
-        iteration_counter = 0
-
-        def count_iteration(_residual: float) -> None:
-            nonlocal iteration_counter
-            iteration_counter += 1
-
-        direction, info = gmres(
-            operator,
-            -residual,
-            M=inverse,
-            restart=min(24, problem.size),
-            maxiter=3,
-            rtol=min(1.0e-5, max(1.0e-10, 0.1 * residual_max)),
-            atol=0.0,
-            callback=count_iteration,
-            callback_type="pr_norm",
-        )
-        linear_iterations += iteration_counter
-        linear_error = operator @ direction + residual
-        final_linear_residual = float(
-            np.linalg.norm(linear_error) / max(np.linalg.norm(residual), np.finfo(float).tiny)
-        )
-        if info < 0 or not np.all(np.isfinite(direction)):
-            return x, step, linear_iterations, final_linear_residual, False, "Newton-GMRES breakdown"
-
-        merit = 0.5 * float(np.dot(residual, residual))
-        accepted = False
-        step_length = 1.0
-        for _ in range(20):
-            candidate = np.clip(x + step_length * direction, lower, upper)
-            candidate_residual = np.asarray(problem.residual(jnp.asarray(candidate)), dtype=float)
-            candidate_merit = 0.5 * float(np.dot(candidate_residual, candidate_residual))
-            if np.isfinite(candidate_merit) and candidate_merit < merit:
-                x = candidate
-                record(x)
-                accepted = True
-                break
-            step_length *= 0.5
-        if not accepted:
-            return x, step + 1, linear_iterations, final_linear_residual, False, "Newton line search stalled"
-
-    residual_max = float(np.max(np.abs(np.asarray(problem.residual(jnp.asarray(x)), dtype=float))))
-    converged = residual_max <= ftol
-    return (
-        x,
-        int(max_steps),
-        linear_iterations,
-        final_linear_residual,
-        converged,
-        "Newton-GMRES converged" if converged else "Newton-GMRES iteration limit",
-    )
 
 
 def _spline_boundary_work(
@@ -706,6 +631,7 @@ def solve_free_boundary_cli(
     polish_success = False
     polish_message = ""
     if matrix_free and np.max(np.abs(residual_host(solution))) > config.ftol:
+        free_preconditioner = problem.preconditioner()
         (
             solution,
             polish_steps,
@@ -713,13 +639,23 @@ def solve_free_boundary_cli(
             final_linear_residual,
             polish_success,
             polish_message,
-        ) = _polish_free_equilibrium(
-            problem,
+        ) = _bounded_newton_krylov(
             solution,
+            lambda vector: np.asarray(problem.residual(jnp.asarray(vector)), dtype=float),
+            lambda vector, _residual: (
+                problem.linear_operator(vector).matvec,
+                free_preconditioner,
+            ),
             (lower, upper),
             ftol=config.ftol,
             max_steps=min(30, max(0, config.max_iterations - int(solve.nfev))),
-            record=residual_host,
+            record_step=residual_host,
+            restart=24,
+            max_restarts=3,
+            linear_rtol=lambda residual_max: min(
+                1.0e-5,
+                max(1.0e-10, 0.1 * residual_max),
+            ),
         )
 
     (

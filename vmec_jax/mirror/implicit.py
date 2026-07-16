@@ -11,12 +11,12 @@ from typing import Any, Callable
 import jax
 import jax.numpy as jnp
 import numpy as np
-from scipy.sparse.linalg import LinearOperator, gmres
 
 from .forces import MirrorEnergy, mirror_energy
 from .free_boundary import FreeBoundaryParameters, _build_free_equilibrium_problem
 from .geometry import regularize_axis_stream_function
 from .model import MirrorBoundary, MirrorState
+from .solver import _solve_krylov_system
 
 Array = Any
 MirrorQuantity = Callable[[MirrorState, MirrorEnergy], Array]
@@ -125,8 +125,6 @@ def _solve_implicit_system(
             if denominator > np.finfo(float).tiny:
                 scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
 
-    operator = LinearOperator((size, size), matvec=matrix_vector, dtype=float)
-    inverse = LinearOperator((size, size), matvec=active_preconditioner, dtype=float)
     if initial is None:
         initial_relative_residual = np.inf
     else:
@@ -134,29 +132,21 @@ def _solve_implicit_system(
         initial_relative_residual = float(
             np.linalg.norm(initial_error) / max(np.linalg.norm(right_hand_side), np.finfo(float).tiny)
         )
-    iterations = 0
-
-    def count_iteration(_residual: float) -> None:
-        nonlocal iterations
-        iterations += 1
-
     if initial_relative_residual <= rtol:
-        solution, info = initial, 0
+        solution = np.asarray(initial)
+        iterations = 0
+        relative_residual = initial_relative_residual
+        info = 0
     else:
-        solution, info = gmres(
-            operator,
+        solution, iterations, relative_residual, info = _solve_krylov_system(
+            matrix_vector,
             right_hand_side,
-            x0=initial,
-            M=inverse,
+            active_preconditioner,
+            initial=initial,
             restart=min(100, size),
-            maxiter=min(3, max_restarts) if initial is not None else max_restarts,
+            max_restarts=min(3, max_restarts) if initial is not None else max_restarts,
             rtol=rtol,
-            atol=0.0,
-            callback=count_iteration,
-            callback_type="pr_norm",
         )
-    linear_error = matrix_vector(solution) - right_hand_side
-    relative_residual = float(np.linalg.norm(linear_error) / max(np.linalg.norm(right_hand_side), np.finfo(float).tiny))
     converged = bool(info == 0 and relative_residual <= max(10.0 * rtol, 1.0e-12))
     return solution, iterations, relative_residual, converged
 

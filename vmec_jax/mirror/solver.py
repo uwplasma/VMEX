@@ -241,7 +241,126 @@ class SeparableMirrorPreconditioner:
         return projected.reshape(np.asarray(vector).shape)
 
 
-def _matrix_free_newton_polish(
+def _solve_krylov_system(
+    matrix_vector: Any,
+    right_hand_side: np.ndarray,
+    apply_preconditioner: Any,
+    *,
+    rtol: float,
+    restart: int,
+    max_restarts: int,
+    initial: np.ndarray | None = None,
+) -> tuple[np.ndarray, int, float, int]:
+    """Solve a host GMRES system and report its true relative residual."""
+
+    right_hand_side = np.asarray(right_hand_side, dtype=float)
+    size = right_hand_side.size
+    operator = LinearOperator((size, size), matvec=matrix_vector, dtype=float)
+    inverse = LinearOperator((size, size), matvec=apply_preconditioner, dtype=float)
+    iterations = 0
+
+    def count_iteration(_residual: float) -> None:
+        nonlocal iterations
+        iterations += 1
+
+    solution, info = gmres(
+        operator,
+        right_hand_side,
+        x0=initial,
+        M=inverse,
+        restart=min(int(restart), size),
+        maxiter=int(max_restarts),
+        rtol=float(rtol),
+        atol=0.0,
+        callback=count_iteration,
+        callback_type="pr_norm",
+    )
+    error = np.asarray(matrix_vector(solution), dtype=float) - right_hand_side
+    denominator = max(np.linalg.norm(right_hand_side), np.finfo(float).tiny)
+    return np.asarray(solution), iterations, float(np.linalg.norm(error) / denominator), int(info)
+
+
+def _bounded_newton_krylov(
+    x0: np.ndarray,
+    residual_function: Any,
+    linear_model: Any,
+    bounds: tuple[np.ndarray, np.ndarray],
+    *,
+    ftol: float,
+    max_steps: int,
+    record_step: Any,
+    restart: int,
+    max_restarts: int,
+    linear_rtol: Any,
+    objective_function: Any | None = None,
+    fallback_direction: Any | None = None,
+    after_step: Any | None = None,
+) -> tuple[np.ndarray, int, int, float, bool, str]:
+    """Run the shared bounded Newton-GMRES iteration for mirror residuals."""
+
+    x = np.asarray(x0, dtype=float)
+    lower, upper = (np.asarray(bound, dtype=float) for bound in bounds)
+    linear_iterations = 0
+    final_linear_residual = np.inf
+    for step in range(max(0, int(max_steps))):
+        residual = np.asarray(residual_function(x), dtype=float)
+        residual_max = float(np.max(np.abs(residual)))
+        if residual_max <= float(ftol):
+            return x, step, linear_iterations, final_linear_residual, True, "Newton-GMRES converged"
+
+        matrix_vector, apply_preconditioner = linear_model(x, residual)
+        direction, iterations, final_linear_residual, info = _solve_krylov_system(
+            matrix_vector,
+            -residual,
+            apply_preconditioner,
+            rtol=float(linear_rtol(residual_max)),
+            restart=restart,
+            max_restarts=max_restarts,
+        )
+        linear_iterations += iterations
+        if info < 0 or not np.all(np.isfinite(direction)):
+            return x, step, linear_iterations, final_linear_residual, False, "GMRES breakdown"
+
+        slope = float(np.dot(residual, direction))
+        if objective_function is not None and slope >= 0.0 and fallback_direction is not None:
+            direction = np.asarray(fallback_direction(residual), dtype=float)
+            slope = float(np.dot(residual, direction))
+        current_merit = (
+            float(objective_function(x))
+            if objective_function is not None
+            else 0.5 * float(np.dot(residual, residual))
+        )
+        accepted = False
+        step_length = 1.0
+        for _ in range(24):
+            candidate = np.clip(x + step_length * direction, lower, upper)
+            if objective_function is None:
+                candidate_residual = np.asarray(residual_function(candidate), dtype=float)
+                candidate_merit = 0.5 * float(np.dot(candidate_residual, candidate_residual))
+                accepted = np.isfinite(candidate_merit) and candidate_merit < current_merit
+            else:
+                candidate_merit = float(objective_function(candidate))
+                accepted = np.isfinite(candidate_merit) and (
+                    candidate_merit <= current_merit + 1.0e-4 * step_length * slope
+                )
+            if accepted:
+                x = candidate
+                record_step(x)
+                break
+            step_length *= 0.5
+        retry_rejected = bool(after_step(accepted)) if after_step is not None else False
+        if not accepted:
+            if retry_rejected:
+                continue
+            return x, step + 1, linear_iterations, final_linear_residual, False, "Newton line search stalled"
+
+    residual_max = float(np.max(np.abs(np.asarray(residual_function(x), dtype=float))))
+    converged = residual_max <= float(ftol)
+    message = "Newton-GMRES converged" if converged else "Newton-GMRES iteration limit"
+    return x, int(max_steps), linear_iterations, final_linear_residual, converged, message
+
+
+def _polish_fixed_coefficients(
     x0: np.ndarray,
     gradient_function: Any,
     objective_function: Any,
@@ -256,54 +375,33 @@ def _matrix_free_newton_polish(
 ) -> tuple[np.ndarray, int, int, float, bool, str]:
     """Damped Newton-GMRES polish using exact JAX Hessian products."""
 
-    x = np.asarray(x0, dtype=float)
     apply_preconditioner, block_scales, build_local = preconditioner
-
     hessian_vector = jax.jit(lambda point, direction: jax.jvp(gradient_function, (point,), (direction,))[1])
     hessian_columns = jax.jit(
         lambda point, directions: jax.vmap(
             lambda direction: jax.jvp(gradient_function, (point,), (direction,))[1]
         )(directions)
     )
-    reuse_linearization = bool(getattr(build_local, "reuse_linearization", False))
-    linear_iterations = 0
-    final_linear_residual = np.inf
-    damping = 1.0e-8
+    damping = [1.0e-8]
     local_preconditioner = None
+    active_preconditioner = apply_preconditioner
 
-    for step_index in range(max(0, int(max_steps))):
-        linear_hessian = None
-        if reuse_linearization:
-            gradient_value, linear_hessian = jax.linearize(gradient_function, jnp.asarray(x))
-            hessian_action = jax.jit(linear_hessian)
-        else:
-            gradient_value = gradient_function(jnp.asarray(x))
-            hessian_action = None
-        gradient = np.asarray(gradient_value, dtype=float)
-        gradient_max = float(np.max(np.abs(gradient)))
-        if gradient_max <= float(ftol):
-            return x, step_index, linear_iterations, final_linear_residual, True, "Newton-GMRES converged"
+    def residual(vector: np.ndarray) -> np.ndarray:
+        return np.asarray(gradient_function(jnp.asarray(vector)), dtype=float)
+
+    def linear_model(vector: np.ndarray, _residual: np.ndarray) -> tuple[Any, Any]:
+        nonlocal active_preconditioner, local_preconditioner
 
         def matrix_vector(direction: np.ndarray) -> np.ndarray:
-            if hessian_action is None:
-                product = np.asarray(hessian_vector(jnp.asarray(x), jnp.asarray(direction)), dtype=float)
-            else:
-                product = np.asarray(hessian_action(jnp.asarray(direction)), dtype=float)
-            return product + damping * np.asarray(direction)
+            product = hessian_vector(jnp.asarray(vector), jnp.asarray(direction))
+            return np.asarray(product, dtype=float) + damping[0] * np.asarray(direction)
 
-        rebuild_local = local_preconditioner is None or bool(
-            getattr(local_preconditioner, "rebuild_each_step", False)
-        )
-        if rebuild_local and build_local is not None:
-            frozen_columns = jax.jit(jax.vmap(linear_hessian)) if reuse_linearization else None
+        if local_preconditioner is None and build_local is not None:
 
             def matrix_columns(directions: np.ndarray) -> np.ndarray:
                 directions = np.asarray(directions, dtype=float)
-                if frozen_columns is None:
-                    products = hessian_columns(jnp.asarray(x), jnp.asarray(directions))
-                else:
-                    products = frozen_columns(jnp.asarray(directions))
-                return np.asarray(products, dtype=float) + damping * directions
+                products = hessian_columns(jnp.asarray(vector), jnp.asarray(directions))
+                return np.asarray(products, dtype=float) + damping[0] * directions
 
             try:
                 local_preconditioner = build_local(matrix_columns)
@@ -313,77 +411,42 @@ def _matrix_free_newton_polish(
             local_preconditioner = False
 
         if local_preconditioner is False:
-            # Match the fallback tensor blocks to the local Hessian scale.
             block_scales[:] = 1.0
-            probe = np.random.default_rng(0).choice((-1.0, 1.0), size=x.size)
+            probe = np.random.default_rng(0).choice((-1.0, 1.0), size=vector.size)
             for block, active in enumerate(vectorizer.block_slices):
                 direction = np.zeros_like(probe)
                 direction[active] = probe[active]
                 response = apply_preconditioner(matrix_vector(direction))
                 denominator = abs(float(np.dot(direction, response)))
                 if denominator > np.finfo(float).tiny:
-                    block_scales[block] = np.clip(np.dot(direction, direction) / denominator, 1.0e-8, 1.0e8)
+                    block_scales[block] = np.clip(
+                        np.dot(direction, direction) / denominator,
+                        1.0e-8,
+                        1.0e8,
+                    )
             active_preconditioner = apply_preconditioner
         else:
             active_preconditioner = local_preconditioner
+        return matrix_vector, active_preconditioner
 
-        operator = LinearOperator((x.size, x.size), matvec=matrix_vector, dtype=float)
-        inverse = LinearOperator((x.size, x.size), matvec=active_preconditioner, dtype=float)
-        iteration_counter = 0
+    def after_step(accepted: bool) -> bool:
+        damping[0] = max(1.0e-12, 0.3 * damping[0]) if accepted else 10.0 * damping[0]
+        return not accepted and damping[0] <= 1.0
 
-        def count_iteration(_residual: float) -> None:
-            nonlocal iteration_counter
-            iteration_counter += 1
-
-        direction, info = gmres(
-            operator,
-            -gradient,
-            M=inverse,
-            restart=min(200, x.size),
-            maxiter=10,
-            rtol=min(1.0e-8, max(1.0e-10, 0.1 * gradient_max)),
-            atol=0.0,
-            callback=count_iteration,
-            callback_type="pr_norm",
-        )
-        linear_iterations += iteration_counter
-        linear_error = matrix_vector(direction) + gradient
-        final_linear_residual = float(
-            np.linalg.norm(linear_error) / max(np.linalg.norm(gradient), np.finfo(float).tiny)
-        )
-        if info < 0 or not np.all(np.isfinite(direction)):
-            return x, step_index, linear_iterations, final_linear_residual, False, "GMRES breakdown"
-        if float(np.dot(gradient, direction)) >= 0.0:
-            direction = -active_preconditioner(gradient)
-
-        value = float(objective_function(jnp.asarray(x)))
-        slope = float(np.dot(gradient, direction))
-        accepted = False
-        step_length = 1.0
-        for _ in range(24):
-            candidate = np.clip(x + step_length * direction, lower_bounds, upper_bounds)
-            candidate_value = float(objective_function(jnp.asarray(candidate)))
-            if np.isfinite(candidate_value) and candidate_value <= value + 1.0e-4 * step_length * slope:
-                x = candidate
-                record_step(x)
-                accepted = True
-                damping = max(1.0e-12, 0.3 * damping)
-                break
-            step_length *= 0.5
-        if not accepted:
-            damping *= 10.0
-            if damping > 1.0:
-                return x, step_index, linear_iterations, final_linear_residual, False, "Newton line search stalled"
-
-    gradient_max = float(np.max(np.abs(np.asarray(gradient_function(jnp.asarray(x)), dtype=float))))
-    converged = gradient_max <= float(ftol)
-    return (
-        x,
-        int(max_steps),
-        linear_iterations,
-        final_linear_residual,
-        converged,
-        "Newton-GMRES converged" if converged else "Newton-GMRES iteration limit",
+    return _bounded_newton_krylov(
+        x0,
+        residual,
+        linear_model,
+        (lower_bounds, upper_bounds),
+        ftol=ftol,
+        max_steps=max_steps,
+        record_step=record_step,
+        restart=200,
+        max_restarts=10,
+        linear_rtol=lambda residual_max: min(1.0e-8, max(1.0e-10, 0.1 * residual_max)),
+        objective_function=lambda vector: objective_function(jnp.asarray(vector)),
+        fallback_direction=lambda residual_value: -active_preconditioner(residual_value),
+        after_step=after_step,
     )
 
 
@@ -489,7 +552,7 @@ def _optimize_fixed_boundary(
             final_linear_residual,
             newton_success,
             newton_message,
-        ) = _matrix_free_newton_polish(
+        ) = _polish_fixed_coefficients(
             final_x,
             gradient_function,
             objective,

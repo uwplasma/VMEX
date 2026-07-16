@@ -31,6 +31,7 @@ from vmec_jax.mirror.forces import (  # noqa: E402
 )
 from vmec_jax.mirror.solver import (  # noqa: E402
     SeparableMirrorPreconditioner,
+    _bounded_newton_krylov,
     _valid_energy_objective,
 )
 from vmec_jax.mirror.model import project_fixed_boundary_state  # noqa: E402
@@ -544,3 +545,37 @@ def test_separable_preconditioner_is_exact_for_its_model_and_reduces_gmres_work(
     assert iterations["preconditioned"] <= 2
     np.testing.assert_allclose(plain, exact, rtol=2.0e-9, atol=2.0e-9)
     np.testing.assert_allclose(accelerated, exact, rtol=2.0e-12, atol=2.0e-12)
+
+
+@pytest.mark.parametrize("use_objective", [False, True])
+def test_shared_bounded_newton_driver_reports_true_linear_residual(use_objective) -> None:
+    matrix = np.diag([2.0, 3.0, 5.0])
+    right_hand_side = np.array([0.5, -0.75, 1.0])
+    inverse = np.diag(1.0 / np.diag(matrix))
+
+    def residual(x):
+        return matrix @ x - right_hand_side
+
+    objective = (
+        (lambda x: 0.5 * x @ matrix @ x - right_hand_side @ x)
+        if use_objective
+        else None
+    )
+    records = []
+    result = _bounded_newton_krylov(
+        np.zeros(3),
+        residual,
+        lambda _x, _residual: (matrix.__matmul__, inverse.__matmul__),
+        (-np.ones(3), np.ones(3)),
+        ftol=1.0e-12,
+        max_steps=3,
+        record_step=lambda x: records.append(np.array(x)),
+        restart=3,
+        max_restarts=2,
+        linear_rtol=lambda _residual_max: 1.0e-12,
+        objective_function=objective,
+    )
+    solution, steps, iterations, linear_residual, converged, _ = result
+    np.testing.assert_allclose(solution, np.linalg.solve(matrix, right_hand_side), atol=1.0e-14)
+    assert converged and steps == 1 and iterations > 0 and records
+    assert linear_residual < 1.0e-12

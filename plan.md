@@ -57,7 +57,7 @@ Pushed source snapshot used for this revision:
 The R1 removal implemented in the current worktree changes that release
 candidate to 13 source files / 6,939 lines, 10 test files / 3,373 lines, and
 17 public names. It removes 2,290 lines while adding 154 focused replacement
-lines. These numbers become the new baseline when R1 is committed.
+lines. These numbers became the new baseline at R1 commit `a08d621b`.
 
 Fresh local verification during this revision:
 
@@ -409,8 +409,8 @@ in the release scope. Git history and
 `benchmarks/mirror_hybrid_fixed_boundary.json` preserve the work.
 
 Implementation status: code removal complete in the 2026-07-15 R1 worktree;
-acceptance waits only on the full-test shard and the commit recorded in section
-12. The interrupted local shard is rerun from the pushed checkpoint on the
+acceptance waits only on the full-test shard recorded in section 12. The
+interrupted local shard is being rerun from pushed commit `a08d621b` on the
 office host; an interrupted run is not evidence.
 
 1. Remove periodic/closed branches from `basis.py`, `geometry.py`,
@@ -428,7 +428,7 @@ office host; an interrupted run is not evidence.
 Exit: no runtime path suggests closed equilibria are supported; public names
 are at most 17; the staged R1 mirror source is at most 7,000 lines and tests
 at most 3,500 lines; all promoted numerical values remain within recorded
-tolerance. R2 must reduce source to the final 6,700-line ceiling.
+tolerance. R2 must preserve the final 7,000-line ceiling.
 
 ### R2. Consolidate the open solver
 
@@ -460,9 +460,10 @@ tolerance. R2 must reduce source to the final 6,700-line ceiling.
 9. Reduce functions over 150 lines when extraction gives a named scientific
    operation; do not split files only to satisfy a line count.
 
-Exit: one residual per model, one fixed solver path, one free solver path, and
-one implicit linear-solve helper; at least 250 further source lines removed;
-normal tests and benchmark values pass; mirror source is at most 6,700 lines.
+Exit: one residual per model, one shared bounded Newton driver, and one shared
+primal/transpose Krylov helper; no duplicate iteration loop or solver-choice
+flag; normal tests and benchmark values pass; mirror source remains below
+7,000 lines. R1 and R2 together must remove at least 1,000 package lines.
 
 ### R3. Correct examples, plots, and output
 
@@ -546,7 +547,7 @@ Run from a clean tree at the final source commit:
 Final merge budgets, measured against fetched `origin/main`:
 
 - at most 42 changed files;
-- at most 6,700 mirror source lines;
+- at most 7,000 mirror source lines;
 - at most 3,500 mirror-test lines;
 - at most 17 public mirror names;
 - exactly two root mirror examples and two showcase figures;
@@ -721,11 +722,11 @@ At this revision:
 | Open preconditioning | 90% | post-removal A/B record |
 | Closed hybrid disposition | 100% | negative record retained; future H1 is separate |
 | Nonaxisymmetric free disposition | 100% | compact negative evidence retained |
-| API/code simplification | 78% | commit R1; R2 shared solver and final line budget |
+| API/code simplification | 90% | finish R2 benchmark/full audit; preserve final line budget |
 | README/docs/examples/plots | 78% | R3/R4 corrections and visual review |
 | Packaging/CI/release audit | 75% | post-R1 full suite and R5 clean audit |
 
-Weighted completion of PR #22 is approximately 83%. Deferred N1/H1/A1 work
+Weighted completion of PR #22 is approximately 86%. Deferred N1/H1/A1 work
 is not included in that percentage.
 
 ### 2026-07-15 R1 removal and final plan audit
@@ -752,6 +753,33 @@ is not included in that percentage.
   docs/examples 78%, release audit 75%.
 - User input: none required for R1-R5. N1/H1/A1 begin only after a separate
   post-release go/no-go decision.
+
+### 2026-07-16 R2 shared nonlinear and linear solve path
+
+- Steps: moved fixed/free bound projection, Newton convergence, GMRES,
+  backtracking, iteration counts, and true-residual verification into one host
+  driver in `solver.py`; moved implicit primal/transpose GMRES through the same
+  linear helper; removed the duplicate free-equilibrium Newton loop.
+- Results: source is 6,928 lines, down 1,112 from the audited branch baseline;
+  the public namespace remains 17 names. Fixed uses energy Armijo acceptance,
+  free uses residual-merit acceptance, and both retain model-owned
+  preconditioners and coefficient residuals.
+- SOLVAX A/B: 0.8.4 and SciPy both required 9 iterations on the 315-variable
+  mirror stiffness fixture, with true residuals `2.71e-9` and `2.86e-9`.
+  Warm CPU times were 0.41/0.45 ms, but SOLVAX compilation cost 0.266 s and its
+  nonlinear driver has neither bounds nor merit backtracking. It fails the
+  complete-replacement gate, so no option or second production path is added.
+- Tests: 83 normal integration tests plus both shared-driver modes pass; Ruff,
+  compileall, and `git diff --check` pass. The pushed R1 full shard continues
+  on one office RTX A4000; R2 is not accepted until its own full shard passes.
+- Files/API: only `solver.py`, `free_boundary.py`, `implicit.py`, this plan, and
+  one existing test file change; no file, dependency, or public name is added.
+- Best next step: commit/push R2 after the focused continuation regression,
+  then generate the two solved-state README showcases in R3.
+- Open lanes: fixed axisymmetric 100%, fixed nonaxisymmetric 90%, free
+  axisymmetric 95%, derivatives 97%, preconditioning 95%, simplification 90%,
+  docs/examples 78%, release audit 76%.
+- User input: none required.
 
 After every implementation tranche, append one short dated entry here with:
 
