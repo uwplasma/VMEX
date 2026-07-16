@@ -273,6 +273,10 @@ def _spline_implicit_problem(
     def residual(x: Array, controls: SplineFixedBoundaryParameters) -> Array:
         return jax.grad(lambda vector: energy_at(vector, controls).total / energy_scale)(x)
 
+    reconstructed = np.asarray(residual(x_star, parameters), dtype=float)
+    tolerance = max(10.0 * float(evaluated.variational.maximum), 1.0e-12)
+    if np.max(np.abs(reconstructed)) > tolerance:
+        raise ValueError("fixed-boundary controls do not reconstruct the converged result")
     apply_preconditioner, scales, _ = _packed_spline_preconditioner(discretization, vectorizer)
     return (
         x_star,
