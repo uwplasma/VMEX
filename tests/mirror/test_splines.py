@@ -1859,11 +1859,61 @@ def test_closed_colored_hessian_probing_reconstructs_local_symmetric_matrix(
     np.testing.assert_allclose(apply(matrix @ exact), exact, rtol=2.0e-13, atol=2.0e-13)
     np.testing.assert_allclose(left @ apply(right), right @ apply(left), rtol=2.0e-13, atol=2.0e-13)
     assert sum(probe_batches) == apply.hessian_probe_count
-    assert apply.hessian_probe_count < apply.hessian_column_count
+    assert apply.hessian_probe_count <= apply.hessian_column_count
     assert apply.rebuild_each_step is not with_center
 
 
-def test_closed_hessian_coloring_reduces_refined_probe_count_fourfold() -> None:
+def test_closed_hessian_support_contains_physical_energy_action() -> None:
+    resolution = MirrorResolution(ns=5, mpol=2, nxi=4)
+    discretization, axis, boundary, state = _closed_circular_torus(
+        resolution,
+        coefficient_count=8,
+    )
+    radial = jnp.asarray(discretization.grid.s)[:, None, None]
+    nodes = jnp.asarray(discretization.spline.collocation_nodes)[None]
+    center_shape = jnp.stack(
+        (
+            jnp.cos(nodes),
+            jnp.sin(nodes),
+        ),
+        axis=1,
+    )
+    center = 0.004 * (1.0 - radial) * center_shape
+    state = SplineMirrorState(
+        state.radius_coefficients,
+        state.lambda_coefficients,
+        center,
+    )
+    vectorizer = _SplineStateVectorizer.build(
+        state,
+        boundary,
+        discretization,
+        axial_flux_derivative=0.03,
+        solve_lambda=True,
+    )
+    vector = jnp.asarray(vectorizer.pack())
+
+    def objective(packed):
+        evaluated = discretization.evaluate_state(vectorizer.unpack(packed))
+        return mirror_energy(
+            evaluated,
+            discretization.grid,
+            axis=axis,
+            axial_flux_derivative=0.03,
+        ).total
+
+    gradient = jax.grad(objective)
+    _, hessian_action = jax.linearize(gradient, vector)
+    hessian = np.asarray(jax.vmap(hessian_action)(jnp.eye(vector.size)))
+    supports = _closed_hessian_supports(discretization, vectorizer)
+    omitted = np.array(hessian, copy=True)
+    for column, rows in enumerate(supports):
+        omitted[column, rows] = 0.0
+
+    assert np.linalg.norm(omitted) <= 2.0e-10 * np.linalg.norm(hessian)
+
+
+def test_closed_hessian_coloring_reduces_refined_probe_count() -> None:
     resolution = MirrorResolution(ns=9, mpol=1, nxi=4)
     discretization, _, boundary, state = _closed_circular_torus(
         resolution,
@@ -1880,7 +1930,7 @@ def test_closed_hessian_coloring_reduces_refined_probe_count_fourfold() -> None:
     supports = _closed_hessian_supports(discretization, vectorizer)
     groups = _disjoint_support_groups(supports, size)
 
-    assert size >= 4 * len(groups)
+    assert size >= 1.9 * len(groups)
     for group in groups:
         rows = np.concatenate([supports[column] for column in group])
         assert np.unique(rows).size == rows.size

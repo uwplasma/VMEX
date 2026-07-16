@@ -974,17 +974,34 @@ def _closed_hessian_supports(
 ) -> list[np.ndarray]:
     """Build the structural rows of the local closed-spline Hessian model."""
 
-    _, radial, axial = _packed_spline_layout(discretization, vectorizer)
+    channels, radial, axial = _packed_spline_layout(discretization, vectorizer)
     nodes = discretization.grid.axial_basis.nodes
     values = np.asarray(discretization.spline.basis_matrix(nodes))
     derivatives = np.asarray(discretization.spline.basis_matrix(nodes, derivative=1))
     scale = max(float(np.max(np.abs(derivatives))), 1.0)
     active = (np.abs(values) > 1.0e-13) | (np.abs(derivatives) > 1.0e-13 * scale)
     overlap = active.T.astype(np.int16) @ active.astype(np.int16) > 0
-    return [
-        np.flatnonzero((np.abs(radial - radial[column]) <= 1) & overlap[axial, axial[column]])
-        for column in range(radial.size)
-    ]
+    supports = []
+    for column in range(radial.size):
+        radial_neighbors = np.abs(radial - radial[column]) <= 1
+
+        # Axis regularization obtains lambda(0) from the first radius-shape
+        # surface and uses it throughout the radial stream interpolation.
+        axis_radius = (channels == 0) & (radial == 1)
+        if channels[column] == 0 and radial[column] == 1:
+            radial_neighbors[:] = True
+        else:
+            radial_neighbors |= axis_radius
+
+        # The first half cell uses two off-axis stream surfaces. Its center
+        # variables therefore span one more radial level than interior cells.
+        if radial[column] == 0:
+            radial_neighbors |= radial <= 2
+        radial_neighbors |= (radial == 0) & (radial[column] <= 2)
+        supports.append(
+            np.flatnonzero(radial_neighbors & overlap[axial, axial[column]])
+        )
+    return supports
 
 
 def _disjoint_support_groups(supports: list[np.ndarray], size: int) -> list[np.ndarray]:
