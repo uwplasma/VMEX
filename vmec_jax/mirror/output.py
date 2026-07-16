@@ -17,9 +17,19 @@ import jax.numpy as jnp
 import numpy as np
 
 from .forces import MU0, staggered_field_strength
-from .geometry import contravariant_field, evaluate_geometry, magnetic_field_xyz
+from .geometry import (
+    contravariant_field,
+    evaluate_geometry,
+    magnetic_field_squared,
+    magnetic_field_xyz,
+)
 from .model import MIRROR_OUTPUT_SCHEMA
-from .splines import SplineMirrorBoundary, SplineMirrorDiscretization, SplineMirrorState
+from .splines import (
+    SplineMirrorBoundary,
+    SplineMirrorDiscretization,
+    SplineMirrorState,
+    trace_closed_field_line,
+)
 
 RESTART_SCHEMA = "vmec_jax.mirror.free_boundary_restart/3"
 
@@ -741,6 +751,260 @@ def plot_mout(
     return paths
 
 
+def _periodic_theta_sample(values, theta):
+    """Evaluate uniform-theta samples at one angle per axial point."""
+
+    values = np.asarray(values)
+    theta = np.asarray(theta)
+    modes = np.fft.fftfreq(values.shape[0], d=1.0 / values.shape[0])
+    coefficients = np.fft.fft(values, axis=0) / values.shape[0]
+    return np.real(np.sum(coefficients * np.exp(1j * modes[:, None] * theta[None]), axis=0))
+
+
+def _closed_field_line_xyz(line, state, discretization, axis, radial_index):
+    """Interpolate a traced periodic field line into Cartesian space."""
+
+    parameter = np.mod(np.asarray(line.axial_parameter), 2.0 * np.pi)
+    recovery = np.asarray(discretization.grid.axial_basis.recovery_matrix)
+    radius_coefficients = np.asarray(state.radius_scale[radial_index]) @ recovery.T
+    radius_table = np.asarray(discretization.spline.evaluate(radius_coefficients, parameter))
+    radius = np.sqrt(float(discretization.grid.s[radial_index])) * _periodic_theta_sample(
+        radius_table,
+        np.asarray(line.theta),
+    )
+
+    def interpolate_axis(values):
+        coefficients = recovery @ np.asarray(values)
+        return np.asarray(discretization.spline.evaluate(coefficients, parameter, axis=0))
+
+    centerline = interpolate_axis(axis.centerline)
+    normal = interpolate_axis(axis.normal)
+    normal = normal / np.linalg.norm(normal, axis=1)[:, None]
+    binormal = interpolate_axis(axis.binormal)
+    binormal = binormal - np.sum(binormal * normal, axis=1)[:, None] * normal
+    binormal = binormal / np.linalg.norm(binormal, axis=1)[:, None]
+    radial = np.cos(np.asarray(line.theta))[:, None] * normal + np.sin(
+        np.asarray(line.theta)
+    )[:, None] * binormal
+    return centerline + radius[:, None] * radial
+
+
+def plot_stellarator_mirror_hybrid(
+    result: Any,
+    setup: Any,
+    outdir: str | Path,
+    *,
+    name: str = "stellarator_mirror_hybrid",
+) -> Path:
+    """Plot a solved periodic two-mirror/stellarator hybrid equilibrium."""
+
+    plt = _matplotlib()
+    solved = getattr(result, "evaluated", result)
+    discretization, axis = setup.discretization, setup.axis
+    if not discretization.closed:
+        raise ValueError("hybrid plotting requires a periodic spline discretization")
+    state, geometry, field = solved.state, solved.energy.geometry, solved.energy.field
+    theta = np.asarray(discretization.grid.theta)
+    parameter = np.asarray(discretization.grid.z)
+    theta_dense = np.linspace(0.0, 2.0 * np.pi, 97)
+    phase = np.exp(
+        1j
+        * theta_dense[:, None]
+        * np.fft.fftfreq(theta.size, d=1.0 / theta.size)[None]
+    )
+
+    def dense_theta(values):
+        return np.real(phase @ (np.fft.fft(np.asarray(values), axis=0) / theta.size))
+
+    boundary_radius = dense_theta(state.radius_scale[-1])
+    radial = (
+        np.cos(theta_dense)[:, None, None] * np.asarray(axis.normal)[None]
+        + np.sin(theta_dense)[:, None, None] * np.asarray(axis.binormal)[None]
+    )
+    surface_xyz = np.asarray(axis.centerline)[None] + boundary_radius[..., None] * radial
+    mod_b = np.sqrt(np.maximum(np.asarray(magnetic_field_squared(field, geometry)), 0.0))
+    boundary_b = dense_theta(mod_b[-1])
+    b_min, b_max = float(np.min(boundary_b)), float(np.max(boundary_b))
+    color_norm = plt.Normalize(b_min, b_max)
+
+    fig = plt.figure(figsize=(14.0, 9.0), constrained_layout=True)
+    grid = fig.add_gridspec(2, 3, height_ratios=(1.18, 1.0))
+    view = fig.add_subplot(grid[0, :2], projection="3d")
+    surface = view.plot_surface(
+        surface_xyz[..., 2],
+        surface_xyz[..., 0],
+        surface_xyz[..., 1],
+        facecolors=plt.cm.viridis(color_norm(boundary_b)),
+        linewidth=0,
+        alpha=0.68,
+    )
+    surface.set_rasterized(True)
+    view.plot(
+        np.asarray(axis.centerline)[:, 2],
+        np.asarray(axis.centerline)[:, 0],
+        np.asarray(axis.centerline)[:, 1],
+        color="white",
+        lw=3.5,
+        zorder=20,
+    )
+    view.plot(
+        np.asarray(axis.centerline)[:, 2],
+        np.asarray(axis.centerline)[:, 0],
+        np.asarray(axis.centerline)[:, 1],
+        color="#222222",
+        lw=1.2,
+        label="B-spline axis",
+        zorder=21,
+    )
+    radial_index = max(1, discretization.grid.ns - 2)
+    iota_values = []
+    radial_samples = np.arange(1, discretization.grid.ns)
+    for index in radial_samples:
+        iota_values.append(
+            float(
+                trace_closed_field_line(
+                    field,
+                    discretization,
+                    radial_index=int(index),
+                    turns=2,
+                ).iota
+            )
+        )
+    for line_index, theta0 in enumerate(np.linspace(0.0, 2.0 * np.pi, 7, endpoint=False)):
+        line = trace_closed_field_line(
+            field,
+            discretization,
+            radial_index=radial_index,
+            theta0=float(theta0),
+            turns=1,
+            steps_per_turn=320,
+        )
+        xyz = _closed_field_line_xyz(line, state, discretization, axis, radial_index)
+        view.plot(xyz[:, 2], xyz[:, 0], xyz[:, 1], color="#101010", lw=2.8, zorder=30)
+        view.plot(
+            xyz[:, 2],
+            xyz[:, 0],
+            xyz[:, 1],
+            color="#35D0E2",
+            lw=1.35,
+            label="field lines" if line_index == 0 else None,
+            zorder=31,
+        )
+    view.set(
+        title="Solved spline stellarator-mirror hybrid",
+        xlabel="z [m]",
+        ylabel="x [m]",
+        zlabel="y [m]",
+    )
+    view.set_box_aspect((2.35, 1.25, 0.42))
+    view.view_init(elev=24, azim=-61)
+    view.legend(loc="upper left")
+    fig.colorbar(
+        plt.cm.ScalarMappable(norm=color_norm, cmap="viridis"),
+        ax=view,
+        orientation="horizontal",
+        shrink=0.58,
+        pad=0.04,
+        label="LCFS |B| [T]",
+    )
+
+    map_axis = fig.add_subplot(grid[0, 2])
+    image = map_axis.pcolormesh(
+        parameter / (2.0 * np.pi),
+        theta_dense,
+        boundary_b,
+        shading="auto",
+        cmap="viridis",
+    )
+    fig.colorbar(image, ax=map_axis, label="LCFS |B| [T]")
+    map_axis.set(
+        title="Boundary field strength",
+        xlabel="Circuit fraction u / 2pi",
+        ylabel="Poloidal angle theta",
+    )
+
+    sections = fig.add_subplot(grid[1, 0])
+    section_indices = np.asarray(
+        [
+            int(np.argmin(np.abs(parameter - 2.0 * np.pi * fraction)))
+            for fraction in (0.125, 0.375, 0.625, 0.875)
+        ]
+    )
+    colors = ("#0072B2", "#D55E00", "#009E73", "#CC79A7")
+    for color, axial_index in zip(colors, section_indices, strict=False):
+        for surface_index in radial_samples:
+            radius = np.sqrt(float(discretization.grid.s[surface_index])) * dense_theta(
+                state.radius_scale[surface_index]
+            )[:, axial_index]
+            sections.plot(
+                radius * np.cos(theta_dense),
+                radius * np.sin(theta_dense),
+                color=color,
+                lw=0.8,
+                alpha=0.72,
+            )
+        sections.plot([], [], color=color, label=f"u/2pi={parameter[axial_index] / (2*np.pi):.2f}")
+    sections.set(
+        title="Solved cross-sections",
+        xlabel="Local normal [m]",
+        ylabel="Local binormal [m]",
+        aspect="equal",
+    )
+    sections.legend(fontsize=8)
+
+    profiles = fig.add_subplot(grid[1, 1])
+    profiles.plot(parameter / (2.0 * np.pi), np.mean(mod_b[0], axis=0), color="#0072B2", label="axis |B|")
+    profiles.plot(
+        parameter / (2.0 * np.pi),
+        np.mean(mod_b[-1], axis=0),
+        color="#D55E00",
+        label="LCFS |B|",
+    )
+    profiles.set(
+        title="Field and transform",
+        xlabel="Circuit fraction u / 2pi",
+        ylabel="|B| [T]",
+    )
+    transform = profiles.inset_axes([0.58, 0.56, 0.38, 0.32])
+    transform.plot(
+        np.sqrt(np.asarray(discretization.grid.s)[radial_samples]),
+        iota_values,
+        "o-",
+        color="#009E73",
+        label="iota",
+    )
+    transform.set(xlabel="sqrt(s)", ylabel="iota")
+    transform.tick_params(labelsize=7)
+    profiles.legend(fontsize=8, loc="lower left")
+
+    convergence = fig.add_subplot(grid[1, 2])
+    history = np.asarray(solved.history)
+    convergence.semilogy(history[:, 0], np.maximum(history[:, 4], 1.0e-18), color="#0072B2", label="variational")
+    convergence.axhline(float(solved.force.normalized_rms), color="#D55E00", label="strong force")
+    convergence.axhline(float(solved.normalized_divergence_rms), color="#009E73", label="div B")
+    convergence.axhline(
+        float(solved.variational.maximum),
+        color="0.2",
+        ls="--",
+        label="final variational",
+    )
+    convergence.set(
+        title=f"Convergence ({solved.iterations} iterations)",
+        xlabel="Residual evaluation",
+        ylabel="Normalized residual",
+    )
+    convergence.legend(fontsize=8)
+    for plot_axis in (map_axis, sections, profiles, convergence):
+        plot_axis.grid(alpha=0.2)
+
+    outdir = Path(outdir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    path = outdir / f"{name}.png"
+    fig.savefig(path, dpi=_PLOT_DPI, bbox_inches="tight")
+    plt.close(fig)
+    return path
+
+
 __all__ = [
     "AxisymmetricBetaDiagnostics",
     "FreeBoundaryRestart",
@@ -748,6 +1012,7 @@ __all__ = [
     "load_free_boundary_restart",
     "mout_from_result",
     "plot_mout",
+    "plot_stellarator_mirror_hybrid",
     "read_mout",
     "save_free_boundary_restart",
     "summarize_axisymmetric_beta_scan",
