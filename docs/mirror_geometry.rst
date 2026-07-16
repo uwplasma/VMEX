@@ -532,8 +532,10 @@ free-boundary derivatives solve the linearized converged coefficient residual
 and never retain or differentiate the nonlinear iteration history. A measured
 SOLVAX CPU replacement preserved wall time but increased derivative peak RSS
 by 29%, so the mirror CPU path remains SciPy GMRES around exact JAX JVP/VJP
-actions. A JAX-native accelerator path remains gated on an end-to-end GPU
-time, memory, and physics comparison rather than exposed as a solver option.
+actions. On an RTX A4000 closed adjoint, SOLVAX takes 22.8 ms warm versus
+32.3 ms through the host path, but its first compiled solve takes 4.54 s. The
+current one-shot derivative API cannot amortize that cost, so no accelerator
+solver option is exposed.
 
 Release evidence
 ----------------

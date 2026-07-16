@@ -113,7 +113,20 @@
     "derivative_three_case_before": {"wall_seconds": 45.87, "peak_rss_bytes": 4713480192},
     "derivative_three_case_accepted": {"wall_seconds": 45.85, "peak_rss_bytes": 4648026112},
     "derivative_solvax_restart_100": {"wall_seconds": 49.88, "peak_rss_bytes": 6068355072},
-    "decision": "retain host SciPy GMRES around exact JAX actions; require a separate office-GPU gate before an accelerator path"
+    "gpu_closed_adjoint": {
+      "device": "NVIDIA RTX A4000 GPU 0",
+      "variables": 164,
+      "host_seconds": 0.0323124,
+      "host_iterations": 30,
+      "host_relative_residual": 4.28623e-10,
+      "solvax_cold_seconds": 4.54329,
+      "solvax_warm_seconds": 0.0227635,
+      "solvax_iterations": 28,
+      "solvax_relative_residual": 7.42706e-10,
+      "solvax_peak_bytes_in_use": 1220864,
+      "estimated_same-operator_break_even_solves": 478
+    },
+    "decision": "retain host SciPy GMRES around exact JAX actions; SOLVAX warm GPU speed does not amortize compilation in the current one-shot derivative API"
   },
   "gates": {
     "exact_transfer": true,

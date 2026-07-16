@@ -227,9 +227,10 @@ the host path: SOLVAX at restart 200 passed but raised peak RSS 20%; restart 64
 and 128 failed the declared true-linear-residual gates. On three derivative
 fixtures it raised peak RSS 29% at similar wall time. The accepted CPU path is
 therefore matrix-free SciPy GMRES around JAX JVP/VJP actions, with the same
-traceable separable preconditioner and optional host sparse factor. SOLVAX is
-the accelerator candidate only after an office-GPU A/B passes physics, time,
-and memory gates. Do not add an unpreconditioned GPU path or a solver flag.
+traceable separable preconditioner and optional host sparse factor. On an
+office RTX A4000, SOLVAX was 9.5 ms faster warm but added 4.54 s compilation;
+the current one-shot derivative API cannot amortize that cost. Do not add an
+unpreconditioned GPU path or a solver flag.
 
 ### 4.6 Rejected shortcuts
 
@@ -623,7 +624,7 @@ through L-BFGS, Newton, continuation, or line-search histories.
    traceable without changing its spectrum. Retain SciPy for CPU after the
    measured SOLVAX replacement fails the memory/residual gates; do not retain
    two selectable CPU implementations.
-5. **CPU complete; office GPU deferred.** Benchmark compile and warm primal/JVP/VJP wall time, Krylov count, true
+5. **Complete; accelerator path rejected for this API.** Benchmark compile and warm primal/JVP/VJP wall time, Krylov count, true
    residual, RSS, and accelerator memory on the medium open fixtures and the
    circular closed fixture. Use GCROT recycling only for continuation or
    batched derivative sequences with measured benefit.
@@ -772,7 +773,7 @@ At this revision:
 | Free open axisymmetric through 10% | 100% | regression only |
 | Open fixed/free implicit derivatives | 100% | regression and performance tracking |
 | Closed fixed derivative algorithm | 100% | circular-limit FD/transpose complete; racetrack claims wait on its primal gate |
-| Linear-backend audit | 90% | CPU disposition complete; supplementary office-GPU A/B remains |
+| Linear-backend audit | 100% | CPU and office-GPU dispositions recorded; no second runtime path |
 | Open preconditioning | 100% | preserve spectrum during JAX port |
 | Closed hybrid fixed boundary | 70% | diagnose beta-zero strong-force floor; promotion and finite beta remain blocked |
 | Nonaxisymmetric free disposition | 100% | compact negative evidence retained |
@@ -1022,11 +1023,14 @@ alter open-mirror promotion status. N1 and A1 remain bounded future lanes.
 - Files/API: implementation commit `6b8f60f2` changes seven existing files,
   adds no module, dependency, or public name, and keeps branch budgets at 44
   files, 7,946 source lines, 3,794 test lines, and 20 public names.
-- Best next step: run a non-production SOLVAX A/B on office GPU before adding
-  any accelerator path, then close the H1 racetrack disposition unless a
-  bounded metric/force correction passes its existing beta-zero gates.
+- GPU follow-up: on an RTX A4000, the 164-variable closed adjoint takes 32.3 ms
+  through the host path. SOLVAX takes 22.8 ms warm but 4.54 s on its first
+  compiled solve, with an estimated 478 same-operator solves needed to break
+  even. Both true residuals pass `1e-9`; no runtime branch is added.
+- Best next step: close the H1 racetrack disposition unless a bounded
+  metric/force correction passes its existing beta-zero gates.
 - Open lanes: open physics/derivatives/preconditioning 100%; closed derivative
-  algorithm 100%; linear-backend audit 90%; H1 basis/geometry 100%, primal
+  algorithm 100%; linear-backend audit 100%; H1 basis/geometry 100%, primal
   80%, validation 55%; docs/examples 100%; final audit 92%.
 - User input: none required.
 
