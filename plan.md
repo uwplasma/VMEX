@@ -727,7 +727,7 @@ At this revision:
 | Nonaxisymmetric free disposition | 100% | compact negative evidence retained |
 | API/code simplification | 100% | preserve final line and public-API budgets |
 | README/docs/examples/plots | 100% | regression only |
-| Packaging/CI/release audit | 85% | rerun after H1 validation disposition |
+| Packaging/CI/release audit | 90% | final package/CI batch after H1 disposition review |
 
 The open-mirror R1-R5 release work is complete. H1 is now active on the draft
 PR and is tracked separately so its failed gates cannot alter open-mirror
@@ -928,9 +928,11 @@ promotion status. N1 and A1 remain deferred.
   nearest skew-connection projection of the sampled frame derivative changed
   the result only from ``0.42973`` to ``0.42874`` and was reverted rather than
   retain extra code without material diagnostic value.
-- Tests: the 32-control example completed locally; the focused circular and
-  hybrid solves pass; 20 model/output tests and strict Sphinx pass; every PNG
-  passed visual, size, and nonblank checks. The API-budget CI failure was a
+- Tests: the 32-control example completed locally; the normal mirror suite
+  passes with 92 tests and 8 expected full-test deselections in 218.72 seconds;
+  the focused full circular/hybrid solves pass in 16.79 seconds; 20 focused
+  model/output tests and strict Sphinx pass; every PNG passed visual, size,
+  and nonblank checks. The API-budget CI failure was a
   stale 17-name assertion and now explicitly covers the three intended hybrid
   operations within the 20-name ceiling.
 - Files/API: the branch remains at 44 changed files, 7,915 mirror-source lines,
@@ -945,7 +947,7 @@ promotion status. N1 and A1 remain deferred.
   close the lane without derivatives or finite-beta claims.
 - Open lanes: open fixed/free physics, derivatives, and preconditioning 100%;
   H1 basis 100%, geometry 100%, primal 80%, validation 55%, derivatives 0%;
-  docs/examples 100%; final audit 85%.
+  docs/examples 100%; final audit 90%.
 - User input: none required for the bounded beta-zero diagnostic.
 
 After every implementation tranche, append one short dated entry here with:
