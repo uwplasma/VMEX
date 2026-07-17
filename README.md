@@ -32,7 +32,7 @@ original, it is differentiable and runs on GPUs.
   that load unchanged in simsopt and booz_xform.
 - **Batteries included.** Plotting (`vmec --plot`), Boozer transform
   (`vmec --booz`), spline profiles, multigrid, hot restart, free boundary
-  from mgrid files *or* directly from coils, near-axis (pyQSC/pyQIC) seeding,
+  from mgrid files *or* directly from coils,
   typed zero-crash errors — with the shared linear/adjoint solver layer
   factored out into [SOLVAX](https://pypi.org/project/solvax/).
 
@@ -171,7 +171,6 @@ CPU, single thread; `benchmarks/baseline.json`; reproduce with
 | Differentiable fixed boundary (implicit diff, O(1) memory) | ✅ | ❌ | ❌ |
 | Differentiable free boundary (virtual casing) | ✅ | ❌ | ❌ |
 | 2D block preconditioner (stiff-case speedup) | ✅ | ❌ | ❌ |
-| Near-axis (pyQSC / pyQIC) optimization seed | ✅ | ❌ | ❌ |
 
 ### Free boundary straight from coils
 
