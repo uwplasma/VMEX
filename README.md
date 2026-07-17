@@ -366,6 +366,38 @@ implicit path is **CPU-pinned by default** (it is kernel-launch-bound; GPUs
 lose at every production size measured), while forward solves at high radial
 resolution are GPU-competitive — the device policy picks per stage.
 
+### Beyond quasisymmetry: any objective, same gradients
+
+The equilibrium is a differentiable building block, not a QS machine: pick any
+physics objective and the same exact gradients drive it. Starting from the
+precise-QA deck above (QS ~1e-6, aspect 6.00, mean iota 0.42), five short
+independent campaigns each push **one** new objective while **holding
+quasisymmetry** (the QA residual stays in every objective at a stiff weight):
+raise the coil-simplicity proxy `min L∇B` (traceable `l_grad_b_state`,
+soft-min optimized / hard-min reported), deepen the vacuum magnetic well,
+raise mean iota to 0.55 at held aspect, lower aspect to 4.8 at held iota, and
+push the finite-beta Mercier criterion `DMerc` toward stability under a
+calibrated ~1.25% parabolic pressure. `L∇B`/well/iota/aspect run through the
+**implicit adjoint** (`jac="implicit"`); `DMerc` is a wout-engine objective
+(host-NumPy Mercier tables) with no traceable lane yet, so that one campaign
+runs honest **finite differences** at `max_mode 2` — the cost gap is part of
+the story. (A sixth objective of the same kind — the self-consistent Redl
+bootstrap mismatch — has its own section below.)
+
+![Objectives showcase: five one-objective campaigns off the precise-QA seed](docs/_static/figures/readme_objectives.png)
+
+| campaign | objective | seed → final | QS held? |
+|----------|-----------|--------------|----------|
+| `lgradb` | raise min L∇B to 1.3× seed (implicit adjoint) | <!-- FILL:lgradb.metric -->TBD | <!-- FILL:lgradb.qs -->TBD |
+| `well` | deepen the vacuum magnetic well (implicit adjoint) | <!-- FILL:well.metric -->TBD | <!-- FILL:well.qs -->TBD |
+| `iota_up` | mean iota 0.42 → 0.55 at aspect 6 (implicit adjoint) | <!-- FILL:iota_up.metric -->TBD | <!-- FILL:iota_up.qs -->TBD |
+| `aspect_down` | aspect 6.00 → 4.8 at iota 0.42 (implicit adjoint) | <!-- FILL:aspect_down.metric -->TBD | <!-- FILL:aspect_down.qs -->TBD |
+| `dmerc` | interior DMerc → positive at ⟨β⟩ ≈ 1.25% (finite differences) | <!-- FILL:dmerc.metric -->TBD | <!-- FILL:dmerc.qs -->TBD |
+
+*Reproduce with `python examples/optimization/objectives_showcase.py` (an
+`--only lgradb,dmerc` flag runs subsets), then
+`python benchmarks/make_readme_figures.py --only objectives`.*
+
 ### Self-consistent bootstrap current
 
 vmec-jax implements the **Redl** analytic bootstrap-current formula
