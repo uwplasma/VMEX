@@ -49,7 +49,11 @@ def pytest_collection_modifyitems(config, items):
 #   2. ~/vmex_notes/golden (local development snapshot),
 #   3. ~/.cache/vmex/golden-v1 (downloaded once from the golden-v1 release).
 # ---------------------------------------------------------------------------
-GOLDEN_URL = "https://github.com/uwplasma/VMEX/releases/download/golden-v1/vmec-jax-golden-v1.tar.gz"
+# Keep the owner/repo as ``vmec_jax`` (the pre-rename name): the release asset
+# lives there, and after the repo is renamed to VMEX GitHub redirects the old
+# path to the new one, so this URL resolves both before and after the rename.
+# Pointing it at ``VMEX`` directly 404s until the rename lands.
+GOLDEN_URL = "https://github.com/uwplasma/vmec_jax/releases/download/golden-v1/vmec-jax-golden-v1.tar.gz"
 GOLDEN_SHA256 = "85b1de372066d1dd0c57b1a9ffb569ccc1276bb67dec81e7bf15a5a943ca05d7"
 
 
