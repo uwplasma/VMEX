@@ -214,29 +214,50 @@ evaluated from each approach's actual final coils. The finite-β column runs the
 same joint optimization with a pressure profile — a capability with essentially
 no published general-purpose counterpart.
 
+The headline use is the literature's canonical one (arXiv:2302.10622 runs
+single-stage as a "stage 3"): **polish the two-stage result** — warm-start the
+joint objective from the stage-1 boundary + stage-2 coils and let both
+co-adapt. In ~10–30 minutes of polish the normal-field error drops **33 %
+(vacuum) / 17 % (finite β)** below the two-stage result at held quasisymmetry
+and on-target iota — the coil↔plasma inconsistency that frozen-boundary
+stage 2 cannot fix. The cold-start column shows what the same joint descent
+does from the crude seeds alone in 50 iterations: it drives ⟨|B·n|⟩ hard
+(coils well inside every budget) but cannot match a dedicated stage-1 on
+quasisymmetry — which is exactly why polish is the recommended pattern.
+
 ![Cold-start single-stage vs two-stage plasma+coil optimization, vacuum and finite beta](docs/_static/figures/readme_single_stage.png)
 
-*Top: seed (grey, dashed) vs two-stage (orange) vs single-stage (blue)
-boundaries at φ = 0 and a half field period, annotated with each approach's
-normal-field and quasisymmetry errors. Middle/bottom: each approach's final
-LCFS coloured by |B| inside its own final coils.*
+*Top: seed (grey, dashed) vs two-stage (orange) vs cold-start single-stage
+(blue) boundaries at φ = 0 and a half field period — the polish boundary is
+visually indistinguishable from two-stage (same aspect and iota), so it is not
+drawn. Middle/bottom: each approach's final LCFS coloured by |B| inside its
+own final coils.*
 
-| metric | two-stage | single-stage |
-|---|---|---|
-| **vacuum** — QS residual | <!-- FILL:vacuum.two_stage.qs -->TBD | <!-- FILL:vacuum.single_stage.qs -->TBD |
-| **vacuum** — ⟨\|B·n\|⟩/⟨B⟩ | <!-- FILL:vacuum.two_stage.avg_bn -->TBD | <!-- FILL:vacuum.single_stage.avg_bn -->TBD |
-| **vacuum** — max\|B·n\|/⟨B⟩ | <!-- FILL:vacuum.two_stage.max_bn -->TBD | <!-- FILL:vacuum.single_stage.max_bn -->TBD |
-| **vacuum** — coil length range [m] | <!-- FILL:vacuum.two_stage.length_range -->TBD | <!-- FILL:vacuum.single_stage.length_range -->TBD |
-| **vacuum** — max curvature [1/m] | <!-- FILL:vacuum.two_stage.max_curvature -->TBD | <!-- FILL:vacuum.single_stage.max_curvature -->TBD |
-| **finite β** — QS residual | <!-- FILL:beta.two_stage.qs -->TBD | <!-- FILL:beta.single_stage.qs -->TBD |
-| **finite β** — ⟨\|B·n\|⟩/⟨B⟩ | <!-- FILL:beta.two_stage.avg_bn -->TBD | <!-- FILL:beta.single_stage.avg_bn -->TBD |
-| **finite β** — max\|B·n\|/⟨B⟩ | <!-- FILL:beta.two_stage.max_bn -->TBD | <!-- FILL:beta.single_stage.max_bn -->TBD |
-| **finite β** — coil length range [m] | <!-- FILL:beta.two_stage.length_range -->TBD | <!-- FILL:beta.single_stage.length_range -->TBD |
-| **finite β** — max curvature [1/m] | <!-- FILL:beta.two_stage.max_curvature -->TBD | <!-- FILL:beta.single_stage.max_curvature -->TBD |
+Vacuum (measured; identical seeds and coil budgets across columns):
+
+| metric (vacuum) | two-stage | + single-stage polish | single-stage (cold) |
+|---|---|---|---|
+| QS ratio residual | 9.3e-05 | 1.6e-04 | 2.4e-02 |
+| mean iota (target 0.42) | 0.420 | 0.420 | 0.396 |
+| ⟨\|B·n\|⟩/⟨B⟩ | 2.38e-03 | **1.60e-03** | 3.05e-03 |
+| max\|B·n\|/⟨B⟩ | 1.30e-02 | **7.84e-03** | 1.18e-02 |
+| coil lengths [m] (≤ 4.40) | 4.12–4.39 | 4.11–4.40 | 3.60–3.87 |
+
+Finite β (⟨β⟩ ≈ 1.5 %, same pressure profile in all columns):
+
+| metric (finite β) | two-stage | + single-stage polish | single-stage (cold) |
+|---|---|---|---|
+| QS ratio residual | 4.4e-05 | 2.4e-04 | 2.3e-02 |
+| mean iota (target 0.42) | 0.420 | 0.422 | 0.100 |
+| ⟨\|B·n\|⟩/⟨B⟩ | 2.80e-03 | **2.34e-03** | 6.20e-03 |
+| max\|B·n\|/⟨B⟩ | 1.37e-02 | **1.27e-02** | 1.75e-02 |
+| coil lengths [m] (≤ 4.40) | 3.91–4.18 | 3.91–4.19 | 3.25–3.28 |
 
 Reproduce with `python examples/single_stage_vs_two_stage.py --case vacuum
---phase all` (and `--case beta`) — a multi-hour run per case at the full
-budget; the phases are resumable, so long runs can be split across sessions.
+--phase all` (and `--case beta`). Measured on a 36-core CPU: stage 1 ≈ 7–9 min,
+stage 2 ≈ 6 min, polish ≈ 10–30 min; the optional cold-start single column is
+the long pole (≈ 1.5 h vacuum, several hours at finite β). The phases are
+resumable, so long runs can be split across sessions.
 
 ## Code size
 

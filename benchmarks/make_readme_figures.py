@@ -1026,12 +1026,18 @@ def make_single_stage_figure(out: Path) -> None:
         axb.set_xlabel("R (m)", fontsize=8.5)
         axb.legend(loc="upper right", fontsize=6.5, handlelength=1.4,
                    labelspacing=0.25, borderaxespad=0.1)
+        pol = comp.get("single_stage_polish")
+        bn_line = ("$\\langle|B\\cdot n|\\rangle/\\langle B\\rangle$: "
+                   f"{ts['avg_Bn_over_B']:.1e}"
+                   + (f" $\\to$ +polish {pol['avg_Bn_over_B']:.1e}" if pol else "")
+                   + f" (cold {ss['avg_Bn_over_B']:.1e})")
+        qs_line = (f"QS: {ts['qs_total']:.1e}"
+                   + (f" $\\to$ {pol['qs_total']:.1e}" if pol else "")
+                   + f" (cold {ss['qs_total']:.1e})")
         axb.annotate(
-            "$\\langle|B\\cdot n|\\rangle/\\langle B\\rangle$: two-stage "
-            f"{ts['avg_Bn_over_B']:.1e} vs single-stage {ss['avg_Bn_over_B']:.1e}"
-            f"\nQS: {ts['qs_total']:.1e} vs {ss['qs_total']:.1e}",
+            bn_line + "\n" + qs_line,
             xy=(0.5, -0.24), xycoords="axes fraction", ha="center", va="top",
-            fontsize=7.5, color=GREEN_TEXT, fontweight="bold")
+            fontsize=7, color=GREEN_TEXT, fontweight="bold")
         if name == "beta":
             # The case's calibrated seed <beta> (the finals' betatotal shifts
             # with each approach's plasma volume at the fixed pres_scale).
