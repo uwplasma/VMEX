@@ -567,6 +567,14 @@ def main() -> None:
     except ImportError as exc:  # pragma: no cover - optional heavy dependency
         raise SystemExit("needs essos (pip install -e /path/to/ESSOS)") from exc
 
+    if CI and args.case == "beta":
+        # The 12-point CI grid cannot push the pressure-loaded circular seed
+        # below fsqr ~ 1.2e-6 (measured discretization floor: 60k iterations
+        # plateau there), so the strict ``im.run`` solves of the single-stage
+        # phase would always raise at 1e-9.  Keep the strict smoke ftol for
+        # vacuum; relax the beta smoke to sit above its floor.
+        SOLVE["ftol"] = 1e-5
+
     out = OUT_ROOT / args.case
     out.mkdir(parents=True, exist_ok=True)
     phases = list(PHASES) if args.phase == "all" else [args.phase]

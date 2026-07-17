@@ -200,25 +200,44 @@ the coils never move. Reproduce with
 
 ### Single-stage plasma + coil optimization
 
-The plasma boundary and the coils can be optimized **simultaneously**, driven by
-one exact gradient. A single `jax.value_and_grad` threads the implicit-adjoint
-derivative of the fixed-boundary equilibrium (boundary → converged VMEC state →
-physics targets) *and* the virtual-casing + Biot-Savart derivative of the coil
-field (coil currents → `B·n` on the *moving* boundary) through one backward
-pass — no finite differences, no nested inner/outer loop.
+Starting **cold** — a circular torus and four circular coils, no warm start —
+the plasma boundary Fourier modes, the coil curve degrees of freedom, *and* the
+coil currents are co-optimized by **one exact gradient**: a single
+`jax.value_and_grad` threads the implicit-adjoint derivative of the
+fixed-boundary equilibrium, the differentiable virtual casing, and Biot–Savart
+off the ESSOS coil filaments through one backward pass. It is benchmarked
+against the classical **two-stage** baseline from the *same* seeds: stage 1
+optimizes the boundary alone for quasi-axisymmetry, stage 2 then fits the coils
+to that frozen boundary. Both approaches get identical coil budgets (same
+length and curvature limits, same number of coils), and both are scored on the
+**coil-realized equilibrium** — a re-solve of each final boundary, with `B·n`
+evaluated from each approach's actual final coils. The finite-β column runs the
+same joint optimization with a pressure profile — a capability with essentially
+no published general-purpose counterpart.
 
-![Single-stage plasma+coil optimization, vacuum and finite beta](docs/_static/figures/readme_single_stage.png)
+![Cold-start single-stage vs two-stage plasma+coil optimization, vacuum and finite beta](docs/_static/figures/readme_single_stage.png)
 
-*The Landreman–Paul QA plasma boundary and the currents of its 16 ESSOS modular
-coils are co-optimized against one functional `J = w·⟨(B_ext·n)²⟩ +
-(ι_edge − ι*)²` — coil↔plasma consistency plus an edge-rotational-transform
-target — for a **vacuum** and a **finite-β** (⟨β⟩ = 1.4 %) case. One L-BFGS-B
-descent over the joint (boundary Fourier modes + coil currents) vector cuts J
-**6.6×** (vacuum) and **2.4×** (finite β): the boundary reshapes (blue vs grey
-dashed) and the coil currents retune together, with the joint gradient
-finite-difference validated. Coils come from ESSOS — vmec_jax stays
-coil-agnostic. Reproduce with
-`python examples/single_stage_essos_coils_opt.py`.*
+*Top: seed (grey, dashed) vs two-stage (orange) vs single-stage (blue)
+boundaries at φ = 0 and a half field period, annotated with each approach's
+normal-field and quasisymmetry errors. Middle/bottom: each approach's final
+LCFS coloured by |B| inside its own final coils.*
+
+| metric | two-stage | single-stage |
+|---|---|---|
+| **vacuum** — QS residual | <!-- FILL:vacuum.two_stage.qs -->TBD | <!-- FILL:vacuum.single_stage.qs -->TBD |
+| **vacuum** — ⟨\|B·n\|⟩/⟨B⟩ | <!-- FILL:vacuum.two_stage.avg_bn -->TBD | <!-- FILL:vacuum.single_stage.avg_bn -->TBD |
+| **vacuum** — max\|B·n\|/⟨B⟩ | <!-- FILL:vacuum.two_stage.max_bn -->TBD | <!-- FILL:vacuum.single_stage.max_bn -->TBD |
+| **vacuum** — coil length range [m] | <!-- FILL:vacuum.two_stage.length_range -->TBD | <!-- FILL:vacuum.single_stage.length_range -->TBD |
+| **vacuum** — max curvature [1/m] | <!-- FILL:vacuum.two_stage.max_curvature -->TBD | <!-- FILL:vacuum.single_stage.max_curvature -->TBD |
+| **finite β** — QS residual | <!-- FILL:beta.two_stage.qs -->TBD | <!-- FILL:beta.single_stage.qs -->TBD |
+| **finite β** — ⟨\|B·n\|⟩/⟨B⟩ | <!-- FILL:beta.two_stage.avg_bn -->TBD | <!-- FILL:beta.single_stage.avg_bn -->TBD |
+| **finite β** — max\|B·n\|/⟨B⟩ | <!-- FILL:beta.two_stage.max_bn -->TBD | <!-- FILL:beta.single_stage.max_bn -->TBD |
+| **finite β** — coil length range [m] | <!-- FILL:beta.two_stage.length_range -->TBD | <!-- FILL:beta.single_stage.length_range -->TBD |
+| **finite β** — max curvature [1/m] | <!-- FILL:beta.two_stage.max_curvature -->TBD | <!-- FILL:beta.single_stage.max_curvature -->TBD |
+
+Reproduce with `python examples/single_stage_vs_two_stage.py --case vacuum
+--phase all` (and `--case beta`) — a multi-hour run per case at the full
+budget; the phases are resumable, so long runs can be split across sessions.
 
 ## Code size
 
