@@ -75,7 +75,7 @@ DATA = Path(__file__).resolve().parent / "data"
 INPUT_FILE = DATA / "input.minimal_seed_nfp2"   # circular torus, nfp=2
 OUT_ROOT = Path("output_single_stage_vs_two_stage")
 
-SEED_PERTURBATION = 0.01     # helical kick off the axisymmetric saddle point
+SEED_PERTURBATION = 0.05     # rotating-ellipse kick amplitude (see build_seed_input)
 ASPECT_TARGET = 6.0
 IOTA_TARGET = 0.42
 QS_SURFACES = np.linspace(0.1, 1.0, 6)     # optimization surfaces (QA helicity)
@@ -83,7 +83,7 @@ EVAL_SURFACES = np.linspace(0.1, 1.0, 10)  # reporting metric (house convention)
 HELICITY_M, HELICITY_N = 1, 0
 
 # coils: the simsopt-canonical cold start (4 base coils, order 5, r=0.5)
-N_COILS, ORDER, R_MAJOR, R_COIL, NSEG = 4, 5, 1.0, 0.5, 60
+N_COILS, ORDER, R_MAJOR, R_COIL, NSEG = 4, 8, 1.0, 0.5, 60
 CURRENT0 = 2.7e5             # uniform seed currents [A]; current[0] frozen
 L_MAX = 2.0 * np.pi * R_COIL * 1.4          # per-coil length budget [m]
 KAPPA_MAX = 5.0                             # per-coil curvature budget [1/m]
@@ -101,23 +101,26 @@ if CI:  # smoke budget: coarse everything, a handful of iterations
     SOLVE = dict(ftol=1e-9, max_iterations=4000)
     LS_FTOL = 1e-4
 else:
-    NS, NPHI, NTHETA = 25, 16, 16
-    MODE_LADDER, MAX_NFEV = (1, 2, 3), 600
-    MAXITER_STAGE2, MAXITER_SINGLE = 300, 250
-    # ftol 1e-10 (not 1e-11): the pressure-loaded circular seed needs far more
-    # steepest-descent iterations at 1e-11 than the vacuum one (measured: the
-    # beta seed exceeds 20k); 1e-10 is still orders below the objective scale.
-    SOLVE = dict(ftol=1e-10, max_iterations=50000)
-    LS_FTOL = 1e-8
+    # Fast-showcase budget: ONE vmec grid (ns=31), converged-looking force
+    # residual (ftol 1e-12), iteration cap 3000 (finite beta gets more via
+    # solve_kwargs), ESS single-call stage 1 at max_mode 3, and a hard 50-
+    # iteration cap on the single-stage descent with a 1e-3 relative stop --
+    # the point is a minutes-scale reproducible comparison, not a polish run.
+    NS, NPHI, NTHETA = 31, 16, 16
+    MODE_LADDER, MAX_NFEV = (3,), 300          # single ESS call, max_mode 3
+    MAXITER_STAGE2, MAXITER_SINGLE = 150, 50
+    SOLVE = dict(ftol=1e-12, max_iterations=3000)
+    LS_FTOL = 1e-6
+SINGLE_REL_FTOL = 1e-3       # scipy L-BFGS-B relative-J stop for --phase single
 
 def solve_kwargs(case: str) -> dict:
-    """Per-case ``im.run``/``im.make_config`` solver settings.
+    """Per-case solver settings: vacuum = one grid; finite beta = multigrid.
 
-    The finite-beta case rides the multigrid ladder: the near-circular seed has
-    iota ~ 0, and confining ~1.5% pressure with almost no rotational transform
-    stalls a single-grid steepest descent (measured: > 50k iterations without
-    convergence), while the ns-ladder restarts converge robustly.  Multigrid is
-    AD-safe -- the coarse stages are stop-gradient initializers.
+    The pressure-loaded near-circular seed limit-cycles at fsq ~ 1e-6 on ANY
+    single grid tried (ns 25/31, delt 0.4-0.9, beta 0.75-1.5%) -- the hunting
+    Shafranov axis never lets the force residual reach 1e-12 -- while the
+    multigrid ns-ladder converges it in seconds within the same 3000-iteration
+    cap.  Multigrid is AD-safe (coarse stages are stop-gradient initializers).
     """
     kw = dict(SOLVE)
     if case == "beta":
@@ -127,7 +130,7 @@ def solve_kwargs(case: str) -> dict:
 
 # single-stage boundary dof set: m <= 2, |n| <= 2 (same convention as
 # optimize._dof_modes -- m=0 keeps n >= 1 only, RBC(0,0) fixed)
-SS_MAX_MODE = 2
+SS_MAX_MODE = 3
 SS_MODES = [(m, n) for m in range(0, SS_MAX_MODE + 1)
             for n in range(-SS_MAX_MODE, SS_MAX_MODE + 1)
             if not (m == 0 and n <= 0)]
@@ -145,8 +148,12 @@ def build_seed_input(pres_scale: float) -> vj.VmecInput:
     # The exact circular torus is a saddle point of the QS+iota objective
     # (see QA_optimization.py) -- a small helical kick breaks the tie.
     rbc, zbs = inp.rbc.copy(), inp.zbs.copy()
+    # rotating-ellipse kick (OPPOSITE signs): a same-sign kick is a helical
+    # shift with iota ~ 0, and an iota ~ 0 seed cannot confine the finite-beta
+    # pressure (measured: fsq limit-cycles at ~1e-6 forever).  +/-0.05 gives
+    # iota_edge ~ 0.12 -- still an obviously crude seed.
     rbc[inp.ntor + 1, 1] += SEED_PERTURBATION
-    zbs[inp.ntor + 1, 1] += SEED_PERTURBATION
+    zbs[inp.ntor + 1, 1] -= SEED_PERTURBATION
     kw = dict(rbc=rbc, zbs=zbs, ns_array=[NS],
               niter_array=[SOLVE["max_iterations"]],
               ftol_array=[SOLVE["ftol"]], lfreeb=False)
@@ -404,7 +411,11 @@ def phase_single(case: str, out: Path, args) -> None:
     r0 = np.array([float(np.asarray(p0.rbc)[ntor + n, m]) for m, n in SS_MODES])
     z0 = np.array([float(np.asarray(p0.zbs)[ntor + n, m]) for m, n in SS_MODES])
     x0 = np.concatenate([r0, z0, np.asarray(cdofs0).ravel(), np.asarray(cur0[1:])])
-    D = np.concatenate([np.full(2 * nb, D_BOUNDARY), np.full(ncd, D_COIL),
+    # ESS on the boundary block: high harmonics move on exponentially shorter
+    # leashes (level = max(m, |n|), alpha = 0.7 -- the examples' convention),
+    # so releasing max_mode 3 all at once stays as stable as the mode ladder.
+    ess = np.array([np.exp(-0.7 * (max(m, abs(n)) - 1)) for m, n in SS_MODES])
+    D = np.concatenate([D_BOUNDARY * ess, D_BOUNDARY * ess, np.full(ncd, D_COIL),
                         np.full(N_COILS - 1, D_CURRENT)])
     print(f"[single:{case}] dofs: {x0.size} (boundary {2 * nb} + "
           f"coil curves {ncd} + currents {N_COILS - 1}), w_bn={args.w_bn}")
@@ -431,7 +442,8 @@ def phase_single(case: str, out: Path, args) -> None:
     res = scipy.optimize.minimize(
         fun, np.zeros_like(x0), jac=True, method="L-BFGS-B",
         bounds=[(-U_BOUND, U_BOUND)] * x0.size,
-        options={"maxiter": args.maxiter_single, "ftol": 1e-14, "gtol": 1e-12})
+        options={"maxiter": args.maxiter_single, "ftol": SINGLE_REL_FTOL,
+                 "gtol": 1e-12})
     wall = time.time() - t0
 
     xf = x0 + D * res.x
