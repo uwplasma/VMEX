@@ -51,7 +51,19 @@ Infrastructure facts: office box = `ssh office` (pop-os, 36 cores, venv
 Commits authored by rogeriojorge only, **never** a Claude co-author trailer. Open PR #22
 (mirror geometry) is a separate pre-existing workstream — leave it alone.
 
-## 2. Item A — Cold-start single-stage vs two-stage comparison (top priority)
+## 2. Item A — Cold-start single-stage vs two-stage comparison — **DONE (PR #31)**
+
+**Outcome (2026-07-17, measured):** three-way README comparison shipped —
+two-stage | +single-stage polish | cold single-stage, vacuum and finite β.
+Polish (the arXiv:2302.10622 "stage 3" pattern) cuts ⟨|B·n|⟩/⟨B⟩ 33 % (vacuum)
+/ 17 % (β≈1.5 %) below two-stage at held QS and on-target iota in 10–30 min;
+the cold column is the honest 50-iteration record + the dramatic figure.
+Engineering lessons recorded in the example/commits: rotating-ellipse seed
+kick (a same-sign kick has iota≈0 and the pressure-loaded seed limit-cycles on
+any single grid — β uses the multigrid ladder), scipy L-BFGS-B ftol is tested
+against max(|f|,1), adjoint_tol 1e-8 suffices, and jit over the joint
+objective is blocked by host conversions in the FBD/im.run stack (→ Item I.6).
+Original design notes kept below for reference.
 
 **Why:** the PR #28 showcase warm-starts from LP-QA, so the initial→final change is
 invisible and the comparison proves little. User directive (2026-07-16): redo it as a
