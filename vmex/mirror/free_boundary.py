@@ -25,8 +25,8 @@ from .forces import (
     mirror_energy,
 )
 from .geometry import normalized_divergence_rms
-from .exterior_bie import (
-    AxisymmetricExteriorVacuum,
+from .exterior import (
+    ExteriorVacuum,
     solve_axisymmetric_exterior_vacuum,
 )
 from .model import MirrorBoundary, MirrorConfig, MirrorState
@@ -330,7 +330,7 @@ class FreeBoundaryMirrorResult:
     plasma_b_squared: Array
     pressure: Array
     vacuum_geometry: "ClosedMirrorSurface"
-    vacuum_field: AxisymmetricExteriorVacuum
+    vacuum_field: ExteriorVacuum
     mass_scale: Array
     plasma_scale: float
     target_central_pressure: float | None
@@ -518,7 +518,7 @@ def _build_free_equilibrium_problem(
     return problem
 
 
-def solve_free_boundary_cli(
+def solve_free_boundary(
     initial_boundary: SplineMirrorBoundary,
     discretization: SplineMirrorDiscretization,
     config: MirrorConfig,
@@ -835,7 +835,7 @@ def _axisymmetric_flux_initialization(
     return SplineMirrorBoundary(coefficients[-1]), SplineMirrorState(coefficients, jnp.zeros_like(coefficients))
 
 
-def solve_beta_scan_cli(
+def solve_beta_scan(
     initial_boundary: SplineMirrorBoundary,
     discretization: SplineMirrorDiscretization,
     config: MirrorConfig,
@@ -899,7 +899,7 @@ def solve_beta_scan_cli(
             reference_energy.volume_derivative,
             gamma=gamma,
         )
-        result = solve_free_boundary_cli(
+        result = solve_free_boundary(
             boundary,
             discretization,
             config,

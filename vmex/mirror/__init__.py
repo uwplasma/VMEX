@@ -26,10 +26,14 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
         "build_stellarator_mirror_hybrid",
     ),
     "trace_closed_field_line": (".splines", "trace_closed_field_line"),
-    "solve_fixed_boundary_cli": (".splines", "solve_fixed_boundary_cli"),
-    "solve_free_boundary_cli": (".free_boundary", "solve_free_boundary_cli"),
+    "solve_fixed_boundary": (".splines", "solve_fixed_boundary"),
+    "solve_fixed_boundary_from_radius": (
+        ".splines",
+        "solve_fixed_boundary_from_radius",
+    ),
+    "solve_free_boundary": (".free_boundary", "solve_free_boundary"),
     # Continuation.
-    "solve_beta_scan_cli": (".free_boundary", "solve_beta_scan_cli"),
+    "solve_beta_scan": (".free_boundary", "solve_beta_scan"),
     # Implicit differentiation.
     "spline_fixed_boundary_adjoint": (
         ".implicit",
@@ -51,6 +55,14 @@ _LAZY_ATTRS: dict[str, tuple[str, str | None]] = {
     "plot_stellarator_mirror_hybrid": (
         ".output",
         "plot_stellarator_mirror_hybrid",
+    ),
+    # Free-boundary restart I/O and beta-scan summary.
+    "FreeBoundaryRestart": (".output", "FreeBoundaryRestart"),
+    "save_free_boundary_restart": (".output", "save_free_boundary_restart"),
+    "load_free_boundary_restart": (".output", "load_free_boundary_restart"),
+    "summarize_axisymmetric_beta_scan": (
+        ".output",
+        "summarize_axisymmetric_beta_scan",
     ),
 }
 

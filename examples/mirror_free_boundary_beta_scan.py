@@ -30,7 +30,7 @@ from vmex.mirror import (  # noqa: E402
     SplineMirrorDiscretization,
     mout_from_result,
     plot_mout,
-    solve_beta_scan_cli,
+    solve_beta_scan,
     write_mout,
 )
 from vmex.mirror.output import (  # noqa: E402
@@ -118,7 +118,7 @@ initial_boundary = discretization.fit_boundary(
     source_grid,
 )
 print(f"Solving {BETAS.size} beta points at ns={NS}, nxi={NXI}, ftol={FTOL:.0e}")
-results = solve_beta_scan_cli(
+results = solve_beta_scan(
     initial_boundary,
     discretization,
     config,

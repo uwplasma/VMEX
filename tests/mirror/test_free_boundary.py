@@ -18,7 +18,7 @@ from vmex.mirror import (  # noqa: E402
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
     SplineMirrorState,
-    solve_beta_scan_cli,
+    solve_beta_scan,
 )
 import vmex.mirror.free_boundary as continuation  # noqa: E402
 from vmex.mirror.free_boundary import (  # noqa: E402
@@ -158,7 +158,7 @@ def test_free_coefficient_operator_matches_dense_forward_and_transpose() -> None
 def test_unbounded_exterior_free_boundary_beta_scan_converges(_module_jit_enabled) -> None:
     config, source_grid, discretization, plasma_grid, on_axis, center, flux, initial_boundary = _free_case(5, 7, 4, 200)
     betas = jnp.asarray([0.0, 0.10, 0.25, 0.50])
-    results = solve_beta_scan_cli(
+    results = solve_beta_scan(
         discretization.fit_boundary(initial_boundary, source_grid),
         discretization,
         config,
@@ -195,7 +195,7 @@ def test_unbounded_exterior_free_boundary_beta_scan_converges(_module_jit_enable
     assert field_ratios[-1] < 0.78
     assert all(np.isfinite(float(item.center_vacuum_side_field)) for item in diagnostics)
 
-    resumed = solve_beta_scan_cli(
+    resumed = solve_beta_scan(
         discretization.fit_boundary(initial_boundary, source_grid),
         discretization,
         config,
@@ -232,7 +232,7 @@ def test_unbounded_exterior_beta_observables_converge_with_resolution(_module_ji
         config, source_grid, discretization, plasma_grid, on_axis, center, flux, initial_boundary = _free_case(
             ns, nxi, elements, 500
         )
-        results = solve_beta_scan_cli(
+        results = solve_beta_scan(
             discretization.fit_boundary(initial_boundary, source_grid),
             discretization,
             config,
@@ -296,8 +296,8 @@ def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
             pressure=jnp.zeros(grid.shape),
         )
 
-    monkeypatch.setattr(continuation, "solve_free_boundary_cli", fake_solve)
-    solve_beta_scan_cli(
+    monkeypatch.setattr(continuation, "solve_free_boundary", fake_solve)
+    solve_beta_scan(
         reference,
         discretization,
         config,
@@ -316,7 +316,7 @@ def test_beta_scan_propagates_restart_mass_scale(monkeypatch) -> None:
     assert all(item[3] is True for item in received)
 
     with pytest.raises(ValueError, match="mutually exclusive"):
-        solve_beta_scan_cli(
+        solve_beta_scan(
             reference,
             discretization,
             config,

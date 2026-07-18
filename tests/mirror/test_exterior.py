@@ -20,7 +20,7 @@ from vmex.mirror import (  # noqa: E402
     MirrorState,
 )
 from vmex.mirror.exterior import build_closed_mirror_surface  # noqa: E402
-from vmex.mirror.exterior_bie import (  # noqa: E402
+from vmex.mirror.exterior import (  # noqa: E402
     axisymmetric_plasma_external_neumann,
     axisymmetric_exterior_lateral_field,
     laplace_reduced_green_boundary_residual,

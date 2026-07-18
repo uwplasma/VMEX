@@ -16,7 +16,7 @@ from vmex.mirror import (  # noqa: E402
     MirrorResolution,
     MirrorState,
     free_boundary_adjoint,
-    solve_free_boundary_cli,
+    solve_free_boundary,
     spline_fixed_boundary_adjoint,
     spline_fixed_boundary_tangent,
 )
@@ -32,7 +32,7 @@ from vmex.mirror.splines import (  # noqa: E402
     SplineMirrorDiscretization,
     SplineMirrorState,
     _initialize_closed_vacuum_stream_function,
-    solve_fixed_boundary_cli as solve_spline_fixed_boundary_cli,
+    solve_fixed_boundary as solve_spline_fixed_boundary,
 )
 from vmex.mirror.geometry import evaluate_closed_spline_axis  # noqa: E402
 
@@ -58,7 +58,7 @@ def test_spline_adjoint_matches_reconverged_central_difference() -> None:
     spline_boundary = discretization.fit_boundary(boundary, source_grid)
     mass = 2.0e3 * (1.0 - s)
     current = 1.0e-2 * s
-    result = solve_spline_fixed_boundary_cli(
+    result = solve_spline_fixed_boundary(
         discretization.fit_state(MirrorState.from_boundary(boundary, source_grid), source_grid),
         spline_boundary,
         discretization,
@@ -105,7 +105,7 @@ def test_spline_adjoint_matches_reconverged_central_difference() -> None:
             spline_boundary.radius_coefficients + sign * epsilon * boundary_direction
         )
         initial = discretization.transfer_boundary(result.coefficient_state, spline_boundary, varied_boundary)
-        varied = solve_spline_fixed_boundary_cli(
+        varied = solve_spline_fixed_boundary(
             initial,
             varied_boundary,
             discretization,
@@ -139,7 +139,7 @@ def test_nonaxisymmetric_spline_adjoint_includes_stream_function() -> None:
     discretization = SplineMirrorDiscretization.build(config, elements=3)
     spline_boundary = discretization.fit_boundary(boundary, source_grid)
     current = 1.0e-3 * s
-    result = solve_spline_fixed_boundary_cli(
+    result = solve_spline_fixed_boundary(
         discretization.fit_state(MirrorState.from_boundary(boundary, source_grid), source_grid),
         spline_boundary,
         discretization,
@@ -182,7 +182,7 @@ def test_nonaxisymmetric_spline_adjoint_includes_stream_function() -> None:
     epsilon = 2.0e-4
     for sign in (-1.0, 1.0):
         varied_boundary = SplineMirrorBoundary(spline_boundary.radius_coefficients + sign * epsilon * direction)
-        varied = solve_spline_fixed_boundary_cli(
+        varied = solve_spline_fixed_boundary(
             discretization.transfer_boundary(result.coefficient_state, spline_boundary, varied_boundary),
             varied_boundary,
             discretization,
@@ -260,7 +260,7 @@ def test_closed_spline_adjoint_differentiates_axis_and_boundary() -> None:
         gradient_tolerance=1.0e-12,
         require_convergence=True,
     )
-    result = solve_spline_fixed_boundary_cli(
+    result = solve_spline_fixed_boundary(
         initial,
         boundary,
         discretization,
@@ -328,7 +328,7 @@ def test_closed_spline_adjoint_differentiates_axis_and_boundary() -> None:
                 boundary.radius_coefficients + sign * epsilon * boundary_direction
             )
             varied_axis_coefficients = axis_coefficients + sign * epsilon * axis_direction
-            varied = solve_spline_fixed_boundary_cli(
+            varied = solve_spline_fixed_boundary(
                 discretization.transfer_boundary(
                     result.coefficient_state,
                     boundary,
@@ -433,7 +433,7 @@ def test_free_boundary_field_adjoint_matches_central_difference(_module_jit_enab
         exterior_spectral_side_density=True,
         require_convergence=True,
     )
-    result = solve_free_boundary_cli(initial_boundary, discretization, config, field, **solve_options)
+    result = solve_free_boundary(initial_boundary, discretization, config, field, **solve_options)
     parameters = FreeBoundaryParameters(field, flux, mass_profile, jnp.asarray(0.0))
 
     def quantity(boundary, _state, _energy, _vacuum):
@@ -463,7 +463,7 @@ def test_free_boundary_field_adjoint_matches_central_difference(_module_jit_enab
         if field_direction is not None:
             varied_field = jax.tree.map(lambda value, delta: value + sign * epsilon * delta, field, field_direction)
         varied_options = solve_options | {"mass_profile": mass_profile + sign * epsilon * mass_direction}
-        varied = solve_free_boundary_cli(
+        varied = solve_free_boundary(
             result.coefficient_boundary,
             discretization,
             config,

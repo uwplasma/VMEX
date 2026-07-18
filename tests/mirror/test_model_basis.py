@@ -20,7 +20,7 @@ from vmex.mirror import (  # noqa: E402
     SplineMirrorBoundary,
     SplineMirrorDiscretization,
     SplineMirrorState,
-    solve_free_boundary_cli,
+    solve_free_boundary,
 )
 from vmex.mirror.basis import ChebyshevBasis, ThetaBasis  # noqa: E402
 from vmex.mirror.forces import mirror_energy  # noqa: E402
@@ -41,14 +41,19 @@ def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
         "SplineMirrorState",
         "build_stellarator_mirror_hybrid",
         "trace_closed_field_line",
-        "solve_fixed_boundary_cli",
-        "solve_free_boundary_cli",
-        "solve_beta_scan_cli",
+        "solve_fixed_boundary",
+        "solve_fixed_boundary_from_radius",
+        "solve_free_boundary",
+        "solve_beta_scan",
         "spline_fixed_boundary_adjoint",
         "spline_fixed_boundary_tangent",
         "write_mout",
         "plot_mout",
         "plot_stellarator_mirror_hybrid",
+        "FreeBoundaryRestart",
+        "save_free_boundary_restart",
+        "load_free_boundary_restart",
+        "summarize_axisymmetric_beta_scan",
     }
     internal = {
         "ChebyshevBasis",
@@ -58,8 +63,8 @@ def test_public_api_keeps_numerical_kernels_in_owning_modules() -> None:
     }
     assert required <= set(mirror_api.__all__)
     assert internal.isdisjoint(mirror_api.__all__)
-    assert len(mirror_api.__all__) == 20
-    assert mirror_api.solve_fixed_boundary_cli.__module__ == "vmex.mirror.splines"
+    assert len(mirror_api.__all__) == 25
+    assert mirror_api.solve_fixed_boundary.__module__ == "vmex.mirror.splines"
 
 
 def test_mirror_config_freezes_supported_end_and_convergence_contract() -> None:
@@ -260,11 +265,11 @@ def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
     )
 
     with pytest.raises(ValueError, match="target_central_pressure"):
-        solve_free_boundary_cli(**common, target_central_pressure=0.0)
+        solve_free_boundary(**common, target_central_pressure=0.0)
     with pytest.raises(ValueError, match="initial_mass_scale"):
-        solve_free_boundary_cli(**common, initial_mass_scale=0.0)
+        solve_free_boundary(**common, initial_mass_scale=0.0)
     with pytest.raises(ValueError, match="coefficient shape"):
-        solve_free_boundary_cli(**{**common, "initial_boundary": SplineMirrorBoundary(jnp.ones((2, 5)))})
+        solve_free_boundary(**{**common, "initial_boundary": SplineMirrorBoundary(jnp.ones((2, 5)))})
 
     nonaxis_config = MirrorConfig(resolution=MirrorResolution(ns=3, mpol=1, nxi=5))
     nonaxis_discretization = SplineMirrorDiscretization.build_cgl(nonaxis_config, elements=2)
@@ -272,7 +277,7 @@ def test_free_boundary_rejects_inconsistent_static_inputs() -> None:
         jnp.full((nonaxis_discretization.grid.ntheta, nonaxis_discretization.coefficient_count), 0.2)
     )
     with pytest.raises(ValueError, match="only axisymmetric"):
-        solve_free_boundary_cli(
+        solve_free_boundary(
             nonaxis_boundary,
             nonaxis_discretization,
             nonaxis_config,
@@ -296,4 +301,4 @@ def test_free_boundary_rejects_inconsistent_initial_guesses() -> None:
     wrong_radius = jnp.full(shape, 0.3)
     wrong_boundary = SplineMirrorState(wrong_radius, jnp.zeros_like(wrong_radius))
     with pytest.raises(ValueError, match="initial_state boundary"):
-        solve_free_boundary_cli(**common, initial_state=wrong_boundary)
+        solve_free_boundary(**common, initial_state=wrong_boundary)

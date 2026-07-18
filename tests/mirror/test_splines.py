@@ -46,7 +46,8 @@ from vmex.mirror.splines import (  # noqa: E402
     build_stellarator_mirror_hybrid,
     _initialize_closed_vacuum_stream_function,
     initialize_from_cartesian_field,
-    solve_fixed_boundary_cli as solve_spline_fixed_boundary_cli,
+    solve_fixed_boundary as solve_spline_fixed_boundary,
+    solve_fixed_boundary_from_radius,
     trace_closed_field_line,
 )
 
@@ -245,7 +246,7 @@ def test_closed_circular_limit_reaches_ftol_with_independent_strong_force() -> N
         axis,
         axial_flux_derivative=0.03,
     )
-    result = solve_spline_fixed_boundary_cli(
+    result = solve_spline_fixed_boundary(
         initial,
         boundary,
         discretization,
@@ -276,7 +277,7 @@ def test_stellarator_mirror_fixed_boundary_reaches_ftol() -> None:
         semi_minor=0.30,
         quadrature_order=3,
     )
-    result = solve_spline_fixed_boundary_cli(
+    result = solve_spline_fixed_boundary(
         setup.initial_state,
         setup.boundary,
         setup.discretization,
@@ -556,7 +557,7 @@ def test_spline_fixed_boundary_solver_recovers_cylindrical_equilibrium() -> None
     )
     _, discretization, spline_boundary, spline_initial = _perturbed_cylinder(config, 4, 0.03)
 
-    result = solve_spline_fixed_boundary_cli(
+    result = solve_spline_fixed_boundary(
         spline_initial,
         spline_boundary,
         discretization,
@@ -574,6 +575,27 @@ def test_spline_fixed_boundary_solver_recovers_cylindrical_equilibrium() -> None
     assert result.coefficient_state.radius_coefficients.shape[-1] == 7
 
 
+def test_solve_fixed_boundary_from_radius_convenience_converges() -> None:
+    config = MirrorConfig(
+        resolution=MirrorResolution(ns=7, mpol=4, nxi=9),
+        z_min=-1.2,
+        z_max=1.2,
+        ftol=1.0e-12,
+        max_iterations=1000,
+    )
+
+    result = solve_fixed_boundary_from_radius(
+        0.3,
+        config,
+        elements=4,
+        axial_flux_derivative=0.1,
+    )
+
+    assert result.evaluated.converged
+    assert float(result.evaluated.variational.maximum) <= config.ftol
+    np.testing.assert_allclose(result.evaluated.state.radius_scale, 0.3, atol=1.0e-11)
+
+
 def test_spline_solver_raises_when_convergence_is_required() -> None:
     config = MirrorConfig(
         resolution=MirrorResolution(ns=7, mpol=0, nxi=9),
@@ -583,7 +605,7 @@ def test_spline_solver_raises_when_convergence_is_required() -> None:
     _, discretization, spline_boundary, spline_initial = _perturbed_cylinder(config, 4, 0.04)
 
     with pytest.raises(MirrorConvergenceError) as caught:
-        solve_spline_fixed_boundary_cli(
+        solve_spline_fixed_boundary(
             spline_initial,
             spline_boundary,
             discretization,
@@ -610,7 +632,7 @@ def test_spline_solver_converges_nonaxisymmetric_finite_current_state() -> None:
     boundary = MirrorBoundary.from_radius(0.3 * (1.0 + 0.02 * jnp.cos(theta) * (1.0 - xi**2)), source_grid)
     initial = MirrorState.from_boundary(boundary, source_grid)
     discretization = SplineMirrorDiscretization.build(config, elements=3)
-    result = solve_spline_fixed_boundary_cli(
+    result = solve_spline_fixed_boundary(
         discretization.fit_state(initial, source_grid),
         discretization.fit_boundary(boundary, source_grid),
         discretization,
@@ -783,7 +805,7 @@ def test_equal_end_axisymmetric_mirror_is_independent_of_cut_location(_module_ji
             discretization,
             fixture.field,
         )
-        result = solve_spline_fixed_boundary_cli(
+        result = solve_spline_fixed_boundary(
             initialized.state,
             boundary,
             discretization,
@@ -858,7 +880,7 @@ def test_large_spline_solve_uses_matrix_free_coefficient_preconditioner(_module_
     source_grid, discretization, spline_boundary, spline_initial = _perturbed_cylinder(config, 12, 0.03)
     assert (source_grid.ns - 2) * source_grid.ntheta * (discretization.coefficient_count - 2) > 1024
 
-    result = solve_spline_fixed_boundary_cli(
+    result = solve_spline_fixed_boundary(
         spline_initial,
         spline_boundary,
         discretization,
@@ -904,7 +926,7 @@ def test_knot_refined_rotating_ellipse_uses_matrix_free_rescue(_module_jit_enabl
     for stage in (0.0, 0.25, 0.5):
         target = discretization.fit_boundary(boundary(stage), source_grid)
         state = discretization.transfer_boundary(state, source, target)
-        result = solve_spline_fixed_boundary_cli(
+        result = solve_spline_fixed_boundary(
             state,
             target,
             discretization,

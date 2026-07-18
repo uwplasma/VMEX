@@ -219,7 +219,7 @@ def test_mout_accepts_fixed_boundary_result() -> None:
     assert np.isnan(data.normalized_divergence_rms)
 
 
-def test_cli_plots_mout_without_toroidal_dispatch(tmp_path) -> None:
+def test_command_line_plots_mout_without_toroidal_dispatch(tmp_path) -> None:
     path = write_mout(tmp_path / "mout_sample.nc", _sample_mout())
     output = io.StringIO()
     with contextlib.redirect_stdout(output):

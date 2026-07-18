@@ -22,7 +22,7 @@ from vmex.mirror import (  # noqa: E402
     SplineMirrorDiscretization,
     mout_from_result,
     plot_mout,
-    solve_fixed_boundary_cli,
+    solve_fixed_boundary,
     spline_fixed_boundary_adjoint,
     write_mout,
 )
@@ -119,7 +119,7 @@ for case in CASES:
             )
             if case == "straight_field_line":
                 axial_flux_derivative = initialized.axial_flux_derivative
-        spline_result = solve_fixed_boundary_cli(
+        spline_result = solve_fixed_boundary(
             coefficient_state,
             final_boundary,
             discretization,
@@ -168,7 +168,7 @@ for case in CASES:
             varied_boundary = SplineMirrorBoundary(
                 final_boundary.radius_coefficients + sign * FINITE_DIFFERENCE_STEP * direction
             )
-            varied = solve_fixed_boundary_cli(
+            varied = solve_fixed_boundary(
                 discretization.transfer_boundary(
                     spline_result.coefficient_state,
                     final_boundary,

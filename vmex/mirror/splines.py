@@ -888,7 +888,7 @@ def _packed_spline_preconditioner(
     return apply, scales, local_builder
 
 
-def solve_fixed_boundary_cli(
+def solve_fixed_boundary(
     initial_state: SplineMirrorState,
     boundary: SplineMirrorBoundary,
     discretization: SplineMirrorDiscretization,
@@ -1113,6 +1113,44 @@ def solve_fixed_boundary_cli(
     return SplineMirrorSolveResult(coefficient_state, result)
 
 
+def solve_fixed_boundary_from_radius(
+    radius: Array,
+    config: MirrorConfig,
+    *,
+    elements: int = 6,
+    axial_flux_derivative: Array = 0.01,
+    solve_lambda: bool = True,
+    require_convergence: bool = True,
+    **kwargs: Any,
+) -> SplineMirrorSolveResult:
+    """Solve a fixed-boundary mirror equilibrium directly from a boundary radius.
+
+    This is the one-call convenience entry point. It builds the source grid,
+    boundary, spline discretization, fitted boundary, and self-similar initial
+    state, then runs :func:`solve_fixed_boundary`. ``radius`` may be a scalar, an
+    axial ``(nxi,)`` array, or a full ``(ntheta, nxi)`` array (see
+    :meth:`MirrorBoundary.from_radius`). Extra keyword arguments are forwarded to
+    :func:`solve_fixed_boundary`; power users who need explicit control over the
+    discretization or initial state should call that function directly.
+    """
+
+    grid = config.build_grid()
+    boundary = MirrorBoundary.from_radius(radius, grid)
+    discretization = SplineMirrorDiscretization.build(config, elements=elements)
+    fitted_boundary = discretization.fit_boundary(boundary, grid)
+    initial_state = discretization.fit_state(MirrorState.from_boundary(boundary, grid), grid)
+    return solve_fixed_boundary(
+        initial_state,
+        fitted_boundary,
+        discretization,
+        config,
+        axial_flux_derivative=axial_flux_derivative,
+        solve_lambda=solve_lambda,
+        require_convergence=require_convergence,
+        **kwargs,
+    )
+
+
 jax.tree_util.register_dataclass(SplineMirrorBoundary, data_fields=["radius_coefficients"], meta_fields=[])
 jax.tree_util.register_dataclass(
     SplineMirrorState,
@@ -1133,6 +1171,7 @@ __all__ = [
     "SplineMirrorState",
     "StellaratorMirrorSetup",
     "build_stellarator_mirror_hybrid",
-    "solve_fixed_boundary_cli",
+    "solve_fixed_boundary",
+    "solve_fixed_boundary_from_radius",
     "trace_closed_field_line",
 ]

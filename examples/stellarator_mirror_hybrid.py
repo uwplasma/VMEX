@@ -17,7 +17,7 @@ from vmex.mirror import (
     MirrorResolution,
     build_stellarator_mirror_hybrid,
     plot_stellarator_mirror_hybrid,
-    solve_fixed_boundary_cli,
+    solve_fixed_boundary,
     trace_closed_field_line,
 )
 
@@ -54,7 +54,7 @@ setup = build_stellarator_mirror_hybrid(
     axial_flux_derivative=AXIAL_FLUX_DERIVATIVE,
     quadrature_order=SPLINE_QUADRATURE_ORDER,
 )
-result = solve_fixed_boundary_cli(
+result = solve_fixed_boundary(
     setup.initial_state,
     setup.boundary,
     setup.discretization,

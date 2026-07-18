@@ -19,6 +19,8 @@ from scipy.linalg import eigh
 from scipy.optimize import least_squares, minimize
 from scipy.sparse.linalg import LinearOperator, gmres
 
+from vmex.core.errors import MORE_ITER_FLAG, VmecError
+
 from .forces import (
     IsotropicForceResidual,
     MirrorEnergy,
@@ -84,14 +86,19 @@ jax.tree_util.register_dataclass(
 )
 
 
-class MirrorConvergenceError(RuntimeError):
-    """Raised when a caller requires a physically converged mirror solve."""
+class MirrorConvergenceError(VmecError):
+    """Raised when a caller requires a physically converged mirror solve.
+
+    Subclasses :class:`vmex.core.errors.VmecError` so mirror solve failures
+    flow through the same zero-crash typed-error taxonomy as the core solver.
+    """
 
     def __init__(self, result: MirrorSolveResult):
         self.result = result
         super().__init__(
             f"mirror solve did not reach ftol: variational force "
-            f"{float(result.variational.maximum):.3e} after {result.iterations} iterations"
+            f"{float(result.variational.maximum):.3e} after {result.iterations} iterations",
+            ier_flag=MORE_ITER_FLAG,
         )
 
 
