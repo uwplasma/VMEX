@@ -55,7 +55,9 @@ def _state_max_abs_diff(a, b) -> float:
     )
 
 
-@pytest.mark.parametrize("workers", [2, 4])
+@pytest.mark.parametrize(
+    "workers", [2, pytest.param(4, marks=pytest.mark.full)]
+)
 def test_solve_ensemble_bit_identical_to_serial(workers):
     """Threaded ``solve_ensemble`` == serial solve, bit for bit, per member."""
     inputs = [_small(d) for d in _DECKS]
@@ -72,6 +74,7 @@ def test_solve_ensemble_bit_identical_to_serial(workers):
         assert _state_max_abs_diff(a.state, b.state) == 0.0, name
 
 
+@pytest.mark.full
 def test_solve_ensemble_multigrid_matches_serial():
     """The default (multigrid) path is likewise bit-identical to a serial run."""
     inp = _small("li383_low_res")
