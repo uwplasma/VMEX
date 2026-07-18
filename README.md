@@ -229,8 +229,10 @@ polish pattern is recommended.
 *Top: seed (grey, dashed) vs two-stage (orange) vs cold-start single-stage
 (blue) boundaries at φ = 0 and a half field period — the polish boundary is
 visually indistinguishable from two-stage (same aspect and iota), so it is not
-drawn. Middle/bottom: each approach's final LCFS coloured by |B| inside its
-own final coils.*
+drawn. Middle/bottom: each approach's final LCFS coloured by the local signed
+field-alignment error B·n/|B| inside its own final coils (red: field leaving
+the surface, blue: entering), on one shared colour scale per column so the
+two approaches compare directly.*
 
 Vacuum (measured; identical seeds and coil budgets across columns):
 
