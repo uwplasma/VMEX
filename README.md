@@ -161,7 +161,7 @@ CPU, single thread; `benchmarks/baseline.json`; reproduce with
 | Free boundary from an mgrid file | ✅ | ✅ | ✅ |
 | Free boundary directly from coils (no mgrid) | ✅ | ❌ | ❌ |
 | Free-boundary tokamaks (`ntor = 0`) | ✅ | ✅ | ❌ |
-| Non-stellarator-symmetric (`LASYM = T`) | ✅ | ✅ | ❌ |
+| Non-stellarator-symmetric (`LASYM = T`) | ✅ | ✅ | ✅ |
 | Fixed-boundary fallback on missing mgrid | ✅ | ✅ | ❌ |
 | Spline profiles (cubic / Akima) | ✅ | ✅ | ❌ |
 | VMEC++-schema JSON input | ✅ | ❌ | ✅ |
