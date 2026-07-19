@@ -259,7 +259,10 @@ def test_closed_circular_limit_reaches_ftol_with_independent_strong_force() -> N
     assert result.converged
     assert float(result.variational.maximum) <= config.ftol
     assert float(result.staggered_weak_force.maximum) <= config.ftol
-    assert float(result.force.normalized_rms) < 1.0e-2
+    # Minor-radius norm: the former device-length gate of 1.0e-2 scales by
+    # exactly a/L = 0.25/(2*pi*2.5) on this closed circular limit.
+    assert float(result.force.normalized_rms) < 1.6e-4
+    assert float(result.force.device_normalized_rms) < 1.0e-2
     assert float(result.normalized_divergence_rms) < 1.0e-12
 
 
@@ -746,7 +749,10 @@ def test_supplied_field_initializer_recovers_straight_field_line_mirror() -> Non
     assert not bool(energy.geometry.jacobian_sign_changed)
     assert float(tangency_rms) < 2.0e-4
     assert float(field_error) < 5.0e-4
-    assert float(force.normalized_rms) < 6.0e-3
+    # Minor-radius norm: the former device-length bound of 6.0e-3 scales by
+    # a/L = 0.03/2 for this thin analytic tube.
+    assert float(force.normalized_rms) < 1.0e-4
+    assert float(force.device_normalized_rms) < 6.0e-3
     assert float(jnp.max(jnp.abs(initialized.state.lambda_coefficients))) > 1.0e-6
     assert np.all(np.asarray(initialized.axial_flux_derivative) > 0.0)
     np.testing.assert_allclose(
@@ -820,8 +826,11 @@ def test_equal_end_axisymmetric_mirror_is_independent_of_cut_location(_module_ji
         assert result.final_linear_residual < 2.0e-9
         assert float(result.variational.maximum) <= config.ftol
         assert float(result.staggered_weak_force.maximum) <= config.ftol
-        assert float(result.force.normalized_rms) < 6.0e-3
-        assert float(result.force.bulk_normalized_rms) < 2.0e-3
+        # Minor-radius norm: the former device-length bounds of 6.0e-3 and
+        # 2.0e-3 scale by a/L <= 0.12/1.2 across the three cut locations.
+        assert float(result.force.normalized_rms) < 6.0e-4
+        assert float(result.force.bulk_normalized_rms) < 2.0e-4
+        assert float(result.force.device_normalized_rms) < 6.0e-3
 
     np.testing.assert_allclose(center_radius, center_radius[0], rtol=3.0e-8)
     np.testing.assert_allclose(center_axis_field, center_axis_field[0], rtol=2.0e-5)

@@ -117,6 +117,104 @@ For open mirrors, ``bulk`` and radial-axis diagnostics use the central 80% of
 the axial coordinate. ``end_collar`` uses the outer 20% nearest the two fixed
 cuts. The all-volume norm retains both regions.
 
+Strong-force gate normalization
+-------------------------------
+
+The pointwise residual ``|J x B - grad(p)|`` is a force density and needs a
+reference force scale to become a dimensionless gate. The primary
+normalization divides by :math:`B^2/(\mu_0 a)`, where the minor radius ``a``
+is the flux-equivalent LCFS radius: the midplane cross-section for open
+mirrors and the circuit-averaged section for closed hybrids
+(:func:`vmex.mirror.forces.effective_minor_radius`; a caller may also pass
+``minor_radius`` explicitly). Transverse pressure balance acts on the
+minor-radius scale, so :math:`B^2/(\mu_0 a)` is the magnitude of the
+competing equilibrium forces, and every lane has one structural ``a``. The
+earlier normalization used the device length ``L`` (cap-to-cap extent for
+open mirrors, axis arc length for the closed racetrack). That number is
+linear in an arbitrary length: open lanes have ``L/a`` near 17--20 while the
+closed racetrack has ``L/a`` near 67, so one identical solved hybrid state
+reads ``0.205`` arc-normalized but ``0.0030`` minor-radius-normalized, even
+though its absolute force density is lower than that of the passing medium
+rotating ellipse. The device-length number therefore remains available only
+as the secondary ``device_normalized_rms`` diagnostic, and the recorded
+``benchmarks/mirror_*.json`` files intentionally keep quoting it: they
+document the historical evidence and are not rewritten under the new
+normalization.
+
+Gate evaluation reports zones rather than a single folded number:
+:func:`vmex.mirror.forces.force_gate_zones` returns the all-volume, bulk,
+end-collar, and near-axis/first-row norms (all minor-radius-normalized)
+together with the legacy device-length total, so constrained-data regions --
+the frozen end cuts and the regularized axis -- are visible next to the
+unconstrained bulk. Promotion additionally requires refinement evidence:
+:func:`vmex.mirror.forces.refinement_convergence` reports per-step ratios and
+monotonicity for residuals from two or more resolutions, and
+:func:`vmex.mirror.forces.passes_promotion_gate` combines the absolute gate
+on the finest rung with that monotone-decrease requirement.
+
+Re-measured gate numbers for the shipped cases, evaluated on the identical
+solved states under both normalizations (device-length ``L``-normalized
+values match the recorded evidence bit-for-bit):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 44 12 12 10 11 11
+
+   * - Case
+     - device norm
+     - minor norm
+     - bulk
+     - end collar
+     - axis row
+   * - Rotating ellipse ``(ns,mpol,nxi,elements)`` = ``(5,4,13,5)``
+     - 0.0667
+     - 0.00400
+     - 0.00231
+     - 0.00683
+     - 0.00343
+   * - Rotating ellipse ``(7,6,17,6)``, the supported lane
+     - 0.0267
+     - 0.00160
+     - 0.00073
+     - 0.00274
+     - 0.00196
+   * - Rotating ellipse ``(9,8,21,8)``
+     - 0.0142
+     - 0.00085
+     - 0.00026
+     - 0.00156
+     - 0.00060
+   * - SFLM ``(7,6,17,6)``, validation-only
+     - 0.335
+     - 0.0168
+     - 0.00259
+     - 0.0350
+     - 0.00863
+   * - Hybrid circular section, ``ns=7``, 16 controls
+     - 0.205
+     - 0.00305
+     - 0.00310
+     - (none)
+     - 0.00281
+   * - Free boundary ``(ns,nxi,elements,panels)`` = ``(5,7,4,8)``, beta 0
+     - 0.0421
+     - 0.00665
+     - 0.00610
+     - 0.00718
+     - 0.00431
+   * - Free boundary ``(5,7,4,8)``, beta 10%
+     - 0.0269
+     - 0.00430
+     - 0.00490
+     - 0.00361
+     - 0.00588
+
+The rotating-ellipse ladder stays monotone under the new normalization
+(per-step ratios 2.50 and 1.88), and the hybrid's minor-radius number now
+sits between the coarse and medium open rungs instead of appearing an order
+of magnitude worse: the apparent cross-lane gap was the ``L/a`` disparity,
+not a larger force error.
+
 In particular, radial curl and pressure terms use conservative cell
 differences,
 
@@ -236,7 +334,12 @@ plateauing sequence ``0.5733 -> 0.3556 -> 0.3325`` at fixed volume (agreement
 ``5.0e-6`` relative, variational residual below ``6.7e-14``); refining
 radial/poloidal resolution from ``ns=5, mpol=3`` to ``ns=7, mpol=4`` at 64
 controls lowers the strong force from ``0.333`` to ``0.227`` while the
-variational residual reaches ``3.90e-16``. Finite-beta continuation and
+variational residual reaches ``3.90e-16``. Every hybrid residual in this and
+the next paragraph is arc-length-normalized (the legacy device normalization
+recorded in ``benchmarks/mirror_hybrid_fixed_boundary.json``); the racetrack
+arc length is 67 minor radii, so the same states are roughly 67 times smaller
+under the primary minor-radius normalization -- the re-measured circular
+section below appears in the gate table above. Finite-beta continuation and
 racetrack sensitivity claims are deferred until this beta-zero residual is
 resolved.
 
@@ -274,7 +377,9 @@ same constrained solver variables. The pointwise force reconstructs
 ``J x B - grad(p)`` on the full mesh. It does not define nonlinear ``ftol``,
 but its magnitude and refinement are independent diagnostics. Its total,
 near-axis, first-radial-row, bulk, and end-collar norms are reported
-separately. ``div(B)`` checks the field representation.
+separately, all under the primary minor-radius normalization; the legacy
+device-length total remains available as ``device_normalized_rms``.
+``div(B)`` checks the field representation.
 Open mirror data are never encoded as a toroidal WOUT file. The closed hybrid
 currently writes a reviewed PNG and JSON summary directly from the solved
 objects; a periodic MOUT schema is deliberately not inferred from the open
@@ -289,13 +394,15 @@ polygons.
 The compact six-point isotropic data are recorded in
 ``benchmarks/mirror_free_boundary_axisymmetric.json``: the axisymmetric
 free-boundary path is supported through 10% beta and retained as labeled
-validation through 50%. A refinement matrix over radial, axial,
-exterior-angular, exterior-order, and combined resolutions gives, at 10%, fine
-all-volume/core forces ``1.44e-2``/``1.62e-3`` with every independent fine
-force below ``2.47e-2``. At 25% one independent force reaches ``5.70e-2``, and
-at 50% the fine force is ``6.69e-2`` with a medium-to-fine center-field change
-of ``1.02%``. Small variational residuals do not override those independent
-force values.
+validation through 50%. The recorded force values use the legacy
+device-length normalization (the coarse supported rows re-measured under the
+minor-radius normalization appear in the gate table above). A refinement
+matrix over radial, axial, exterior-angular, exterior-order, and combined
+resolutions gives, at 10%, fine all-volume/core forces
+``1.44e-2``/``1.62e-3`` with every independent fine force below ``2.47e-2``.
+At 25% one independent force reaches ``5.70e-2``, and at 50% the fine force
+is ``6.69e-2`` with a medium-to-fine center-field change of ``1.02%``. Small
+variational residuals do not override those independent force values.
 
 Fixed-boundary 3D solver
 ------------------------
@@ -447,9 +554,10 @@ Supplied-field initialization provides the physical stream function and flux,
 and ``impose_self_similar_cuts`` fixes each end section to scaled copies of its
 LCFS. With these corrected cut semantics, the medium 90-degree rotating
 ellipse has variational residual ``2.11e-16``, independent weak residual
-``2.08e-16``, all-volume strong force ``2.67e-2``, and normalized divergence
-``6.68e-15`` at LCFS radius ``0.12 m``. This is the current supported
-nonaxisymmetric fixed-boundary case.
+``2.08e-16``, all-volume strong force ``2.67e-2`` device-normalized
+(``1.60e-3`` under the primary minor-radius normalization), and normalized
+divergence ``6.68e-15`` at LCFS radius ``0.12 m``. This is the current
+supported nonaxisymmetric fixed-boundary case.
 
 ``initialize_from_cartesian_field`` now keeps a supplied spline geometry fixed,
 infers :math:`\Psi'(s)` from the surface-averaged axial flux, and obtains the
@@ -460,7 +568,9 @@ field remains a useful projection and field-direction fixture, but it is not
 currently a supported equilibrium. At ``(ns,mpol,elements)=(7,6,6)`` and LCFS
 radius ``0.10 m``, the corrected-cut solve reaches variational residual
 ``1.71e-16`` and divergence ``7.04e-15``, while the reconstructed all-volume
-and end-collar strong forces are ``0.335`` and ``0.701``.
+and end-collar strong forces are ``0.335`` and ``0.701`` device-normalized
+(``1.68e-2`` and ``3.50e-2`` under the primary minor-radius normalization,
+with bulk ``2.59e-3``).
 
 The parser-free root example runs both fixtures through five coefficient-space
 continuation stages, solves a standard axisymmetric mirror through
@@ -587,7 +697,7 @@ coil geometry. Before continuation, the CLI traces finite-radius nested
 vacuum-flux surfaces from the supplied axisymmetric field and fits them
 directly in the spline basis, selecting the same physical basin as the
 three-grid benchmark: with the compact coils the default beta-zero medium
-case has strong force ``0.00456``. The example also uses the benchmark's
+case has device-normalized strong force ``0.00456``. The example also uses the benchmark's
 sixth-order spectral side-density exterior. Initialization is a bounded host
 operation; the converged coefficient residual and its implicit derivatives
 remain JAX differentiable. The larger ``0.35 m`` cross-section is not supported
@@ -724,7 +834,8 @@ The beta-zero exterior resolution study at ``(ns,nxi,ntheta_panel)`` equal to
 ``1.39e-4`` and ``2.26e-4`` relative while every force solve remains below
 ``5.8e-15``. Continuing every grid through 50% beta, the fine grid at beta 50%
 gives center radius ``0.272554 m``, axis field ``0.063578 T``, volume beta
-``0.216984``, and all-volume/core force ``6.69e-2``/``1.50e-2``, with
+``0.216984``, and device-normalized all-volume/core force
+``6.69e-2``/``1.50e-2``, with
 medium-to-fine changes of ``0.137%`` in radius and ``1.02%`` in center field;
 that point remains validation-only, while 10% passes all independent force and
 observable checks.

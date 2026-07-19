@@ -519,7 +519,9 @@ result = solve_fixed_boundary_from_radius(0.3, config)   # radius: scalar, (nxi,
 
 Both lanes above are solved equilibria from the same example: a standard
 axisymmetric mirror (circular sections, mirror ratio 1.5, strong-force
-residual `9.9e-3`) through the one-call entry point, and the supported
+residual `5.9e-4` under the primary minor-radius normalization `B²/(μ₀a)`,
+`9.9e-3` under the legacy device-length normalization the recorded
+benchmarks quote) through the one-call entry point, and the supported
 rotating ellipse whose section turns by 90 degrees between the end cuts. The
 rotating-ellipse mirror converges at `ftol = 1e-12` to a normalized
 divergence of `1.4e-14`, in **6 s cold / 0.2 s warm** (peak ≈1.2 GB, CPU). Its
