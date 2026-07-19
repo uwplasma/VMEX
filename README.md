@@ -515,12 +515,16 @@ config = MirrorConfig(resolution=MirrorResolution(ns=7, mpol=4, nxi=17))
 result = solve_fixed_boundary_from_radius(0.3, config)   # radius: scalar, (nxi,), or (ntheta, nxi)
 ```
 
-![Fixed-boundary rotating-ellipse mirror: solved geometry, field lines, cross-sections, and convergence](docs/_static/figures/mirror_fixed_boundary_3d.png)
+![Solved fixed-boundary mirrors coloured by |B|: axisymmetric circular-section mirror (left) and 90-degree rotating-ellipse mirror (right), with thin cap-to-cap field lines](docs/_static/figures/mirror_fixed_boundary_3d.png)
 
-The rotating-ellipse mirror converges at `ftol = 1e-12` to a normalized
-divergence of `6.6e-15`, in **6 s cold / 0.2 s warm** (peak ≈1.2 GB, CPU). Its
+Both lanes above are solved equilibria from the same example: a standard
+axisymmetric mirror (circular sections, mirror ratio 1.5, strong-force
+residual `9.9e-3`) through the one-call entry point, and the supported
+rotating ellipse whose section turns by 90 degrees between the end cuts. The
+rotating-ellipse mirror converges at `ftol = 1e-12` to a normalized
+divergence of `1.4e-14`, in **6 s cold / 0.2 s warm** (peak ≈1.2 GB, CPU). Its
 implicit boundary gradient agrees with two fully reconverged finite-difference
-solves to `5.9e-10` relative — the derivative an external optimizer needs.
+solves to `9.3e-10` relative — the derivative an external optimizer needs.
 
 ### Free-boundary β scan
 
@@ -545,7 +549,7 @@ under same-geometry refinement, so it ships as a validated **research
 candidate**, not a supported benchmark — the same implicit API already
 differentiates its periodic boundary and axis controls.
 
-![Periodic B-spline stellarator–mirror hybrid: straight legs, rotating returns, field lines, and |B|](docs/_static/figures/stellarator_mirror_hybrid.png)
+![Periodic B-spline stellarator–mirror hybrid: straight legs, rotating returns, B-spline axis, and boundary |B|](docs/_static/figures/stellarator_mirror_hybrid.png)
 
 ### Run the mirror examples
 
