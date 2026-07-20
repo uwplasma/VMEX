@@ -22,6 +22,11 @@ def test_requested_devices_skips_an_unavailable_gpu():
     assert skipped == {"gpu": "no GPU JAX device is available"}
 
 
+def test_metric_selection_includes_traceable_dmerc():
+    assert "dmerc_interior_mean" in device_parity.METRIC_NAMES
+    assert "dmerc_interior_mean" in device_parity._metrics(quick=True)
+
+
 def test_compare_lanes_reports_forward_and_gradient_parity():
     cpu = {"state": np.array([1.0, 2.0]), "metrics": {"mhd_energy": (3.0, 4.0)}}
     gpu = {"state": np.array([1.0, 2.0 + 1e-10]), "metrics": {"mhd_energy": (3.0, 4.0)}}

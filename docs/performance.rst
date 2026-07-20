@@ -402,8 +402,8 @@ Reproducing the numbers
 For a compact hardware-parity audit, ``device_parity.py`` runs the same small
 equilibrium on explicitly selected CPU/GPU devices and records the forward
 state plus boundary derivatives of MHD energy, magnetic well, quasisymmetry,
-and quasi-isodynamicity in JSON.  It does not set or require JAX platform
-environment variables::
+quasi-isodynamicity, and the mean traceable ``DMerc[2:-1]`` profile in JSON.
+It does not set or require JAX platform environment variables::
 
    python benchmarks/device_parity.py --quick --metrics mhd_energy --output /tmp/vmex-smoke.json
    python benchmarks/device_parity.py --devices cpu,gpu --output /tmp/vmex-parity.json
@@ -411,7 +411,7 @@ environment variables::
 On a CPU-only host the default runs the CPU lane and marks the cross-device
 comparison as skipped; ``--devices cpu`` requests that lane explicitly.
 The first command is the short smoke lane; omit ``--metrics`` to audit all
-four objectives.
+five objectives.
 
 The parity suite needs the golden VMEC2000 fixtures (fetched release assets);
 it is skipped automatically when they are unavailable.

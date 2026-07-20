@@ -42,6 +42,7 @@ DATA = REPO / "examples" / "data"
 METRIC_NAMES = (
     "mhd_energy",
     "magnetic_well",
+    "dmerc_interior_mean",
     "quasisymmetry",
     "quasi_isodynamic",
 )
@@ -116,6 +117,9 @@ def _metrics(quick: bool) -> dict[str, Callable[[Any], Any]]:
     return {
         "mhd_energy": lambda sol: sol.wb,
         "magnetic_well": lambda sol: opt.magnetic_well(sol.state, sol.runtime),
+        "dmerc_interior_mean": lambda sol: opt.d_merc_state(
+            sol.state, sol.runtime
+        )[2:-1].mean(),
         "quasisymmetry": lambda sol: qs.total_state(sol.state, sol.runtime),
         "quasi_isodynamic": lambda sol: qi.total_state(sol.state, sol.runtime),
     }
