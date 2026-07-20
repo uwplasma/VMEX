@@ -395,7 +395,8 @@ Reproducing the numbers
 
    python benchmarks/run_baseline.py         # CPU suite -> benchmarks/baseline.json
    python benchmarks/run_gpu_matrix.py       # GPU matrix -> benchmarks/gpu_baseline.json
-   python benchmarks/profile_production.py   # the five production workflows
+   python benchmarks/profile_production.py --device cpu
+   python benchmarks/profile_production.py --device gpu
    pytest tests/test_parity_breadth.py     # end-to-end parity suite
 
 The parity suite needs the golden VMEC2000 fixtures (fetched release assets);
