@@ -45,7 +45,8 @@ Scope notes
 - Surfaces need ``ι ≠ 0`` (the field-line parameterization divides by ι).
 - :func:`d_merc_state` is the traceable counterpart of the parity-proven
   wout calculation.  As in VMEC2000, its first two surfaces and edge are not
-  suitable stability targets; use the validated interior profile.
+  suitable stability targets; :func:`mercier_stability_residual` selects the
+  validated interior and supplies a smooth stability-violation objective.
 """
 
 from __future__ import annotations
@@ -63,6 +64,7 @@ from .transforms import physical_to_internal_scale
 
 __all__ = [
     "d_merc_state",
+    "mercier_stability_residual",
     "ballooning_lambda",
     "ballooning_growth_rate",
 ]
@@ -220,6 +222,31 @@ def d_merc_state(state: SpectralState, rt: SolverRuntime) -> Array:
     tjj = jnp.einsum("sij,ij->s", jdotb * bdotj_norm / b2i, wint) * factor
     dmerc = 0.25 * shear**2 - shear * (tjb - ip * tbb) + presp * (vpp - presp * tpp) * tbb + tjb**2 - tbb * tjj
     return jnp.zeros_like(s).at[1:-1].set(dmerc)
+
+
+def mercier_stability_residual(
+    state: SpectralState,
+    rt: SolverRuntime,
+    *,
+    margin: float = 0.0,
+    smoothing: float = 1.0e-6,
+) -> Array:
+    """Smooth Mercier-instability residual on ``DMerc[2:-1]``.
+
+    Positive ``DMerc`` is stable.  For each validated interior surface this
+    returns ``smoothing * softplus((margin - DMerc) / smoothing)``: it tends
+    to ``max(margin - DMerc, 0)`` as ``smoothing`` tends to zero, while
+    retaining a smooth gradient at the stability boundary.  At finite
+    smoothing it is strictly positive but exponentially close to zero on a
+    sufficiently stable surface.  Use target zero in
+    :func:`vmex.core.optimize.least_squares`; ``margin > 0`` requests a finite
+    stability margin.  The first two surfaces and edge are excluded.
+    """
+    if smoothing <= 0.0:
+        raise ValueError(f"smoothing must be positive, got {smoothing}")
+    violation = jnp.asarray(margin) - d_merc_state(state, rt)[2:-1]
+    scale = jnp.asarray(smoothing, dtype=violation.dtype)
+    return scale * jax.nn.softplus(violation / scale)
 
 
 # ---------------------------------------------------------------------------

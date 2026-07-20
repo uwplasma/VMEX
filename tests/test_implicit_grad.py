@@ -33,7 +33,9 @@ against central finite differences through the full host solver):
    ``_HOST_ERROR`` relay), not a multi-KB ``JaxRuntimeError``;
 9. the multigrid lane directly (plan Item I.4): ``im.run(multigrid=True)``
    through a genuine ns 5 -> 11 ladder, ``d(wb)/d(RBC(0,1))`` vs the
-   frozen-path FD.
+   frozen-path FD;
+10. implicit DMerc gradients in several boundary directions and with respect
+    to pressure/current inputs against frozen-path central differences.
 
 FD steps (documented choices): central differences with the *same* ftol and
 iteration policy on both sides, converged outputs cached on disk (``/tmp``)
@@ -61,6 +63,7 @@ import jax.numpy as jnp
 
 from vmex.core import implicit as im
 from vmex.core import solver
+from vmex.core import stability as stab
 from vmex.core.input import VmecInput
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "examples" / "data"
@@ -144,6 +147,11 @@ def _fd(name: str, inp: VmecInput, cfg, p0, field: str, idx, h: float) -> dict:
 
 def _tnorm(tree) -> float:
     return float(np.sqrt(sum(float(jnp.vdot(a, a)) for a in jax.tree.leaves(tree))))
+
+
+def _tree_dot(left, right) -> float:
+    return float(sum(jnp.vdot(a, b) for a, b in zip(
+        jax.tree.leaves(left), jax.tree.leaves(right), strict=True)))
 
 
 # ---------------------------------------------------------------------------
@@ -518,6 +526,70 @@ def test_multigrid_gradient_vs_frozen_path_fd():
           f"(Newton res {res:.0e})")
     assert res < 1e-8, f"frozen solve not converged (res {res:.1e})"
     assert rel <= 1e-6
+
+
+def _assert_dmerc_gradients(case, *, include_profiles):
+    name, inp, cfg, p0, _, _, _ = case
+    ntor = int(inp.ntor)
+    zero = jax.tree.map(jnp.zeros_like, p0)
+    directions = [
+        ("RBC(0,1)", dataclasses.replace(
+            zero, rbc=zero.rbc.at[ntor, 1].set(1.0))),
+        ("ZBS(0,1)", dataclasses.replace(
+            zero, zbs=zero.zbs.at[ntor, 1].set(1.0))),
+    ]
+    if include_profiles == "pressure":
+        directions += [
+            ("RBC(0,2)", dataclasses.replace(
+                zero, rbc=zero.rbc.at[ntor, 2].set(1.0))),
+            ("pres_scale", dataclasses.replace(
+                zero, pres_scale=jnp.ones_like(zero.pres_scale))),
+        ]
+    elif include_profiles == "current":
+        directions.append(("curtor/|curtor|", dataclasses.replace(
+            zero, curtor=jnp.asarray(abs(float(inp.curtor))))))
+
+    def metric(state, runtime):
+        return jnp.sum(stab.d_merc_state(state, runtime)[2:-1])
+
+    def objective(params):
+        solution = im.run(
+            inp,
+            params,
+            ftol=cfg.ftol,
+            max_iterations=cfg.max_iterations,
+        )
+        return metric(solution.state, solution.runtime)
+
+    grad = jax.grad(objective)(p0)
+    for label, tangent in directions:
+        ad = _tree_dot(grad, tangent)
+        fd, info = im.frozen_path_directional_fd(
+            p0, cfg, metric, tangent, h=1.0e-4
+        )
+        residual = max(info["newton_res"])
+        scale = max(abs(ad), abs(fd), 1.0e-12)
+        relative_error = abs(ad - fd) / scale
+        print(
+            f"\n[{name}] d(sum DMerc[2:-1])/d({label}): "
+            f"AD={ad:+.10e} frozen-FD={fd:+.10e} "
+            f"rel={relative_error:.2e} (Newton res {residual:.0e})"
+        )
+        assert residual < 1.0e-8
+        assert relative_error <= 2.0e-3
+
+
+@pytest.mark.parametrize("case", ["solovev"], indirect=True)
+def test_dmerc_gradient_vs_frozen_path_fd(case):
+    """Implicit DMerc shape/pressure derivatives on the axisymmetric case."""
+    _assert_dmerc_gradients(case, include_profiles="pressure")
+
+
+@pytest.mark.full
+@pytest.mark.parametrize("case", ["li383_low_res"], indirect=True)
+def test_dmerc_3d_current_gradient_vs_frozen_path_fd(case):
+    """Nightly: implicit 3-D DMerc shape/current derivatives."""
+    _assert_dmerc_gradients(case, include_profiles="current")
 
 
 # ===========================================================================
