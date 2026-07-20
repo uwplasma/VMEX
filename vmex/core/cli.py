@@ -191,6 +191,16 @@ def build_parser() -> argparse.ArgumentParser:
             "printing, exact-ftol exit) or 'jit' (single lax.while_loop)."
         ),
     )
+    p.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        choices=("auto", "none", "cpu", "gpu", "cuda", "rocm", "tpu"),
+        help=(
+            "JAX solve placement: automatic VMEX policy (default), 'none' to "
+            "follow JAX, or an explicit platform."
+        ),
+    )
     p.add_argument("--ftol", type=float, default=None, help="Override the final-stage FTOL_ARRAY tolerance.")
     p.add_argument("--max-iter", type=int, default=None, help="Override the final-stage NITER_ARRAY iteration cap.")
     p.add_argument(
@@ -586,6 +596,7 @@ def _solve_input_file(args, input_path: Path, outdir: Path | None, *, emit) -> i
             verbose=verbose,
             emit=emit,
             error_on_no_convergence=False,
+            device=None if args.device == "none" else args.device,
             **freeb_plan.solver_kwargs,
         )
     else:
@@ -599,6 +610,7 @@ def _solve_input_file(args, input_path: Path, outdir: Path | None, *, emit) -> i
             mode=str(args.mode),
             verbose=verbose,
             emit=emit,
+            device=None if args.device == "none" else args.device,
         )
     solve_s = time.perf_counter() - t1
 

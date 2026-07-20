@@ -51,6 +51,7 @@ import jax.numpy as jnp
 from jax import lax
 
 from . import profiles as _profiles
+from .device import AUTO, device_context
 from .errors import MORE_ITER_FLAG, SUCCESSFUL_TERM_FLAG
 from .fields import magnetic_fields, metric_elements
 from .fourier import ModeTable
@@ -974,7 +975,7 @@ def _make_vacuum_lane(fused: FusedVacuum):
 # ---------------------------------------------------------------------------
 
 
-def solve_free_boundary(
+def _solve_free_boundary_impl(
     inp: VmecInput,
     *,
     mgrid_path: str | Path | None = None,
@@ -1192,3 +1193,37 @@ def solve_free_boundary(
     if ier == SUCCESSFUL_TERM_FLAG:
         return _result_from_carry(carry, rt_freeb if fb.turned_on else rt_fixed)
     return _finalize(carry, rt_freeb if fb.turned_on else rt_fixed)
+
+
+def solve_free_boundary(
+    inp: VmecInput,
+    *,
+    mgrid_path: str | Path | None = None,
+    external_field: MgridField | None = None,
+    resolution=None,
+    ftol: float | None = None,
+    max_iterations: int | None = None,
+    verbose: bool = False,
+    emit=print,
+    error_on_no_convergence: bool = True,
+    device: Any = AUTO,
+) -> SolveResult:
+    """Run a single-grid free-boundary solve on the selected JAX device.
+
+    ``device`` has the same semantics as :func:`vmex.core.solver.solve`:
+    explicit devices are honored, ``"auto"`` applies VMEX's measured policy,
+    and ``None`` leaves placement to JAX.
+    """
+    resolved = resolution if resolution is not None else resolution_from_input(inp)
+    with device_context(device, resolved):
+        return _solve_free_boundary_impl(
+            inp,
+            mgrid_path=mgrid_path,
+            external_field=external_field,
+            resolution=resolved,
+            ftol=ftol,
+            max_iterations=max_iterations,
+            verbose=verbose,
+            emit=emit,
+            error_on_no_convergence=error_on_no_convergence,
+        )

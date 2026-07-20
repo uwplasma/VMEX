@@ -13,6 +13,7 @@ import jax
 import pytest
 
 from vmex.core import device as dev
+from vmex.core import freeboundary
 from vmex.core.fourier import Resolution
 
 
@@ -156,3 +157,30 @@ def test_device_context_wraps_default_device_for_explicit_cpu():
     assert not isinstance(ctx, contextlib.nullcontext)
     with ctx:
         pass
+
+
+def test_free_boundary_uses_shared_device_context(monkeypatch):
+    resolution = _res(ns=11, mpol=6, ntor=0)
+    seen = {}
+
+    @contextlib.contextmanager
+    def fake_context(device, resolved):
+        seen["context"] = (device, resolved)
+        yield
+
+    def fake_solve(inp, **kwargs):
+        seen["solve"] = (inp, kwargs)
+        return "result"
+
+    monkeypatch.setattr(freeboundary, "device_context", fake_context)
+    monkeypatch.setattr(freeboundary, "_solve_free_boundary_impl", fake_solve)
+    inp = object()
+    result = freeboundary.solve_free_boundary(
+        inp, resolution=resolution, device="cpu", max_iterations=3
+    )
+
+    assert result == "result"
+    assert seen["context"] == ("cpu", resolution)
+    assert seen["solve"][0] is inp
+    assert seen["solve"][1]["resolution"] is resolution
+    assert seen["solve"][1]["max_iterations"] == 3

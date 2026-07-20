@@ -470,6 +470,8 @@ options:
   --outdir PATH          directory for wout/boozmn/figure output
   --mode {cli,jit}       jitted blocks with live printing (cli, default)
                          or a single lax.while_loop (jit)
+  --device PLATFORM      auto (default), none (follow JAX), cpu, gpu,
+                         cuda, rocm, or tpu; applies to all solve paths
   --ftol F               override the final-stage FTOL_ARRAY tolerance
   --max-iter N           override the final-stage NITER_ARRAY cap
   --coils PATH           ESSOS-style coils file: drive an LFREEB = T deck
@@ -479,9 +481,9 @@ options:
   --quiet                silence the VMEC-style stdout
 ```
 
-`vmec` follows the selected JAX backend: with CPU-only JAX it runs on the
-CPU; with CUDA-enabled JAX it uses the GPU for the solver stages where that
-is faster (`JAX_PLATFORMS=cpu|cuda` pins it explicitly).
+`vmec` detects the available JAX hardware without environment variables and
+uses CPU or GPU according to the measured per-stage policy. Use
+`--device cpu` or `--device gpu` to override it explicitly.
 
 ## Documentation
 
