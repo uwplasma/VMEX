@@ -399,5 +399,19 @@ Reproducing the numbers
    python benchmarks/profile_production.py --device gpu
    pytest tests/test_parity_breadth.py     # end-to-end parity suite
 
+For a compact hardware-parity audit, ``device_parity.py`` runs the same small
+equilibrium on explicitly selected CPU/GPU devices and records the forward
+state plus boundary derivatives of MHD energy, magnetic well, quasisymmetry,
+and quasi-isodynamicity in JSON.  It does not set or require JAX platform
+environment variables::
+
+   python benchmarks/device_parity.py --quick --metrics mhd_energy --output /tmp/vmex-smoke.json
+   python benchmarks/device_parity.py --devices cpu,gpu --output /tmp/vmex-parity.json
+
+On a CPU-only host the default runs the CPU lane and marks the cross-device
+comparison as skipped; ``--devices cpu`` requests that lane explicitly.
+The first command is the short smoke lane; omit ``--metrics`` to audit all
+four objectives.
+
 The parity suite needs the golden VMEC2000 fixtures (fetched release assets);
 it is skipped automatically when they are unavailable.
