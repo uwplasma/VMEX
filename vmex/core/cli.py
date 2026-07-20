@@ -333,7 +333,7 @@ def _coils_mgrid_field(path: Path, *, nr: int = 96, nphi: int = 32,
     vmex keeps no coil code — coils live in ESSOS
     (:class:`essos.coils.Coils`).  This loads the coils from the
     ``essos.coils.Coils.to_json`` layout (``.json``, via
-    ``essos.coils.Coils_from_json``) or the same keys in an ``.npz`` archive
+    ``essos.coils.Coils.from_json``) or the same keys in an ``.npz`` archive
     (``dofs_curves`` with shape ``(n_base_coils, 3, 2*order + 1)``,
     ``dofs_currents``, ``n_segments``, ``nfp``, ``stellsym``, optional
     ``currents_scale``), tabulates the coil field onto a cylindrical grid
@@ -347,7 +347,7 @@ def _coils_mgrid_field(path: Path, *, nr: int = 96, nphi: int = 32,
     import numpy as np
 
     try:
-        from essos.coils import Coils, Coils_from_json, Curves
+        from essos.coils import Coils, Curves
     except ImportError as exc:
         raise VmecInputError(
             WERROR_MESSAGES[INPUT_ERROR_FLAG],
@@ -367,7 +367,11 @@ def _coils_mgrid_field(path: Path, *, nr: int = 96, nphi: int = 32,
             stellsym = bool(np.asarray(data.get("stellsym", False)).reshape(-1)[0])
             scale = float(np.asarray(data.get("currents_scale", 1.0)).reshape(-1)[0])
             coils = Coils(Curves(dofs, n_segments, nfp, stellsym), currents * scale)
-        else:
+        elif hasattr(Coils, "from_json"):
+            coils = Coils.from_json(str(path))
+        else:  # legacy ESSOS predating the Coils.from_json classmethod
+            from essos.coils import Coils_from_json
+
             coils = Coils_from_json(str(path))
     except (KeyError, ValueError, OSError, TypeError) as exc:
         raise VmecInputError(
