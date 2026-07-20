@@ -197,7 +197,7 @@ def format_report(report: DoctorReport) -> str:
     lines.extend(
         [
             "VMEX forward default:  automatic size-based CPU/GPU policy",
-            "VMEX implicit default: CPU on accelerator hosts (optimizer device= overrides)",
+            "VMEX implicit default: CPU on accelerator hosts (explicit device= overrides)",
         ]
     )
     lines.append("")
