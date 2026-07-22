@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from pathlib import Path
 
@@ -9,8 +10,9 @@ import jax
 import numpy as np
 import pytest
 
+from vmex.core import device as device_policy
 from vmex.core import implicit as im
-from vmex.core import solver
+from vmex.core import multigrid, solver
 from vmex.core.input import VmecInput
 
 
@@ -69,6 +71,8 @@ def test_explicit_forward_solve_cpu_gpu_parity():
 
     assert results["cpu"].converged and results["gpu"].converged
     assert results["cpu"].iterations == results["gpu"].iterations
+    assert _platform(results["cpu"].state.R_cos) == "cpu"
+    assert _platform(results["gpu"].state.R_cos) == "gpu"
     np.testing.assert_allclose(
         results["gpu"].fsq_history,
         results["cpu"].fsq_history,
@@ -81,6 +85,43 @@ def test_explicit_forward_solve_cpu_gpu_parity():
         strict=True,
     ):
         np.testing.assert_allclose(gpu_leaf, cpu_leaf, rtol=5e-10, atol=1e-12)
+
+    # Committed hot starts must not defeat an explicit opposite-device request.
+    for platform, seed in (("gpu", results["cpu"]), ("cpu", results["gpu"])):
+        restarted = solver.solve(
+            inp,
+            ftol=1e-12,
+            max_iterations=1000,
+            mode="jit",
+            initial_state=seed.state,
+            device=platform,
+        )
+        assert restarted.converged
+        assert _platform(restarted.state.R_cos) == platform
+
+
+def test_multigrid_auto_moves_state_across_policy_threshold(monkeypatch):
+    """A CPU coarse stage must not commit an AUTO-selected fine stage to CPU."""
+    inp = VmecInput.from_file(DATA_DIR / "input.solovev")
+    inp = dataclasses.replace(
+        inp,
+        ns_array=np.asarray([5, 11]),
+        ftol_array=np.asarray([1e-9, 1e-12]),
+        niter_array=np.asarray([1000, 1000]),
+    )
+    monkeypatch.setattr(device_policy, "GPU_MIN_ITERATION_WORK", 500)
+    seen = []
+    solve_stage = multigrid._solve_stage
+
+    def recording_solve_stage(*args, **kwargs):
+        carry = solve_stage(*args, **kwargs)
+        seen.append(_platform(carry.state.R_cos))
+        return carry
+
+    monkeypatch.setattr(multigrid, "_solve_stage", recording_solve_stage)
+    result = multigrid.solve_multigrid(inp, mode="jit", device="auto")
+    assert result.converged
+    assert seen == ["cpu", "gpu"]
 
 
 def test_explicit_implicit_gradient_cpu_gpu_parity():
