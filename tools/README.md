@@ -15,9 +15,10 @@ Hardware parity across forward solves and boundary gradients is audited by
 
 - `diagnose_input.py`: runs the first VMEC force evaluation without entering
   the nonlinear iteration. Its default shareable report contains only runtime
-  information, pass/fail checks, and a diagnostic code; it omits the input
-  path and all input-derived values. `--details` exposes parsed controls and
-  numerical values for local use with non-confidential decks only:
+  information, pass/fail checks for field assembly, force normalization,
+  Fourier projection, and preconditioning, plus a diagnostic code. It omits
+  the input path and all input-derived values. `--details` exposes parsed
+  controls and numerical values for local use with non-confidential decks only:
   `python tools/diagnose_input.py path/to/input.case`.
 
 Tools may write to ignored `outputs/` or a user-selected scratch directory.

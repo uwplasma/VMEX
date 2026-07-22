@@ -23,7 +23,7 @@ import jax
 import numpy as np
 
 from vmex.core.geometry import half_mesh_jacobian
-from vmex.core.input import VmecInput
+from vmex.core.input import VmecInput, _read_indata_text
 from vmex.core.solver import _geometry, _initial_state, evaluate_forces, prepare_runtime
 
 
@@ -59,7 +59,54 @@ def _range(value: Any) -> str:
     return f"[{array.min():.6e}, {array.max():.6e}]"
 
 
+def _ok(value: Any) -> bool:
+    """Convert a scalar JAX/NumPy health flag to a host boolean."""
+    return bool(np.asarray(value))
+
+
+def _unsupported_mode_code(text: str) -> str | None:
+    """Return a value-free code for active VMEC modes VMEX does not solve."""
+    if text.lstrip()[:1] == "{":
+        return None
+    scalars, _indexed = _read_indata_text(text)
+
+    def first(name: str, default: Any = None) -> Any:
+        values = scalars.get(name)
+        return values[0] if values else default
+
+    # vsetup.f starts with LRECON=T, while read_indata.f disables it when
+    # neither diagnostic profile is active.  Reproduce that effective-mode
+    # decision so an inert explicit LRECON=T is not a false positive.
+    reconstruction_requested = bool(first("LRECON", True))
+    reconstruction_active = reconstruction_requested and (
+        int(first("ITSE", 0)) > 0 or int(first("IMSE", -1)) > 0
+    )
+    if reconstruction_active:
+        return "D00A_RECONSTRUCTION_MODE_UNSUPPORTED"
+    if bool(first("LRFP", False)):
+        return "D00B_RFP_MODE_UNSUPPORTED"
+    return None
+
+
+def _print_header() -> None:
+    print("VMEX first-iteration diagnostic (shareable, input details redacted)")
+    print(
+        "runtime: "
+        f"jax={jax.__version__} backend={jax.default_backend()} "
+        f"x64={bool(jax.config.jax_enable_x64)} "
+        f"VMEX_FAST_COMPILE={os.environ.get('VMEX_FAST_COMPILE', '<default>')}"
+    )
+
+
 def diagnose(path: Path, *, details: bool = False) -> int:
+    text = path.read_text()
+    unsupported = _unsupported_mode_code(text)
+    _print_header()
+    if unsupported is not None:
+        print("input physics mode supported: FAIL")
+        print(f"assessment: {unsupported}")
+        return 1
+
     inp = VmecInput.from_file(path)
     rt = prepare_runtime(inp)
     state = _initial_state(rt.setup)
@@ -85,19 +132,57 @@ def diagnose(path: Path, *, details: bool = False) -> int:
     force_bad = raw_bad + update_bad + diagnostic_bad
     fsq = (float(residuals.fsqr), float(residuals.fsqz), float(residuals.fsql))
     pre = diagnostics.preconditioned
+    health = diagnostics.health
 
-    print("VMEX first-iteration diagnostic (shareable, input details redacted)")
-    print(
-        "runtime: "
-        f"jax={jax.__version__} backend={jax.default_backend()} "
-        f"x64={bool(jax.config.jax_enable_x64)} "
-        f"VMEX_FAST_COMPILE={os.environ.get('VMEX_FAST_COMPILE', '<default>')}"
-    )
+    print("input physics mode supported: PASS")
     sqrt_g = np.asarray(jacobian.sqrt_g)[1:]
     jacobian_finite = np.isfinite(sqrt_g).all()
-    jacobian_good = jacobian_finite and not bool(jacobian.jacobian_sign_changed)
+    jacobian_nonzero = _ok(health.jacobian_nonzero)
+    jacobian_good = (
+        jacobian_finite
+        and jacobian_nonzero
+        and not bool(jacobian.jacobian_sign_changed)
+    )
+    rz_norm_good = (
+        _ok(health.volume_valid)
+        and _ok(health.energy_scale_valid)
+        and _ok(health.force_norm_finite)
+    )
+    lambda_norm_good = (
+        _ok(health.lambda_scale_valid) and _ok(health.lambda_norm_finite)
+    )
+    raw_sums_good = (
+        _ok(health.raw_r_sum_finite)
+        and _ok(health.raw_z_sum_finite)
+        and _ok(health.raw_lambda_sum_finite)
+    )
     print(f"setup arrays finite: {'PASS' if not setup_bad else 'FAIL'}")
     print(f"initial Jacobian valid: {'PASS' if jacobian_good else 'FAIL'}")
+    print(f"magnetic field assembly finite: {'PASS' if _ok(health.fields_finite) else 'FAIL'}")
+    print(f"R/Z force normalization valid: {'PASS' if rz_norm_good else 'FAIL'}")
+    print(f"lambda force normalization valid: {'PASS' if lambda_norm_good else 'FAIL'}")
+    print(
+        "real-space force kernels finite: "
+        f"{'PASS' if _ok(health.pipeline.real_space_finite) else 'FAIL'}"
+    )
+    print(
+        "spectral/scaled force finite: "
+        f"{'PASS' if (_ok(health.pipeline.spectral_finite) and _ok(health.pipeline.scaled_finite)) else 'FAIL'}"
+    )
+    print(f"unnormalized force sums finite: {'PASS' if raw_sums_good else 'FAIL'}")
+    print(
+        "normalized residual channels finite: "
+        f"R={'PASS' if _ok(health.raw_r_residual_finite) else 'FAIL'} "
+        f"Z={'PASS' if _ok(health.raw_z_residual_finite) else 'FAIL'} "
+        f"L={'PASS' if _ok(health.raw_lambda_residual_finite) else 'FAIL'}"
+    )
+    print(
+        "preconditioner stages finite: "
+        f"cache={'PASS' if _ok(health.cache_finite) else 'FAIL'} "
+        f"rhs={'PASS' if _ok(health.pipeline.rhs_finite) else 'FAIL'} "
+        f"radial={'PASS' if _ok(health.pipeline.radial_solve_finite) else 'FAIL'} "
+        f"lambda={'PASS' if _ok(health.pipeline.preconditioned_finite) else 'FAIL'}"
+    )
     print(f"raw force residuals finite: {'PASS' if not raw_bad else 'FAIL'}")
     print(f"preconditioned update finite: {'PASS' if not update_bad else 'FAIL'}")
     print(f"other force diagnostics finite: {'PASS' if not diagnostic_bad else 'FAIL'}")
@@ -183,8 +268,42 @@ def diagnose(path: Path, *, details: bool = False) -> int:
         assessment = "D01_SETUP_NONFINITE"
     elif not jacobian_good:
         assessment = "D02_INITIAL_JACOBIAN"
+    elif not _ok(health.fields_finite):
+        assessment = "D03A_MAGNETIC_FIELD_NONFINITE"
+    elif not _ok(health.volume_valid):
+        assessment = "D03B_DEGENERATE_VOLUME"
+    elif not _ok(health.energy_scale_valid):
+        assessment = "D03C_ZERO_ENERGY_SCALE"
+    elif not _ok(health.force_norm_finite):
+        assessment = "D03D_RZ_NORMALIZATION_NONFINITE"
+    elif not _ok(health.lambda_scale_valid):
+        assessment = "D03E_ZERO_LAMBDA_SCALE"
+    elif not _ok(health.lambda_norm_finite):
+        assessment = "D03F_LAMBDA_NORMALIZATION_NONFINITE"
+    elif not _ok(health.pipeline.real_space_finite):
+        assessment = "D03G_REAL_SPACE_FORCE_NONFINITE"
+    elif not _ok(health.pipeline.spectral_finite):
+        assessment = "D03H_SPECTRAL_FORCE_NONFINITE"
+    elif not _ok(health.pipeline.scaled_finite):
+        assessment = "D03I_SCALED_FORCE_NONFINITE"
+    elif not raw_sums_good:
+        assessment = "D03J_UNNORMALIZED_FORCE_SUM_NONFINITE"
+    elif not _ok(health.raw_r_residual_finite):
+        assessment = "D03K_R_RESIDUAL_NONFINITE"
+    elif not _ok(health.raw_z_residual_finite):
+        assessment = "D03L_Z_RESIDUAL_NONFINITE"
+    elif not _ok(health.raw_lambda_residual_finite):
+        assessment = "D03M_LAMBDA_RESIDUAL_NONFINITE"
     elif raw_bad:
         assessment = "D03_RAW_FORCE_NONFINITE"
+    elif not _ok(health.cache_finite):
+        assessment = "D04A_PRECONDITIONER_CACHE_NONFINITE"
+    elif not _ok(health.pipeline.rhs_finite):
+        assessment = "D04B_PRECONDITIONER_RHS_NONFINITE"
+    elif not _ok(health.pipeline.radial_solve_finite):
+        assessment = "D04C_RADIAL_PRECONDITIONER_NONFINITE"
+    elif not _ok(health.pipeline.preconditioned_finite):
+        assessment = "D04D_LAMBDA_PRECONDITIONER_NONFINITE"
     elif update_bad:
         assessment = "D04_PRECONDITIONED_UPDATE_NONFINITE"
     elif diagnostic_bad:

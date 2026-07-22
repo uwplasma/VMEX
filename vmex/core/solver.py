@@ -57,7 +57,7 @@ restart), and the stage machinery is factored into :func:`_solve_stage`/
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields as dataclass_fields, is_dataclass, replace
 from typing import Any, Callable
 
 import functools
@@ -234,6 +234,45 @@ class PreconditionerCache:
 
 
 @dataclass(frozen=True)
+class ForcePipelineHealth:
+    """Finite-stage flags for the ``forces -> residue`` pipeline.
+
+    These booleans deliberately retain no equilibrium values.  They let the
+    privacy-preserving diagnostic distinguish real-space force assembly,
+    Fourier projection, residual scaling, and preconditioning failures.
+    """
+
+    real_space_finite: Array
+    spectral_finite: Array
+    scaled_finite: Array
+    rhs_finite: Array
+    radial_solve_finite: Array
+    preconditioned_finite: Array
+
+
+@dataclass(frozen=True)
+class NumericalHealth:
+    """Privacy-safe first-force-pass health flags (no input-derived values)."""
+
+    geometry_finite: Array
+    jacobian_nonzero: Array
+    fields_finite: Array
+    volume_valid: Array
+    energy_scale_valid: Array
+    force_norm_finite: Array
+    lambda_scale_valid: Array
+    lambda_norm_finite: Array
+    pipeline: ForcePipelineHealth
+    raw_r_sum_finite: Array
+    raw_z_sum_finite: Array
+    raw_lambda_sum_finite: Array
+    raw_r_residual_finite: Array
+    raw_z_residual_finite: Array
+    raw_lambda_residual_finite: Array
+    cache_finite: Array
+
+
+@dataclass(frozen=True)
 class FunctDiagnostics:
     """Per-evaluation diagnostics returned by :func:`evaluate_forces`.
 
@@ -251,6 +290,7 @@ class FunctDiagnostics:
     z00: Array
     jacobian_sign_changed: Array
     cache: PreconditionerCache
+    health: NumericalHealth
 
 
 @dataclass(frozen=True)
@@ -266,6 +306,7 @@ class _EvalResult:
     z00: Array
     jacobian_sign_changed: Array
     cache: PreconditionerCache
+    health: NumericalHealth
 
 
 @dataclass(frozen=True)
@@ -290,8 +331,10 @@ class _LoopCarry:
     trajectory: Array
 
 
-for _cls in (SpectralState, PreconditionerCache, FunctDiagnostics, _EvalResult,
-             _LoopCarry):
+for _cls in (
+    SpectralState, PreconditionerCache, ForcePipelineHealth, NumericalHealth,
+    FunctDiagnostics, _EvalResult, _LoopCarry,
+):
     _register(_cls)
 
 
@@ -696,13 +739,40 @@ def _zero_cache(rt: SolverRuntime) -> PreconditionerCache:
 # -- One funct3d pass ------------------------------------------------------------------------------------------------
 
 
+def _all_finite(value) -> Array:
+    """Return one traced boolean for all numeric leaves in ``value``."""
+    finite = jnp.asarray(True)
+
+    def visit(item):
+        nonlocal finite
+        if item is None:
+            return
+        if is_dataclass(item):
+            for field in dataclass_fields(item):
+                visit(getattr(item, field.name))
+            return
+        if isinstance(item, dict):
+            for child in item.values():
+                visit(child)
+            return
+        if isinstance(item, (tuple, list)):
+            for child in item:
+                visit(child)
+            return
+        finite = finite & jnp.all(jnp.isfinite(jnp.asarray(item)))
+
+    visit(value)
+    return finite
+
+
 def _force_pipeline(
     *,
     geometry, jacobian, metrics, fields,
     R_cos: Array, R_sin: Array, Z_cos: Array, Z_sin: Array,
     cache: PreconditionerCache, rt: SolverRuntime,
     iteration: Array, fsqz_previous: Array,
-) -> tuple[Any, Any]:
+    collect_health: bool = False,
+) -> tuple[Any, Any, ForcePipelineHealth]:
     """MHD forces -> residue.f90 chain -> scalfor/faclam preconditioning.
 
     The ``funct3d.f`` -> ``forces.f`` -> ``tomnsps`` -> ``residue.f90`` segment
@@ -712,7 +782,8 @@ def _force_pipeline(
     preconditioned)``: the ``scalxc``-scaled force (input to the invariant
     residuals ``getfsq``) and the 1D-preconditioned force (input to
     ``fsqr1/fsqz1`` and the update direction ``gc``).  All preconditioner
-    matrices come from the frozen ``cache`` (``ns4`` cadence).
+    matrices come from the frozen ``cache`` (``ns4`` cadence).  The third
+    return value contains finite/not-finite stage flags only.
     """
     setup = rt.setup
     res = rt.resolution
@@ -743,6 +814,8 @@ def _force_pipeline(
             force_Z_even=jnp.asarray(forces.force_Z_even).at[-1].add(-ru0[-1] * rbsq),
             force_Z_odd=jnp.asarray(forces.force_Z_odd).at[-1].add(-ru0[-1] * rbsq),
         )
+    passing = jnp.asarray(True)
+    real_space_finite = _all_finite(forces) if collect_health else passing
     spectral = spectral_mhd_forces(
         forces, mpol=res.mpol, ntor=res.ntor, trig=rt.trig, include_edge=bool(rt.lfreeb)
     )
@@ -751,7 +824,11 @@ def _force_pipeline(
     rotated = m1_residue_rotation(spectral, lconm1=setup.lconm1)
     zero_gate = m1_zero_condition(fsqz_previous=fsqz_previous, iterations_since_restart=iteration)
     released = zero_m1_z_force(rotated, zero_gate)
+    spectral_finite = (
+        _all_finite((spectral, rotated, released)) if collect_health else passing
+    )
     scaled = scalxc_scale_force(released, s=s)
+    scaled_finite = _all_finite(scaled) if collect_health else passing
     if setup.lthreed or setup.lasym:
         rhs = scale_m1_preconditioner_rhs(
             scaled, coefficients_R=cache.coefficients_R,
@@ -759,9 +836,21 @@ def _force_pipeline(
         )
     else:
         rhs = scaled
+    rhs_finite = _all_finite(rhs) if collect_health else passing
     solved = apply_radial_preconditioner(rhs, matrices_R=cache.matrices_R, matrices_Z=cache.matrices_Z, jmax=rt.jmax)
+    radial_solve_finite = _all_finite(solved) if collect_health else passing
     preconditioned = apply_lambda_preconditioner(solved, cache.faclam)
-    return scaled, preconditioned
+    health = ForcePipelineHealth(
+        real_space_finite=real_space_finite,
+        spectral_finite=spectral_finite,
+        scaled_finite=scaled_finite,
+        rhs_finite=rhs_finite,
+        radial_solve_finite=radial_solve_finite,
+        preconditioned_finite=(
+            _all_finite(preconditioned) if collect_health else passing
+        ),
+    )
+    return scaled, preconditioned, health
 
 
 def _preconditioned_force_signed(
@@ -791,7 +880,7 @@ def _preconditioned_force_signed(
         signgs=setup.signgs, gamma=rt.gamma, mass=setup.mass,
         ncurr=setup.ncurr, enclosed_current=setup.icurv,
     )
-    _, preconditioned = _force_pipeline(
+    _, preconditioned, _health = _force_pipeline(
         geometry=geometry, jacobian=jacobian, metrics=metrics, fields=fields,
         R_cos=R_cos, R_sin=R_sin, Z_cos=Z_cos, Z_sin=Z_sin,
         cache=cache, rt=rt, iteration=iteration, fsqz_previous=fsqz_previous,
@@ -860,6 +949,7 @@ def _evaluate(
     state: SpectralState, cache: PreconditionerCache, iteration: Array,
     iter_last_reset: Array, fsqz_previous: Array, rt: SolverRuntime,
     fsq_rz_previous: Array | None = None,
+    *, collect_health: bool = False,
 ) -> _EvalResult:
     """One funct3d.f pass (fixed boundary), pure and jit-friendly.
 
@@ -946,10 +1036,11 @@ def _evaluate(
     # verbatim with the 2D-preconditioner force map (:func:`_force_pipeline`)
     # so the two can never drift; ``scaled`` feeds the invariant residuals,
     # ``preconditioned`` the fsqr1/fsqz1 residuals and the update force ``gc``.
-    scaled, preconditioned = _force_pipeline(
+    scaled, preconditioned, pipeline_health = _force_pipeline(
         geometry=geometry, jacobian=jacobian, metrics=metrics, fields=fields,
         R_cos=R_cos, R_sin=R_sin, Z_cos=Z_cos, Z_sin=Z_sin,
         cache=cache, rt=rt, iteration=iteration, fsqz_previous=fsqz_previous,
+        collect_health=collect_health,
     )
     if rt.lfreeb:
         # residue.f90 medge rule: the edge rows join fsqr/fsqz only when
@@ -971,6 +1062,47 @@ def _evaluate(
         residuals = force_residuals(scaled, fnorm=cache.fnorm, fnormL=cache.fnormL, r1=energies.r1, include_edge=False)
     pre = preconditioned_residuals(preconditioned, fnorm1=cache.fnorm1, delta_s=hs)
 
+    passing = jnp.asarray(True)
+    if collect_health:
+        sqrt_g_inner = jnp.asarray(jacobian.sqrt_g)[1:]
+        volume = jnp.asarray(energies.volume)
+        energy_scale = jnp.maximum(
+            jnp.asarray(energies.wb), jnp.asarray(energies.wp)
+        )
+        lamscale = jnp.asarray(fields.lamscale)
+        health = NumericalHealth(
+            geometry_finite=_all_finite((geometry, jacobian, metrics)),
+            jacobian_nonzero=jnp.all(sqrt_g_inner != 0.0),
+            fields_finite=_all_finite(fields),
+            volume_valid=jnp.isfinite(volume) & (volume != 0.0),
+            energy_scale_valid=(
+                jnp.isfinite(energy_scale) & (energy_scale != 0.0)
+            ),
+            force_norm_finite=jnp.isfinite(jnp.asarray(energies.fnorm)),
+            lambda_scale_valid=jnp.isfinite(lamscale) & (lamscale != 0.0),
+            lambda_norm_finite=jnp.isfinite(jnp.asarray(energies.fnormL)),
+            pipeline=pipeline_health,
+            raw_r_sum_finite=jnp.isfinite(jnp.asarray(residuals.gcr2)),
+            raw_z_sum_finite=jnp.isfinite(jnp.asarray(residuals.gcz2)),
+            raw_lambda_sum_finite=jnp.isfinite(jnp.asarray(residuals.gcl2)),
+            raw_r_residual_finite=jnp.isfinite(jnp.asarray(residuals.fsqr)),
+            raw_z_residual_finite=jnp.isfinite(jnp.asarray(residuals.fsqz)),
+            raw_lambda_residual_finite=jnp.isfinite(jnp.asarray(residuals.fsql)),
+            cache_finite=_all_finite(cache),
+        )
+    else:
+        health = NumericalHealth(
+            geometry_finite=passing, jacobian_nonzero=passing,
+            fields_finite=passing, volume_valid=passing,
+            energy_scale_valid=passing, force_norm_finite=passing,
+            lambda_scale_valid=passing, lambda_norm_finite=passing,
+            pipeline=pipeline_health,
+            raw_r_sum_finite=passing, raw_z_sum_finite=passing,
+            raw_lambda_sum_finite=passing, raw_r_residual_finite=passing,
+            raw_z_residual_finite=passing, raw_lambda_residual_finite=passing,
+            cache_finite=passing,
+        )
+
     sqrt_s0 = jnp.sqrt(jnp.maximum(s[0], 0.0))
     r00 = geometry.R_even[0, 0, 0] + sqrt_s0 * geometry.R_odd[0, 0, 0]
     z00 = geometry.Z_even[0, 0, 0] + sqrt_s0 * geometry.Z_odd[0, 0, 0]
@@ -979,6 +1111,7 @@ def _evaluate(
         gc=_force_to_state(preconditioned, rt),
         residuals=residuals, pre=pre, wb=energies.wb, wp=energies.wp,
         r00=r00, z00=z00, jacobian_sign_changed=jac_changed, cache=cache,
+        health=health,
     )
 
 
@@ -1003,12 +1136,13 @@ def evaluate_forces(
         iter_last_reset = iteration  # force refresh
     result = _evaluate(
         state, cache, jnp.asarray(iteration), jnp.asarray(iter_last_reset),
-        jnp.asarray(fsqz_previous), runtime,
+        jnp.asarray(fsqz_previous), runtime, collect_health=True,
     )
     diagnostics = FunctDiagnostics(
         preconditioned=result.pre,
         wb=result.wb, wp=result.wp, r00=result.r00, z00=result.z00,
         jacobian_sign_changed=result.jacobian_sign_changed, cache=result.cache,
+        health=result.health,
     )
     return result.gc, result.residuals, diagnostics
 

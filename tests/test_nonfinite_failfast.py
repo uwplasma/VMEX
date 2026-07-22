@@ -38,3 +38,80 @@ def test_shareable_diagnostic_redacts_input_details(capsys) -> None:
     assert "R(0)=" not in output
     assert "FSQR=" not in output
     assert "OK_FIRST_FORCE_PASS_FINITE" in output
+
+
+def test_shareable_diagnostic_localizes_zero_energy_scale(
+    tmp_path: Path, capsys
+) -> None:
+    """The public code identifies normalization failure without leaking values."""
+    inp = VmecInput.from_file(DATA / "input.nfp2_QI")
+    private_path = dataclasses.replace(inp, phiedge=0.0).to_indata(
+        tmp_path / "input.confidential_name"
+    )
+
+    assert diagnose(private_path) == 1
+    output = capsys.readouterr().out
+    assert "D03C_ZERO_ENERGY_SCALE" in output
+    assert "unnormalized force sums finite: PASS" in output
+    assert "input.confidential_name" not in output
+    assert "phiedge=" not in output.lower()
+    assert "FSQR=" not in output
+
+
+def test_shareable_diagnostic_flags_unsupported_reconstruction(
+    tmp_path: Path, capsys
+) -> None:
+    """VMEC reconstruction inputs fail explicitly instead of being ignored."""
+    path = tmp_path / "input.private_reconstruction"
+    path.write_text(
+        """&INDATA
+        LRECON = T
+        IMSE = 1
+        MPOL = 3
+        NTOR = 0
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+
+    assert diagnose(path) == 1
+    output = capsys.readouterr().out
+    assert "D00A_RECONSTRUCTION_MODE_UNSUPPORTED" in output
+    assert "private_reconstruction" not in output
+    assert "RBC" not in output
+
+
+def test_inert_reconstruction_flag_matches_vmec2000_disable(
+    tmp_path: Path, capsys
+) -> None:
+    """read_indata.f disables LRECON when no MSE or Thomson data are active."""
+    inp = VmecInput.from_file(DATA / "input.nfp2_QI")
+    path = inp.to_indata(tmp_path / "input.inert_reconstruction")
+    text = path.read_text().replace("&INDATA", "&INDATA\n  LRECON = T")
+    path.write_text(text)
+
+    assert diagnose(path) == 0
+    output = capsys.readouterr().out
+    assert "input physics mode supported: PASS" in output
+    assert "OK_FIRST_FORCE_PASS_FINITE" in output
+
+
+def test_indexed_aphi_prevents_false_zero_flux_diagnosis(
+    tmp_path: Path, capsys
+) -> None:
+    """Dense APHI=0 plus APHI(2) is finite in VMEC2000 and must be in VMEX."""
+    inp = VmecInput.from_file(DATA / "input.nfp2_QI")
+    path = inp.to_indata(tmp_path / "input.indexed_aphi")
+    text = path.read_text().replace(
+        "  APHI = 1.0000000000000000E+00",
+        "  APHI = 0.0\n  APHI(2) = 1.0",
+    )
+    path.write_text(text)
+
+    assert diagnose(path) == 0
+    output = capsys.readouterr().out
+    assert "R/Z force normalization valid: PASS" in output
+    assert "lambda force normalization valid: PASS" in output
+    assert "OK_FIRST_FORCE_PASS_FINITE" in output

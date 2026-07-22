@@ -395,21 +395,68 @@ class VmecInput:
                 return None
             return list(values)
 
+        def vector(
+            name: str,
+            *,
+            lower: int,
+            default: list[float] | np.ndarray | None = None,
+            size: int | None = None,
+        ) -> np.ndarray:
+            """Apply dense and indexed namelist assignments to one vector.
+
+            Fortran namelist reads overlay assignments on the values initialized
+            by ``read_indata_namelist``.  In particular, ``APHI(2)=...`` must
+            retain VMEC's default ``APHI(1)=1``.  The old parser consumed only
+            unindexed vector assignments, silently ignoring indexed profile and
+            multigrid entries.
+            """
+            dense = get_list(name) or []
+            entries = indexed.get(name, {})
+            indexed_length = max(
+                (idx[0] - lower + 1 for idx in entries if len(idx) == 1),
+                default=0,
+            )
+            default_values = _float_array(default)
+            length = size if size is not None else max(
+                len(dense), indexed_length, int(default_values.size)
+            )
+            out = _fixed_length(default_values, length) if length else np.zeros((0,))
+            if dense:
+                count = min(len(dense), length)
+                out[:count] = np.asarray(dense[:count], dtype=float)
+            for idx, value in entries.items():
+                if len(idx) != 1:
+                    continue
+                position = idx[0] - lower
+                if 0 <= position < length:
+                    out[position] = float(value)
+            return out
+
         mpol = int(get("MPOL", 6))
         ntor = int(get("NTOR", 0))
 
         # ns_array: NS_ARRAY, or legacy NS, or the VMEC default 31.
-        ns_array = get_list("NS_ARRAY")
-        if ns_array is None:
-            ns_array = [int(get("NS", 31))]
+        ns_default = [int(get("NS", 31))]
+        ns_array = vector("NS_ARRAY", lower=1, default=ns_default)
+        ns_positive = np.asarray(ns_array, dtype=np.int64) > 0
+        n_stages = (
+            int(np.argmax(~ns_positive)) if np.any(~ns_positive) else len(ns_array)
+        )
+        n_stages = max(n_stages, 1)
+
         # ftol_array: FTOL_ARRAY, or scalar FTOL (vmec_input.f: ftol_array(1)=ftol).
-        ftol_array = get_list("FTOL_ARRAY")
-        if ftol_array is None:
-            ftol_array = [float(get("FTOL", 1e-10))]
-        # niter_array falls back to NITER when absent (read_indata_namelist).
-        niter_array = get_list("NITER_ARRAY")
-        if niter_array is None:
-            niter_array = [int(get("NITER", 100))]
+        ftol_default = np.zeros((n_stages,))
+        ftol_default[0] = float(get("FTOL", 1e-10))
+        ftol_array = vector(
+            "FTOL_ARRAY", lower=1, default=ftol_default
+        )
+        # vmec_input.f initializes every NITER_ARRAY entry to -1, and replaces
+        # the complete array with NITER only when no element was assigned.
+        niter_assigned = "NITER_ARRAY" in scalars or "NITER_ARRAY" in indexed
+        niter_default = np.full((n_stages,), -1 if niter_assigned else int(get("NITER", 100)))
+        niter_array = vector(
+            "NITER_ARRAY", lower=1, default=niter_default
+        )
 
         def axis(name: str, legacy: str | None = None) -> np.ndarray:
             out = _fixed_length(get_list(name) or [], ntor + 1)
@@ -420,6 +467,9 @@ class VmecInput:
                 # Backwards compatibility (read_indata_namelist):
                 # WHERE (raxis /= 0) raxis_cc = raxis (idem zaxis -> zaxis_cs).
                 old = _fixed_length(get_list(legacy) or [], ntor + 1)
+                for idx, value in indexed.get(legacy, {}).items():
+                    if len(idx) == 1 and 0 <= idx[0] <= ntor:
+                        old[idx[0]] = float(value)
                 out = np.where(old != 0.0, old, out)
             return out
 
@@ -433,15 +483,10 @@ class VmecInput:
                     grid[n + ntor, m] = float(value)
             return grid
 
-        extcur_indexed = indexed.get("EXTCUR", {})
-        if extcur_indexed:
-            size = max(idx[0] for idx in extcur_indexed if len(idx) == 1)
-            extcur = np.zeros((size,))
-            for idx, value in extcur_indexed.items():
-                if len(idx) == 1 and idx[0] >= 1:
-                    extcur[idx[0] - 1] = float(value)
-        else:
-            extcur = _float_array(get_list("EXTCUR") or [])
+        extcur = vector("EXTCUR", lower=1)
+
+        aphi_default = np.zeros((20,))
+        aphi_default[0] = 1.0
 
         return cls(
             lasym=bool(get("LASYM", False)),
@@ -455,26 +500,26 @@ class VmecInput:
             niter_array=niter_array,
             delt=float(get("DELT", 1.0)),
             tcon0=float(get("TCON0", 1.0)),
-            aphi=get_list("APHI"),
+            aphi=vector("APHI", lower=1, default=aphi_default, size=20),
             phiedge=float(get("PHIEDGE", 1.0)),
             nstep=int(get("NSTEP", 10)),
             pmass_type=str(get("PMASS_TYPE", "power_series")),
-            am=get_list("AM") or [],
-            am_aux_s=get_list("AM_AUX_S") or [],
-            am_aux_f=get_list("AM_AUX_F") or [],
+            am=vector("AM", lower=0, default=np.zeros((21,)), size=21),
+            am_aux_s=vector("AM_AUX_S", lower=1),
+            am_aux_f=vector("AM_AUX_F", lower=1),
             pres_scale=float(get("PRES_SCALE", 1.0)),
             gamma=float(get("GAMMA", 0.0)),
             spres_ped=float(get("SPRES_PED", 1.0)),
             ncurr=int(get("NCURR", 0)),
             pcurr_type=str(get("PCURR_TYPE", "power_series")),
-            ac=get_list("AC") or [],
-            ac_aux_s=get_list("AC_AUX_S") or [],
-            ac_aux_f=get_list("AC_AUX_F") or [],
+            ac=vector("AC", lower=0, default=np.zeros((21,)), size=21),
+            ac_aux_s=vector("AC_AUX_S", lower=1),
+            ac_aux_f=vector("AC_AUX_F", lower=1),
             curtor=float(get("CURTOR", 0.0)),
             piota_type=str(get("PIOTA_TYPE", "power_series")),
-            ai=get_list("AI") or [],
-            ai_aux_s=get_list("AI_AUX_S") or [],
-            ai_aux_f=get_list("AI_AUX_F") or [],
+            ai=vector("AI", lower=0, default=np.zeros((21,)), size=21),
+            ai_aux_s=vector("AI_AUX_S", lower=1),
+            ai_aux_f=vector("AI_AUX_F", lower=1),
             bloat=float(get("BLOAT", 1.0)),
             raxis_c=axis("RAXIS_CC", legacy="RAXIS"),
             zaxis_s=axis("ZAXIS_CS", legacy="ZAXIS"),
