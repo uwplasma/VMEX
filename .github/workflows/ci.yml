@@ -441,14 +441,14 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # A sequential whole-suite job reached only 39% before the previous
-    # 150-minute limit on a shared runner. Keep the exact RUN_FULL coverage,
-    # but isolate the compile-heavy examples and mirror families so every
-    # shard completes and one slow lane cannot hide the remaining results.
+    # 150-minute limit, and the first core shard later lost hosted runners
+    # twice after 37/81 minutes. Keep exact RUN_FULL coverage, but split core
+    # alphabetically and isolate examples/mirror so every shard stays bounded.
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
-        shard: [core, examples, mirror-field, mirror-equilibrium, mirror-spline]
+        shard: [core-a, core-b, examples, mirror-field, mirror-equilibrium, mirror-spline]
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -483,8 +483,13 @@ jobs:
           RUN_FULL: "1"
         run: |
           case "${{ matrix.shard }}" in
-            core)
-              FILES="tests --ignore=tests/mirror --ignore=tests/test_examples.py"
+            core-a)
+              FILES="tests --ignore=tests/mirror --ignore=tests/test_examples.py \
+                     --ignore-glob=tests/test_[n-z]*.py"
+              ;;
+            core-b)
+              FILES="tests --ignore=tests/mirror --ignore=tests/test_examples.py \
+                     --ignore-glob=tests/test_[a-m]*.py"
               ;;
             examples)
               FILES="tests/test_examples.py"
