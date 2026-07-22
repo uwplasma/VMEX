@@ -198,7 +198,9 @@ jobs:
       #                         cheap + /tmp-cached, so per-worker re-solve is
       #                         negligible; loadscope serialised 383 s)
       # The fixture-sharing modules stay on loadscope:
-      #   a = heaviest solver-golden modules;
+      #   a = heaviest solver-golden modules, including all free-boundary
+      #       modules so their JAX caches leave with this bounded shard instead
+      #       of accumulating in the catch-all worker processes;
       #   c = everything else, incl. omnigenity/turbulence/bootstrap/stability.
       # Together they cover the whole non-gradient, non-example core suite once;
       # the separate mirror matrix owns tests/mirror. Therefore
@@ -212,6 +214,8 @@ jobs:
                    tests/test_multigrid_ladder.py \
                    tests/test_optimize_traceable_qs.py \
                    tests/test_freeboundary.py \
+                   tests/test_freeboundary_multigrid.py \
+                   tests/test_freeboundary_diff.py \
                    tests/test_cli_freeboundary.py \
                    tests/test_solver_end_to_end.py"
           B_FILES="tests/test_golden_digests.py \
