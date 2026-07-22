@@ -39,6 +39,8 @@ writes ``wout_circular_tokamak.nc`` next to the input file. Useful flags:
 - ``--quiet`` — silence the iteration table,
 - ``--ftol X`` / ``--max-iter N`` — override the final-stage tolerance or
   iteration cap,
+- ``--device cpu|gpu`` — select a platform explicitly; ``auto`` applies
+  VMEX's measured policy and ``none`` leaves placement to JAX,
 - ``--mode jit`` — run the fully traced ``lax.while_loop`` solver lane instead
   of the default host-blocked CLI lane (see :doc:`architecture`).
 

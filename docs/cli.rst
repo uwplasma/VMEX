@@ -54,6 +54,10 @@ Options
      - Solver lane: ``cli`` (jitted blocks with host residual checks, live
        printing, exact-``ftol`` exit; default) or ``jit`` (single
        ``lax.while_loop``).
+   * - ``--device {auto,none,cpu,gpu,cuda,rocm,tpu}``
+     - JAX solve placement. ``auto`` (default) applies VMEX's measured policy,
+       ``none`` leaves placement to JAX, and the other values request a
+       platform explicitly. This applies to fixed- and free-boundary solves.
    * - ``--ftol X``
      - Override the final-stage ``FTOL_ARRAY`` tolerance.
    * - ``--max-iter N``
