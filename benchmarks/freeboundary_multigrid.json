@@ -23,7 +23,7 @@
     "x64": true
   },
   "vmec2000": {
-    "wall_s": 0.8787723330315202,
+    "wall_s": 0.9823904170189053,
     "converged": true,
     "vacuum_turnons": 1,
     "stages": [
@@ -56,7 +56,7 @@
     ]
   },
   "vmex_cold": {
-    "wall_s": 7.601543041877449,
+    "wall_s": 10.065343208843842,
     "converged": true,
     "vacuum_turnons": 1,
     "stages": [
@@ -89,7 +89,7 @@
     ]
   },
   "vmex_warm": {
-    "wall_s": 1.220268583158031,
+    "wall_s": 1.9825521658640355,
     "converged": true,
     "vacuum_turnons": 1,
     "stages": [
@@ -120,7 +120,7 @@
         "fsql": 2.44e-11
       }
     ],
-    "peak_rss_mb": 3464.167424
+    "peak_rss_mb": 3421.749248
   },
   "final_wout_parity": {
     "rmnc_scale_relative_max": 6.101819389044875e-05,
