@@ -90,11 +90,12 @@ def register_pytree_dataclass(cls, *, meta: tuple[str, ...] = (),
         # subtraction without changing flatten/unflatten semantics.
         if not drop or "Missing fields" not in str(exc):
             raise
+        legacy_drop_fields: Any = tuple((name,) for name in drop)
         return jax.tree_util.register_dataclass(
             cls,
             data_fields=names,
             meta_fields=list(meta),
-            drop_fields=tuple((name,) for name in drop),
+            drop_fields=legacy_drop_fields,
         )
 
 
