@@ -124,13 +124,28 @@ def test_multigrid_auto_moves_state_across_policy_threshold(monkeypatch):
     assert seen == ["cpu", "gpu"]
 
 
-def test_explicit_free_boundary_nestor_cpu_gpu_parity():
+def test_explicit_free_boundary_nestor_cpu_gpu_parity(monkeypatch):
     """A bounded real-mgrid run reaches NESTOR on each requested device."""
     inp = VmecInput.from_file(DATA_DIR / "input.cth_like_free_bdy_lasym_small")
     mgrid = DATA_DIR / "mgrid_cth_like_lasym_small.nc"
     results = {}
     output = {}
+    active_platform = ["cpu"]
+    vacuum_devices = {}
+    vacuum_step = freeboundary._vacuum_step
+
+    def recording_vacuum_step(*args, **kwargs):
+        value = vacuum_step(*args, **kwargs)
+        fb = kwargs["fb"]
+        vacuum_devices[active_platform[0]] = {
+            _platform(getattr(fb, name))
+            for name in ("potvac", "mode_matrix", "bvec_nonsing", "bsqvac")
+        }
+        return value
+
+    monkeypatch.setattr(freeboundary, "_vacuum_step", recording_vacuum_step)
     for platform in ("cpu", "gpu"):
+        active_platform[0] = platform
         lines = []
         results[platform] = freeboundary.solve_free_boundary(
             inp,
@@ -149,6 +164,7 @@ def test_explicit_free_boundary_nestor_cpu_gpu_parity():
         assert results[platform].iterations == 60
         assert "VACUUM PRESSURE TURNED ON" in output[platform]
         assert _platform(results[platform].state.R_cos) == platform
+        assert vacuum_devices[platform] == {platform}
     np.testing.assert_allclose(
         [results["gpu"].fsqr, results["gpu"].fsqz, results["gpu"].fsql],
         [results["cpu"].fsqr, results["cpu"].fsqz, results["cpu"].fsql],
