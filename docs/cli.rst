@@ -99,9 +99,9 @@ the stored best plasma state, carries VMEC2000's active-vacuum and adaptive
 each new grid.  A user-provided ``initial_state`` is also supported by the
 Python API for hot restarts.
 
-For stellarator-symmetric runs the CLI exports the final NESTOR potential
-and surface fields to the wout ``potsin``/``xmpot``/``xnpot``/``*_sur``
-variables. LASYM vacuum tables remain netCDF fill. An NITER-exhausted
+The CLI exports the final NESTOR potential and surface fields to the wout
+``potsin``/``xmpot``/``xnpot``/``*_sur`` variables. LASYM runs additionally
+write ``potcos`` and the sine ``*_sur`` partners. An NITER-exhausted
 free-boundary run still writes the wout (VMEC2000 behavior) and exits with
 ``ier_flag = 2``.
 
