@@ -441,14 +441,16 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     # A sequential whole-suite job reached only 39% before the previous
-    # 150-minute limit, and the first core shard later lost hosted runners
-    # twice after 37/81 minutes. Keep exact RUN_FULL coverage, but split core
-    # alphabetically and isolate examples/mirror so every shard stays bounded.
+    # 150-minute limit, and the core job later lost hosted runners three times
+    # after 37/79/81 minutes. Keep exact RUN_FULL coverage, split core
+    # alphabetically, isolate each stateful optimization campaign, and isolate
+    # examples/mirror so every shard stays bounded on a fresh worker.
     timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
-        shard: [core-a, core-b, examples, mirror-field, mirror-equilibrium, mirror-spline]
+        shard: [core-a-f, core-g-m, core-n-s, core-t-z, opt-qa, opt-qh,
+                opt-qp, examples, mirror-field, mirror-equilibrium, mirror-spline]
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -483,13 +485,33 @@ jobs:
           RUN_FULL: "1"
         run: |
           case "${{ matrix.shard }}" in
-            core-a)
+            core-a-f)
               FILES="tests --ignore=tests/mirror --ignore=tests/test_examples.py \
+                     --ignore-glob=tests/test_[g-z]*.py"
+              ;;
+            core-g-m)
+              FILES="tests --ignore=tests/mirror --ignore=tests/test_examples.py \
+                     --ignore-glob=tests/test_[a-f]*.py \
                      --ignore-glob=tests/test_[n-z]*.py"
               ;;
-            core-b)
+            core-n-s)
               FILES="tests --ignore=tests/mirror --ignore=tests/test_examples.py \
-                     --ignore-glob=tests/test_[a-m]*.py"
+                     --ignore=tests/test_optimization_convergence.py \
+                     --ignore-glob=tests/test_[a-m]*.py \
+                     --ignore-glob=tests/test_[t-z]*.py"
+              ;;
+            core-t-z)
+              FILES="tests --ignore=tests/mirror --ignore=tests/test_examples.py \
+                     --ignore-glob=tests/test_[a-s]*.py"
+              ;;
+            opt-qa)
+              FILES="tests/test_optimization_convergence.py::test_qa_reaches_precise"
+              ;;
+            opt-qh)
+              FILES="tests/test_optimization_convergence.py::test_qh_implicit_converges"
+              ;;
+            opt-qp)
+              FILES="tests/test_optimization_convergence.py::test_qp_implicit_descends"
               ;;
             examples)
               FILES="tests/test_examples.py"
