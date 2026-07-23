@@ -1415,6 +1415,24 @@ def _initial_carry(state: SpectralState, rt: SolverRuntime, *, ijacob: int) -> _
 
 
 @dataclass(frozen=True)
+class VacuumOutput:
+    """Publishable final NESTOR state (potential modes + surface fields).
+
+    Arrays use NESTOR's reduced boundary grid.  Internal Green-function
+    matrices and cached right-hand sides deliberately remain private.
+    """
+
+    potsin: np.ndarray
+    potcos: np.ndarray | None
+    xmpot: np.ndarray
+    xnpot: np.ndarray
+    bsubu: np.ndarray
+    bsubv: np.ndarray
+    bsupu: np.ndarray
+    bsupv: np.ndarray
+
+
+@dataclass(frozen=True)
 class SolveResult:
     """Converged fixed-boundary solve output.
 
@@ -1423,7 +1441,8 @@ class SolveResult:
     wout ``xm/xn`` arrays; ``iotaf`` follows ``add_fluxes.f90`` for
     ``ncurr = 1``.  ``fsq_history`` has one row per iteration:
     ``(fsqr, fsqz, fsql, fsqr1, fsqz1, fsql1)``.  ``wmhd`` is the printed
-    ``WMHD = (wb + wp/(gamma-1)) * (2 pi)^2``.
+    ``WMHD = (wb + wp/(gamma-1)) * (2 pi)^2``.  ``vacuum`` is ``None`` for
+    fixed-boundary solves.
     """
 
     converged: bool; iterations: int; ier_flag: int
@@ -1435,6 +1454,7 @@ class SolveResult:
     rmnc: np.ndarray; zmns: np.ndarray
     rmns: np.ndarray | None; zmnc: np.ndarray | None
     iotaf: np.ndarray; fsq_history: np.ndarray
+    vacuum: VacuumOutput | None = None
 
 
 def _result_from_carry(carry: _LoopCarry, rt: SolverRuntime) -> SolveResult:

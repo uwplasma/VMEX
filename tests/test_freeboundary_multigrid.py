@@ -220,3 +220,60 @@ def test_converged_multigrid_final_state_matches_vmec2000_wout() -> None:
     assert rerr < 1e-2
     assert zerr < 1e-2
     assert ierr < 1.5e-2
+
+
+@pytest.mark.full
+def test_symmetric_multigrid_exports_final_nestor_wout(tmp_path) -> None:
+    """The final ladder stage publishes VMEC-compatible vacuum tables."""
+    if not CONV_MGRID.exists():
+        pytest.skip("converged CTH mgrid asset unavailable")
+    netCDF4 = pytest.importorskip("netCDF4")
+    from vmex.core.wout import wout_from_state, write_wout
+
+    inp = VmecInput.from_file(CONV_DECK)
+    result = solve_free_boundary_multigrid(
+        inp, ns_array=[7, 15], ftol_array=[1e-10, 1e-10],
+        niter_array=[60, 5], mgrid_path=CONV_MGRID,
+        raise_on_max_iterations=False,
+    )
+    vacuum = result.vacuum
+    assert vacuum is not None
+    assert vacuum.bsubu.shape == (
+        resolution_from_input(inp, ns=15).ntheta3, int(inp.nzeta))
+    assert vacuum.potsin.shape == vacuum.xmpot.shape == vacuum.xnpot.shape
+    assert vacuum.potsin.size == (int(inp.mpol) + 2) * (2 * int(inp.ntor) + 1)
+
+    wout = wout_from_state(
+        inp=inp, state=result.state,
+        fsqr=result.fsqr, fsqz=result.fsqz, fsql=result.fsql,
+        niter=result.iterations, converged=result.converged,
+        vacuum_output=vacuum,
+    )
+    np.testing.assert_array_equal(wout.xmpot, vacuum.xmpot)
+    np.testing.assert_array_equal(wout.xnpot, vacuum.xnpot)
+    for name in (
+        "potsin", "bsubumnc_sur", "bsubvmnc_sur",
+        "bsupumnc_sur", "bsupvmnc_sur",
+    ):
+        values = np.asarray(getattr(wout, name), dtype=float)
+        assert values.size > 0 and np.isfinite(values).all()
+        assert np.max(np.abs(values)) > 0.0
+
+    path = write_wout(tmp_path / "wout_cth.nc", wout)
+    with netCDF4.Dataset(path) as ds:
+        for name in (
+            "potsin", "xmpot", "xnpot", "bsubumnc_sur",
+            "bsubvmnc_sur", "bsupumnc_sur", "bsupvmnc_sur",
+        ):
+            assert not np.ma.getmaskarray(ds[name][:]).any(), name
+
+    fixed = wout_from_state(
+        inp=replace(inp, lfreeb=False), state=result.state,
+        fsqr=result.fsqr, fsqz=result.fsqz, fsql=result.fsql,
+        niter=result.iterations, converged=result.converged,
+    )
+    assert fixed.potsin is fixed.bsubumnc_sur is None
+    fixed_path = write_wout(tmp_path / "wout_fixed.nc", fixed)
+    with netCDF4.Dataset(fixed_path) as ds:
+        assert "potsin" not in ds.variables
+        assert "bsubumnc_sur" not in ds.variables

@@ -361,6 +361,8 @@ def solve_free_boundary_multigrid(
     ``device="auto"`` (default) applies the measured policy independently at
     each grid and relocates carried plasma/vacuum arrays when the policy changes;
     ``None`` leaves placement to JAX.
+    The final stage's publishable potential and surface fields are retained in
+    ``result.vacuum``; internal NESTOR matrix caches are not exposed.
     """
     if not bool(inp.lfreeb):
         raise ValueError("solve_free_boundary_multigrid requires an LFREEB=T input")
@@ -426,6 +428,7 @@ def solve_free_boundary_multigrid(
         if (vacuum_continuation is not None and target is not None
                 and any(getattr(vacuum_continuation, name) is not None for name in (
                     "bsqvac", "rbsq", "mode_matrix", "bvec_nonsing", "potvac",
+                    "surface_fields",
                 ))):
             vacuum_continuation = replace(
                 vacuum_continuation,
@@ -436,6 +439,8 @@ def solve_free_boundary_multigrid(
                 bvec_nonsing=_put_numeric_leaves(
                     vacuum_continuation.bvec_nonsing, target),
                 potvac=_put_numeric_leaves(vacuum_continuation.potvac, target),
+                surface_fields=_put_numeric_leaves(
+                    vacuum_continuation.surface_fields, target),
             )
         with device_context(device, resolution):
             stage_result = _solve_free_boundary_stage(

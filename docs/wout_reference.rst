@@ -70,11 +70,12 @@ Free-boundary extras
 
 When ``lfreeb = T``: ``nextcur``, ``extcur``, ``curlabel``, ``mgrid_mode``
 carry the coil-group metadata from the mgrid file. ``curlabel`` uses
-VMEC2000's 30-character label dimension. The NESTOR vacuum
-potential (``potsin``/``xmpot``/``xnpot``) and the ``*_sur`` surface arrays
-are declared for schema compatibility but currently written as netCDF fill —
-the free-boundary solver does not yet return the vacuum potential (see
-:doc:`cli`).
+VMEC2000's 30-character label dimension. For stellarator-symmetric runs,
+passing ``result.vacuum`` to
+:func:`~vmex.core.wout.wout_from_state` as ``vacuum_output`` writes the
+NESTOR potential modes (``potsin``/``xmpot``/``xnpot``) and the four
+``*_sur`` surface-field tables with VMEC2000's Nyquist normalization. The
+CLI does this automatically. LASYM vacuum tables remain netCDF fill.
 
 Parity with VMEC2000
 --------------------

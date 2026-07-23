@@ -2,9 +2,9 @@
 
 This module implements the full variable set written by VMEC2000's
 ``wrout.f`` (Appendix A).  Core fixed-boundary fields use the reference
-netCDF names, dimensions, dtypes and unit conventions; NESTOR potential and
-surface fields are currently declared but written as fill values (see the
-free-boundary section of ``docs/wout_reference.rst``):
+netCDF names, dimensions, dtypes and unit conventions.  Symmetric
+free-boundary results also populate the NESTOR potential and surface fields
+when their public ``VacuumOutput`` is supplied:
 
 - ``presf``/``pres``/``mass`` are stored in Pa (``wrout.f`` divides the
   internal ``mu0*Pa`` values by ``mu0`` on write);
@@ -35,10 +35,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, fields as _dc_fields
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from . import postprocess as _pp
+
+if TYPE_CHECKING:
+    from .solver import VacuumOutput
 
 MU0 = _pp.MU0
 
@@ -550,8 +554,9 @@ def wout_from_state(
     extcur=None,
     mgrid_mode: str = "",
     curlabel=None,
+    vacuum_output: VacuumOutput | None = None,
 ) -> WoutData:
-    """Build a complete :class:`WoutData` from a solved fixed-boundary state.
+    """Build a complete :class:`WoutData` from a solved equilibrium state.
 
     ``inp`` is the parsed :class:`vmex.core.input.VmecInput` deck and
     ``state`` the converged :class:`vmex.core.solver.SpectralState`
@@ -572,12 +577,10 @@ def wout_from_state(
     Free-boundary metadata: ``nextcur``/``extcur``/``mgrid_mode``/
     ``curlabel`` are caller-supplied (the CLI reads them from the mgrid file;
     ``extcur`` is the input EXTCUR array in Amperes, as ``wrout.f`` writes
-    it).  The NESTOR vacuum potential is NOT populated: ``potsin``/
-    ``potcos``/``xmpot``/``xnpot`` and the ``*_sur`` surface-field tables
-    stay ``None`` (netCDF fill) because
-    :func:`vmex.core.freeboundary.solve_free_boundary` does not return
-    its :class:`~vmex.core.freeboundary.FreeBoundaryState` (which holds
-    ``potvac``) — a documented gap until the solver exposes it.
+    it).  Pass the public ``result.vacuum`` as ``vacuum_output`` to populate
+    symmetric NESTOR ``potsin``/``xmpot``/``xnpot`` and ``*_sur`` tables.
+    LASYM vacuum export remains unsupported and those variables stay
+    ``None`` (netCDF fill).
     """
     import jax
 
@@ -726,6 +729,29 @@ def wout_from_state(
     nyq_a = {name: (np.asarray(getattr(tabs, name), dtype=float) if lasym else None)
              for name in ("gmns", "bmns", "bsubumns", "bsubvmns",
                           "bsubsmnc", "bsupumns", "bsupvmns")}
+    vacuum_sur: dict[str, np.ndarray] = {}
+    export_vacuum = (
+        vacuum_output is not None and bool(inp.lfreeb) and not lasym)
+    if export_vacuum:
+        expected = (int(trig.ntheta3), int(res.nzeta))
+        nyq_modes = mode_table(
+            int(np.max(xm_nyq)) + 1,
+            int(np.max(np.abs(xn_nyq))) // nfp if xn_nyq.size else 0,
+        )
+        for output_name, source_name in (
+            ("bsubumnc_sur", "bsubu"),
+            ("bsubvmnc_sur", "bsubv"),
+            ("bsupumnc_sur", "bsupu"),
+            ("bsupvmnc_sur", "bsupv"),
+        ):
+            surface = np.asarray(getattr(vacuum_output, source_name), dtype=float)
+            if surface.shape != expected:
+                raise ValueError(
+                    f"vacuum_output.{source_name} has shape {surface.shape}, "
+                    f"expected {expected}"
+                )
+            vacuum_sur[output_name] = _nyq.wrout_cos_coeffs(
+                f=surface[None, ...], modes=nyq_modes, trig=trig)[0]
     nzeta_vmec = int(inp.nzeta) or (1 if ntor == 0 else nzeta)
     nnyq_target = int(nzeta_vmec) // 2
     nnyq_have = int(np.max(xn_nyq)) // nfp if xn_nyq.size else 0
@@ -737,6 +763,9 @@ def wout_from_state(
         if lasym:
             for name, tab in nyq_a.items():
                 nyq_a[name] = _pp.expand_mode_columns(tab, xm_nyq, xn_nyq, xm_new, xn_new)
+        for name, tab in vacuum_sur.items():
+            vacuum_sur[name] = _pp.expand_mode_columns(
+                tab[None, :], xm_nyq, xn_nyq, xm_new, xn_new)[0]
         xm_nyq, xn_nyq = xm_new, xn_new
 
     # -- fbal.f/bcovar.f: current averages from the bsub[uv]mnc tables ------
@@ -864,6 +893,18 @@ def wout_from_state(
         bsubsmnc=nyq_a["bsubsmnc"],
         currumns=currumns, currvmns=currvmns,
         bsupumns=nyq_a["bsupumns"], bsupvmns=nyq_a["bsupvmns"],
+        mnmaxpot=(int(np.asarray(vacuum_output.xmpot).size)
+                  if export_vacuum else None),
+        potsin=(np.asarray(vacuum_output.potsin, dtype=float)
+                if export_vacuum else None),
+        xmpot=(np.asarray(vacuum_output.xmpot, dtype=float)
+               if export_vacuum else None),
+        xnpot=(np.asarray(vacuum_output.xnpot, dtype=float)
+               if export_vacuum else None),
+        bsubumnc_sur=vacuum_sur.get("bsubumnc_sur"),
+        bsubvmnc_sur=vacuum_sur.get("bsubvmnc_sur"),
+        bsupumnc_sur=vacuum_sur.get("bsupumnc_sur"),
+        bsupvmnc_sur=vacuum_sur.get("bsupvmnc_sur"),
     )
 
 

@@ -62,7 +62,7 @@ from .printing import (
     vacuum_banner,
 )
 from .solver import (
-    SolveResult, SolverRuntime, SpectralState,
+    SolveResult, SolverRuntime, SpectralState, VacuumOutput,
     _finalize, _geometry, _initial_carry, _initial_state, _make_body,
     _result_from_carry, _zero_cache, prepare_runtime, resolution_from_input,
     reguess_initial_axis, runtime_with_baselines,
@@ -75,6 +75,7 @@ from .vacuum import (
 
 __all__ = [
     "FreeBoundaryState",
+    "VacuumOutput",
     "boundary_from_coefficients",
     "solve_free_boundary",
 ]
@@ -389,6 +390,7 @@ class FreeBoundaryState:
     mode_matrix: Any = None
     bvec_nonsing: Any = None
     potvac: np.ndarray | None = None
+    surface_fields: Any = None
     ctor: float = 0.0
     rbtor: float = 0.0
     vacuum_calls: int = 0
@@ -404,6 +406,26 @@ class _FreeBoundaryStageResult:
     continuation_state: SpectralState
     rcon0: Array
     zcon0: Array
+
+
+def _vacuum_output(fb: FreeBoundaryState, basis: VacuumBasis) -> VacuumOutput | None:
+    """Strip private NESTOR caches from the final public result."""
+    if fb.potvac is None or fb.surface_fields is None:
+        return None
+    bsubu, bsubv, bsupu, bsupv = fb.surface_fields
+    pot = np.asarray(fb.potvac, dtype=float).reshape(-1)
+    mnpd = int(basis.mnpd)
+    shape = (int(basis.ntheta3), int(basis.nzeta))
+    return VacuumOutput(
+        potsin=pot[:mnpd].copy(),
+        potcos=(pot[mnpd:2 * mnpd].copy() if basis.lasym else None),
+        xmpot=np.asarray(basis.xmpot, dtype=float).copy(),
+        xnpot=(np.asarray(basis.n_raw, dtype=float) * float(basis.nfp)),
+        bsubu=np.asarray(bsubu, dtype=float).reshape(shape).copy(),
+        bsubv=np.asarray(bsubv, dtype=float).reshape(shape).copy(),
+        bsupu=np.asarray(bsupu, dtype=float).reshape(shape).copy(),
+        bsupv=np.asarray(bsupv, dtype=float).reshape(shape).copy(),
+    )
 
 
 def _resolve_mgrid(inp: VmecInput, mgrid_path: str | Path | None) -> Path:
@@ -667,7 +689,7 @@ def _make_fused_vacuum(basis: VacuumBasis, *, modes: ModeTable, signgs: int,
         potvac, mode_matrix, bvec_nonsing, _rhs, _gsrc, _grp = solver_vac.full(
             boundary, ext["bexni"]
         )
-        bsqvac, bsubu_s, bsubv_s, _bu, _bv = vacuum_channels(
+        bsqvac, bsubu_s, bsubv_s, bsupu_s, bsupv_s = vacuum_channels(
             basis=basis, potvac=potvac, bexu=ext["bexu"], bexv=ext["bexv"],
             guu=ext["guu"], guv=ext["guv"], gvv=ext["gvv"],
         )
@@ -679,6 +701,7 @@ def _make_fused_vacuum(basis: VacuumBasis, *, modes: ModeTable, signgs: int,
             "rbsq": (bsqvac + pres_ns * jnp.asarray(rt.presf_ns_scale))
                     * boundary.R / jnp.asarray(rt.setup.hs),
             "mode_matrix": mode_matrix, "bvec_nonsing": bvec_nonsing,
+            "surface_fields": (bsubu_s, bsubv_s, bsupu_s, bsupv_s),
             "delbsq_num": delbsq_num, "delbsq_den": delbsq_den,
             "bsubuvac": bsubuvac, "bsubvvac": bsubvvac,
         }
@@ -694,7 +717,7 @@ def _make_fused_vacuum(basis: VacuumBasis, *, modes: ModeTable, signgs: int,
         potvac, _rhs = solver_vac.skip(
             boundary, ext["bexni"], bvec_nonsing, mode_matrix
         )
-        bsqvac, bsubu_s, bsubv_s, _bu, _bv = vacuum_channels(
+        bsqvac, bsubu_s, bsubv_s, bsupu_s, bsupv_s = vacuum_channels(
             basis=basis, potvac=potvac, bexu=ext["bexu"], bexv=ext["bexv"],
             guu=ext["guu"], guv=ext["guv"], gvv=ext["gvv"],
         )
@@ -705,6 +728,7 @@ def _make_fused_vacuum(basis: VacuumBasis, *, modes: ModeTable, signgs: int,
             "bsqvac": bsqvac, "ctor": ctor, "rbtor": rbtor, "potvac": potvac,
             "rbsq": (bsqvac + pres_ns * jnp.asarray(rt.presf_ns_scale))
                     * boundary.R / jnp.asarray(rt.setup.hs),
+            "surface_fields": (bsubu_s, bsubv_s, bsupu_s, bsupv_s),
             "delbsq_num": delbsq_num, "delbsq_den": delbsq_den,
             "bsubuvac": bsubuvac, "bsubvvac": bsubvvac,
         }
@@ -823,6 +847,7 @@ def _vacuum_step(
     bsqvac = out["bsqvac"]
     fb.rbsq = out["rbsq"]
     fb.potvac = out["potvac"]
+    fb.surface_fields = out["surface_fields"]
     fb.ctor = float(out["ctor"])
     fb.rbtor = float(out["rbtor"])
     fb.vacuum_calls += 1
@@ -930,6 +955,7 @@ class _VacuumLoopCarry:
     mode_matrix: Array          # amatsav (scalpot.f)
     bvec_nonsing: Array         # bvecsav (scalpot.f)
     potvac: Array
+    surface_fields: tuple[Array, Array, Array, Array]
     ivac: Array; nvacskip: Array; nvskip0: Array
     delbsq: Array; delbsq_traj: Array
     ctor: Array; rbtor: Array
@@ -976,6 +1002,7 @@ def _make_vacuum_lane(fused: FusedVacuum):
         def _full(_):
             out = fused.full(c.state, rt_vac, field)
             return (out["bsqvac"], out["rbsq"], out["ctor"], out["rbtor"], out["potvac"],
+                    out["surface_fields"],
                     out["delbsq_num"], out["delbsq_den"],
                     out["mode_matrix"], out["bvec_nonsing"])
 
@@ -983,11 +1010,13 @@ def _make_vacuum_lane(fused: FusedVacuum):
             out = fused.skip(c.state, rt_vac, field, vc.bvec_nonsing,
                              vc.mode_matrix)
             return (out["bsqvac"], out["rbsq"], out["ctor"], out["rbtor"], out["potvac"],
+                    out["surface_fields"],
                     out["delbsq_num"], out["delbsq_den"],
                     vc.mode_matrix, vc.bvec_nonsing)
 
-        (bsqvac, rbsq, ctor, rbtor, potvac, num, den, mode_matrix,
-         bvec_nonsing) = lax.cond(full, _full, _skip, None)
+        (bsqvac, rbsq, ctor, rbtor, potvac, surface_fields,
+         num, den, mode_matrix, bvec_nonsing) = lax.cond(
+             full, _full, _skip, None)
 
         delbsq = jnp.where(den != 0.0, num / den, vc.delbsq)
         idx = jnp.clip(it - 1, 0, rt.max_iterations - 1)
@@ -1001,6 +1030,7 @@ def _make_vacuum_lane(fused: FusedVacuum):
             carry=new_carry, rcon0=rcon0, zcon0=zcon0, bsqvac=bsqvac,
             rbsq=rbsq,
             mode_matrix=mode_matrix, bvec_nonsing=bvec_nonsing, potvac=potvac,
+            surface_fields=surface_fields,
             ivac=ivac, nvacskip=nvacskip, nvskip0=vc.nvskip0,
             delbsq=delbsq, delbsq_traj=delbsq_traj, ctor=ctor, rbtor=rbtor,
             vacuum_calls=vc.vacuum_calls + 1,
@@ -1192,6 +1222,8 @@ def _solve_free_boundary_stage(
                           if reuse_vacuum_cache else None),
             potvac=(vacuum_continuation.potvac
                     if reuse_vacuum_cache else None),
+            surface_fields=(vacuum_continuation.surface_fields
+                            if reuse_vacuum_cache else None),
         )
     vacuum_active = fb.turned_on
 
@@ -1257,6 +1289,7 @@ def _solve_free_boundary_stage(
               and fb.mode_matrix is not None):
             # F.2: the whole post-turn-on steady state runs as ONE jitted
             # while_loop (vacuum cadence + damping + iteration, traced).
+            zeros_sur = jnp.zeros_like(rt_freeb.bsqvac_edge)
             vc = _VacuumLoopCarry(
                 carry=carry,
                 rcon0=rt_freeb.rcon0, zcon0=rt_freeb.zcon0,
@@ -1264,6 +1297,8 @@ def _solve_free_boundary_stage(
                 rbsq=jnp.asarray(fb.rbsq, dtype=dtype),
                 mode_matrix=fb.mode_matrix, bvec_nonsing=fb.bvec_nonsing,
                 potvac=fb.potvac,
+                surface_fields=((zeros_sur,) * 4 if fb.surface_fields is None
+                                else fb.surface_fields),
                 ivac=jnp.asarray(fb.ivac, dtype=int_dtype),
                 nvacskip=jnp.asarray(fb.nvacskip, dtype=int_dtype),
                 nvskip0=jnp.asarray(fb.nvskip0, dtype=int_dtype),
@@ -1286,6 +1321,7 @@ def _solve_free_boundary_stage(
             fb.mode_matrix = vc.mode_matrix
             fb.bvec_nonsing = vc.bvec_nonsing
             fb.potvac = vc.potvac
+            fb.surface_fields = vc.surface_fields
             fb.ctor = float(vc.ctor)
             fb.rbtor = float(vc.rbtor)
             fb.vacuum_calls = int(vc.vacuum_calls)
@@ -1361,16 +1397,24 @@ def _solve_free_boundary_stage(
     if ier == MORE_ITER_FLAG and not error_on_no_convergence:
         result = _result_from_carry(carry, rt_freeb if fb.turned_on else rt_fixed)
         return _FreeBoundaryStageResult(
-            replace(result, converged=False, ier_flag=MORE_ITER_FLAG), fb,
+            replace(result, converged=False, ier_flag=MORE_ITER_FLAG,
+                    vacuum=_vacuum_output(fb, basis)), fb,
             carry.xstore, rt_freeb.rcon0 if fb.turned_on else rt_fixed.rcon0,
             rt_freeb.zcon0 if fb.turned_on else rt_fixed.zcon0)
     if ier == SUCCESSFUL_TERM_FLAG:
         return _FreeBoundaryStageResult(
-            _result_from_carry(carry, rt_freeb if fb.turned_on else rt_fixed), fb,
+            replace(
+                _result_from_carry(
+                    carry, rt_freeb if fb.turned_on else rt_fixed),
+                vacuum=_vacuum_output(fb, basis),
+            ), fb,
             carry.xstore, rt_freeb.rcon0 if fb.turned_on else rt_fixed.rcon0,
             rt_freeb.zcon0 if fb.turned_on else rt_fixed.zcon0)
     return _FreeBoundaryStageResult(
-        _finalize(carry, rt_freeb if fb.turned_on else rt_fixed), fb,
+        replace(
+            _finalize(carry, rt_freeb if fb.turned_on else rt_fixed),
+            vacuum=_vacuum_output(fb, basis),
+        ), fb,
         carry.xstore, rt_freeb.rcon0 if fb.turned_on else rt_fixed.rcon0,
         rt_freeb.zcon0 if fb.turned_on else rt_fixed.zcon0)
 
@@ -1409,7 +1453,9 @@ def solve_free_boundary(
     :func:`vmex.core.multigrid.solve_free_boundary_multigrid` for the complete
     ``NS_ARRAY`` ladder.  Time-step, constraint, print-cadence, m=1-constraint,
     and optional 2D-preconditioner overrides mirror
-    :func:`vmex.core.solver.solve`.
+    :func:`vmex.core.solver.solve`.  The returned ``result.vacuum`` contains
+    the final NESTOR potential modes and surface fields, without internal
+    matrix caches.
     """
     if resolution is None:
         resolution = resolution_from_input(inp)
