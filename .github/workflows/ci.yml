@@ -533,4 +533,14 @@ jobs:
                      tests/mirror/test_splines.py"
               ;;
           esac
-          pytest -q $FILES --durations=25
+          # Some optimization tests are silent for more than 15 minutes.
+          # Keep the hosted runner live without changing pytest semantics.
+          pytest -q $FILES --durations=25 &
+          pytest_pid=$!
+          while kill -0 "$pytest_pid" 2>/dev/null; do
+            sleep 60
+            if kill -0 "$pytest_pid" 2>/dev/null; then
+              echo "pytest shard ${{ matrix.shard }} still running (${SECONDS}s)"
+            fi
+          done
+          wait "$pytest_pid"
