@@ -131,6 +131,81 @@ def test_traceable_dmerc_matches_wout_and_has_state_jvp(shaped_eq):
     np.testing.assert_allclose(pressure_grad, pressure_fd, rtol=1e-7)
 
 
+def test_mercier_stability_residual_is_smooth_interior_hinge(shaped_eq):
+    """The optimizer residual excludes noisy surfaces and follows its formula."""
+    state, rt = shaped_eq.state, shaped_eq.runtime
+    profile = stab.d_merc_state(state, rt)
+    margin, smoothing = 2.0e-6, 3.0e-6
+    actual = jax.jit(
+        lambda st: stab.mercier_stability_residual(
+            st, rt, margin=margin, smoothing=smoothing
+        )
+    )(state)
+    expected = smoothing * jax.nn.softplus((margin - profile[2:-1]) / smoothing)
+    np.testing.assert_allclose(actual, expected, rtol=1e-14, atol=1e-16)
+    assert actual.shape == (profile.size - 3,)
+    default = stab.mercier_stability_residual(state, rt)
+    assert jnp.min(profile[2:-1]) > 6.0e-6
+    assert jnp.max(default) < 2.0e-9
+    with pytest.raises(ValueError, match="smoothing must be positive"):
+        stab.mercier_stability_residual(state, rt, smoothing=0.0)
+
+
+def test_least_squares_accepts_implicit_mercier_term():
+    """One optimizer evaluation builds DMerc residual rows and their Jacobian."""
+    inp = VmecInput.from_file(DATA_DIR / "input.solovev")
+    result = opt.least_squares(
+        [(opt.mercier_stability_residual, 0.0, 1.0)],
+        inp,
+        max_mode=1,
+        jac="implicit",
+        max_nfev=1,
+    )
+    assert result.nfev == 1
+    assert np.isfinite(result.cost)
+    assert np.all(np.isfinite(result.jac))
+
+
+@pytest.mark.full
+def test_implicit_mercier_optimization_improves_margin_with_constraints():
+    """A short implicit campaign improves DMerc while holding aspect and QA."""
+    inp = VmecInput.from_file(DATA_DIR / "input.solovev")
+    seed = opt.solve_equilibrium(inp)
+    aspect0 = float(opt.aspect_ratio(seed.state, seed.runtime))
+    qa = opt.QuasisymmetryRatioResidual([0.25, 0.5, 0.75], 1, 0)
+
+    def mercier(state, runtime):
+        return stab.mercier_stability_residual(
+            state, runtime, smoothing=1.0e-6
+        )
+
+    def metrics(eq):
+        profile = np.asarray(stab.d_merc_state(eq.state, eq.runtime))[2:-1]
+        violation = np.asarray(mercier(eq.state, eq.runtime))
+        qa_norm = np.linalg.norm(np.asarray(
+            qa.residuals_state(eq.state, eq.runtime)))
+        return float(np.min(profile)), float(np.linalg.norm(violation)), qa_norm
+
+    margin0, violation0, qa0 = metrics(seed)
+    result = opt.least_squares(
+        [(opt.aspect_ratio, aspect0, 100.0),
+         (qa, 0.0, 1.0e5),
+         (mercier, 0.0, 1.0e5)],
+        inp,
+        max_mode=2,
+        jac="implicit",
+        max_nfev=6,
+    )
+    best = opt.solve_equilibrium(result.input)
+    margin1, violation1, qa1 = metrics(best)
+    aspect1 = float(opt.aspect_ratio(best.state, best.runtime))
+
+    assert margin1 > margin0
+    assert violation1 < 0.5 * violation0
+    assert abs(aspect1 - aspect0) < 5.0e-3
+    assert qa1 <= 1.05 * qa0
+
+
 def test_traceable_dmerc_matches_wout_in_3d(finite_beta_3d_eq):
     """The traceable current reconstruction retains toroidal-mode parity."""
     eq = finite_beta_3d_eq

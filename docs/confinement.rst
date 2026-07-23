@@ -303,8 +303,15 @@ reporting profile as :func:`~vmex.core.optimize.d_merc`, evaluated through the
 parity-proven wout engine.  The symmetric live-state counterpart
 :func:`~vmex.core.stability.d_merc_state` is a pure-JAX port of the same
 ``jxbforce.f``/``mercier.f`` path for ``jit``/AD use and agrees with the wout
-profile to floating-point round-off.  Both retain VMEC's near-axis and edge
-limitations; the traceable lane does not yet support ``lasym = True``.
+profile to floating-point round-off.  For optimization,
+:func:`~vmex.core.stability.mercier_stability_residual` excludes ``[0:2]``
+and the edge and returns
+``smoothing * softplus((margin - DMerc) / smoothing)``; targeting it to zero
+penalizes unstable (negative) ``DMerc`` with a smooth gradient.  At finite
+``smoothing`` the residual is positive, rather than exactly zero, on stable
+surfaces but decays exponentially with the stability margin.  Both profile
+lanes retain VMEC's near-axis and edge limitations; the traceable lane does
+not yet support ``lasym = True``.
 
 Magnetic well
 ~~~~~~~~~~~~~~

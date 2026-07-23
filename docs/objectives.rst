@@ -42,8 +42,9 @@ gradient modes).  Terms that evaluate wout tables on host NumPy
 (:func:`~vmex.core.optimize.d_merc`,
 :func:`~vmex.core.optimize.l_grad_b`, the wout-lane QI residual, the
 eigenvector-weighted turbulence proxies) work with ``jac=None`` only —
-for ``L_grad_B`` the traceable lane
-:func:`~vmex.core.optimize.l_grad_b_state` covers ``jac="implicit"``.
+use :func:`~vmex.core.optimize.mercier_stability_residual` for Mercier and
+:func:`~vmex.core.optimize.l_grad_b_state` for ``L_grad_B`` with
+``jac="implicit"``.
 
 .. code-block:: python
 
@@ -112,8 +113,20 @@ Two reporting diagnostics run on the host-side wout engine:
 :func:`~vmex.core.optimize.l_grad_b` (the ``L_grad_B`` coil-complexity proxy).
 Their live-state counterparts :func:`~vmex.core.stability.d_merc_state`
 (``lasym = False``) and :func:`~vmex.core.optimize.l_grad_b_state` are pure
-JAX and can be composed with implicit differentiation.  Direct optimizer
-integration of ``d_merc_state`` is not yet provided by ``d_merc`` itself.
+JAX and can be composed with implicit differentiation.  The convenience
+:func:`~vmex.core.optimize.mercier_stability_residual` selects
+``DMerc[2:-1]`` and returns
+``smoothing * softplus((margin - DMerc) / smoothing)``.  Positive ``DMerc``
+is stable, so target this residual to zero; the default ``margin=0`` and
+``smoothing=1e-6`` give a smooth approximation to the instability hinge
+``max(-DMerc, 0)``.  Softplus is strictly positive at finite arguments, so a
+stable surface approaches rather than reaches zero; its residual decreases
+exponentially as ``DMerc - margin`` grows.
+
+.. code-block:: python
+
+   terms = [(opt.mercier_stability_residual, 0.0, 100.0)]
+   result = opt.least_squares(terms, inp, max_mode=3, jac="implicit")
 
 ``L_grad_B`` additionally has a fully traceable ``(state, runtime)`` lane,
 :func:`~vmex.core.optimize.l_grad_b_state` — same convention
@@ -248,7 +261,8 @@ differences to 4.7e-9 in CI, and the objective destabilizes monotonically
 with pressure on the solovev family, in sign agreement with Mercier.  For
 interchange stability, combine with
 :func:`~vmex.core.optimize.magnetic_well` (traceable) or
-:func:`~vmex.core.optimize.d_merc` (wout lane, ``jac=None``).
+:func:`~vmex.core.optimize.mercier_stability_residual` (traceable); retain
+:func:`~vmex.core.optimize.d_merc` for wout-lane reporting or ``jac=None``.
 
 Turbulence proxies (SPECTRAX-GK)
 --------------------------------
@@ -321,6 +335,11 @@ Which objectives differentiate how
      - yes
      - yes
      - traceable ``L_grad_B`` lane (soft-min via ``softmin_k``)
+   * - :func:`~vmex.core.optimize.d_merc_state`,
+       :func:`~vmex.core.optimize.mercier_stability_residual`
+     - yes
+     - yes
+     - traceable Mercier profile / smooth interior instability hinge
    * - :func:`~vmex.core.optimize.d_merc`,
        :func:`~vmex.core.optimize.l_grad_b`
      - yes

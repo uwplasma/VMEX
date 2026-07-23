@@ -9,10 +9,10 @@ the scripts as subprocesses in a temp cwd and assert that
 - the promised outputs (optimized input deck, wout file, figures) exist.
 
 The "commented-out but CI-tested" extra objective terms of the optimization
-examples (magnetic well, DMerc floor, L_grad_B floor) are exercised
+examples (magnetic well, traceable DMerc floor, L_grad_B floor) are exercised
 *uncommented* in ``test_extra_terms_work_uncommented`` — exactly the
 expressions the example comments show, one finite-difference least-squares
-iteration each, plus the traceable magnetic-well term through
+iteration each, plus the traceable magnetic-well and DMerc terms through
 ``jac="implicit"``.
 """
 
@@ -289,7 +289,7 @@ def test_objectives_showcase(tmp_path):
         for stage in ("seed", "final"):
             assert np.isfinite(m[stage]["metric"]), f"{name}/{stage}: metric"
             assert np.isfinite(m[stage]["qs_total"]), f"{name}/{stage}: QS"
-    assert "wout-engine objective" in out  # the honest-FD-cost printout
+    assert "d_merc wout-reporting lane" in out  # deliberate FD campaign
 
 
 def test_extra_terms_work_uncommented():
@@ -306,7 +306,7 @@ def test_extra_terms_work_uncommented():
         # exactly the expressions the example comments show:
         extra_terms = [
             (opt.magnetic_well, 0.05, 1.0),
-            (lambda eq: np.minimum(opt.d_merc(eq)[2:-1], 0.0), 0.0, 100.0),
+            (opt.mercier_stability_residual, 0.0, 100.0),
             (lambda eq: max(1.0 / opt.l_grad_b(eq) - 1.0 / 0.35, 0.0), 0.0, 1.0),
         ]
         terms = [(opt.aspect_ratio, 5.0, 1.0)] + extra_terms
@@ -315,7 +315,9 @@ def test_extra_terms_work_uncommented():
         assert np.all(np.isfinite(result.fun))
         # the traceable extra term also differentiates through jac="implicit"
         result2 = opt.least_squares(
-            [(opt.aspect_ratio, 5.0, 1.0), (opt.magnetic_well, 0.05, 1.0)],
+            [(opt.aspect_ratio, 5.0, 1.0),
+             (opt.magnetic_well, 0.05, 1.0),
+             (opt.mercier_stability_residual, 0.0, 100.0)],
             inp, max_mode=1, jac="implicit", use_ess=True, max_nfev=2)
         assert np.all(np.isfinite(result2.fun))
         # host wout-engine terms are rejected with a clear error in implicit mode

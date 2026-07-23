@@ -51,12 +51,13 @@ terms exposing a ``residuals_state`` method
 residual vector, matching the finite-difference stacked-residual cost and
 Gauss-Newton geometry (internal-grid sampling instead of the wout grid).
 Wout-engine terms (:func:`d_merc`, :func:`l_grad_b`, the Boozer-based QI
-residual) run on host NumPy and are finite-difference-only —
-:func:`l_grad_b_state` is the traceable ``(state, rt)`` lane of the same
-``L_grad_B`` convention for ``jac="implicit"``.  The implicit parameter map
-supports lasym via the four RBC/ZBS/RBS/ZBC boundary families and a traceable
-``readin.f`` delta rotation (FD-validated), so ``jac="implicit"`` handles
-``lasym = True`` as well (the QS-ratio traceable term is symmetric-only).
+residual) run on host NumPy and are finite-difference-only.  Use
+:func:`d_merc_state` or :func:`mercier_stability_residual` for Mercier and
+:func:`l_grad_b_state` for ``L_grad_B`` with ``jac="implicit"``.  The
+implicit parameter map supports lasym via the four RBC/ZBS/RBS/ZBC boundary
+families and a traceable ``readin.f`` delta rotation (FD-validated), so
+``jac="implicit"`` handles ``lasym = True`` as well (the QS-ratio traceable
+term is symmetric-only).
 
 Measured cost (2026-07-10, RTX A4000, nfp2 circular seed, QS + aspect +
 iota objective, ``max_mode=2`` -> 24 dofs): warm implicit Jacobian 2.5 s
@@ -96,6 +97,8 @@ from .solver import (
     resolution_from_input,
 )
 from .fields import surface_currents
+from .stability import d_merc_state, mercier_stability_residual
+
 # Shared state-physics primitives (statephysics.py, R26a).  Re-exported here
 # for backward compatibility: external user code and tests reach them as
 # ``vmex.core.optimize._as_1d`` etc.
@@ -129,6 +132,8 @@ __all__ = [
     "volume",
     "magnetic_well",
     "d_merc",
+    "d_merc_state",
+    "mercier_stability_residual",
     "l_grad_b",
     "l_grad_b_state",
     "quasi_isodynamic_residual",
@@ -547,7 +552,8 @@ def d_merc(eq) -> jnp.ndarray:
     objective is finite-difference-only (not jit/AD transparent; the first
     two surfaces and the edge carry the usual near-axis noise, so practical
     targets should penalize e.g. ``min(DMerc[2:-1], 0)``).  Accepts an
-    :class:`Equilibrium` or any wout-like object.
+    :class:`Equilibrium` or any wout-like object.  Use traceable
+    :func:`mercier_stability_residual` with ``jac="implicit"``.
     """
     wout = eq.wout if isinstance(eq, Equilibrium) else eq
     return jnp.asarray(np.asarray(wout.DMerc, dtype=float))
@@ -1200,8 +1206,9 @@ def least_squares(
     one full equilibrium solve per dof.  Requirements (see the module
     docstring): every term traceable in ``(state, runtime)`` (vector terms
     expose ``residuals_state``; wout-engine terms like :func:`d_merc` /
-    :func:`l_grad_b` / the Boozer QI residual need ``jac=None`` — for
-    ``L_grad_B`` use the traceable :func:`l_grad_b_state` instead).  Both
+    :func:`l_grad_b` / the Boozer QI residual need ``jac=None`` — use
+    :func:`mercier_stability_residual` and :func:`l_grad_b_state` for the
+    corresponding traceable objectives).  Both
     stellarator-symmetric and ``lasym`` boundaries are supported: the implicit
     parameter map packs the four RBC/ZBS/RBS/ZBC families and a traceable
     ``readin.f`` delta rotation.
@@ -1414,7 +1421,8 @@ def _traceable_term(fun: Callable) -> Callable:
         "needs traceable (state, runtime) callables or a residuals_state method. "
         "Wout-engine terms (d_merc, l_grad_b, the Boozer QI residual) run on "
         "host NumPy — use jac=None (finite differences) for those, or the "
-        "traceable l_grad_b_state for L_grad_B.")
+        "traceable d_merc_state / mercier_stability_residual and "
+        "l_grad_b_state alternatives.")
 
 
 def _least_squares_implicit(
