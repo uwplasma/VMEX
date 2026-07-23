@@ -374,12 +374,19 @@ input without hardware-selection environment variables:
 It records the input resolution, devices, wall time, peak RSS, solve count,
 and the complete Jacobian's finiteness, norm, and SHA-256.  On the case above,
 the unmodified float64 path repeated in 355.25 s with the established
-``74.70287727265259`` norm and checksum.  Three dtype-only lower-storage
-factorizations were rejected: demanding HSX Jacobians became non-finite, or a
-regularized approximate factor took over twice the baseline wall time.
+``74.70287727265259`` norm and checksum.  Four small lower-storage candidates
+were rejected: float32 bands/factors and row scaling made this demanding HSX
+Jacobian non-finite, while a regularized scaled factor took over twice the
+baseline wall time.
 Low precision is therefore not a safe drop-in replacement; future work must
 change the representation or measured solver policy while preserving this
 gate.
+
+A fifth experiment streamed the three radial probe colors instead of retaining
+their complete response tensor.  It preserved the norm and checksum and reduced
+wall time to 284.69 s, but increased peak RSS by 8.6 % to 4.833 GiB as the
+allocator retained loop intermediates into factorization.  It was also rejected:
+lower storage must be demonstrated end to end, not inferred from one live array.
 
 The same profiler isolates one free-boundary mirror resolution per process:
 
@@ -392,10 +399,33 @@ The same profiler isolates one free-boundary mirror resolution per process:
        --ns 9 --nxi 17 --elements 9 --exterior-ntheta 16 \
        --betas 0,0.1,0.5 --device cpu --out mirror-fine.json
 
-This separates intrinsic fine-grid storage from cross-resolution process
-history.  The combined three-resolution nightly node passes, but takes about
-85 minutes and peaked at 11.04 GiB on the office host; it remains
-manual/nightly coverage rather than a required PR check.
+Fresh office CPU processes gave:
+
+.. list-table::
+   :header-rows: 1
+
+   * - ``(ns, nxi, elements, ntheta)``
+     - iterations by beta
+     - wall (s)
+     - peak RSS (GiB)
+   * - ``(5, 7, 4, 8)``
+     - 5 / 8 / 10
+     - 16.67
+     - 2.359
+   * - ``(7, 13, 7, 12)``
+     - 42 / 43 / 44
+     - 1457.30
+     - 4.506
+   * - ``(9, 17, 9, 16)``
+     - 42 / 44 / 45
+     - 3351.74
+     - 8.085
+
+All beta points converged with variational maxima below ``2e-13``.  Isolating
+the fine process lowers the previous combined 11.04 GiB peak by 26.8 %, but
+its 8.085 GiB peak is still 3.43 times the coarse result.  Allocator history
+therefore explains part, not all, of the scaling gap.  This 56-minute fine
+case remains manual/nightly coverage rather than a required PR check.
 
 The existing optimization controls remain useful within that limitation:
 
