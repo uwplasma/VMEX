@@ -208,7 +208,11 @@ def solve_multigrid(
     (``IF (nsval < ns_min) CYCLE`` — decreasing entries are ignored, equal
     entries re-run), and each executed stage after the first starts from the
     ``interp.f`` coarse -> fine interpolation (:func:`interpolate_state`) of
-    the previous stage's final state.  The time step resets to the input
+    the previous stage's final state.  Although ``initialize_radial.f`` reads
+    ``xstore``, ``allocate_ns.f`` first overwrites it from the old ``xc``;
+    therefore the effective VMEC2000 continuation source is the final
+    iterate, including when the preceding stage exhausts NITER.  The time
+    step resets to the input
     ``DELT`` at every stage, and each stage prints its own ``NS = ...``
     banner (``verbose=True``, ``mode="cli"``).
 
@@ -295,8 +299,10 @@ def solve_multigrid(
         with device_context(device, resolution):
             carry = _solve_stage(
                 rt, state, mode=mode, verbose=verbose, emit=emit,
-                # the eqsolve.f axis re-guess applies to the fresh interior guess
-                try_axis_reguess=first_executed and state is None,
+                # initialize_radial.f resets ijacob at every NS stage, so
+                # both bad-Jacobian and LMOVE_AXIS first-force retries remain
+                # available after interpolation and on hot starts.
+                try_axis_reguess=True,
             )
         first_executed = False
         ier = int(carry.ier)
@@ -305,6 +311,8 @@ def solve_multigrid(
                 last_stage and ier != SUCCESSFUL_TERM_FLAG
                 and not (ier == MORE_ITER_FLAG and not raise_on_max_iterations)):
             _finalize(carry, rt)  # raises the typed error for this stage
+        # allocate_ns.f saves old xc and copies it into the newly allocated
+        # xstore before initialize_radial.f scales/interpolates that array.
         state = carry.state
 
     if int(carry.ier) == MORE_ITER_FLAG and not raise_on_max_iterations:
@@ -337,8 +345,8 @@ def solve_free_boundary_multigrid(
     """Free-boundary solve over the VMEC2000 ``NS_ARRAY`` ladder.
 
     The plasma continuation follows :func:`solve_multigrid`: each increasing
-    grid starts from ``interp.f`` interpolation of the preceding stage's best
-    stored state, equal grids rerun without interpolation, and decreasing
+    grid starts from ``interp.f`` interpolation of the preceding stage's final
+    state, equal grids rerun without interpolation, and decreasing
     entries are skipped.  The external field is loaded once.  Resolution-
     specific NESTOR bases, Green-function programs, axis-current filament
     tables and traced vacuum loops are selected/rebuilt when the radial grid
@@ -455,7 +463,10 @@ def solve_free_boundary_multigrid(
                     constraint_continuation if same_grid else None),
                 reuse_vacuum_cache=bool(same_grid),
             )
-        interpolation_source = stage_result.continuation_state
+        # allocate_ns.f overwrites xstore from old xc before interp.f, so the
+        # effective VMEC2000 source is the stage's final state, not its
+        # best-residual restart checkpoint.
+        interpolation_source = stage_result.result.state
         state = stage_result.result.state
         previous_ns = nsval
         vacuum_continuation = stage_result.vacuum

@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from vmex.core.errors import VmecNumericalError
@@ -81,6 +82,47 @@ def test_shareable_diagnostic_flags_unsupported_reconstruction(
     assert "D00A_RECONSTRUCTION_MODE_UNSUPPORTED" in output
     assert "private_reconstruction" not in output
     assert "RBC" not in output
+
+
+def test_shareable_diagnostic_flags_unsupported_lforbal(
+    tmp_path: Path, capsys
+) -> None:
+    """An active non-variational force mode must not be silently ignored."""
+    path = tmp_path / "input.private_lforbal"
+    path.write_text(
+        """&INDATA
+        LFORBAL = T
+        MPOL = 3
+        NTOR = 0
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+
+    assert diagnose(path) == 1
+    output = capsys.readouterr().out
+    assert "D00D_LFORBAL_MODE_UNSUPPORTED" in output
+    assert "private_lforbal" not in output
+    assert "RBC" not in output
+
+
+def test_shareable_diagnostic_reports_high_force_axis_recovery(
+    tmp_path: Path, capsys
+) -> None:
+    """A finite irst=4 trigger is reported without printing force values."""
+    inp = VmecInput.from_file(DATA / "input.solovev")
+    path = dataclasses.replace(
+        inp, raxis_c=np.asarray([4.4]), lmove_axis=True,
+    ).to_indata(tmp_path / "input.private_axis_recovery")
+
+    assert diagnose(path) == 0
+    output = capsys.readouterr().out
+    assert "automatic first-pass axis recovery: REQUIRED" in output
+    assert "OK_FIRST_FORCE_PASS_FINITE" in output
+    assert "private_axis_recovery" not in output
+    assert "4.4" not in output
 
 
 def test_shareable_diagnostic_redacts_input_parse_error(

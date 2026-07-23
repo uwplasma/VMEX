@@ -272,6 +272,60 @@ def test_ladder_forwards_explicit_2d_preconditioner(monkeypatch):
     assert seen[0]["prec2d"] is marker
 
 
+def test_lmove_axis_high_first_force_retry_and_opt_out(capsys) -> None:
+    """funct3d.f irst=4: finite first force >1e2 retries the axis once."""
+    import dataclasses
+
+    inp = _load_input("solovev")
+    bad_axis = np.asarray([4.4])
+    enabled = dataclasses.replace(
+        inp, raxis_c=bad_axis, niter_array=np.asarray([2]), nstep=1,
+        lmove_axis=True,
+    )
+    retried = multigrid.solve_multigrid(
+        enabled, raise_on_max_iterations=False, verbose=True,
+    )
+    output = capsys.readouterr().out
+    assert "TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS" in output
+    # Local xvmec2000/PARVMEC 9.0 gives these same first two post-retry rows.
+    np.testing.assert_allclose(
+        retried.fsq_history[:, :3],
+        [
+            [0.03502655, 0.00397168, 0.01427437],
+            [0.09080383, 0.08646060, 0.11152927],
+        ],
+        rtol=2e-6,
+    )
+    assert retried.r00 == pytest.approx(3.8237007872, rel=2e-10)
+
+    disabled = dataclasses.replace(enabled, lmove_axis=False)
+    not_retried = multigrid.solve_multigrid(
+        disabled, raise_on_max_iterations=False, verbose=True,
+    )
+    output = capsys.readouterr().out
+    assert "TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS" not in output
+    assert not_retried.fsq_history[0, :3].sum() > 1.0e2
+
+
+def test_niter_exhausted_stage_transfers_final_xc_like_vmec2000() -> None:
+    """allocate_ns.f overwrites xstore from old final xc before interp.f."""
+    inp = _load_input("solovev")
+    result = multigrid.solve_multigrid(
+        inp, ns_array=[7, 11], ftol_array=[1e-30, 1e-30],
+        niter_array=[2, 1], raise_on_max_iterations=False,
+    )
+    # Local xvmec2000/PARVMEC 9.0 on this public ladder prints, at the first
+    # ns=11 pass: 1.86E-02, 1.09E-03, 7.46E-03, RAX=3.864.  Interpolating the
+    # best-residual checkpoint instead gives the detectably different
+    # 8.29E-03, 8.16E-04, 4.68E-03, RAX=3.936.
+    np.testing.assert_allclose(
+        result.fsq_history[0, :3],
+        [0.01861506, 0.00108547, 0.00745712],
+        rtol=2e-6,
+    )
+    assert result.r00 == pytest.approx(3.8635255062, rel=2e-10)
+
+
 # ---------------------------------------------------------------------------
 # TASK B: compile counts + wall time (cold subprocesses)
 # ---------------------------------------------------------------------------

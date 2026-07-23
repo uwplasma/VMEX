@@ -85,6 +85,12 @@ def _unsupported_mode_code(text: str) -> str | None:
         return "D00A_RECONSTRUCTION_MODE_UNSUPPORTED"
     if bool(first("LRFP", False)):
         return "D00B_RFP_MODE_UNSUPPORTED"
+    # tomnsp_mod.f's non-variational m=1 force-balance replacement is not yet
+    # implemented in VMEX.  The VMEC2000 default is false, so only an active
+    # explicit request is rejected; silently treating it as false can change
+    # difficult-case convergence while still producing finite diagnostics.
+    if bool(first("LFORBAL", False)):
+        return "D00D_LFORBAL_MODE_UNSUPPORTED"
     return None
 
 
@@ -152,6 +158,12 @@ def diagnose(path: Path, *, details: bool = False) -> int:
         and jacobian_nonzero
         and not bool(jacobian.jacobian_sign_changed)
     )
+    high_first_force = (
+        jacobian_good
+        and not raw_bad
+        and bool(np.isfinite(fsq).all())
+        and sum(fsq) > 1.0e2
+    )
     rz_norm_good = (
         _ok(health.volume_valid)
         and _ok(health.energy_scale_valid)
@@ -167,6 +179,12 @@ def diagnose(path: Path, *, details: bool = False) -> int:
     )
     print(f"setup arrays finite: {'PASS' if not setup_bad else 'FAIL'}")
     print(f"initial Jacobian valid: {'PASS' if jacobian_good else 'FAIL'}")
+    axis_recovery = (
+        "REQUIRED" if high_first_force and inp.lmove_axis
+        else "DISABLED" if high_first_force
+        else "NOT_REQUIRED"
+    )
+    print(f"automatic first-pass axis recovery: {axis_recovery}")
     print(f"magnetic field assembly finite: {'PASS' if _ok(health.fields_finite) else 'FAIL'}")
     print(f"R/Z force normalization valid: {'PASS' if rz_norm_good else 'FAIL'}")
     print(f"lambda force normalization valid: {'PASS' if lambda_norm_good else 'FAIL'}")

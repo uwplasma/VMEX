@@ -66,6 +66,7 @@ def test_vmecpp_json_example() -> None:
     assert new.lfreeb is False  # VMEC++ default
     assert new.gamma == 0.0  # default (JSON alias: adiabatic_index)
     assert new.mgrid_file == "NONE"
+    assert new.lmove_axis is True
 
     # And it survives both writers.
     import tempfile
@@ -73,6 +74,18 @@ def test_vmecpp_json_example() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         assert VmecInput.from_file(new.to_json(Path(tmp) / "x.json")) == new
         assert VmecInput.from_file(new.to_indata(Path(tmp) / "input.x")) == new
+
+
+def test_lmove_axis_default_explicit_false_and_indata_round_trip(
+    tmp_path: Path,
+) -> None:
+    """VMEC2000 defaults LMOVE_AXIS=T and permits an explicit opt-out."""
+    assert VmecInput.from_indata_text("&INDATA\n/\n").lmove_axis is True
+    inp = VmecInput.from_indata_text("&INDATA\nLMOVE_AXIS = F\n/\n")
+    assert inp.lmove_axis is False
+    assert VmecInput.from_file(
+        inp.to_indata(tmp_path / "input.lmove_axis")
+    ).lmove_axis is False
 
 
 def test_indexed_indata_vectors_overlay_vmec_defaults() -> None:

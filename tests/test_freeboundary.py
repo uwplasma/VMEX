@@ -415,6 +415,23 @@ def test_bad_supplied_axis_is_reguessed_before_fused_filament(capsys):
     assert result.r00 < 1.0
 
 
+def test_high_first_force_reguesses_valid_axis_before_vacuum(capsys):
+    """LMOVE_AXIS also retries a valid-Jacobian axis when FSQ(1) > 1e2."""
+    inp = VmecInput.from_file(DECK)
+    raxis_c = inp.raxis_c.copy()
+    raxis_c[0] = 0.81  # valid Jacobian, but raw first-force sum is ~2.8e2
+    inp = dataclasses.replace(inp, raxis_c=raxis_c, niter_array=[2], nstep=1)
+    result = FB.solve_free_boundary(
+        inp, mgrid_path=MGRID, max_iterations=2, verbose=True,
+        error_on_no_convergence=False,
+    )
+    output = capsys.readouterr().out
+    assert "INITIAL JACOBIAN CHANGED SIGN" not in output
+    assert "TRYING TO IMPROVE INITIAL MAGNETIC AXIS GUESS" in output
+    assert result.fsq_history[0, :3].sum() < 1.0e2
+    assert np.isfinite(result.fsqr)
+
+
 def test_cached_vacuum_executable_rechecks_dynamic_axis(monkeypatch):
     """A structural cache hit must still validate the current magnetic axis."""
     resolution = object()

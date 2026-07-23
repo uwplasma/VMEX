@@ -36,8 +36,8 @@ def _state(ns: int, mnmax: int, value: float) -> SpectralState:
     return SpectralState(a, a, a, a, a, a)
 
 
-def test_stage_transfer_carries_vacuum_and_interpolates_xstore(monkeypatch) -> None:
-    """User seeds and increasing grids interpolate; equal grids reuse xc."""
+def test_stage_transfer_carries_vacuum_and_interpolates_final_xc(monkeypatch) -> None:
+    """User seeds and increasing/equal grids continue from final xc."""
     inp = VmecInput.from_file(DECK)
     modes = mode_table(int(inp.mpol), int(inp.ntor))
     seed = _state(5, modes.mnmax, 3.0)
@@ -94,11 +94,11 @@ def test_stage_transfer_carries_vacuum_and_interpolates_xstore(monkeypatch) -> N
         np.asarray(calls[0][1].R_cos), np.asarray(expected_seed.R_cos))
     assert calls[0][2] is None
     assert calls[1][1].R_cos.shape[0] == 15
-    # The increasing-grid interpolation came from stage 1 xstore (=21), not
-    # its current xc (=11).  Odd-m sqrt(s) scaling makes the expected radial
-    # profile non-constant, so compare with the actual interp.f operator.
+    # allocate_ns.f overwrites newly allocated xstore from old xc before
+    # initialize_radial.f calls interp.f.  The source is therefore stage 1's
+    # final xc (=11), not its best-residual restart checkpoint (=21).
     expected = interpolate_state(
-        _state(7, modes.mnmax, 21.0), ns_fine=15, modes=modes)
+        _state(7, modes.mnmax, 11.0), ns_fine=15, modes=modes)
     np.testing.assert_allclose(
         np.asarray(calls[1][1].R_cos), np.asarray(expected.R_cos))
     assert calls[1][2] is vacua[0]
@@ -139,6 +139,24 @@ def test_public_two_stage_free_boundary_rebuilds_and_stays_finite() -> None:
     assert np.all(np.isfinite(np.asarray(result.state.R_cos)))
     # Regression for the old turn-on-ordering blow-up (~5 km major radius).
     assert 0.5 < result.r00 < 1.0
+
+
+def test_niter_exhausted_free_stage_transfers_final_xc_vmec2000_parity() -> None:
+    """The pre-vacuum free ladder continues from final xc after coarse NITER."""
+    inp = VmecInput.from_file(DECK)
+    result = solve_free_boundary_multigrid(
+        inp, ns_array=[7, 15], ftol_array=[1e-30, 1e-30],
+        niter_array=[2, 1], mgrid_path=MGRID,
+        raise_on_max_iterations=False,
+    )
+    # Local xvmec2000/PARVMEC 9.0 on these public assets gives the same first
+    # ns=15 row (vacuum is deliberately not yet active).
+    np.testing.assert_allclose(
+        result.fsq_history[0, :3],
+        [0.03192713, 0.00284142, 0.00899460],
+        rtol=2e-6,
+    )
+    assert result.r00 == pytest.approx(0.7430588672, rel=2e-10)
 
 
 def test_single_grid_hot_restart_preserves_free_edge() -> None:
