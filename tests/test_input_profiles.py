@@ -143,6 +143,38 @@ def test_indexed_aphi_overlays_dense_assignment() -> None:
     np.testing.assert_array_equal(inp.aphi[:3], [0.0, 1.0, 0.0])
 
 
+def test_indexed_aphi_starting_element_consumes_following_values() -> None:
+    """Fortran ``APHI(1)=0,1`` assigns two elements, not one scalar."""
+    inp = VmecInput.from_indata_text(
+        """&INDATA
+        MPOL = 3
+        NTOR = 0
+        APHI(1) = 0.0, 1.0
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+    np.testing.assert_array_equal(inp.aphi[:3], [0.0, 1.0, 0.0])
+
+
+def test_indexed_aphi_section_uses_fortran_inclusive_bounds() -> None:
+    """A non-leading array section retains VMEC's initialized first term."""
+    inp = VmecInput.from_indata_text(
+        """&INDATA
+        MPOL = 3
+        NTOR = 0
+        APHI(2:3) = 0.25, 0.5
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+    np.testing.assert_array_equal(inp.aphi[:4], [1.0, 0.25, 0.5, 0.0])
+
+
 def test_indexed_legacy_axis_overlays_vmec_axis() -> None:
     """Indexed obsolete RAXIS/ZAXIS entries retain VMEC2000 compatibility."""
     inp = VmecInput.from_indata_text(

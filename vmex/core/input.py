@@ -39,6 +39,7 @@ import numpy as np
 __all__ = ["VmecInput"]
 
 Scalar = Union[str, bool, int, float]
+IndexComponent = Union[int, slice]
 
 # ---------------------------------------------------------------------------
 # Tolerant Fortran-namelist tokenizer (targeted at VMEC &INDATA files)
@@ -110,16 +111,36 @@ def _parse_scalar(tok: str) -> Scalar:
         return tok
 
 
-def _parse_key(key: str) -> Tuple[str, Tuple[int, ...] | None]:
-    """Split ``KEY`` or ``KEY(i,j)`` into (name, indices); ``KEY(:)`` -> plain."""
+def _parse_key(key: str) -> Tuple[str, Tuple[IndexComponent, ...] | None]:
+    """Split a namelist key into its name and scalar/section designator.
+
+    A bare key and the whole-vector ``KEY(:)`` form return ``None``.  Fortran
+    triplets retain their inclusive upper bound in a :class:`slice`; they are
+    expanded after the assignment values have been tokenized.
+    """
     key = key.strip()
     if "(" not in key:
         return key.upper(), None
     base, rest = key.split("(", 1)
     rest = rest.rstrip(")")
-    if ":" in rest:
+    if rest.strip() == ":":
         return base.upper(), None
-    return base.upper(), tuple(int(x) for x in rest.split(",") if x.strip())
+    components: list[IndexComponent] = []
+    for component in rest.split(","):
+        component = component.strip()
+        if ":" not in component:
+            components.append(int(component))
+            continue
+        parts = component.split(":")
+        if len(parts) not in (2, 3):
+            raise ValueError(f"invalid namelist array section: {key}")
+        start = int(parts[0]) if parts[0].strip() else None
+        stop = int(parts[1]) if parts[1].strip() else None
+        step = int(parts[2]) if len(parts) == 3 and parts[2].strip() else 1
+        if step == 0:
+            raise ValueError(f"zero stride in namelist array section: {key}")
+        components.append(slice(start, stop, step))
+    return base.upper(), tuple(components)
 
 
 def _read_indata_text(text: str) -> tuple[Dict[str, List[Scalar]], Dict[str, Dict[Tuple[int, ...], Scalar]]]:
@@ -149,8 +170,35 @@ def _read_indata_text(text: str) -> tuple[Dict[str, List[Scalar]], Dict[str, Dic
             continue
         if idx is None:
             scalars[name] = values
+        elif len(idx) == 1:
+            # A one-dimensional namelist designator identifies the first
+            # destination element, not a scalar-only assignment.  Thus
+            # ``APHI(1)=0,1`` initializes APHI(1:2), exactly like VMEC2000.
+            # Array sections use inclusive Fortran bounds; an omitted upper
+            # bound consumes as many destinations as values supplied.
+            component = idx[0]
+            if isinstance(component, slice):
+                step = 1 if component.step is None else component.step
+                if component.start is None:
+                    # The only lower-bound-free form accepted here is a whole
+                    # vector, already handled as a dense assignment above.
+                    raise ValueError(f"array section needs a lower bound: {m.group('key')}")
+                if component.stop is None:
+                    positions = [component.start + step * j for j in range(len(values))]
+                else:
+                    end = component.stop + (1 if step > 0 else -1)
+                    positions = list(range(component.start, end, step))
+                if len(values) > len(positions):
+                    raise ValueError(f"too many values for namelist array section: {m.group('key')}")
+            else:
+                positions = [component + j for j in range(len(values))]
+            entries = indexed.setdefault(name, {})
+            for position, value in zip(positions, values):
+                entries[(position,)] = value
         else:
-            indexed.setdefault(name, {})[idx] = values[0]
+            if any(isinstance(component, slice) for component in idx):
+                raise ValueError(f"multidimensional array sections are unsupported: {m.group('key')}")
+            indexed.setdefault(name, {})[tuple(int(component) for component in idx)] = values[0]
     return scalars, indexed
 
 

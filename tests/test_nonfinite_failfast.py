@@ -115,3 +115,22 @@ def test_indexed_aphi_prevents_false_zero_flux_diagnosis(
     assert "R/Z force normalization valid: PASS" in output
     assert "lambda force normalization valid: PASS" in output
     assert "OK_FIRST_FORCE_PASS_FINITE" in output
+
+
+def test_indexed_aphi_multivalue_prevents_false_zero_flux_diagnosis(
+    tmp_path: Path, capsys
+) -> None:
+    """VMEC2000 treats APHI(1)=0,1 as two vector elements."""
+    inp = VmecInput.from_file(DATA / "input.nfp2_QI")
+    path = inp.to_indata(tmp_path / "input.indexed_aphi_multivalue")
+    text = path.read_text().replace(
+        "  APHI = 1.0000000000000000E+00",
+        "  APHI(1) = 0.0, 1.0",
+    )
+    path.write_text(text)
+
+    assert diagnose(path) == 0
+    output = capsys.readouterr().out
+    assert "R/Z force normalization valid: PASS" in output
+    assert "lambda force normalization valid: PASS" in output
+    assert "OK_FIRST_FORCE_PASS_FINITE" in output
