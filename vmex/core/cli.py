@@ -39,6 +39,8 @@ Documented divergences of the free-boundary lane:
   netCDF fill (see :func:`vmex.core.wout.wout_from_state`).
 - An NITER-exhausted free-boundary run still writes the wout (VMEC2000
   behavior) and exits with ``ier_flag = 2`` (MORE ITERATIONS REQUIRED).
+- For fixed boundary, ``LFULL3D1OUT = T`` requests the same NITER-exhausted
+  WOUT; fatal numerical/Jacobian errors still do not produce one.
 """
 
 from __future__ import annotations
@@ -578,6 +580,9 @@ def _solve_input_file(args, input_path: Path, outdir: Path | None, *, emit) -> i
             mode=str(args.mode),
             verbose=verbose,
             emit=emit,
+            raise_on_max_iterations=not bool(
+                getattr(inp, "lfull3d1out", False)
+            ),
             device=None if args.device == "none" else args.device,
         )
     solve_s = time.perf_counter() - t1

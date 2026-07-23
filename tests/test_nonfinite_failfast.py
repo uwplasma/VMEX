@@ -84,10 +84,10 @@ def test_shareable_diagnostic_flags_unsupported_reconstruction(
     assert "RBC" not in output
 
 
-def test_shareable_diagnostic_flags_unsupported_lforbal(
+def test_shareable_diagnostic_supports_lforbal(
     tmp_path: Path, capsys
 ) -> None:
-    """An active non-variational force mode must not be silently ignored."""
+    """The active non-variational force mode reaches the finite force audit."""
     path = tmp_path / "input.private_lforbal"
     path.write_text(
         """&INDATA
@@ -101,9 +101,11 @@ def test_shareable_diagnostic_flags_unsupported_lforbal(
         """
     )
 
-    assert diagnose(path) == 1
+    assert diagnose(path) == 0
     output = capsys.readouterr().out
-    assert "D00D_LFORBAL_MODE_UNSUPPORTED" in output
+    assert "input physics mode supported: PASS" in output
+    assert "assessment: OK_FIRST_FORCE_PASS_FINITE" in output
+    assert "D00D_LFORBAL_MODE_UNSUPPORTED" not in output
     assert "private_lforbal" not in output
     assert "RBC" not in output
 

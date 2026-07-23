@@ -88,6 +88,30 @@ def test_lmove_axis_default_explicit_false_and_indata_round_trip(
     ).lmove_axis is False
 
 
+def test_lforbal_default_explicit_true_and_indata_round_trip(
+    tmp_path: Path,
+) -> None:
+    """VMEC2000 defaults LFORBAL=F and supports the active replacement."""
+    assert VmecInput.from_indata_text("&INDATA\n/\n").lforbal is False
+    inp = VmecInput.from_indata_text("&INDATA\nLFORBAL = T\n/\n")
+    assert inp.lforbal is True
+    assert VmecInput.from_file(
+        inp.to_indata(tmp_path / "input.lforbal")
+    ).lforbal is True
+
+
+def test_lfull3d1out_default_explicit_true_and_indata_round_trip(
+    tmp_path: Path,
+) -> None:
+    """VMEC2000 defaults LFULL3D1OUT=F and permits an explicit WOUT request."""
+    assert VmecInput.from_indata_text("&INDATA\n/\n").lfull3d1out is False
+    inp = VmecInput.from_indata_text("&INDATA\nLFULL3D1OUT = T\n/\n")
+    assert inp.lfull3d1out is True
+    assert VmecInput.from_file(
+        inp.to_indata(tmp_path / "input.lfull3d1out")
+    ).lfull3d1out is True
+
+
 def test_indexed_indata_vectors_overlay_vmec_defaults() -> None:
     """Indexed 1-D assignments follow VMEC2000 namelist lower bounds/defaults."""
     inp = VmecInput.from_indata_text(

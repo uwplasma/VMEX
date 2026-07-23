@@ -133,10 +133,14 @@ from .errors import (
     WERROR_MESSAGES,
 )
 from .fields import (
-    constraint_scaling, energies_and_force_norms, magnetic_fields,
-    metric_elements, preconditioned_force_norm,
+    constraint_scaling, energies_and_force_norms,
+    force_balance_preconditioner_factor, magnetic_fields, metric_elements,
+    preconditioned_force_norm, radial_force_balance_error,
 )
-from .forces import constraint_force, mhd_forces, spectral_mhd_forces
+from .forces import (
+    apply_m1_force_balance, constraint_force, mhd_forces,
+    spectral_mhd_forces,
+)
 from .fourier import ModeTable, Resolution, TrigTables, mode_table, trig_tables
 from .geometry import apply_lambda_axis_closure, half_mesh_jacobian, real_space_geometry
 from .input import VmecInput
@@ -219,7 +223,8 @@ class PreconditionerCache:
 
     ``tcon`` (constraint scaling), the residual norms ``fnorm/fnormL/fnorm1``,
     the :func:`precondn` coefficients and assembled :func:`scalfor_matrices`
-    for the R and Z force families, and the ``lamcal`` diagonal ``faclam``.
+    for the R and Z force families, the ``LFORBAL`` ``rzu_fac/rru_fac``
+    factors, and the ``lamcal`` diagonal ``faclam``.
     """
 
     tcon: Array
@@ -228,6 +233,8 @@ class PreconditionerCache:
     fnorm1: Array
     coefficients_R: RadialPreconditionerCoefficients
     coefficients_Z: RadialPreconditionerCoefficients
+    force_balance_R: Array
+    force_balance_Z: Array
     matrices_R: TridiagonalMatrices
     matrices_Z: TridiagonalMatrices
     faclam: Array
@@ -393,6 +400,7 @@ class SolverRuntime:
     gamma: float; tcon0: float; ftol: float
     max_iterations: int; time_step0: float; nstep: int
     jmax: int                           # evolved radial rows (fixed: ns-1)
+    lforbal: bool = False               # tomnsp_mod.f m=1,n=0 force replacement
     lmove_axis: bool = True             # funct3d.f first-force irst=4 path
 
     # -- free-boundary seam (core/freeboundary.py; funct3d.f/forces.f) ------
@@ -449,7 +457,7 @@ class SolverRuntime:
 
 _register(SolverRuntime, meta=(
     "resolution", "gamma", "tcon0", "ftol", "max_iterations", "time_step0",
-    "nstep", "jmax", "lmove_axis", "lfreeb", "prec2d",
+    "nstep", "jmax", "lforbal", "lmove_axis", "lfreeb", "prec2d",
 ))
 
 
@@ -601,7 +609,8 @@ def prepare_runtime(
     ftol: float | None = None, max_iterations: int | None = None,
     time_step: float | None = None, tcon0: float | None = None,
     gamma: float | None = None, nstep: int | None = None,
-    lconm1: bool = True, setup: RunSetup | None = None,
+    lconm1: bool = True, lforbal: bool | None = None,
+    setup: RunSetup | None = None,
     precon_type: str | None = None, prec2d_threshold: float | None = None,
     prec2d: Prec2DConfig | None = None,
 ) -> SolverRuntime:
@@ -614,7 +623,9 @@ def prepare_runtime(
     spectral row never evolves in fixed-boundary mode, so they are constants
     of the run.
 
-    ``precon_type``/``prec2d_threshold`` (or an explicit ``prec2d``
+    ``lforbal`` overrides the input's non-variational ``(m=1,n=0)`` force
+    replacement when supplied (a prebuilt :class:`RunSetup` defaults it to
+    false).  ``precon_type``/``prec2d_threshold`` (or an explicit ``prec2d``
     :class:`~vmex.core.preconditioner_2d.Prec2DConfig`) switch on the
     optional 2D block preconditioner (``precon2d.f``); ``None``/``"NONE"``
     (the default) leaves the 1D-only path byte-identical.
@@ -624,7 +635,7 @@ def prepare_runtime(
             raise ValueError("prepare_runtime(RunSetup) requires a Resolution")
         setup = source
         defaults = dict(ftol=1e-10, niter=100, delt=1.0, tcon0=1.0, gamma=0.0,
-                        nstep=200, lmove_axis=True)
+                        nstep=200, lforbal=False, lmove_axis=True)
     else:
         inp = source
         if resolution is None:
@@ -634,6 +645,7 @@ def prepare_runtime(
         defaults = dict(ftol=float(inp.ftol_array[0]), niter=int(inp.niter_array[0]),
                         delt=float(inp.delt), tcon0=float(inp.tcon0),
                         gamma=float(inp.gamma), nstep=int(inp.nstep),
+                        lforbal=bool(inp.lforbal),
                         lmove_axis=bool(inp.lmove_axis))
 
     rt = SolverRuntime(
@@ -645,6 +657,7 @@ def prepare_runtime(
         time_step0=float(defaults["delt"] if time_step is None else time_step),
         nstep=int(defaults["nstep"] if nstep is None else nstep),
         jmax=int(resolution.ns) - 1,
+        lforbal=bool(defaults["lforbal"] if lforbal is None else lforbal),
         lmove_axis=bool(defaults["lmove_axis"]),
         rcon0=jnp.zeros(()), zcon0=jnp.zeros(()),  # placeholder, replaced below
         prec2d=_resolve_prec2d(source, prec2d, precon_type, prec2d_threshold),
@@ -735,6 +748,7 @@ def _zero_cache(rt: SolverRuntime) -> PreconditionerCache:
     return PreconditionerCache(
         tcon=z((ns,)), fnorm=z(()), fnormL=z(()), fnorm1=z(()),
         coefficients_R=coeffs, coefficients_Z=coeffs,
+        force_balance_R=z((ns,)), force_balance_Z=z((ns,)),
         matrices_R=mats, matrices_Z=mats, faclam=z((ns, mpol, nr)),
     )
 
@@ -822,6 +836,20 @@ def _force_pipeline(
     spectral = spectral_mhd_forces(
         forces, mpol=res.mpol, ntor=res.ntor, trig=rt.trig, include_edge=bool(rt.lfreeb)
     )
+    if rt.lforbal:
+        equif = radial_force_balance_error(
+            fields=fields,
+            phipf=setup.phipf,
+            trig=rt.trig,
+            s=s,
+            signgs=setup.signgs,
+        )
+        spectral = apply_m1_force_balance(
+            spectral,
+            equif=equif,
+            factor_R=cache.force_balance_R,
+            factor_Z=cache.force_balance_Z,
+        )
 
     # -- residue.f90 chain ---------------------------------------------------
     rotated = m1_residue_rotation(spectral, lconm1=setup.lconm1)
@@ -1007,6 +1035,30 @@ def _evaluate(
         dxdu_even_full=geometry.dR_dtheta_even, dxdu_odd_full=geometry.dR_dtheta_odd,
         x_odd_full=geometry.R_odd, **common,
     )
+    if rt.lforbal and res.mpol >= 2:
+        force_balance_R = force_balance_preconditioner_factor(
+            axd_odd=coefficients_R.axd[:, 1],
+            dxdu_half=jacobian.zu12,
+            trig_multiplier=np.asarray(rt.trig.cosmu)[:, 1],
+            jacobian=jacobian,
+            fields=fields,
+            trig=rt.trig,
+            s=s,
+            signgs=setup.signgs,
+        )
+        force_balance_Z = force_balance_preconditioner_factor(
+            axd_odd=coefficients_Z.axd[:, 1],
+            dxdu_half=jacobian.ru12,
+            trig_multiplier=-np.asarray(rt.trig.sinmu)[:, 1],
+            jacobian=jacobian,
+            fields=fields,
+            trig=rt.trig,
+            s=s,
+            signgs=setup.signgs,
+        )
+    else:
+        force_balance_R = jnp.zeros((ns,), dtype=s.dtype)
+        force_balance_Z = jnp.zeros((ns,), dtype=s.dtype)
     # jmax follows scalfor.f: ns-1 fixed boundary (rt.jmax default), ns once
     # the vacuum field is on (free-boundary lane) — activates the
     # EDGE_PEDESTAL / ZC(0,0) edge stiffening inside scalfor_matrices.
@@ -1028,7 +1080,9 @@ def _evaluate(
     fresh = PreconditionerCache(
         tcon=tcon_new, fnorm=energies.fnorm, fnormL=energies.fnormL,
         fnorm1=fnorm1_new, coefficients_R=coefficients_R,
-        coefficients_Z=coefficients_Z, matrices_R=matrices_R,
+        coefficients_Z=coefficients_Z,
+        force_balance_R=force_balance_R,
+        force_balance_Z=force_balance_Z, matrices_R=matrices_R,
         matrices_Z=matrices_Z, faclam=faclam_new,
     )
     refresh = (((iteration - iter_last_reset) % NS4) == 0) & (~jac_changed)

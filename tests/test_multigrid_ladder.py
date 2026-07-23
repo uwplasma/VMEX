@@ -307,6 +307,71 @@ def test_lmove_axis_high_first_force_retry_and_opt_out(capsys) -> None:
     assert not_retried.fsq_history[0, :3].sum() > 1.0e2
 
 
+def test_lforbal_thirty_rows_and_cache_refresh_match_vmec2000() -> None:
+    """Non-variational m=1 balance matches across the ns4=25 refresh."""
+    import dataclasses
+
+    inp = dataclasses.replace(
+        _load_input("solovev"),
+        lforbal=True,
+        lmove_axis=False,
+        nstep=25,
+        niter_array=np.asarray([30]),
+        ftol_array=np.asarray([1.0e-30]),
+    )
+    result = multigrid.solve_multigrid(
+        inp, raise_on_max_iterations=False, device="cpu"
+    )
+    # Fresh local xvmec2000/PARVMEC 9.0 run of this public deck prints:
+    #   1  8.33E-02  4.94E-04  3.21E-02
+    #   2  6.82E-03  1.41E-03  4.37E-03
+    #   3  1.52E-02  9.15E-04  6.98E-03
+    expected_first = [
+        ["8.33E-02", "4.94E-04", "3.21E-02"],
+        ["6.82E-03", "1.41E-03", "4.37E-03"],
+        ["1.52E-02", "9.15E-04", "6.98E-03"],
+    ]
+    got_first = [
+        [f"{value:.2E}" for value in row[:3]]
+        for row in result.fsq_history[:3]
+    ]
+    assert got_first == expected_first
+    # A fresh local xvmec2000/PARVMEC 9.0 run also prints
+    #  25  4.24E-03  8.46E-04  1.39E-03
+    #  30  6.47E-04  4.25E-04  4.89E-04
+    # so the row after VMEC's iteration-26 cache refresh is covered, not
+    # merely the initial frozen force-balance factors.
+    assert [
+        [f"{value:.2E}" for value in result.fsq_history[i, :3]]
+        for i in (24, 29)
+    ] == [
+        ["4.24E-03", "8.46E-04", "1.39E-03"],
+        ["6.47E-04", "4.25E-04", "4.89E-04"],
+    ]
+    assert result.r00 == pytest.approx(3.9897106225, rel=2e-10)
+    assert result.wmhd == pytest.approx(2.5489005543, rel=2e-10)
+
+    # Collaborator regression: before this port, deleting LFORBAL produced
+    # the same trajectory because the normal solver silently ignored the
+    # flag.  The supported default-F formulation remains the established
+    # VMEC2000 row and is now detectably distinct from the T formulation.
+    variational = multigrid.solve_multigrid(
+        dataclasses.replace(
+            inp,
+            lforbal=False,
+            niter_array=np.asarray([1]),
+        ),
+        raise_on_max_iterations=False,
+        device="cpu",
+    )
+    assert [f"{value:.2E}" for value in variational.fsq_history[0, :3]] == [
+        "9.41E-02", "2.76E-03", "3.21E-02",
+    ]
+    assert not np.allclose(
+        variational.fsq_history[0, :2], result.fsq_history[0, :2]
+    )
+
+
 def test_niter_exhausted_stage_transfers_final_xc_like_vmec2000() -> None:
     """allocate_ns.f overwrites xstore from old final xc before interp.f."""
     inp = _load_input("solovev")

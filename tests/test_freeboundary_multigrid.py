@@ -159,6 +159,58 @@ def test_niter_exhausted_free_stage_transfers_final_xc_vmec2000_parity() -> None
     assert result.r00 == pytest.approx(0.7430588672, rel=2e-10)
 
 
+def test_lforbal_free_ladder_matches_vmec2000_before_vacuum_activation() -> None:
+    """The shared LFORBAL force map survives free coarse-to-fine transfer."""
+    inp = replace(
+        VmecInput.from_file(DECK), lforbal=True, lmove_axis=False
+    )
+    result = solve_free_boundary_multigrid(
+        inp,
+        ns_array=[7, 15],
+        ftol_array=[1e-30, 1e-30],
+        niter_array=[2, 1],
+        mgrid_path=MGRID,
+        raise_on_max_iterations=False,
+        device="cpu",
+    )
+    # Fresh local xvmec2000/PARVMEC 9.0 prints on the ns=15 pass:
+    #   1  1.89E-02  3.61E-03  8.96E-03 ... WMHD 5.0791E-02
+    # Vacuum is deliberately not active yet (DEL-BSQ remains 1).
+    np.testing.assert_allclose(
+        result.fsq_history[0, :3],
+        [1.89e-2, 3.61e-3, 8.96e-3],
+        rtol=7e-3,
+    )
+    assert result.r00 == pytest.approx(0.7430400635, rel=2e-10)
+    assert result.wmhd == pytest.approx(0.0507912723, rel=2e-9)
+
+
+@pytest.mark.full
+def test_lforbal_free_ladder_crosses_vacuum_activation() -> None:
+    """The non-variational force remains finite after a real NESTOR update."""
+    inp = replace(VmecInput.from_file(DECK), lforbal=True)
+    lines: list[str] = []
+
+    def emit(value="", end="\n"):
+        lines.append(str(value) + end)
+
+    result = solve_free_boundary_multigrid(
+        inp,
+        ns_array=[7, 15],
+        ftol_array=[1e-10, 1e-10],
+        niter_array=[60, 5],
+        mgrid_path=MGRID,
+        verbose=True,
+        emit=emit,
+        raise_on_max_iterations=False,
+        device="cpu",
+    )
+    assert "".join(lines).count("VACUUM PRESSURE TURNED ON") == 1
+    assert np.all(np.isfinite(result.fsq_history))
+    assert np.all(np.isfinite(np.asarray(result.state.R_cos)))
+    assert 0.5 < result.r00 < 1.0
+
+
 def test_single_grid_hot_restart_preserves_free_edge() -> None:
     inp = VmecInput.from_file(DECK)
     first = FB.solve_free_boundary(

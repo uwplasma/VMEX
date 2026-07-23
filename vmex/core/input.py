@@ -307,7 +307,9 @@ class VmecInput:
     niter_array: Any = None      #: iteration cap per stage (default [100] = NITER)
     delt: float = 1.0            #: initial time step
     tcon0: float = 1.0           #: constraint-force multiplier (bcovar.f)
+    lforbal: bool = False        #: replace m=1,n=0 R/Z forces by average force balance
     lmove_axis: bool = True      #: improve the axis when the first force sum is > 1e2
+    lfull3d1out: bool = False    #: write a WOUT when the iteration limit is reached
     aphi: Any = None             #: radial-flux remap polynomial (default [1,0,...], len 20)
     phiedge: float = 1.0         #: total enclosed toroidal flux [Wb]
     nstep: int = 10              #: iterations between progress prints
@@ -361,7 +363,9 @@ class VmecInput:
     def __post_init__(self) -> None:
         set_ = object.__setattr__
         set_(self, "lasym", bool(self.lasym))
+        set_(self, "lforbal", bool(self.lforbal))
         set_(self, "lmove_axis", bool(self.lmove_axis))
+        set_(self, "lfull3d1out", bool(self.lfull3d1out))
         for name in ("nfp", "mpol", "ntor", "ntheta", "nzeta", "ncurr", "nstep",
                      "nvacskip", "mfilter_fbdy", "nfilter_fbdy"):
             set_(self, name, int(getattr(self, name)))
@@ -581,7 +585,9 @@ class VmecInput:
             niter_array=niter_array,
             delt=float(get("DELT", 1.0)),
             tcon0=float(get("TCON0", 1.0)),
+            lforbal=bool(get("LFORBAL", False)),
             lmove_axis=bool(get("LMOVE_AXIS", True)),
+            lfull3d1out=bool(get("LFULL3D1OUT", False)),
             aphi=vector("APHI", lower=1, default=aphi_default, size=20),
             phiedge=float(get("PHIEDGE", 1.0)),
             nstep=int(get("NSTEP", 10)),
@@ -728,7 +734,9 @@ class VmecInput:
         put("NITER_ARRAY", self.niter_array)
         put("DELT", self.delt)
         put("TCON0", self.tcon0)
+        put("LFORBAL", self.lforbal)
         put("LMOVE_AXIS", self.lmove_axis)
+        put("LFULL3D1OUT", self.lfull3d1out)
         put("APHI", self.aphi)
         put("PHIEDGE", self.phiedge)
         put("NSTEP", self.nstep)

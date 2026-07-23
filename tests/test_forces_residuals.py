@@ -26,6 +26,7 @@ import numpy as np
 import pytest
 
 from vmex.core import residuals as newr
+from vmex.core.forces import apply_m1_force_balance
 from vmex.core.input import VmecInput
 from vmex.core.solver import (
     _initial_state,
@@ -33,6 +34,7 @@ from vmex.core.solver import (
     prepare_runtime,
     resolution_from_input,
 )
+from vmex.core.transforms import SpectralForce
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "examples" / "data"
 
@@ -128,6 +130,48 @@ def test_release_conditions_are_traced_values():
         jax.jit(lambda f, i: newr.m1_zero_condition(fsqz_previous=f, iterations_since_restart=i))(
             jnp.asarray(1e-7), jnp.asarray(100)
         )
+    )
+
+
+def test_lforbal_replaces_only_symmetric_m1_n0_interior() -> None:
+    """tomnsp_mod.f leaves every block except frcc/fzsc(m=1,n=0) alone."""
+    shape = (5, 3, 2)
+    frcc = jnp.arange(np.prod(shape), dtype=jnp.float64).reshape(shape)
+    fzsc = 100.0 + frcc
+    untouched = -frcc
+    force = SpectralForce(
+        force_R_cc=frcc,
+        force_Z_sc=fzsc,
+        force_R_ss=untouched,
+        force_Z_cs=2.0 * untouched,
+    )
+    equif = jnp.asarray([0.0, 2.0, 4.0, 6.0, 0.0])
+    factor_R = jnp.asarray([0.0, 10.0, 20.0, 30.0, 0.0])
+    factor_Z = jnp.asarray([0.0, 5.0, 10.0, 15.0, 0.0])
+    got = apply_m1_force_balance(
+        force, equif=equif, factor_R=factor_R, factor_Z=factor_Z
+    )
+
+    expected_R = np.asarray(frcc).copy()
+    expected_Z = np.asarray(fzsc).copy()
+    old_R = expected_R[:, 1, 0].copy()
+    old_Z = expected_Z[:, 1, 0].copy()
+    work = old_R[1:-1] / np.asarray(factor_R)[1:-1] - (
+        old_Z[1:-1] / np.asarray(factor_Z)[1:-1]
+    )
+    expected_R[1:-1, 1, 0] = (
+        0.5 * np.asarray(factor_R)[1:-1]
+        * (np.asarray(equif)[1:-1] + work)
+    )
+    expected_Z[1:-1, 1, 0] = (
+        0.5 * np.asarray(factor_Z)[1:-1]
+        * (np.asarray(equif)[1:-1] - work)
+    )
+    np.testing.assert_allclose(np.asarray(got.force_R_cc), expected_R)
+    np.testing.assert_allclose(np.asarray(got.force_Z_sc), expected_Z)
+    np.testing.assert_array_equal(np.asarray(got.force_R_ss), np.asarray(untouched))
+    np.testing.assert_array_equal(
+        np.asarray(got.force_Z_cs), np.asarray(2.0 * untouched)
     )
 
 

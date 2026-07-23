@@ -85,12 +85,6 @@ def _unsupported_mode_code(text: str) -> str | None:
         return "D00A_RECONSTRUCTION_MODE_UNSUPPORTED"
     if bool(first("LRFP", False)):
         return "D00B_RFP_MODE_UNSUPPORTED"
-    # tomnsp_mod.f's non-variational m=1 force-balance replacement is not yet
-    # implemented in VMEX.  The VMEC2000 default is false, so only an active
-    # explicit request is rejected; silently treating it as false can change
-    # difficult-case convergence while still producing finite diagnostics.
-    if bool(first("LFORBAL", False)):
-        return "D00D_LFORBAL_MODE_UNSUPPORTED"
     return None
 
 
