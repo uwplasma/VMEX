@@ -49,7 +49,7 @@ import jax.numpy as jnp
 from jax import lax
 
 from . import profiles as _profiles
-from .device import AUTO, device_context
+from .device import AUTO, _placement_device, _put_numeric_leaves, device_context
 from .errors import MORE_ITER_FLAG, SUCCESSFUL_TERM_FLAG
 from .fields import magnetic_fields, metric_elements
 from .fourier import ModeTable
@@ -1413,6 +1413,9 @@ def solve_free_boundary(
     """
     if resolution is None:
         resolution = resolution_from_input(inp)
+    target = _placement_device(device, resolution)
+    external_field = _put_numeric_leaves(external_field, target)
+    initial_state = _put_numeric_leaves(initial_state, target)
     with device_context(device, resolution):
         stage = _solve_free_boundary_stage(
             inp, mgrid_path=mgrid_path, external_field=external_field,

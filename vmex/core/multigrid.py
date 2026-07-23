@@ -34,13 +34,14 @@ host round-trips of traced values.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
 
 import jax.numpy as jnp
 
-from .device import AUTO, device_context
+from .device import AUTO, _placement_device, _put_numeric_leaves, device_context
 from .errors import MORE_ITER_FLAG, SUCCESSFUL_TERM_FLAG
 from .fourier import ModeTable, mode_table
 from .input import VmecInput
@@ -322,7 +323,7 @@ def solve_free_boundary_multigrid(
     verbose: bool = False,
     emit=print,
     initial_state: SpectralState | None = None,
-    device: Any = None,
+    device: Any = AUTO,
     raise_on_max_iterations: bool = True,
     time_step: float | None = None,
     tcon0: float | None = None,
@@ -357,6 +358,9 @@ def solve_free_boundary_multigrid(
     The fixed-boundary ladder's solver controls (``time_step``, ``tcon0``,
     ``gamma``, ``nstep``, ``lconm1``, device placement, and 2D-preconditioner
     configuration) are accepted and forwarded identically.
+    ``device="auto"`` (default) applies the measured policy independently at
+    each grid and relocates carried plasma/vacuum arrays when the policy changes;
+    ``None`` leaves placement to JAX.
     """
     if not bool(inp.lfreeb):
         raise ValueError("solve_free_boundary_multigrid requires an LFREEB=T input")
@@ -414,6 +418,25 @@ def solve_free_boundary_multigrid(
                 interpolation_source, ns_fine=nsval, modes=modes)
 
         last_stage = not np.any(ns_arr[igrid + 1:] >= nsval)
+        target = _placement_device(device, resolution)
+        external_field = _put_numeric_leaves(external_field, target)
+        state = _put_numeric_leaves(state, target)
+        constraint_continuation = _put_numeric_leaves(
+            constraint_continuation, target)
+        if (vacuum_continuation is not None and target is not None
+                and any(getattr(vacuum_continuation, name) is not None for name in (
+                    "bsqvac", "rbsq", "mode_matrix", "bvec_nonsing", "potvac",
+                ))):
+            vacuum_continuation = replace(
+                vacuum_continuation,
+                bsqvac=_put_numeric_leaves(vacuum_continuation.bsqvac, target),
+                rbsq=_put_numeric_leaves(vacuum_continuation.rbsq, target),
+                mode_matrix=_put_numeric_leaves(
+                    vacuum_continuation.mode_matrix, target),
+                bvec_nonsing=_put_numeric_leaves(
+                    vacuum_continuation.bvec_nonsing, target),
+                potvac=_put_numeric_leaves(vacuum_continuation.potvac, target),
+            )
         with device_context(device, resolution):
             stage_result = _solve_free_boundary_stage(
                 inp, external_field=external_field, resolution=resolution,
