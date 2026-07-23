@@ -330,11 +330,3 @@ def test_asymmetric_harmonics_lasym(case, golden_wout):
 )
 def test_nuhrenberg_zille():  # pragma: no cover - documented skip
     raise NotImplementedError
-
-
-@pytest.mark.skip(
-    reason="cth_like_free_bdy_lasym_small is free-boundary; the new core has "
-           "no free-boundary (mgrid/Nestor) path yet"
-)
-def test_cth_like_free_boundary_lasym():  # pragma: no cover - documented skip
-    raise NotImplementedError

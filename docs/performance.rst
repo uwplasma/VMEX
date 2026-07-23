@@ -108,8 +108,10 @@ Reading the table:
 
 - **Warm** solves beat VMEC2000 on 12 of the 14 rows — typically 1.2–2.3x —
   and tie on the other two (DSHAPE, the reactor-scale QH). This includes
-  both **free-boundary** rows: the NESTOR path converges to VMEC2000 parity
-  *and* now edges out the Fortran wall clock.
+  the converged symmetric **free-boundary** row: the NESTOR path reaches
+  VMEC2000 parity *and* edges out the Fortran wall clock. The LASYM row is a
+  deliberately bounded 10,000-iteration stress case that reaches ``NITER``
+  in both codes; its wall time compares equal work, not convergence.
 - **Cold** runs pay a one-time 7–30 s XLA compile, so a single
   fire-and-forget run is slower than Fortran — except on the biggest deck
   (NuhrenbergZille at ns=201), where even the cold run, compile included,
@@ -117,7 +119,8 @@ Reading the table:
   compile cost on subsequent processes.
 - **VMEC++** is faster on some converged large decks (free
   boundary, LandremanPaul QA) but *failed* rows aborted during the first
-  iterations; ``vmex`` converges on the full suite (zero-crash policy).
+  iterations; ``vmex`` completes every supported convergent row and the
+  deliberately NITER-bounded LASYM stress row (zero-crash policy).
   ``n/a`` marks a configuration VMEC++ does not support (``lasym`` free
   boundary).
 
@@ -395,8 +398,23 @@ Reproducing the numbers
 
    python benchmarks/run_baseline.py         # CPU suite -> benchmarks/baseline.json
    python benchmarks/run_gpu_matrix.py       # GPU matrix -> benchmarks/gpu_baseline.json
-   python benchmarks/profile_production.py   # the five production workflows
+   python benchmarks/profile_production.py --device cpu
+   python benchmarks/profile_production.py --device gpu
    pytest tests/test_parity_breadth.py     # end-to-end parity suite
+
+For a compact hardware-parity audit, ``device_parity.py`` runs the same small
+equilibrium on explicitly selected CPU/GPU devices and records the forward
+state plus boundary derivatives of MHD energy, magnetic well, quasisymmetry,
+quasi-isodynamicity, and the mean traceable ``DMerc[2:-1]`` profile in JSON.
+It does not set or require JAX platform environment variables::
+
+   python benchmarks/device_parity.py --quick --metrics mhd_energy --output /tmp/vmex-smoke.json
+   python benchmarks/device_parity.py --devices cpu,gpu --output /tmp/vmex-parity.json
+
+On a CPU-only host the default runs the CPU lane and marks the cross-device
+comparison as skipped; ``--devices cpu`` requests that lane explicitly.
+The first command is the short smoke lane; omit ``--metrics`` to audit all
+five objectives.
 
 The parity suite needs the golden VMEC2000 fixtures (fetched release assets);
 it is skipped automatically when they are unavailable.
