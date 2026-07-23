@@ -362,6 +362,41 @@ the baseline) but did not finish one Jacobian in 30m08s, over five times the
 block wall. A lower-storage factorization or a measured resolution-aware
 solver policy is still needed.
 
+``benchmarks/profile_high_resolution.py`` makes that gate reusable on any
+input without hardware-selection environment variables:
+
+.. code-block:: bash
+
+   python benchmarks/profile_high_resolution.py implicit \
+       --input /path/to/input.HSX_QHS_vacuum_ns201 \
+       --max-mode 5 --device cpu --out implicit.json
+
+It records the input resolution, devices, wall time, peak RSS, solve count,
+and the complete Jacobian's finiteness, norm, and SHA-256.  On the case above,
+the unmodified float64 path repeated in 355.25 s with the established
+``74.70287727265259`` norm and checksum.  Three dtype-only lower-storage
+factorizations were rejected: demanding HSX Jacobians became non-finite, or a
+regularized approximate factor took over twice the baseline wall time.
+Low precision is therefore not a safe drop-in replacement; future work must
+change the representation or measured solver policy while preserving this
+gate.
+
+The same profiler isolates one free-boundary mirror resolution per process:
+
+.. code-block:: bash
+
+   python benchmarks/profile_high_resolution.py mirror \
+       --ns 5 --nxi 7 --elements 4 --exterior-ntheta 8 \
+       --betas 0,0.1,0.5 --device cpu --out mirror-coarse.json
+   python benchmarks/profile_high_resolution.py mirror \
+       --ns 9 --nxi 17 --elements 9 --exterior-ntheta 16 \
+       --betas 0,0.1,0.5 --device cpu --out mirror-fine.json
+
+This separates intrinsic fine-grid storage from cross-resolution process
+history.  The combined three-resolution nightly node passes, but takes about
+85 minutes and peaked at 11.04 GiB on the office host; it remains
+manual/nightly coverage rather than a required PR check.
+
 The existing optimization controls remain useful within that limitation:
 
 - The optimization Jacobian is column-chunked (``jac_chunk_size="auto"``, the

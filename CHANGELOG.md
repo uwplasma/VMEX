@@ -7,6 +7,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once past 1.0.
 ## [Unreleased]
 
 ### Added
+- **High-resolution resource profiler.**
+  `benchmarks/profile_high_resolution.py` records fresh-process implicit
+  Jacobian checksums and per-resolution mirror wall/RSS scaling without
+  hardware-selection environment variables.
 - **Explicit device selection.** Forward, free-boundary, implicit, and CLI
   solve paths accept public CPU/GPU/JAX placement controls: omitted or
   `"auto"` retains VMEX's measured policy, `None` follows JAX, and explicit
