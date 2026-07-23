@@ -364,6 +364,10 @@ up-down-asymmetric tokamak exposed unresolved sensitivity in :math:`H`:
 at ``ns=201`` the candidate reconstruction's normalized ``D_I`` differs by
 at most ``1.85e-2`` over normalized poloidal flux ``[0.2, 0.9]``, but
 ``D_R`` differs by ``1.49e-2`` and can change sign near marginality.
+On that same input, all four geometry families agree with VMEC2000 to
+``2.49e-10`` relative or better, while the interior VMEX/VMEC2000 ``DMerc``
+relative difference is ``18.6`` with sign disagreements.  This isolates the
+problem to the LASYM Mercier reconstruction rather than the equilibrium.
 Consequently :func:`~vmex.core.stability.d_merc_state` and
 :func:`~vmex.core.stability.glasser_d_r_state` still reject ``lasym = True``;
 the independently validated ``jdotb`` lane is available.  A 3-D LASYM
