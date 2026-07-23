@@ -73,3 +73,123 @@ def test_vmecpp_json_example() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         assert VmecInput.from_file(new.to_json(Path(tmp) / "x.json")) == new
         assert VmecInput.from_file(new.to_indata(Path(tmp) / "input.x")) == new
+
+
+def test_indexed_indata_vectors_overlay_vmec_defaults() -> None:
+    """Indexed 1-D assignments follow VMEC2000 namelist lower bounds/defaults."""
+    inp = VmecInput.from_indata_text(
+        """&INDATA
+        MPOL = 3
+        NTOR = 0
+        APHI(2) = 0.25
+        AM(0) = 1000.0
+        AI(1) = -0.125
+        AC(2) = 0.5
+        NS_ARRAY(1) = 7
+        NS_ARRAY(2) = 15
+        FTOL_ARRAY(2) = 1e-12
+        NITER_ARRAY(2) = 400
+        EXTCUR(2) = -3.0
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+
+    # vmec_input.f initializes APHI(1)=1 before applying APHI(2).
+    np.testing.assert_array_equal(inp.aphi[:3], [1.0, 0.25, 0.0])
+    np.testing.assert_array_equal(inp.am[:3], [1000.0, 0.0, 0.0])
+    np.testing.assert_array_equal(inp.ai[:3], [0.0, -0.125, 0.0])
+    np.testing.assert_array_equal(inp.ac[:3], [0.0, 0.0, 0.5])
+    np.testing.assert_array_equal(inp.ns_array, [7, 15])
+    np.testing.assert_array_equal(inp.ftol_array, [1e-10, 1e-12])
+    # A partial NITER_ARRAY assignment prevents VMEC2000's all--1 fallback;
+    # unassigned active entries therefore remain -1.
+    np.testing.assert_array_equal(inp.niter_array, [-1, 400])
+    np.testing.assert_array_equal(inp.extcur, [0.0, -3.0])
+
+
+def test_indexed_aphi_can_override_identity_term() -> None:
+    """APHI(1) is one-based and may explicitly replace the VMEC default."""
+    inp = VmecInput.from_indata_text(
+        """&INDATA
+        MPOL = 3
+        NTOR = 0
+        APHI(1) = 0.5
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+    np.testing.assert_array_equal(inp.aphi[:3], [0.5, 0.0, 0.0])
+
+
+def test_indexed_aphi_overlays_dense_assignment() -> None:
+    """A sparse APHI term is not discarded after a dense leading zero."""
+    inp = VmecInput.from_indata_text(
+        """&INDATA
+        MPOL = 3
+        NTOR = 0
+        APHI = 0.0
+        APHI(2) = 1.0
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+    np.testing.assert_array_equal(inp.aphi[:3], [0.0, 1.0, 0.0])
+
+
+def test_indexed_aphi_starting_element_consumes_following_values() -> None:
+    """Fortran ``APHI(1)=0,1`` assigns two elements, not one scalar."""
+    inp = VmecInput.from_indata_text(
+        """&INDATA
+        MPOL = 3
+        NTOR = 0
+        APHI(1) = 0.0, 1.0
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+    np.testing.assert_array_equal(inp.aphi[:3], [0.0, 1.0, 0.0])
+
+
+def test_indexed_aphi_section_uses_fortran_inclusive_bounds() -> None:
+    """A non-leading array section retains VMEC's initialized first term."""
+    inp = VmecInput.from_indata_text(
+        """&INDATA
+        MPOL = 3
+        NTOR = 0
+        APHI(2:3) = 0.25, 0.5
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+    np.testing.assert_array_equal(inp.aphi[:4], [1.0, 0.25, 0.5, 0.0])
+
+
+def test_indexed_legacy_axis_overlays_vmec_axis() -> None:
+    """Indexed obsolete RAXIS/ZAXIS entries retain VMEC2000 compatibility."""
+    inp = VmecInput.from_indata_text(
+        """&INDATA
+        MPOL = 3
+        NTOR = 1
+        RAXIS_CC(0) = 1.0
+        RAXIS(0) = 2.0
+        RAXIS(1) = 0.25
+        ZAXIS(1) = -0.5
+        RBC(0,0) = 1.0
+        RBC(0,1) = 0.1
+        ZBS(0,1) = 0.1
+        /
+        """
+    )
+    np.testing.assert_array_equal(inp.raxis_c, [2.0, 0.25])
+    np.testing.assert_array_equal(inp.zaxis_s, [0.0, -0.5])
