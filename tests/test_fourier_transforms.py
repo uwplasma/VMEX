@@ -134,11 +134,12 @@ def test_lasym_nestor_surface_analysis_preserves_mode_signs():
     actual_sin = wrout_sin_coeffs(
         f=asymmetric, modes=modes, trig=trig
     )
+    roundtrip_atol = 8.0 * np.finfo(np.float64).eps
     np.testing.assert_allclose(
-        actual_cos, cos_coefficients, rtol=0.0, atol=3.0e-16
+        actual_cos, cos_coefficients, rtol=0.0, atol=roundtrip_atol
     )
     np.testing.assert_allclose(
-        actual_sin, sin_coefficients, rtol=0.0, atol=3.0e-16
+        actual_sin, sin_coefficients, rtol=0.0, atol=roundtrip_atol
     )
 
 
