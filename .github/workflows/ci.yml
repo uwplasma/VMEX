@@ -201,7 +201,7 @@ jobs:
       #   a = heaviest solver-golden modules, including all free-boundary
       #       modules so their JAX caches leave with this bounded shard instead
       #       of accumulating in the catch-all worker processes;
-      #   c = everything else, incl. omnigenity/turbulence/bootstrap/stability.
+      #   c = everything else, incl. omnigenity/turbulence/bootstrap.
       # Together they cover the whole non-gradient, non-example core suite once;
       # the separate mirror matrix owns tests/mirror. Therefore
       # every test file appears in exactly one shard (coverage gate combines
@@ -217,6 +217,7 @@ jobs:
                    tests/test_freeboundary_multigrid.py \
                    tests/test_freeboundary_diff.py \
                    tests/test_cli_freeboundary.py \
+                   tests/test_stability.py \
                    tests/test_solver_end_to_end.py"
           B_FILES="tests/test_golden_digests.py \
                    tests/test_bootstrap.py \
