@@ -10,6 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
+from vmex.core import native_force as nf
 from vmex.core.fourier import Resolution, trig_tables
 from vmex.core import implicit as im
 from vmex.core.input import VmecInput
@@ -20,9 +21,10 @@ from vmex.core.native_force import (
 from vmex.core.transforms import tomnspa, tomnsps
 
 
-def _case(*, lasym=False):
+def _case(*, lasym=False, ntor=2):
     resolution = Resolution(
-        mpol=4, ntor=2, ntheta=16, nzeta=12, nfp=3, lasym=lasym, ns=6
+        mpol=4, ntor=ntor, ntheta=16, nzeta=12 if ntor else 1,
+        nfp=3, lasym=lasym, ns=6,
     )
     trig = trig_tables(resolution)
     rng = np.random.default_rng(7)
@@ -32,6 +34,26 @@ def _case(*, lasym=False):
         for name in _NAMES for parity in ("even", "odd")
     }
     return resolution, trig, kernels
+
+
+@pytest.mark.parametrize("asym", [False, True])
+@pytest.mark.parametrize("ntor", [0, 2])
+def test_jax_force_projector_matches_public(asym, ntor):
+    resolution, trig, kernels = _case(lasym=asym, ntor=ntor)
+    expected = (tomnspa if asym else tomnsps)(
+        **kernels, mpol=resolution.mpol, ntor=ntor, trig=trig,
+    )
+    actual = project_force(
+        kernels, mpol=resolution.mpol, ntor=ntor, trig=trig,
+        asym=asym, backend="jax",
+    )
+    for value, target in zip(
+        dataclasses.astuple(actual), dataclasses.astuple(expected), strict=True
+    ):
+        if target is None:
+            assert value is None
+        else:
+            np.testing.assert_allclose(value, target, rtol=2e-13, atol=2e-12)
 
 
 @pytest.mark.skipif(not native_force_available(), reason="native extension not built")
@@ -113,6 +135,91 @@ def test_force_backend_validation():
         project_force(
             kernels, mpol=resolution.mpol, ntor=resolution.ntor,
             trig=trig, threads=0,
+        )
+
+
+def test_native_ffi_wrapper_shape_and_jvp(monkeypatch):
+    from vmex.core.forces import RealSpaceForces, spectral_mhd_forces
+
+    resolution, trig, kernels = _case()
+    seen = {}
+
+    def ffi_call(_name, specs, **_kwargs):
+        def call(*args, **attrs):
+            seen.update(attrs)
+            return tuple(jnp.zeros(spec.shape, args[0].dtype) for spec in specs)
+        return call
+
+    monkeypatch.setattr(nf, "_force_ffi", object())
+    monkeypatch.setattr(nf.ffi, "ffi_call", ffi_call)
+
+    def projected(scale, backend):
+        result = project_force(
+            jax.tree.map(lambda value: scale * value, kernels),
+            mpol=resolution.mpol, ntor=resolution.ntor, trig=trig,
+            backend=backend, threads=99,
+        )
+        return jnp.stack([
+            value for value in dataclasses.astuple(result) if value is not None
+        ])
+
+    value, tangent = jax.jvp(
+        lambda scale: projected(scale, "native"), (1.0,), (0.25,)
+    )
+    reference_tangent = jax.jvp(
+        lambda scale: projected(scale, "jax"), (1.0,), (0.25,)
+    )[1]
+    np.testing.assert_array_equal(value, 0.0)
+    np.testing.assert_allclose(tangent, reference_tangent, rtol=2e-13, atol=2e-12)
+    assert seen["threads"] == resolution.ns * resolution.mpol
+    spectral_mhd_forces(
+        RealSpaceForces(**kernels), mpol=resolution.mpol,
+        ntor=resolution.ntor, trig=trig, backend="native",
+    )
+    asym_resolution, asym_trig, asym_kernels = _case(lasym=True)
+    spectral_mhd_forces(
+        RealSpaceForces(**asym_kernels), mpol=asym_resolution.mpol,
+        ntor=asym_resolution.ntor, trig=asym_trig, backend="native",
+    )
+
+
+def test_native_cpu_guard_and_public_entry_points(monkeypatch):
+    from vmex.core.freeboundary import solve_free_boundary
+    from vmex.core.multigrid import solve_free_boundary_multigrid
+    from vmex.core import optimize as opt
+    from vmex.core.solver import solve
+
+    inp = VmecInput.from_file("examples/data/input.solovev")
+    resolution, _, _ = _case()
+    require_native_cpu("cpu", resolution)
+    with jax.default_device(jax.devices("cpu")[0]):
+        require_native_cpu(None, resolution)
+
+    class GuardReached(Exception):
+        pass
+
+    def stop(*_args):
+        raise GuardReached
+
+    monkeypatch.setattr(nf, "require_native_cpu", stop)
+    calls = (
+        lambda: solve(inp, force_backend="native"),
+        lambda: solve_multigrid(inp, force_backend="native"),
+        lambda: solve_free_boundary(inp, force_backend="native"),
+        lambda: im.run(inp, force_backend="native"),
+        lambda: opt.least_squares(
+            [], inp, max_mode=0, jac="implicit",
+            solve_kwargs={"force_backend": "native"},
+        ),
+    )
+    for call in calls:
+        with pytest.raises(GuardReached):
+            call()
+
+    freeb = VmecInput.from_file("examples/data/input.cth_like_free_bdy")
+    with pytest.raises(GuardReached):
+        solve_free_boundary_multigrid(
+            freeb, external_field=object(), force_backend="native",
         )
 
 
