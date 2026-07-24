@@ -364,14 +364,17 @@ table and its current scale remain JAX-differentiable; tabulation itself does
 not retain coil-geometry derivatives.  Direct, interpolation-free ESSOS coil
 derivatives use the virtual-casing residual below. vmex carries no coil code.
 
-For future differentiation of the coupled equilibrium,
 :class:`vmex.core.freeboundary_linear.NestorBorderedOperator` represents its
 linearization as ``[[A, B], [C, D]]`` with matrix-free plasma, vacuum, and
-edge-coupling actions. It supplies the exact generated transpose, the Schur
-action :math:`D-C A^{-1}B`, and a block inverse. This is a tested linear
-algebra primitive only: the host-driven NESTOR cadence above has not yet been
-connected to these blocks and is not currently an implicit free-boundary
-adjoint.
+edge-coupling actions. :func:`~vmex.core.freeboundary_linear.linearize_nestor_coupling`
+builds those four actions directly from a live plasma residual and NESTOR's
+unsolved ``A(x) q - b(x)`` equation; :class:`~vmex.core.vacuum.VacuumSolver`
+exposes that equation through ``assemble`` without nesting a potential solve.
+The operator supplies the exact generated transpose, the Schur action
+:math:`D-C A^{-1}B`, and a block inverse. The live LASYM NESTOR blocks are
+tested against the complete coupled JVP/VJP. The host-driven cadence above is
+not yet replaced by a coupled Newton solve, so this foundation is not yet a
+public implicit free-boundary adjoint.
 
 Differentiable free boundary (virtual casing)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -552,3 +555,10 @@ Jacobian phase of the benchmark optimization step (see
 :doc:`optimization`). The same per-dof responses :math:`dz_j` double as a
 first-order perturbation warm start for the optimizer's next trial solves —
 the DESC-style ``eq.perturb`` pattern — making the linearization pay twice.
+
+A separate width-three nonlinear kernel reproduces the full raw residual on
+axis, interior, edge, symmetric, and LASYM rows. A measured attempt to stream
+its generated rows directly into the SOLVAX factor was rejected: sequential
+rows exceeded 10.6 minutes on the ``ns=201`` HSX gate, while eight-row batches
+exceeded 5.1 GiB and 6.7 minutes before completion. The proven three-color
+assembler therefore remains in production; see :doc:`performance`.

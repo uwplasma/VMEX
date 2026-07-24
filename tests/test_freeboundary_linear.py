@@ -6,7 +6,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from vmex.core.freeboundary_linear import NestorBorderedOperator
+from vmex.core.freeboundary_linear import (
+    NestorBorderedOperator, linearize_nestor_coupling,
+)
 
 
 def _operator():
@@ -47,3 +49,33 @@ def test_nestor_schur_and_block_inverse():
     with jax.disable_jit(False):
         actual = jax.jit(op.preconditioner(a_solve, schur_solve))(rhs)
     np.testing.assert_allclose(actual, jnp.linalg.solve(dense, rhs), atol=1e-13)
+
+
+def test_live_nestor_factory_differentiates_all_four_blocks():
+    x0 = jnp.asarray([0.2, -0.3])
+    q0 = jnp.asarray([0.4, 0.1])
+
+    def plasma_residual(x, q):
+        return jnp.asarray([x[0] ** 2 + q[0] * q[1], x[1] + q[1] ** 2])
+
+    def vacuum_system(x):
+        matrix = jnp.asarray([[2.0 + x[0], x[1]], [x[1], 1.5 - x[0]]])
+        return matrix, jnp.asarray([1.0 + x[1], -0.2 + x[0]])
+
+    op = linearize_nestor_coupling(plasma_residual, vacuum_system, x0, q0)
+
+    def coupled(value):
+        x, q = value[:2], value[2:]
+        matrix, rhs = vacuum_system(x)
+        return jnp.concatenate((plasma_residual(x, q), matrix @ q - rhs))
+
+    base = jnp.concatenate((x0, q0))
+    dense = jax.jacfwd(coupled)(base)
+    np.testing.assert_allclose(jax.jacfwd(op)(jnp.zeros_like(base)), dense, atol=1e-14)
+    blocks = (
+        jax.jacfwd(op.plasma)(jnp.zeros_like(x0)),
+        jax.jacfwd(op.vacuum_to_plasma)(jnp.zeros_like(q0)),
+        jax.jacfwd(op.plasma_to_vacuum)(jnp.zeros_like(x0)),
+        jax.jacfwd(op.vacuum)(jnp.zeros_like(q0)),
+    )
+    assert all(float(jnp.linalg.norm(block)) > 0.0 for block in blocks)

@@ -11,7 +11,7 @@ import jax.numpy as jnp
 Array = Any
 MatVec = Callable[[Array], Array]
 
-__all__ = ["NestorBorderedOperator"]
+__all__ = ["NestorBorderedOperator", "linearize_nestor_coupling"]
 
 
 @dataclass(frozen=True)
@@ -69,3 +69,35 @@ class NestorBorderedOperator:
             return jnp.concatenate((x, q))
 
         return apply
+
+
+def linearize_nestor_coupling(
+    plasma_residual: Callable[[Array, Array], Array],
+    vacuum_system: Callable[[Array], tuple[Array, Array]],
+    plasma: Array,
+    potential: Array,
+) -> NestorBorderedOperator:
+    """Linearize a live plasma residual and NESTOR ``A(x)q-b(x)`` equation.
+
+    ``vacuum_system(x)`` returns the NESTOR mode matrix and right-hand side
+    assembled at plasma variables ``x``; no nested vacuum solve is performed.
+    The returned four matrix-free blocks are exact JVPs of the two nonlinear
+    residuals at ``(plasma, potential)``.
+    """
+    plasma = jnp.asarray(plasma)
+    potential = jnp.asarray(potential)
+
+    def vacuum_residual(x, q):
+        matrix, rhs = vacuum_system(x)
+        return matrix @ q - rhs
+
+    def block(fun, primal):
+        return jax.linearize(fun, primal)[1]
+
+    return NestorBorderedOperator(
+        block(lambda x: plasma_residual(x, potential), plasma),
+        block(lambda q: plasma_residual(plasma, q), potential),
+        block(lambda x: vacuum_residual(x, potential), plasma),
+        block(lambda q: vacuum_residual(plasma, q), potential),
+        int(plasma.size), int(potential.size),
+    )

@@ -461,6 +461,19 @@ wall time to 284.69 s, but increased peak RSS by 8.6 % to 4.833 GiB as the
 allocator retained loop intermediates into factorization.  It was also rejected:
 lower storage must be demonstrated end to end, not inferred from one live array.
 
+A sixth experiment differentiated a genuinely local nonlinear raw-force
+kernel containing exactly three full surfaces. The kernel itself matches the
+global nonlinear residual to ``2e-12`` on axis/interior/edge rows for both
+stellarator symmetry and LASYM. Connecting its rows to the same checkpointed
+SOLVAX block-Thomas solve nevertheless failed the end-to-end resource gate:
+one-row streaming was stopped after 10.6 minutes (versus the 352.73 s /
+4.450 GiB baseline), and an eight-row batch was stopped after 6.7 minutes
+when live RSS exceeded 5.1 GiB. Both retained the exact small-case Jacobian,
+but XLA compilation/allocator retention plus the unchanged dense block bands
+and factors erased the local-temporary saving. The local kernel remains as a
+tested foundation; the production assembler remains the faster three-color
+path until the factor representation itself becomes lower-storage.
+
 The same profiler isolates one free-boundary mirror resolution per process:
 
 .. code-block:: bash

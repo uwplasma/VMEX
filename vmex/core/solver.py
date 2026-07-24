@@ -498,9 +498,10 @@ def _force_gather_tables(modes: ModeTable) -> tuple[np.ndarray, ...]:
     return m.astype(np.int32), np.abs(n).astype(np.int32), cos_w, sin_w
 
 
-def _blocks_to_signed(block_a, block_b, rt: SolverRuntime, w: np.ndarray) -> Array:
+def _blocks_to_signed(
+    block_a, block_b, rt: SolverRuntime, w: np.ndarray, ns: int
+) -> Array:
     """Gather one ``(ns, mpol, ntor+1)`` block pair into signed coefficients."""
-    ns = int(rt.setup.s_full.shape[0])
     dtype = rt.setup.s_full.dtype
     if block_a is None:
         return jnp.zeros((ns, rt.modes.mnmax), dtype=dtype)
@@ -519,13 +520,14 @@ def _force_to_state(force: SpectralForce, rt: SolverRuntime) -> SpectralState:
     packing is an equivalent linear reparametrization, so the momentum step
     commutes with this conversion.
     """
+    ns = int(jnp.asarray(force.force_R_cc).shape[0])
     return SpectralState(
-        R_cos=_blocks_to_signed(force.force_R_cc, force.force_R_ss, rt, rt.cos_w),
-        R_sin=_blocks_to_signed(force.force_R_sc, force.force_R_cs, rt, rt.sin_w),
-        Z_cos=_blocks_to_signed(force.force_Z_cc, force.force_Z_ss, rt, rt.cos_w),
-        Z_sin=_blocks_to_signed(force.force_Z_sc, force.force_Z_cs, rt, rt.sin_w),
-        L_cos=_blocks_to_signed(force.force_lambda_cc, force.force_lambda_ss, rt, rt.cos_w),
-        L_sin=_blocks_to_signed(force.force_lambda_sc, force.force_lambda_cs, rt, rt.sin_w),
+        R_cos=_blocks_to_signed(force.force_R_cc, force.force_R_ss, rt, rt.cos_w, ns),
+        R_sin=_blocks_to_signed(force.force_R_sc, force.force_R_cs, rt, rt.sin_w, ns),
+        Z_cos=_blocks_to_signed(force.force_Z_cc, force.force_Z_ss, rt, rt.cos_w, ns),
+        Z_sin=_blocks_to_signed(force.force_Z_sc, force.force_Z_cs, rt, rt.sin_w, ns),
+        L_cos=_blocks_to_signed(force.force_lambda_cc, force.force_lambda_ss, rt, rt.cos_w, ns),
+        L_sin=_blocks_to_signed(force.force_lambda_sc, force.force_lambda_cs, rt, rt.sin_w, ns),
     )
 
 

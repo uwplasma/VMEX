@@ -230,6 +230,47 @@ def test_raw_residual_jvp_is_exactly_nearest_neighbor(solovev, source):
     assert local_max > 0.0
 
 
+def test_three_surface_raw_kernel_matches_global_nonlinear_rows(case):
+    """The local nonlinear chain reproduces every row with a complete halo."""
+    _, _, cfg, p0, state, rt, mask = case
+    ns = cfg.resolution.ns
+    P = im._dof_projector(cfg, mask)
+    edge = im._edge_mask(cfg)
+    z_star = P(state)
+    key = jax.random.key(13)
+    noise = jax.tree.map(
+        lambda a: 1e-5 * a * jax.random.normal(
+            key, a.shape, dtype=jnp.asarray(a).dtype
+        ),
+        mask,
+    )
+    z = jax.tree.map(jnp.add, z_star, noise)
+    x = im._assemble(z, rt, state, P, edge)
+    full = im.residual_fn(cfg, state, mask, formulation="raw")(z, p0)
+
+    segments = ((0, (0, 1)), (max(0, ns // 2 - 1), (1,)), (ns - 3, (1, 2)))
+    for start, rows in segments:
+        window = jax.tree.map(lambda a: a[start:start + 3], x)
+        local = im._raw_residual_segment(
+            window, rt, jnp.asarray(start), axis_closure=(start == 0)
+        )
+        embedded = jax.tree.map(
+            lambda a, whole: jnp.zeros_like(whole).at[start:start + 3].set(a),
+            local, full,
+        )
+        projected = P(embedded)
+        for name, actual, expected in zip(
+            im._STATE_FIELDS, jax.tree.leaves(projected),
+            jax.tree.leaves(full), strict=True
+        ):
+            np.testing.assert_allclose(
+                np.asarray(actual)[start + np.asarray(rows)],
+                np.asarray(expected)[start + np.asarray(rows)],
+                rtol=2e-12, atol=2e-12,
+                err_msg=f"{name}, segment {start}, local rows {rows}",
+            )
+
+
 # ---------------------------------------------------------------------------
 # 2. the implicit residual vanishes at the converged fixed point
 # ---------------------------------------------------------------------------

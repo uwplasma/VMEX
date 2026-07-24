@@ -253,6 +253,9 @@ default:
   column to the same ``adjoint_tol`` as the old path.  Measured: the warm
   Jacobian phase drops 20.35 s to 0.61 s (**33x**); ``jac_solver="gmres"``
   (one preconditioned GMRES per dof) remains as a fallback.
+  A true width-three nonlinear row kernel is parity-tested, but its direct
+  streamed SOLVAX assembly is not selected: the high-resolution HSX resource
+  gate was slower and used more peak memory than this three-color path.
 - **Converged-state memo.**  scipy's trust-region drivers call ``jac(x)``
   at exactly the ``x`` that ``fun(x)`` just converged; a one-entry
   params-keyed memo removes that redundant solve per accepted iterate, and
