@@ -49,6 +49,17 @@ tables are built in :mod:`vmex.core.fourier` and the transforms
 ``dot_general`` matmuls in :mod:`vmex.core.transforms` — GEMM-friendly
 and XLA-fusable while matching VMEC2000 normalization exactly.
 
+Source builds may also provide the opt-in ``force_backend="native"`` CPU
+projection. Its JAX-FFI handler fuses the two analysis stages, parallelizes
+over surface/mode work with explicit ``threads=``, and uses an XLA-owned
+scratch result that the allocator can reuse between calls. The primal handler
+is value-only; a custom JVP evaluates the exact pure-JAX linearization, so
+forward and transpose/reverse AD retain the portable implementation. This
+also defines the accelerator policy: the ordinary ``"jax"`` backend is the
+unchanged default on every platform, and is currently the only GPU path. A
+native GPU implementation would require a separate CUDA FFI target rather
+than calling the host kernel on device buffers.
+
 Geometry pipeline
 ~~~~~~~~~~~~~~~~~
 
@@ -352,6 +363,15 @@ ESSOS/SIMSOPT Biot--Savart object or any ``xyz -> B`` callable.  The resulting
 table and its current scale remain JAX-differentiable; tabulation itself does
 not retain coil-geometry derivatives.  Direct, interpolation-free ESSOS coil
 derivatives use the virtual-casing residual below. vmex carries no coil code.
+
+For future differentiation of the coupled equilibrium,
+:class:`vmex.core.freeboundary_linear.NestorBorderedOperator` represents its
+linearization as ``[[A, B], [C, D]]`` with matrix-free plasma, vacuum, and
+edge-coupling actions. It supplies the exact generated transpose, the Schur
+action :math:`D-C A^{-1}B`, and a block inverse. This is a tested linear
+algebra primitive only: the host-driven NESTOR cadence above has not yet been
+connected to these blocks and is not currently an implicit free-boundary
+adjoint.
 
 Differentiable free boundary (virtual casing)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

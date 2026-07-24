@@ -210,6 +210,26 @@ def test_runtime_from_params_matches_run_setup(case):
                                rtol=0.0, atol=1e-15, err_msg=f"{name}: zcon0")
 
 
+@pytest.mark.parametrize("source", [0, 5, 9])
+def test_raw_residual_jvp_is_exactly_nearest_neighbor(solovev, source):
+    """A one-surface tangent has no raw-force response beyond adjacent rows."""
+    _, _, cfg, p0, state, _, mask = solovev
+    P = im._dof_projector(cfg, mask)
+    z_star = P(state)
+    tangent = jax.tree.map(
+        lambda active: jnp.zeros_like(active).at[source].set(active[source]),
+        mask,
+    )
+    F = im.residual_fn(cfg, state, mask, formulation="raw")
+    response = jax.jvp(lambda z: F(z, p0), (z_star,), (tangent,))[1]
+    keep = jnp.abs(jnp.arange(cfg.resolution.ns) - source) <= 1
+    local_max = 0.0
+    for value in jax.tree.leaves(response):
+        assert float(jnp.max(jnp.abs(jnp.where(keep[:, None], 0.0, value)))) == 0.0
+        local_max = max(local_max, float(jnp.max(jnp.abs(value[keep]))))
+    assert local_max > 0.0
+
+
 # ---------------------------------------------------------------------------
 # 2. the implicit residual vanishes at the converged fixed point
 # ---------------------------------------------------------------------------
