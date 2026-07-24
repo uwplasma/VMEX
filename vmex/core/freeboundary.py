@@ -1076,6 +1076,8 @@ def _solve_free_boundary_stage(
     precon_type: str | None = None,
     prec2d_threshold: float | None = None,
     prec2d: Prec2DConfig | None = None,
+    force_backend: str = "jax",
+    threads: int = 1,
     jacobian_retries: int = 2,
     constraint_continuation: tuple[Array, Array] | None = None,
     reuse_vacuum_cache: bool = False,
@@ -1110,6 +1112,7 @@ def _solve_free_boundary_stage(
         time_step=time_step, tcon0=tcon0, gamma=gamma, nstep=nstep,
         lconm1=lconm1, precon_type=precon_type,
         prec2d_threshold=prec2d_threshold, prec2d=prec2d,
+        force_backend=force_backend, threads=threads,
     )
     ns = int(resolution.ns)
     dtype = rt.setup.s_full.dtype
@@ -1552,6 +1555,8 @@ def solve_free_boundary(
     precon_type: str | None = None,
     prec2d_threshold: float | None = None,
     prec2d: Prec2DConfig | None = None,
+    force_backend: str = "jax",
+    threads: int = 1,
     jacobian_retries: int = 2,
 ) -> SolveResult:
     """Single-grid free-boundary solve (``eqsolve.f`` + ``funct3d.f`` IVAC0).
@@ -1568,10 +1573,14 @@ def solve_free_boundary(
     optional 2D-preconditioner overrides, and bounded ``jacobian_retries``
     recovery mirror :func:`vmex.core.solver.solve`. The returned
     ``result.vacuum`` contains the final NESTOR potential modes and surface
-    fields, without internal matrix caches.
+    fields, without internal matrix caches. ``force_backend="native"`` and
+    ``threads`` affect only the plasma force projection; NESTOR remains JAX.
     """
     if resolution is None:
         resolution = resolution_from_input(inp)
+    if force_backend == "native":
+        from .native_force import require_native_cpu
+        require_native_cpu(device, resolution)
     target = _placement_device(device, resolution)
     external_field = _put_numeric_leaves(external_field, target)
     initial_state = _put_numeric_leaves(initial_state, target)
@@ -1586,6 +1595,7 @@ def solve_free_boundary(
             lconm1=lconm1,
             precon_type=precon_type, prec2d_threshold=prec2d_threshold,
             prec2d=prec2d,
+            force_backend=force_backend, threads=threads,
             jacobian_retries=jacobian_retries,
             constraint_continuation=None, reuse_vacuum_cache=False,
         )

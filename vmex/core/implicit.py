@@ -257,6 +257,8 @@ class ImplicitConfig:
     #: ~30% less wall — a strictly faster path to the identical converged adjoint.
     adjoint_gcrot_m: int = 100
     adjoint_gcrot_k: int = 20
+    force_backend: str = "jax"
+    force_threads: int = 1
     #: seed repeated host solves from the last converged state of this config
     #: (optimization trials; the fixed point — hence the gradient — is
     #: unchanged, only the iteration count drops).  Makes the callback
@@ -278,6 +280,8 @@ def make_config(
     adjoint_maxiter: int = 300,
     adjoint_gcrot_m: int = 100,
     adjoint_gcrot_k: int = 20,
+    force_backend: str = "jax",
+    threads: int = 1,
     hot_restart: bool = False,
 ) -> ImplicitConfig:
     """Build the static config; ``resolution`` is the (final-stage) grid."""
@@ -295,6 +299,7 @@ def make_config(
         adjoint_tol=float(adjoint_tol), adjoint_restart=int(adjoint_restart),
         adjoint_maxiter=int(adjoint_maxiter),
         adjoint_gcrot_m=int(adjoint_gcrot_m), adjoint_gcrot_k=int(adjoint_gcrot_k),
+        force_backend=force_backend, force_threads=int(threads),
         hot_restart=bool(hot_restart),
     )
 
@@ -312,7 +317,8 @@ def _template_runtime(cfg: ImplicitConfig) -> SolverRuntime:
     return prepare_runtime(
         cfg.inp, cfg.resolution, ftol=cfg.ftol,
         max_iterations=cfg.max_iterations, lconm1=cfg.lconm1,
-        use_fft=False,
+        use_fft=False, force_backend=cfg.force_backend,
+        threads=cfg.force_threads,
     )
 
 
@@ -888,6 +894,7 @@ def _host_solve(cfg: ImplicitConfig, params: ImplicitParams) -> SolveResult:
     inp2 = input_with_params(cfg.inp, params)
     hot = _HOT_CACHE.get(cfg) if cfg.hot_restart else None
     perturb = _PERTURB_SEED.pop(cfg, None) if cfg.hot_restart else None
+    solver_device = "cpu" if cfg.force_backend == "native" else AUTO
     if cfg.multigrid:
         ns_arr = np.asarray(inp2.ns_array)
         ftol_arr = np.asarray(inp2.ftol_array, dtype=float).copy()
@@ -898,12 +905,16 @@ def _host_solve(cfg: ImplicitConfig, params: ImplicitParams) -> SolveResult:
         run = lambda init: solve_multigrid(  # noqa: E731
             inp2, ns_array=ns_arr, ftol_array=ftol_arr, mode=cfg.mode,
             lconm1=cfg.lconm1, raise_on_max_iterations=False,
-            initial_state=init, use_fft=False)
+            initial_state=init, use_fft=False,
+            force_backend=cfg.force_backend, threads=cfg.force_threads,
+            device=solver_device)
     else:
         run = lambda init: solve(  # noqa: E731
             inp2, cfg.resolution, ftol=cfg.ftol,
             max_iterations=cfg.max_iterations, mode=cfg.mode,
-            lconm1=cfg.lconm1, initial_state=init, use_fft=False)
+            lconm1=cfg.lconm1, initial_state=init, use_fft=False,
+            force_backend=cfg.force_backend, threads=cfg.force_threads,
+            device=solver_device)
     # Seed ladder: perturbation prediction -> plain hot restart -> cold.
     # A bad warm seed must not fail the trial (only the initial guess is at
     # stake — every rung converges to the same fixed point).
@@ -1388,6 +1399,8 @@ def run(
     adjoint_maxiter: int = 300,
     adjoint_gcrot_m: int = 100,
     adjoint_gcrot_k: int = 20,
+    force_backend: str = "jax",
+    threads: int = 1,
     device: Any = AUTO,
 ) -> ImplicitSolution:
     """Differentiable fixed-boundary equilibrium: input -> outputs pytree.
@@ -1410,6 +1423,9 @@ def run(
     leaves placement to JAX.  When ``params`` is supplied, an explicit
     hardware device moves the complete parameter pytree consistently;
     otherwise its existing placement is preserved.
+    ``force_backend="native"`` opts into the CPU FFI primal with ``threads``
+    workers; its JVP/VJP is the exact pure-JAX projection. The default remains
+    ``"jax"`` and must be used for GPU placement.
 
     The returned solution also carries the internally built
     :class:`~vmex.core.solver.SolverRuntime` as ``sol.runtime`` (a
@@ -1419,11 +1435,15 @@ def run(
     ``runtime_from_params(params, make_config(...))`` per evaluation.
     """
     inp = VmecInput.from_file(source) if isinstance(source, str) else source
+    if force_backend == "native":
+        from .native_force import require_native_cpu
+        require_native_cpu(device, resolution_from_input(inp, ns=ns))
     cfg = make_config(
         inp, ns=ns, ftol=ftol, max_iterations=max_iterations, mode=mode,
         multigrid=multigrid, lconm1=lconm1, adjoint_tol=adjoint_tol,
         adjoint_restart=adjoint_restart, adjoint_maxiter=adjoint_maxiter,
         adjoint_gcrot_m=adjoint_gcrot_m, adjoint_gcrot_k=adjoint_gcrot_k,
+        force_backend=force_backend, threads=threads,
     )
     if params is None:
         params = params_from_input(inp, device=device)

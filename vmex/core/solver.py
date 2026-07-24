@@ -408,6 +408,8 @@ class SolverRuntime:
     jmax: int                           # evolved radial rows (fixed: ns-1)
     lforbal: bool = False               # tomnsp_mod.f m=1,n=0 force replacement
     lmove_axis: bool = True             # funct3d.f first-force irst=4 path
+    force_backend: str = "jax"          # explicit opt-in native projection
+    force_threads: int = 1
 
     # -- free-boundary seam (core/freeboundary.py; funct3d.f/forces.f) ------
     # lfreeb=True selects the vacuum-coupled lane: the edge row is evolved
@@ -463,7 +465,8 @@ class SolverRuntime:
 
 _register(SolverRuntime, meta=(
     "resolution", "gamma", "tcon0", "ftol", "max_iterations", "time_step0",
-    "nstep", "jmax", "lforbal", "lmove_axis", "lfreeb", "prec2d",
+    "nstep", "jmax", "lforbal", "lmove_axis", "force_backend",
+    "force_threads", "lfreeb", "prec2d",
 ))
 
 
@@ -630,6 +633,8 @@ def prepare_runtime(
     precon_type: str | None = None, prec2d_threshold: float | None = None,
     prec2d: Prec2DConfig | None = None,
     use_fft: bool = False,
+    force_backend: str = "jax",
+    threads: int = 1,
 ) -> SolverRuntime:
     """Build the static solver context from an input file or a RunSetup.
 
@@ -674,6 +679,10 @@ def prepare_runtime(
                         gamma=float(inp.gamma), nstep=int(inp.nstep),
                         lforbal=bool(inp.lforbal),
                         lmove_axis=bool(inp.lmove_axis))
+    if force_backend not in ("jax", "native"):
+        raise ValueError("force_backend must be 'jax' or 'native'")
+    if int(threads) < 1:
+        raise ValueError("threads must be positive")
 
     rt = SolverRuntime(
         resolution=resolution, setup=setup,
@@ -686,6 +695,7 @@ def prepare_runtime(
         jmax=int(resolution.ns) - 1,
         lforbal=bool(defaults["lforbal"] if lforbal is None else lforbal),
         lmove_axis=bool(defaults["lmove_axis"]),
+        force_backend=force_backend, force_threads=int(threads),
         rcon0=jnp.zeros(()), zcon0=jnp.zeros(()),  # placeholder, replaced below
         prec2d=_resolve_prec2d(source, prec2d, precon_type, prec2d_threshold),
     )
@@ -872,7 +882,9 @@ def _force_pipeline(
     passing = jnp.asarray(True)
     real_space_finite = _all_finite(forces) if collect_health else passing
     spectral = spectral_mhd_forces(
-        forces, mpol=res.mpol, ntor=res.ntor, trig=rt.trig, include_edge=bool(rt.lfreeb)
+        forces, mpol=res.mpol, ntor=res.ntor, trig=rt.trig,
+        include_edge=bool(rt.lfreeb), backend=rt.force_backend,
+        threads=rt.force_threads,
     )
     if rt.lforbal:
         equif = radial_force_balance_error(
@@ -1919,6 +1931,8 @@ def solve(
     precon_type: str | None = None, prec2d_threshold: float | None = None,
     prec2d: Prec2DConfig | None = None,
     use_fft: bool | None = None,
+    force_backend: str = "jax",
+    threads: int = 1,
     jacobian_retries: int = 2,
 ) -> SolveResult:
     """Single-grid fixed-boundary solve (VMEC2000 ``eqsolve.f``).
@@ -1965,6 +1979,10 @@ def solve(
     API sets it False internally so its equilibrium and Jacobian share one
     lower-memory real-contraction executable.
 
+    ``force_backend="native"`` explicitly selects the optional CPU JAX-FFI
+    force projection with ``threads`` workers. The portable ``"jax"`` backend
+    remains the default and is the GPU path.
+
     ``precon_type`` (``"NONE"`` default) with a finite ``prec2d_threshold`` —
     or an explicit ``prec2d``
     :class:`~vmex.core.preconditioner_2d.Prec2DConfig` — switches on the
@@ -1979,13 +1997,16 @@ def solve(
         resolution = resolution_from_input(source)
     if resolution is None:
         raise ValueError("solve(RunSetup) requires a Resolution")
+    if force_backend == "native":
+        from .native_force import require_native_cpu
+        require_native_cpu(device, resolution)
     use_fft_resolved = _resolve_use_fft(use_fft, device, resolution)
     rt = prepare_runtime(
         source, resolution, ftol=ftol, max_iterations=max_iterations,
         time_step=time_step, tcon0=tcon0, gamma=gamma, nstep=nstep,
         lconm1=lconm1, precon_type=precon_type,
         prec2d_threshold=prec2d_threshold, prec2d=prec2d,
-        use_fft=use_fft_resolved,
+        use_fft=use_fft_resolved, force_backend=force_backend, threads=threads,
     )
     if initial_state is not None:
         ns, mnmax = rt.resolution.ns, rt.modes.mnmax
