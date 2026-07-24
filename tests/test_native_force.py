@@ -124,7 +124,7 @@ def test_native_force_jvp_and_transpose(asym):
     )
 
 
-def test_force_backend_validation():
+def test_force_backend_validation(monkeypatch):
     resolution, trig, kernels = _case()
     with pytest.raises(ValueError, match="backend"):
         project_force(
@@ -135,6 +135,12 @@ def test_force_backend_validation():
         project_force(
             kernels, mpol=resolution.mpol, ntor=resolution.ntor,
             trig=trig, threads=0,
+        )
+    monkeypatch.setattr(nf, "_force_ffi", None)
+    with pytest.raises(RuntimeError, match="not available"):
+        project_force(
+            kernels, mpol=resolution.mpol, ntor=resolution.ntor,
+            trig=trig, backend="native",
         )
 
 
@@ -184,16 +190,32 @@ def test_native_ffi_wrapper_shape_and_jvp(monkeypatch):
 
 
 def test_native_cpu_guard_and_public_entry_points(monkeypatch):
+    from vmex.core import device as device_module
     from vmex.core.freeboundary import solve_free_boundary
     from vmex.core.multigrid import solve_free_boundary_multigrid
     from vmex.core import optimize as opt
-    from vmex.core.solver import solve
+    from vmex.core.setup import run_setup
+    from vmex.core.solver import prepare_runtime, resolution_from_input, solve
 
     inp = VmecInput.from_file("examples/data/input.solovev")
     resolution, _, _ = _case()
     require_native_cpu("cpu", resolution)
     with jax.default_device(jax.devices("cpu")[0]):
         require_native_cpu(None, resolution)
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            device_module, "_placement_device",
+            lambda *_args: types.SimpleNamespace(platform="gpu"),
+        )
+        with pytest.raises(ValueError, match="CPU-only"):
+            require_native_cpu(None, resolution)
+
+    input_resolution = resolution_from_input(inp)
+    setup = run_setup(inp, input_resolution)
+    with pytest.raises(ValueError, match="force_backend"):
+        prepare_runtime(setup, input_resolution, force_backend="cuda")
+    with pytest.raises(ValueError, match="threads"):
+        prepare_runtime(setup, input_resolution, threads=0)
 
     class GuardReached(Exception):
         pass
