@@ -400,6 +400,11 @@ def test_missing_mgrid_raises(tmp_path):
 
 def test_jac75_retry_rebuilds_vacuum_and_converges(capsys):
     """A recovered free-boundary stage rebuilds NESTOR at its checkpoint."""
+    if not CONV_MGRID.exists():
+        pytest.skip(
+            "converged public CTH mgrid asset unavailable; run "
+            "examples/data/fetch_assets.py"
+        )
     inp = dataclasses.replace(
         VmecInput.from_file(CONV_DECK), delt=1.0e4,
     )
