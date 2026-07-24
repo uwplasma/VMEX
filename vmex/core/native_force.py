@@ -172,8 +172,9 @@ def project_force(
             *args, mpol=mpol, ntor=ntor, include_edge=include_edge, asym=asym
         )
     elif backend == "native":
+        native_args = tuple(jnp.asarray(arg, dtype=reference.dtype) for arg in args)
         out = _native_projection(
-            *args, mpol, ntor, include_edge, asym, int(threads)
+            *native_args, mpol, ntor, include_edge, asym, int(threads)
         )
     else:
         raise ValueError("backend must be 'jax' or 'native'")

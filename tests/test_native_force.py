@@ -83,6 +83,29 @@ def test_native_force_matches_public_jax(asym, include_edge, threads):
 
 
 @pytest.mark.skipif(not native_force_available(), reason="native extension not built")
+def test_native_force_float32_with_float64_tables():
+    resolution, trig, kernels = _case()
+    kernels = jax.tree.map(lambda value: value.astype(jnp.float32), kernels)
+    with jax.default_device(jax.devices("cpu")[0]):
+        expected = project_force(
+            kernels, mpol=resolution.mpol, ntor=resolution.ntor,
+            trig=trig, backend="jax",
+        )
+        actual = project_force(
+            kernels, mpol=resolution.mpol, ntor=resolution.ntor,
+            trig=trig, backend="native",
+        )
+    for value, target in zip(
+        dataclasses.astuple(actual), dataclasses.astuple(expected), strict=True
+    ):
+        if value is None:
+            assert target is None
+            continue
+        assert value.dtype == jnp.float32
+        np.testing.assert_allclose(value, target, rtol=2e-6, atol=2e-6)
+
+
+@pytest.mark.skipif(not native_force_available(), reason="native extension not built")
 @pytest.mark.parametrize("asym", [False, True])
 def test_native_force_jvp_and_transpose(asym):
     resolution, trig, kernels = _case(lasym=asym)
