@@ -327,17 +327,21 @@ Peak resident memory is 0.6–1.5 GB on most bundled rows and about 3.3 GB on
 the largest bundled multigrid deck, but those figures are not a
 high-resolution upper bound. The spectral state is small; compiled transform
 graphs and implicit block factors are not. On the supplied HSX
-``ns=101, mpol=18, ntor=24`` deck, a fresh Apple-M4 CPU VMEX process took
-676.46 s and 3.896 GiB maximum RSS. VMEC++ with ten threads took 92.03 s and
-380.0 MiB on the same host; one-radial-process VMEC2000 took 1154.82 s and
-265.0 MiB. A one-thread VMEC++ control took 449.79 s and 445.1 MiB, so its
-advantage is not only thread parallelism: it remained 1.50x faster than VMEX
-and used 8.96x less RSS. VMEX was 1.71x faster than this VMEC2000 run but used
-15.05x its RSS. The VMEX state nevertheless matches VMEC2000 to near
-floating-point accuracy, so this is a performance/storage gap rather than a
-convergence or equilibrium-accuracy failure.
+``ns=101, mpol=18, ntor=24`` deck, replacing the full mode-stacked synthesis
+with a separable toroidal FFT reduced a fresh Apple-M4 CPU VMEX run from
+676.46 s / 3.896 GiB to 206.56 s / 1.634 GiB. The final 2737-iteration path,
+residuals, and energy are unchanged.
 
-Explicit CPU and GPU runs of the same deck on the office host converged in
+VMEC++ with ten threads took 92.03 s and 380.0 MiB on the same host;
+one-radial-process VMEC2000 took 1154.82 s and 265.0 MiB. A one-thread
+VMEC++ control took 449.79 s and 445.1 MiB. VMEX is therefore now 2.18x
+faster than one-thread VMEC++ and 5.61x faster than VMEC2000 on this deck,
+while ten-thread VMEC++ remains 2.24x faster and uses about one quarter the
+RSS. The remaining storage gap is substantive even though the VMEX state
+matches VMEC2000 to near floating-point accuracy.
+
+Before the separable-transform change, explicit CPU and GPU runs of the same
+deck on the office host converged in
 the same 2737 final-stage iterations.  With the GPU persistent cache already
 populated, CPU took 426.94 s and 6.52 GiB host RSS; the RTX A4000 took
 1468.07 s and 5.40 GiB.  CPU was therefore 3.44x faster, while cached GPU
@@ -346,7 +350,41 @@ were ``5.20e-11`` for ``rmnc``, ``3.27e-10`` for ``zmns``, ``9.76e-11`` for
 ``bmnc``, and ``6.54e-11`` for core iota.  An empty-cache GPU process took
 1596.01 s and 6.98 GiB.  These measurements show both that explicit GPU
 placement is correct and that it is not automatically faster for a
-high-mode CLI run.
+high-mode CLI run. This is a pre-change baseline; the updated CPU/GPU result
+must be recorded before changing the measured automatic device cutoff.
+
+The new synthesis repacks the signed helical coefficients into separable
+theta/zeta blocks, evaluates zeta with ``jax.numpy.fft.irfft``, and
+performs a short real poloidal contraction. Undersampled toroidal grids fall
+back to the established dense DFT. The implicit callback also retains the
+dense-real path: a direct FFT tangent expanded complex Jacobian probe batches
+past 10 GiB RSS, and compiling fast primal plus dense tangent representations
+in one process exceeded 7 GiB. Fixed-boundary
+:func:`~vmex.core.solver.solve` and
+:func:`~vmex.core.multigrid.solve_multigrid` select separate FFT lanes only
+above 512 modes on accelerators and ARM CPUs. Smaller problems retain the
+dense-real lane: on the M4, FFT was 38--88% slower warm on three 5--8-mode
+routine decks and its 8% warm win at 128 modes came with a 13% first-solve
+loss. At 162 modes, both lanes reached the supplied 10,000-iteration cap with
+near-zero residuals, but dense was 4.3% faster (279.55 s versus 291.69 s).
+x86 CPUs also remain dense. This is a measured default: on the office Xeon
+the exact FFT run took 570.47 s,
+while dense synthesis with stage-cache release took 413.24 s / 4.04 GiB
+(3.2% faster and 38.0% lower peak RSS than the prior cache-retaining dense
+baseline of 426.94 s / 6.52 GiB).
+Explicit ``use_fft=True`` or ``use_fft=False`` always wins. Implicit AD
+retains the dense lanes and their existing checksum/storage gate. The shared
+runtime pytree is unchanged.
+
+The one-shot fixed-boundary CLI additionally calls JAX's public
+``clear_caches`` between distinct radial grids. This clears in-memory
+compilation/staging entries while VMEX's persistent on-disk compilation cache
+remains available. On the exact deck it changed 205.97 s / 2.970 GiB to
+206.56 s / 1.634 GiB (0.3% wall-time cost, 45.0% lower peak RSS) with
+identical geometry, iteration count, residuals, and energy. Library
+:func:`~vmex.core.multigrid.solve_multigrid` retains warm stage executables by
+default for scans and repeated solves; ``release_stage_cache=True`` opts into
+the one-shot policy.
 
 Column chunking bounds simultaneous design-variable probes, not the dominant
 dense ``O(ns * m_block**2)`` block bands and factors. On an exact
@@ -429,8 +467,11 @@ case remains manual/nightly coverage rather than a required PR check.
 
 The existing optimization controls remain useful within that limitation:
 
+- Scalar objectives default to one matrix-free reverse adjoint
+  (``jac_solver="auto"``), avoiding dense block assembly entirely.
 - The optimization Jacobian is column-chunked (``jac_chunk_size="auto"``, the
-  same knob DESC exposes), limiting the simultaneous probe batch.
+  device-aware choice conservatively capped at a square-root width), limiting
+  the simultaneous probe batch for vector objectives.
 - Factoring the residual and field pipelines into reusable compiled
   sub-computations cut the implicit-gradient compile ~20% in memory and ~21% in
   wall time, bit-identically (R16).

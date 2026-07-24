@@ -47,6 +47,7 @@ def _implicit(args) -> dict:
     )
     jac = np.asarray(result.jac, dtype=np.float64)
     return {
+        "jac_solver": args.jac_solver,
         "ns_array": np.asarray(inp.ns_array).tolist(),
         "mpol": int(inp.mpol),
         "ntor": int(inp.ntor),
@@ -131,8 +132,10 @@ def main() -> None:
     parser.add_argument("--input")
     parser.add_argument("--max-mode", type=int, default=5)
     parser.add_argument("--aspect-target", type=float, default=8.0)
-    parser.add_argument("--jac-solver", choices=("block", "gmres"),
-                        default="block")
+    parser.add_argument(
+        "--jac-solver", choices=("auto", "block", "gmres", "reverse"),
+        default="auto",
+    )
     parser.add_argument("--jac-chunk", default="auto")
     parser.add_argument("--ns", type=int, default=5)
     parser.add_argument("--nxi", type=int, default=7)
