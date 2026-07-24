@@ -353,7 +353,11 @@ def write_wout(path: str | Path, data: WoutData, *, overwrite: bool = True) -> P
         if lfreeb:
             mnpot = int(np.asarray(d.xmpot).size) if d.xmpot is not None else max(int(d.mnmaxpot or 1), 1)
             ds.createDimension("mn_mode_pot", max(mnpot, 1))
-            ds.createDimension("current_label", max(int(d.nextcur), 1))
+            if int(d.nextcur) > 0:
+                label_count_dim = f"dim_{int(d.nextcur):05d}"
+                if label_count_dim not in ds.dimensions:
+                    ds.createDimension(label_count_dim, int(d.nextcur))
+                ds.createDimension("current_label", 30)
 
         _put(ds, "version_", (), float(d.version_))
         for name, dim, width in _STRINGS:
@@ -411,10 +415,11 @@ def write_wout(path: str | Path, data: WoutData, *, overwrite: bool = True) -> P
             if lasym:
                 _put(ds, "potcos", ("mn_mode_pot",), d.potcos)
             if d.curlabel is not None and int(d.nextcur) > 0:
-                var = ds.createVariable("curlabel", "S1", ("current_label", "dim_00020"))
-                arr = np.full((len(d.curlabel), 20), b" ", dtype="S1")
-                for i, lbl in enumerate(d.curlabel):
-                    for j, ch in enumerate(str(lbl)[:20].ljust(20)):
+                label_count_dim = f"dim_{int(d.nextcur):05d}"
+                var = ds.createVariable("curlabel", "S1", (label_count_dim, "current_label"))
+                arr = np.full((int(d.nextcur), 30), b" ", dtype="S1")
+                for i, lbl in enumerate(d.curlabel[: int(d.nextcur)]):
+                    for j, ch in enumerate(str(lbl)[:30].ljust(30)):
                         arr[i, j] = ch.encode("ascii", "replace")
                 var[:] = arr
         for name in _MN2D_SYM:

@@ -70,7 +70,8 @@ Free-boundary extras
 --------------------
 
 When ``lfreeb = T``: ``nextcur``, ``extcur``, ``curlabel``, ``mgrid_mode``
-carry the coil-group metadata from the mgrid file. The NESTOR vacuum
+carry the coil-group metadata from the mgrid file. ``curlabel`` uses
+VMEC2000's 30-character label dimension. The NESTOR vacuum
 potential (``potsin``/``xmpot``/``xnpot``) and the ``*_sur`` surface arrays
 are declared for schema compatibility but currently written as netCDF fill —
 the free-boundary solver does not yet return the vacuum potential (see

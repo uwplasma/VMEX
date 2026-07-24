@@ -124,6 +124,9 @@ def test_wout_written_with_free_boundary_fields(freeb_cli):
         assert int(ds["lfreeb__logical__"][()]) == 1
         assert int(ds["nextcur"][()]) == nextcur
         np.testing.assert_allclose(np.asarray(ds["extcur"][:]), extcur_expected)
+        label_count_dim = f"dim_{nextcur:05d}"
+        assert ds["curlabel"].dimensions == (label_count_dim, "current_label")
+        assert ds["curlabel"].shape == (nextcur, 30)
         # potvac is a documented gap: variables exist (netCDF fill) since
         # solve_free_boundary does not return the NESTOR potential yet.
         assert "potsin" in ds.variables
