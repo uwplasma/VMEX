@@ -49,6 +49,17 @@ tables are built in :mod:`vmex.core.fourier` and the transforms
 ``dot_general`` matmuls in :mod:`vmex.core.transforms` — GEMM-friendly
 and XLA-fusable while matching VMEC2000 normalization exactly.
 
+Source builds may also provide the opt-in ``force_backend="native"`` CPU
+projection. Its JAX-FFI handler fuses the two analysis stages, parallelizes
+over surface/mode work with explicit ``threads=``, and uses an XLA-owned
+scratch result that the allocator can reuse between calls. The primal handler
+is value-only; a custom JVP evaluates the exact pure-JAX linearization, so
+forward and transpose/reverse AD retain the portable implementation. This
+also defines the accelerator policy: the ordinary ``"jax"`` backend is the
+unchanged default on every platform, and is currently the only GPU path. A
+native GPU implementation would require a separate CUDA FFI target rather
+than calling the host kernel on device buffers.
+
 Geometry pipeline
 ~~~~~~~~~~~~~~~~~
 
@@ -353,6 +364,18 @@ table and its current scale remain JAX-differentiable; tabulation itself does
 not retain coil-geometry derivatives.  Direct, interpolation-free ESSOS coil
 derivatives use the virtual-casing residual below. vmex carries no coil code.
 
+:class:`vmex.core.freeboundary_linear.NestorBorderedOperator` represents its
+linearization as ``[[A, B], [C, D]]`` with matrix-free plasma, vacuum, and
+edge-coupling actions. :func:`~vmex.core.freeboundary_linear.linearize_nestor_coupling`
+builds those four actions directly from a live plasma residual and NESTOR's
+unsolved ``A(x) q - b(x)`` equation; :class:`~vmex.core.vacuum.VacuumSolver`
+exposes that equation through ``assemble`` without nesting a potential solve.
+The operator supplies the exact generated transpose, the Schur action
+:math:`D-C A^{-1}B`, and a block inverse. The live LASYM NESTOR blocks are
+tested against the complete coupled JVP/VJP. The host-driven cadence above is
+not yet replaced by a coupled Newton solve, so this foundation is not yet a
+public implicit free-boundary adjoint.
+
 Differentiable free boundary (virtual casing)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -504,9 +527,11 @@ Forward-mode Jacobians for least squares (block-tridiagonal)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The adjoint above is the right tool for *one* scalar objective and many
-parameters. A least-squares optimizer needs the opposite object — the full
-residual Jacobian over all boundary dofs — which is computed in **forward**
-mode: per dof tangent :math:`t_j`, the state response is
+parameters. ``jac_solver="auto"`` therefore uses that reverse path for a
+scalar least-squares residual: one matrix-free solve, with no dense angular
+block assembly. Vector residuals need the full Jacobian over all boundary
+dofs, which the automatic policy computes in **forward** mode. Per dof
+tangent :math:`t_j`, the state response is
 
 .. math::
 
@@ -514,7 +539,7 @@ mode: per dof tangent :math:`t_j`, the state response is
           \frac{\partial F}{\partial p}\, t_j ,
 
 one linear solve per dof. Rather than running an independent GMRES per
-column, the default path (``jac_solver="block"``) exploits a structural
+column, the vector-residual path (``jac_solver="block"``) exploits a structural
 fact: in the **raw** force formulation the radial coupling of
 :math:`\partial F/\partial z` is exactly nearest-neighbor (the
 finite-difference stencil in :math:`s`), so the operator is *exactly*
@@ -530,3 +555,10 @@ Jacobian phase of the benchmark optimization step (see
 :doc:`optimization`). The same per-dof responses :math:`dz_j` double as a
 first-order perturbation warm start for the optimizer's next trial solves —
 the DESC-style ``eq.perturb`` pattern — making the linearization pay twice.
+
+A separate width-three nonlinear kernel reproduces the full raw residual on
+axis, interior, edge, symmetric, and LASYM rows. A measured attempt to stream
+its generated rows directly into the SOLVAX factor was rejected: sequential
+rows exceeded 10.6 minutes on the ``ns=201`` HSX gate, while eight-row batches
+exceeded 5.1 GiB and 6.7 minutes before completion. The proven three-color
+assembler therefore remains in production; see :doc:`performance`.

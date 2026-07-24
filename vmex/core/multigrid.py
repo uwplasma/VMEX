@@ -34,11 +34,13 @@ host round-trips of traced values.
 
 from __future__ import annotations
 
+import gc
 from dataclasses import replace
 from typing import Any
 
 import numpy as np
 
+import jax
 import jax.numpy as jnp
 
 from .device import AUTO, _placement_device, _put_numeric_leaves, device_context
@@ -48,7 +50,7 @@ from .input import VmecInput
 from .preconditioner_2d import Prec2DConfig
 from .solver import (
     SolveResult, SpectralState, _finalize, _result_from_carry, _solve_stage,
-    hot_restart_state, prepare_runtime, resolution_from_input,
+    _resolve_use_fft, hot_restart_state, prepare_runtime, resolution_from_input,
     runtime_with_baselines,
 )
 from .transforms import odd_m_sqrt_s_scaling
@@ -199,6 +201,10 @@ def solve_multigrid(
     jacobian_retries: int = 2,
     device: Any = AUTO,
     raise_on_max_iterations: bool = True,
+    use_fft: bool | None = None,
+    force_backend: str = "jax",
+    threads: int = 1,
+    release_stage_cache: bool = False,
 ) -> SolveResult:
     """Fixed-boundary multigrid solve over the ``NS_ARRAY`` ladder.
 
@@ -253,6 +259,17 @@ def solve_multigrid(
     follows JAX placement.  Auto never overrides an active JAX device or
     platform selection.
 
+    ``use_fft`` has the same measured-hardware default and implicit-AD role as in
+    :func:`vmex.core.solver.solve`.
+    ``force_backend="native"`` and ``threads`` explicitly select the optional
+    CPU JAX-FFI force projection at every stage; the JAX backend stays default.
+
+    ``release_stage_cache=True`` clears JAX's in-memory compilation/staging
+    caches between distinct radial grids. This lowers peak RSS for a one-shot
+    high-resolution ladder while leaving the persistent on-disk cache intact.
+    It is false by default so repeated library solves retain warm executables;
+    the standalone CLI enables it.
+
     Returns the final stage's :class:`~vmex.core.solver.SolveResult`.
     """
     ns_arr = np.atleast_1d(np.asarray(
@@ -284,12 +301,17 @@ def solve_multigrid(
             continue
         ns_min = nsval
         resolution = resolution_from_input(inp, ns=nsval)
+        if force_backend == "native":
+            from .native_force import require_native_cpu
+            require_native_cpu(device, resolution)
+        stage_use_fft = _resolve_use_fft(use_fft, device, resolution)
         rt = prepare_runtime(
             inp, resolution, ftol=float(ftol_arr[igrid]),
             max_iterations=int(niter_arr[igrid]), lconm1=lconm1,
             time_step=time_step, tcon0=tcon0, gamma=gamma, nstep=nstep,
             precon_type=precon_type, prec2d_threshold=prec2d_threshold,
-            prec2d=prec2d,
+            prec2d=prec2d, use_fft=stage_use_fft,
+            force_backend=force_backend, threads=threads,
         )
         if state is not None and int(state.R_cos.shape[0]) != nsval:
             state = interpolate_state(state, ns_fine=nsval, modes=rt.modes)
@@ -299,7 +321,7 @@ def solve_multigrid(
                 state = hot_restart_state(rt, state)
             # funct3d.f: rcon0/zcon0 are set from the state at iter2 == iter1,
             # i.e. from THIS stage's starting state, not the interior guess.
-            rt = runtime_with_baselines(rt, state)
+            rt = runtime_with_baselines(rt, state, use_fft=stage_use_fft)
         with device_context(device, resolution):
             carry = _solve_stage(
                 rt, state, mode=mode, verbose=verbose, emit=emit,
@@ -308,6 +330,7 @@ def solve_multigrid(
                 # available after interpolation and on hot starts.
                 try_axis_reguess=True,
                 jacobian_retries=jacobian_retries,
+                use_fft=stage_use_fft,
             )
         first_executed = False
         ier = int(carry.ier)
@@ -319,6 +342,16 @@ def solve_multigrid(
         # allocate_ns.f saves old xc and copies it into the newly allocated
         # xstore before initialize_radial.f scales/interpolates that array.
         state = carry.state
+        future = ns_arr[igrid + 1:]
+        executable = future[future >= nsval]
+        if (
+            release_stage_cache
+            and executable.size
+            and int(executable[0]) != nsval
+        ):
+            jax.block_until_ready(carry)
+            jax.clear_caches()
+            gc.collect()
 
     if int(carry.ier) == MORE_ITER_FLAG and not raise_on_max_iterations:
         return _result_from_carry(carry, rt)
@@ -346,6 +379,8 @@ def solve_free_boundary_multigrid(
     precon_type: str | None = None,
     prec2d_threshold: float | None = None,
     prec2d: Prec2DConfig | None = None,
+    force_backend: str = "jax",
+    threads: int = 1,
     jacobian_retries: int = 2,
 ) -> SolveResult:
     """Free-boundary solve over the VMEC2000 ``NS_ARRAY`` ladder.
@@ -376,6 +411,8 @@ def solve_free_boundary_multigrid(
     ``device="auto"`` (default) applies the measured policy independently at
     each grid and relocates carried plasma/vacuum arrays when the policy changes;
     ``None`` leaves placement to JAX.
+    The optional ``force_backend`` and ``threads`` controls are forwarded to
+    every plasma stage; native projection is CPU-only and never automatic.
     The final stage's publishable potential and surface fields are retained in
     ``result.vacuum``; internal NESTOR matrix caches are not exposed.
     """
@@ -426,6 +463,9 @@ def solve_free_boundary_multigrid(
             continue
         ns_min = nsval
         resolution = resolution_from_input(inp, ns=nsval)
+        if force_backend == "native":
+            from .native_force import require_native_cpu
+            require_native_cpu(device, resolution)
         same_grid = previous_ns == nsval
         if state is not None and previous_ns != nsval:
             # initialize_radial.f interpolates pxstore only when ns increases;
@@ -471,6 +511,7 @@ def solve_free_boundary_multigrid(
                 lconm1=lconm1,
                 precon_type=precon_type,
                 prec2d_threshold=prec2d_threshold, prec2d=prec2d,
+                force_backend=force_backend, threads=threads,
                 jacobian_retries=jacobian_retries,
                 constraint_continuation=(
                     constraint_continuation if same_grid else None),
