@@ -391,7 +391,7 @@ jobs:
 
       - name: Combine shards and enforce the gate
         run: |
-          coverage combine coverage.parity-a coverage.parity-b coverage.parity-c coverage.parity-d coverage.gradient-a coverage.gradient-b coverage.gradient-c coverage.examples
+          coverage combine coverage.parity-a coverage.parity-b coverage.parity-c coverage.parity-d coverage.parity-e coverage.gradient-a coverage.gradient-b coverage.gradient-c coverage.examples
           # The mirror release audit reaches 95% only after appending nightly
           # fixed/free adjoint tests. The fast core artifacts intentionally
           # exclude those tests, so do not mix a partial mirror number into
