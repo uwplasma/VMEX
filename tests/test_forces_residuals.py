@@ -28,6 +28,7 @@ import pytest
 from vmex.core import residuals as newr
 from vmex.core.forces import apply_m1_force_balance
 from vmex.core.input import VmecInput
+from vmex.core.setup import run_setup
 from vmex.core.solver import (
     _initial_state,
     evaluate_forces,
@@ -59,7 +60,12 @@ def _allclose(new, old, name, rtol=RTOL, atol=ATOL):
 def case(request):
     name = request.param
     inp = VmecInput.from_file(DATA_DIR / f"input.{name}")
-    rt = prepare_runtime(inp, resolution_from_input(inp))
+    resolution = resolution_from_input(inp)
+    # These are pure force-kernel tests, so request a regular inferred axis
+    # for all-zero-axis decks.  Production keeps the supplied zero axis and
+    # performs its one VMEC2000-compatible recovery in the solve driver.
+    setup = run_setup(inp, resolution, infer_axis_if_missing=True)
+    rt = prepare_runtime(inp, resolution, setup=setup)
     state = _initial_state(rt.setup)
     return SimpleNamespace(name=name, inp=inp, rt=rt, state=state)
 
