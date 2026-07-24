@@ -148,7 +148,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [a, b, c, d]
+        shard: [a, b, c1, c2, d]
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -181,7 +181,7 @@ jobs:
           print("golden dir:", mod.resolve_golden_dir())
           EOF
 
-      # Four bounded shards.  The xdist dist MODE is chosen PER SHARD by
+      # Five bounded shards.  The xdist dist MODE is chosen PER SHARD by
       # whether its modules share an expensive fixture:
       #   * loadscope groups a whole module onto ONE worker, so module-scoped
       #     equilibrium fixtures (omnigenity qi_eq/tok_eq, bootstrap eq,
@@ -201,7 +201,9 @@ jobs:
       #   a = heaviest solver-golden modules, including all free-boundary
       #       modules so their JAX caches leave with this bounded shard instead
       #       of accumulating in the catch-all worker processes;
-      #   c = everything else, incl. omnigenity/turbulence/bootstrap/stability.
+      #   c1/c2 = the former catch-all, split explicitly after two hosted
+      #           runners were externally shut down above 84% despite no test
+      #           failure.  Explicit file ownership keeps coverage disjoint.
       # Together they cover the whole non-gradient, non-example core suite once;
       # the separate mirror matrix owns tests/mirror. Therefore
       # every test file appears in exactly one shard (coverage gate combines
@@ -221,21 +223,58 @@ jobs:
           B_FILES="tests/test_golden_digests.py \
                    tests/test_bootstrap.py \
                    tests/test_wout_golden.py"
+          C1_FILES="tests/test_baseline_benchmark.py \
+                    tests/test_boozer_tables.py \
+                    tests/test_cli.py \
+                    tests/test_cli_device.py \
+                    tests/test_compat.py \
+                    tests/test_coverage_margin.py \
+                    tests/test_device.py \
+                    tests/test_device_parity_tool.py \
+                    tests/test_doctor.py \
+                    tests/test_fetch_assets.py \
+                    tests/test_forces_residuals.py \
+                    tests/test_fourier_transforms.py \
+                    tests/test_geometry_fields.py \
+                    tests/test_gpu_ci.py \
+                    tests/test_implicit_device.py \
+                    tests/test_implicit_multi_rhs.py \
+                    tests/test_input_profiles.py \
+                    tests/test_lgradb.py \
+                    tests/test_mgrid.py \
+                    tests/test_multigrid_interp.py \
+                    tests/test_nonfinite_failfast.py"
+          C2_FILES="tests/test_omnigenity.py \
+                    tests/test_optimization_convergence.py \
+                    tests/test_optimize_penalty.py \
+                    tests/test_package_api.py \
+                    tests/test_packaging_metadata.py \
+                    tests/test_parallel.py \
+                    tests/test_plotting_boozer.py \
+                    tests/test_preconditioner.py \
+                    tests/test_preconditioner_2d.py \
+                    tests/test_printing.py \
+                    tests/test_profiles.py \
+                    tests/test_setup.py \
+                    tests/test_setup_extras.py \
+                    tests/test_single_stage_simultaneous.py \
+                    tests/test_solver_axis_initialization.py \
+                    tests/test_stability.py \
+                    tests/test_step_control.py \
+                    tests/test_turbulence.py \
+                    tests/test_validation_guards.py \
+                    tests/test_vmec2000_feature_stress.py"
           D_FILES="tests/test_optimize.py"
           if [ "${{ matrix.shard }}" = "a" ]; then
             pytest -q -n 4 --dist loadscope $A_FILES --durations=15 --cov=vmex --cov-report=term
           elif [ "${{ matrix.shard }}" = "b" ]; then
             pytest -q -n 4 --dist load $B_FILES --durations=15 --cov=vmex --cov-report=term
+          elif [ "${{ matrix.shard }}" = "c1" ]; then
+            pytest -q -n 4 --dist loadscope $C1_FILES --durations=15 --cov=vmex --cov-report=term
+          elif [ "${{ matrix.shard }}" = "c2" ]; then
+            pytest -q -n 4 --dist loadscope $C2_FILES --durations=15 --cov=vmex --cov-report=term
           elif [ "${{ matrix.shard }}" = "d" ]; then
             pytest -q -n 4 --dist load $D_FILES --durations=15 --cov=vmex --cov-report=term
-          else
-            IGNORES=$(for f in $A_FILES $B_FILES $D_FILES; do echo "--ignore=$f"; done)
-            pytest -q -n 4 --dist loadscope tests \
-              --ignore=tests/mirror \
-              --ignore=tests/test_implicit_grad.py \
-              --ignore=tests/test_examples.py \
-              $IGNORES \
-              --durations=15 --cov=vmex --cov-report=term
           fi
 
       - name: Stash coverage data
@@ -376,7 +415,7 @@ jobs:
 
       - name: Combine shards and enforce the gate
         run: |
-          coverage combine coverage.parity-a coverage.parity-b coverage.parity-c coverage.parity-d coverage.gradient-a coverage.gradient-b coverage.gradient-c coverage.examples
+          coverage combine coverage.parity-a coverage.parity-b coverage.parity-c1 coverage.parity-c2 coverage.parity-d coverage.gradient-a coverage.gradient-b coverage.gradient-c coverage.examples
           # The mirror release audit reaches 95% only after appending nightly
           # fixed/free adjoint tests. The fast core artifacts intentionally
           # exclude those tests, so do not mix a partial mirror number into
